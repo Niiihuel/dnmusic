@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  PLACEHOLDER — NO USAR EN PRODUCCIÓN.
+
+  Este archivo es solo de referencia. Para correr la app necesitás el
+  GoogleService-Info.plist REAL de tu proyecto Firebase:
+
+    1. Entrá a https://console.firebase.google.com
+    2. Tu proyecto > Configuración del proyecto (⚙) > Tus apps > app iOS
+    3. Descargá "GoogleService-Info.plist"
+    4. Copialo a ESTA MISMA carpeta como:
+         DanyApp/Support/GoogleService-Info.plist
+       (ese nombre exacto está en .gitignore y NO se commitea)
+
+  El CI de GitHub Actions lo inyecta automáticamente desde el secret
+  GOOGLE_SERVICE_INFO_PLIST (ver docs/CI-SETUP.md).
+-->
+<dict>
+    <key>API_KEY</key>
+    <string>REEMPLAZAR_POR_TU_API_KEY</string>
+    <key>GCM_SENDER_ID</key>
+    <string>REEMPLAZAR</string>
+    <key>GOOGLE_APP_ID</key>
+    <string>REEMPLAZAR</string>
+    <key>BUNDLE_ID</key>
+    <string>com.dany.app</string>
+    <key>PROJECT_ID</key>
+    <string>dany-placeholder</string>
+</dict>
+</plist>

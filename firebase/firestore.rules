@@ -1,0 +1,64 @@
+rules_version = '2';
+
+// Reglas de seguridad de Firestore para Dany.
+// La app es privada para exactamente 2 personas (un "par").
+// Solo los miembros del par pueden leer/escribir sus mensajes.
+// Nadie más (ni siquiera usuarios autenticados no invitados) entra.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Devuelve el documento del par dado su id.
+    function pairDoc(pairId) {
+      return get(/databases/$(database)/documents/pairs/$(pairId)).data;
+    }
+
+    function isPairMember(pairId) {
+      return isSignedIn()
+        && request.auth.uid in pairDoc(pairId).memberUids;
+    }
+
+    // Perfil de usuario: cualquiera autenticado puede leer, solo el dueño escribe.
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    // El par lo crea/define el administrador (vos, por consola).
+    // Los miembros lo leen. `resource` (no get) permite también la query
+    // usada para descubrir el par al hacer login.
+    match /pairs/{pairId} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.memberUids;
+      allow write: if false;
+
+      // Mensajes del par.
+      match /messages/{messageId} {
+        // Ambos miembros pueden leer todos los mensajes del par.
+        allow read: if isPairMember(pairId);
+
+        // Solo se puede crear un mensaje del cual soy el remitente.
+        allow create: if isPairMember(pairId)
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.keys().hasAll(
+               ['senderUid', 'flowerType', 'flowerVariant', 'text', 'createdAt']);
+
+        // Solo el receptor puede abrir/marcar como leído (nunca el remitente).
+        // Solo pueden cambiar openedAt/readAt, y únicamente a un server timestamp.
+        // (affectedKeys garantiza que texto/flor/remitente/createdAt son inmutables.)
+        allow update: if isPairMember(pairId)
+          && request.auth.uid != resource.data.senderUid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['openedAt', 'readAt'])
+          && (request.resource.data.openedAt == request.time
+              || request.resource.data.openedAt == resource.data.openedAt)
+          && (request.resource.data.readAt == request.time
+              || request.resource.data.readAt == resource.data.readAt);
+
+        allow delete: if false;
+      }
+    }
+  }
+}

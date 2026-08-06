@@ -1,0 +1,48 @@
+default_platform(:ios)
+
+APP_BUNDLE_ID = "com.dany.app"
+APP_SCHEME    = "DanyApp"
+APP_PROJECT   = "DanyApp.xcodeproj"
+
+platform :ios do
+  desc "Compila, firma y sube a TestFlight"
+  lane :beta do
+    setup_ci if ENV['CI']
+
+    # Certificados y provisioning de distribución (encriptados en un repo git privado).
+    match(
+      type: "appstore",
+      readonly: is_ci,
+      git_url: ENV.fetch("MATCH_GIT_URL"),
+      app_identifier: APP_BUNDLE_ID
+    )
+
+    # Número de build incremental por cada corrida (requiere TestFlight único).
+    increment_build_number(
+      xcodeproj: APP_PROJECT,
+      build_number: ENV.fetch("GITHUB_RUN_NUMBER", Time.now.to_i.to_s)
+    )
+
+    build_app(
+      scheme: APP_SCHEME,
+      project: APP_PROJECT,
+      export_method: "app-store",
+      xcargs: "DEVELOPMENT_TEAM=#{ENV.fetch('DEVELOPMENT_TEAM', '')}"
+    )
+
+    # Subida a TestFlight con API Key (sin 2FA por consola).
+    # ENV.fetch sin default lanza KeyError claro si falta algún secret.
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_filepath: ENV.fetch("ASC_KEY_FILEPATH"),
+      duration: 1_200,
+      in_house: false
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true
+    )
+  end
+end
