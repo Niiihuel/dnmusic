@@ -98,6 +98,39 @@ async function proxyImage(res: import('node:http').ServerResponse, raw: string) 
   res.end(Buffer.from(await upstream.arrayBuffer()))
 }
 
+/**
+ * Quién puede pedirle algo a este servicio.
+ *
+ * El servicio es público —tiene una URL en internet— y hace dos cosas caras:
+ * `/peaks` corre ffmpeg sobre el audio, y `/resolve` **escribe en nuestro
+ * Storage** con la service_role. Sin esto, cualquiera con la URL podía hacernos
+ * gastar CPU y llenarnos el bucket.
+ *
+ * La credencial es el **JWT de sesión de Supabase** que ya tiene la app, y no un
+ * token compartido puesto a mano. Un token fijo tendría que viajar en el bundle
+ * —es una app de cliente, no hay dónde esconderlo— así que cualquiera que
+ * descargue el IPA lo saca en dos minutos y no habríamos ganado nada. El JWT, en
+ * cambio, es de una persona, vence solo y se corta cerrando su sesión.
+ *
+ * Se verifica contra Supabase con la service_role, que es la misma que ya
+ * usamos para Storage: si devuelve un usuario, la firma es válida y no venció.
+ *
+ * `CORS` no cumple este papel y por eso no alcanzaba: solo le dice al
+ * **navegador** qué respuestas puede leer. Un `curl` lo ignora por completo.
+ */
+async function autorizado(req: import('node:http').IncomingMessage): Promise<boolean> {
+  if (!supabase) return false
+  const cabecera = req.headers.authorization
+  if (!cabecera?.startsWith('Bearer ')) return false
+  try {
+    const { data, error } = await supabase.auth.getUser(cabecera.slice(7))
+    return !error && !!data.user
+  } catch {
+    // Supabase no contestó: se niega. Ante la duda, no se atiende.
+    return false
+  }
+}
+
 const server = createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') {
@@ -108,6 +141,22 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${PORT}`)
 
     if (url.pathname === '/health') return json(res, 200, { ok: true })
+
+    /*
+     * Todo lo demás pide sesión, con **dos excepciones**.
+     *
+     * `/health` queda abierto porque es lo que mira Railway para saber si el
+     * contenedor está vivo, y no tiene sesión que ofrecer ni dato que filtrar.
+     *
+     * `/img` queda abierto porque **no puede llevar cabecera**: su respuesta se
+     * consume como `<Image source={{ uri }}>`, y ahí no hay forma de mandar un
+     * `Authorization`. No queda desprotegido del todo: `IMAGE_HOSTS` lo limita a
+     * los hosts de carátulas de Google, así que es un proxy de imágenes acotado
+     * y no uno abierto. Es lo más barato que expone el servicio.
+     */
+    if (url.pathname !== '/img' && !(await autorizado(req))) {
+      return json(res, 401, { error: 'No autorizado' })
+    }
 
     if (url.pathname === '/search' && req.method === 'GET') {
       const q = url.searchParams.get('q')?.trim()

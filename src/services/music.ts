@@ -15,6 +15,34 @@ import { getSupabase } from '../lib/supabase'
 
 const MUSIC_API = process.env.EXPO_PUBLIC_MUSIC_API ?? 'http://localhost:8787'
 const BUCKET = 'songs'
+
+/**
+ * Un pedido al servicio de música, firmado con tu sesión.
+ *
+ * El servicio está en internet y hace cosas caras —`/peaks` corre ffmpeg,
+ * `/resolve` escribe en nuestro Storage— así que desde que es público exige
+ * sesión. La credencial es el mismo JWT con el que la app le habla a Supabase:
+ * no hay un secreto aparte que mantener, ni nada escondido en el bundle que
+ * alguien pueda sacar del IPA.
+ *
+ * Va acá y no en cada llamada porque **todas** las de este archivo lo necesitan,
+ * y una que se olvide de mandarlo falla con un 401 que no dice nada útil.
+ *
+ * La excepción es `artworkUrlAtSize`, que devuelve una URL para `<Image>` en vez
+ * de hacer un pedido: ahí no hay dónde poner una cabecera, y por eso `/img` es
+ * la única ruta que el servicio deja abierta.
+ */
+async function fetchMusica(url: string, init?: RequestInit): Promise<Response> {
+  const { data } = await getSupabase().auth.getSession()
+  const token = data.session?.access_token
+  return fetch(url, {
+    ...init,
+    headers: {
+      ...init?.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
+}
 /** Las URLs firmadas duran lo suficiente para escuchar y recortar sin apuro. */
 const SIGNED_URL_TTL_S = 60 * 60
 
@@ -71,7 +99,7 @@ export async function fetchArtist(
   signal?: AbortSignal,
 ): Promise<ArtistInfo | null> {
   try {
-    const res = await fetch(`${MUSIC_API}/artist?id=${encodeURIComponent(artistId)}`, { signal })
+    const res = await fetchMusica(`${MUSIC_API}/artist?id=${encodeURIComponent(artistId)}`, { signal })
     if (!res.ok) return null
     const data = (await res.json()) as ArtistInfo & { error?: string }
     return data.error ? null : data
@@ -118,7 +146,7 @@ export type HomeSection = {
  */
 export async function fetchHome(signal?: AbortSignal): Promise<HomeSection[]> {
   try {
-    const res = await fetch(`${MUSIC_API}/home`, { signal })
+    const res = await fetchMusica(`${MUSIC_API}/home`, { signal })
     if (!res.ok) return []
     const data = (await res.json()) as { sections?: HomeSection[] }
     return data.sections ?? []
@@ -157,7 +185,7 @@ export async function fetchAlbum(
   kind: 'album' | 'playlist' = 'album',
 ): Promise<AlbumInfo | null> {
   try {
-    const res = await fetch(`${MUSIC_API}/${kind}?id=${encodeURIComponent(albumId)}`, { signal })
+    const res = await fetchMusica(`${MUSIC_API}/${kind}?id=${encodeURIComponent(albumId)}`, { signal })
     if (!res.ok) return null
     const data = (await res.json()) as AlbumInfo & { error?: string }
     return data.error ? null : data
@@ -179,7 +207,7 @@ export async function searchMusic(query: string, signal?: AbortSignal): Promise<
   const term = query.trim()
   if (!term) return { tracks: [], artists: [] }
 
-  const res = await fetch(`${MUSIC_API}/search?q=${encodeURIComponent(term)}`, { signal })
+  const res = await fetchMusica(`${MUSIC_API}/search?q=${encodeURIComponent(term)}`, { signal })
   if (!res.ok) throw new Error(`El servicio de música respondió ${res.status}`)
   const data = (await res.json()) as {
     results?: TrackResult[]
@@ -212,7 +240,7 @@ export type ResolvedSong = {
  * la encuentra en Storage y responde al instante.
  */
 export async function resolveSong(track: TrackResult, signal?: AbortSignal): Promise<ResolvedSong> {
-  const res = await fetch(`${MUSIC_API}/resolve`, {
+  const res = await fetchMusica(`${MUSIC_API}/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     // La carátula va en el pedido: el servicio la copia a Storage y así deja
@@ -247,7 +275,7 @@ export async function resolveSong(track: TrackResult, signal?: AbortSignal): Pro
 export async function ensureArtwork(videoId: string, url: string): Promise<string | null> {
   if (!videoId || !url) return null
   try {
-    const res = await fetch(`${MUSIC_API}/artwork`, {
+    const res = await fetchMusica(`${MUSIC_API}/artwork`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ videoId, url }),
@@ -345,7 +373,7 @@ export async function fetchWaveform(
   buckets = 160,
   signal?: AbortSignal,
 ): Promise<Waveform> {
-  const res = await fetch(
+  const res = await fetchMusica(
     `${MUSIC_API}/peaks?videoId=${encodeURIComponent(videoId)}&buckets=${buckets}`,
     { signal },
   )
@@ -451,7 +479,7 @@ export async function translateLyrics(
   to: Exclude<LyricLang, 'off'>,
   signal?: AbortSignal,
 ): Promise<LyricLine[]> {
-  const res = await fetch(`${MUSIC_API}/translate`, {
+  const res = await fetchMusica(`${MUSIC_API}/translate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ to, texts: lines.map((l) => l.text) }),
