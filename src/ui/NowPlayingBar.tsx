@@ -11,6 +11,7 @@ import {
   playPrevious,
   seekFraction,
   seekToMs,
+  toggleShuffle,
   setVolume,
   stopPlayback,
   togglePlayback,
@@ -29,6 +30,7 @@ import {
   IconPlay,
   IconPrevious,
   IconRepeat,
+  IconShuffle,
   IconDisc,
   IconLyrics,
   IconVolume,
@@ -71,6 +73,7 @@ export function NowPlayingBar({
     durationMs,
     volume,
     cargada,
+    shuffle,
     view,
     error,
   } = usePlaybackState()
@@ -115,6 +118,20 @@ export function NowPlayingBar({
       disabled: !canOpenPlaylist(),
       icon: <IconMusic size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'music.note.list',
+    },
+    {
+      /*
+       * El aleatorio vive en el menú y no como botón fijo en la tarjeta.
+       *
+       * En el teléfono la tarjeta tiene lugar para la tapa, el título y
+       * pausa/siguiente, y nada más — meterle un cuarto control la vuelve una
+       * fila de íconos. Acá está a un toque y dice en qué estado está, que es
+       * más de lo que comunica un ícono teñido de gris contra otro gris.
+       */
+      label: shuffle ? 'Aleatorio: activado' : 'Aleatorio',
+      onPress: toggleShuffle,
+      icon: <IconShuffle size={15} color={shuffle ? ICON_COLOR.foreground : ICON_COLOR.muted} />,
+      sfSymbol: 'shuffle',
     },
     {
       label: 'Volver a empezar',

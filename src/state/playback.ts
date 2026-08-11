@@ -43,6 +43,19 @@ type PlaybackState = {
   durationMs: number
   /** 0..1, elegido por quien escucha. Se multiplica por la atenuación técnica. */
   volume: number
+  /**
+   * El orden aleatorio, **barajado una vez**.
+   *
+   * Guarda los índices de `tracks` en el orden en que van a sonar; `null` cuando
+   * el aleatorio está apagado. No es «elegir una al azar en cada salto»: eso
+   * repite temas y saltea otros, y a los diez minutos ya te hizo escuchar dos
+   * veces la misma mientras nunca tocó la mitad de la lista. Es lo que hace
+   * Spotify desde que arreglaron su propio aleatorio por la misma queja.
+   *
+   * Se baraja al prenderlo y se recorre entero. La que está sonando queda
+   * primera para que prender el aleatorio no corte lo que estás escuchando.
+   */
+  shuffle: number[] | null
   /** Qué muestra el panel de la derecha mientras suena algo. */
   view: NowPlayingView
   error: string | null
@@ -78,6 +91,7 @@ const EMPTY: PlaybackState = {
   durationMs: 0,
   volume: 1,
   cargada: false,
+  shuffle: null,
   view: 'info',
   error: null,
 }
@@ -285,7 +299,8 @@ export function togglePlayback() {
 
 export function playNext() {
   const state = store.get()
-  if (state.index + 1 < state.tracks.length) playAt(state.index + 1)
+  const next = siguienteIndice(state)
+  if (next !== null) playAt(next)
 }
 
 export function playPrevious() {
@@ -325,6 +340,58 @@ export function seekToMs(positionMs: number) {
  *
  * Lo llama la barra, que es la única que puede saber cuándo llegó al final.
  */
+/**
+ * Baraja de Fisher-Yates: cada orden posible con la misma probabilidad.
+ *
+ * Va escrito y no `sort(() => Math.random() - 0.5)`, que es el atajo que circula
+ * por todos lados y **no** reparte parejo: el resultado depende del algoritmo de
+ * ordenamiento y deja las canciones cerca de donde estaban. En una lista corta
+ * eso se nota como «siempre me empieza por las mismas».
+ */
+function barajar(n: number): number[] {
+  const orden = Array.from({ length: n }, (_, i) => i)
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[orden[i], orden[j]] = [orden[j], orden[i]]
+  }
+  return orden
+}
+
+/**
+ * Prende o apaga el aleatorio.
+ *
+ * Al prenderlo, **la que está sonando queda primera**: prender el aleatorio no
+ * puede cortarte el tema que estás escuchando, solo cambia lo que viene después.
+ * Al apagarlo se vuelve al orden de la lista desde donde estás, sin saltos.
+ */
+export function toggleShuffle() {
+  const state = store.get()
+  if (state.shuffle) {
+    store.set({ shuffle: null })
+    return
+  }
+  const orden = barajar(state.tracks.length).filter((i) => i !== state.index)
+  store.set({ shuffle: state.index >= 0 ? [state.index, ...orden] : orden })
+}
+
+/**
+ * Cuál sigue después de `index`, respetando el aleatorio si está puesto.
+ *
+ * Los índices barajados se validan contra `tracks` en el momento de usarlos y no
+ * al barajar: la lista se relee cuando agregás o sacás una canción, y un orden
+ * calculado antes puede apuntar a un lugar que ya no existe.
+ */
+function siguienteIndice(state: PlaybackState): number | null {
+  if (!state.shuffle) {
+    const next = state.index + 1
+    return state.tracks[next] ? next : null
+  }
+  const validos = state.shuffle.filter((i) => i >= 0 && i < state.tracks.length)
+  const donde = validos.indexOf(state.index)
+  const next = validos[donde + 1]
+  return next === undefined ? null : next
+}
+
 export function advance() {
   const state = store.get()
 
@@ -340,9 +407,9 @@ export function advance() {
    * no se movió mientras sonaba la manual, así que la que sigue es la de
    * siempre. Por eso el salto es el mismo en los dos casos.
    */
-  const next = state.index + 1
-  const track = state.tracks[next]
-  if (track) {
+  const next = siguienteIndice(state)
+  const track = next === null ? null : state.tracks[next]
+  if (track && next !== null) {
     store.set({ manual: null, index: next, positionMs: 0, durationMs: track.durationMs })
   } else {
     store.set({ manual: null, wantPlay: false, positionMs: state.durationMs })
