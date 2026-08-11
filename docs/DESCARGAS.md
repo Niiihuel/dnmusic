@@ -70,8 +70,19 @@ pantallas para no dibujar controles que no podrían cumplir.
 
 Tres dependencias nativas nuevas —`expo-file-system`, `expo-network` y
 `modules/backup-exclusion`— así que **hay que compilar de nuevo** el development
-client y el preview. Sin eso, `HAY_DESCARGAS` es cierto pero el módulo de archivos
-no está en el binario.
+client y el preview.
+
+Con un binario viejo la app **arranca igual**: los dos paquetes usan
+`requireNativeModule`, que lanza al importarse cuando el módulo no está, así que
+`state/descargas.ts` los carga con `require` dentro de un `try` y deja
+`HAY_DESCARGAS` en falso. Sin eso, sumar la dependencia convertía «esta versión no
+tiene descargas» en «la app no abre» — pantalla roja al arrancar, sin nada que se
+pueda hacer desde adentro. Es el mismo motivo por el que `modules/remote-commands`
+y `modules/audio-route` se resuelven de forma opcional.
+
+Si Metro tira `Unable to resolve module ./legacyWarnings from
+.../expo-file-system/src/index.ts`, es su caché: el archivo existe. Se arregla con
+`npx expo start -c`.
 
 ## Lo que no está
 

@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Platform } from 'react-native'
-import { Directory, File, Paths } from 'expo-file-system'
-import { addNetworkStateListener, getNetworkStateAsync, NetworkStateType } from 'expo-network'
+import type { Directory, File } from 'expo-file-system'
 import { excluirDeCopias } from '../../modules/backup-exclusion'
 import { artworkRemoto, registerArteLocal } from '../lib/artwork'
 import { mensajeError } from '../lib/mensajeError'
@@ -26,15 +25,74 @@ import { createStore, useStore } from './store'
  * clave, bajarla una vez la deja bajada **en todos lados**, y quitarla de una
  * lista no borra el archivo que otra sigue usando.
  *
- * **Solo en el teléfono.** En web `expo-file-system` no hace nada: cada método
- * imprime un aviso en la consola y devuelve vacío. Así que en vez de descargas
- * rotas, en web no hay descargas — `HAY_DESCARGAS` es lo que consultan las
- * pantallas para no dibujar controles que no podrían cumplir. El navegador ya
- * cachea el audio por su cuenta, que es lo más parecido que puede ofrecer.
+ * **Solo en el teléfono, y solo con el binario al día.** En web
+ * `expo-file-system` no hace nada —cada método imprime un aviso y devuelve
+ * vacío— y en una app compilada antes de que esto existiera los módulos nativos
+ * directamente no están. En los dos casos `HAY_DESCARGAS` es falso y las
+ * pantallas no dibujan un control que no podrían cumplir; ver el bloque de abajo,
+ * que es donde se decide.
  */
 
-/** Si esta plataforma puede guardar archivos. Ver arriba. */
-export const HAY_DESCARGAS = Platform.OS !== 'web'
+/*
+ * Los dos módulos nativos se cargan **a mano y sin reventar si no están**.
+ *
+ * `expo-file-system` y `expo-network` usan `requireNativeModule`, que **lanza
+ * cuando se importa** si el binario no los trae. Y este archivo lo importa el
+ * layout, así que un `import` normal arriba de todo convierte «esta versión no
+ * tiene descargas» en «la app no abre»: pantalla roja al arrancar, sin nada que
+ * se pueda hacer desde la app.
+ *
+ * Eso pasa siempre que se suma una dependencia nativa, y pasa en un caso que es
+ * completamente normal: cualquier development client o TestFlight compilado
+ * **antes** de que existiera esta función. Es el mismo motivo por el que
+ * `modules/remote-commands` y `modules/audio-route` se resuelven de forma
+ * opcional; acá el paquete no ofrece esa variante, así que el `try` lo escribe
+ * este archivo.
+ *
+ * El `require` va con la ruta escrita literal y no en una variable: Metro
+ * resuelve las dependencias leyendo el código, y con un nombre calculado no
+ * empaquetaría el módulo.
+ */
+type ModuloArchivos = typeof import('expo-file-system')
+type ModuloRed = typeof import('expo-network')
+
+let modArchivos: ModuloArchivos | null = null
+let modRed: ModuloRed | null = null
+
+if (Platform.OS !== 'web') {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    modArchivos = require('expo-file-system') as ModuloArchivos
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    modRed = require('expo-network') as ModuloRed
+  } catch {
+    /* Binario viejo. La app arranca igual y las descargas no existen: la
+       pantalla de Ajustes no dibuja su grupo y las listas no dibujan el botón. */
+    modArchivos = null
+    modRed = null
+  }
+}
+
+/**
+ * Si esta plataforma **y este binario** pueden guardar archivos.
+ *
+ * Es lo que consultan las pantallas para no ofrecer un control que no podrían
+ * cumplir. Ver arriba los dos motivos por los que puede ser falso.
+ */
+export const HAY_DESCARGAS = modArchivos !== null && modRed !== null
+
+/* Los accesores no devuelven `null` para que las llamadas de abajo no arrastren
+   un `?.` cada una: todas corren detrás de `HAY_DESCARGAS`, así que si alguna
+   llegara acá sin módulo es un error nuestro y tiene que sonar como tal. */
+function fs(): ModuloArchivos {
+  if (!modArchivos) throw new Error('Esta versión de la app no puede descargar canciones.')
+  return modArchivos
+}
+
+function net(): ModuloRed {
+  if (!modRed) throw new Error('Esta versión de la app no puede descargar canciones.')
+  return modRed
+}
 
 /** Dónde viven los archivos, dentro de Documents. */
 const CARPETA = 'descargas'
@@ -122,7 +180,7 @@ let carpetaCache: Directory | null = null
 
 function carpeta(): Directory {
   if (carpetaCache) return carpetaCache
-  const dir = new Directory(Paths.document, CARPETA)
+  const dir = new (fs().Directory)(fs().Paths.document, CARPETA)
   dir.create({ intermediates: true, idempotent: true })
   /*
    * Fuera de la copia de iCloud, una vez por sesión.
@@ -151,13 +209,13 @@ function nombreSeguro(path: string): string {
 }
 
 function archivoAudio(audioPath: string): File {
-  return new File(carpeta(), nombreSeguro(audioPath))
+  return new (fs().File)(carpeta(), nombreSeguro(audioPath))
 }
 
 /* La carátula lleva prefijo: si algún día audio y arte compartieran extensión,
    uno pisaría al otro sin que nadie se entere. */
 function archivoArte(artworkPath: string): File {
-  return new File(carpeta(), `arte-${nombreSeguro(artworkPath)}`)
+  return new (fs().File)(carpeta(), `arte-${nombreSeguro(artworkPath)}`)
 }
 
 /**
@@ -321,8 +379,8 @@ export async function cargarDescargas() {
    *
    * No se da de baja: este módulo vive lo que vive la app.
    */
-  addNetworkStateListener(({ type }) => {
-    if (type !== NetworkStateType.CELLULAR) void arrancar()
+  net().addNetworkStateListener(({ type }) => {
+    if (type !== net().NetworkStateType.CELLULAR) void arrancar()
   })
 
   const items: Record<string, Descarga> = {}
@@ -351,7 +409,7 @@ export async function cargarDescargas() {
       if (d.arte && d.artworkPath) esperados.add(`arte-${nombreSeguro(d.artworkPath)}`)
     }
     for (const entrada of carpeta().list()) {
-      if (entrada instanceof File && !esperados.has(entrada.name)) borrarSiEsta(entrada)
+      if (entrada instanceof fs().File && !esperados.has(entrada.name)) borrarSiEsta(entrada)
     }
   } catch {
     // Sin limpieza, pero con el índice al día.
@@ -510,8 +568,8 @@ export function borrarTodo() {
 async function redPermitida(): Promise<boolean> {
   if (!leerAjustes().soloWifi) return true
   try {
-    const { type } = await getNetworkStateAsync()
-    return type !== NetworkStateType.CELLULAR
+    const { type } = await net().getNetworkStateAsync()
+    return type !== net().NetworkStateType.CELLULAR
   } catch {
     return true
   }
@@ -613,7 +671,7 @@ async function bajarUna(audioPath: string) {
   const item = store.get().items[audioPath]
   if (!item) return
 
-  if (Paths.availableDiskSpace < MARGEN_LIBRE) {
+  if (fs().Paths.availableDiskSpace < MARGEN_LIBRE) {
     throw new Error('no queda espacio en el teléfono')
   }
 
@@ -629,7 +687,7 @@ async function bajarUna(audioPath: string) {
 
   let ultimoAviso = 0
   let ultimoPct = -1
-  const task = File.createDownloadTask(url, destino, {
+  const task = fs().File.createDownloadTask(url, destino, {
     onProgress: ({ bytesWritten, totalBytes }) => {
       /* `totalBytes` viene en -1 cuando el servidor no manda Content-Length: sin
          total no hay porcentaje que mostrar, y la barra se queda indeterminada. */
@@ -665,7 +723,7 @@ async function bajarUna(audioPath: string) {
       if (remoto) {
         const arte = archivoArte(item.artworkPath)
         borrarSiEsta(arte)
-        await File.downloadFileAsync(remoto, arte, { idempotent: true })
+        await fs().File.downloadFileAsync(remoto, arte, { idempotent: true })
         conArte = arte.exists && arte.size > 0
       }
     } catch {
