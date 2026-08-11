@@ -45,6 +45,7 @@ import {
   Trash2,
   Volume2,
   VolumeX,
+  Wifi,
   SkipBack,
   SkipForward,
   UserRound,
@@ -126,6 +127,7 @@ export const IconDownload = make(Download)
 /** Bajada del todo. El círculo lleno es lo que distingue «está» de «bajala». */
 export const IconDownloaded = make(CircleCheck)
 export const IconDisk = make(HardDrive)
+export const IconWifi = make(Wifi)
 export const IconQueue = make(ListPlus)
 export const IconVolume = make(Volume2)
 export const IconVolumeOff = make(VolumeX)

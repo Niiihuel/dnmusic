@@ -1,11 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Platform } from 'react-native'
 import { Directory, File, Paths } from 'expo-file-system'
+import { addNetworkStateListener, getNetworkStateAsync, NetworkStateType } from 'expo-network'
 import { excluirDeCopias } from '../../modules/backup-exclusion'
 import { artworkRemoto, registerArteLocal } from '../lib/artwork'
 import { mensajeError } from '../lib/mensajeError'
 import { signedUrl } from '../services/music'
 import type { PlaylistTrack } from '../services/playlists'
+import { leerAjustes } from './ajustes'
 import { avisar } from './aviso'
 import { createStore, useStore } from './store'
 
@@ -95,9 +97,17 @@ type Estado = {
   items: Record<string, Descarga>
   /** Si ya se leyó el índice del disco. Antes de eso no se sabe nada. */
   cargado: boolean
+  /**
+   * La cola está frenada esperando Wi-Fi.
+   *
+   * Se muestra porque si no la app parecería colgada: canciones marcadas para
+   * bajar que no bajan nunca, sin ninguna explicación en pantalla. Con esto, la
+   * fila de Ajustes dice qué está pasando y qué hay que hacer.
+   */
+  esperandoWifi: boolean
 }
 
-const store = createStore<Estado>({ items: {}, cargado: false })
+const store = createStore<Estado>({ items: {}, cargado: false, esperandoWifi: false })
 
 /* ── Los archivos ────────────────────────────────────────────────────────── */
 
@@ -222,6 +232,11 @@ export function cuantasListas(items: Record<string, Descarga>): number {
   return Object.values(items).filter((d) => d.estado === 'lista').length
 }
 
+/** Cuántas están en camino o esperando turno. */
+export function cuantasPendientes(items: Record<string, Descarga>): number {
+  return Object.values(items).filter((d) => d.estado !== 'lista').length
+}
+
 /**
  * Cómo está una lista entera. Lo usa el botón de la cabecera.
  *
@@ -295,6 +310,20 @@ export async function cargarDescargas() {
   /* El puente para las carátulas se registra siempre, aunque no haya nada
      guardado: puede haberlo dentro de un rato. Ver `lib/artwork`. */
   registerArteLocal(arteLocal)
+
+  /*
+   * Volver a intentar cuando aparece el Wi-Fi.
+   *
+   * Sin esto, «solo con Wi-Fi» sería una trampa: las descargas quedarían
+   * esperando para siempre aunque el teléfono se conectara a una red buena dos
+   * minutos después, y la única forma de destrabarlas sería tocar el botón de
+   * nuevo. El aviso llega del sistema, no hay que preguntar cada tanto.
+   *
+   * No se da de baja: este módulo vive lo que vive la app.
+   */
+  addNetworkStateListener(({ type }) => {
+    if (type !== NetworkStateType.CELLULAR) void arrancar()
+  })
 
   const items: Record<string, Descarga> = {}
   try {
@@ -438,6 +467,8 @@ export function quitarDescarga(audioPath: string) {
     // La entrada se va igual: lo que quede suelto lo limpia el próximo arranque.
   }
   sacar(audioPath)
+  /* Si era la última que esperaba, ya no hay nada esperando. */
+  if (!cola.length && store.get().esperandoWifi) store.set({ esperandoWifi: false })
   guardarIndice()
 }
 
@@ -463,60 +494,118 @@ export function borrarTodo() {
     // Si la carpeta no se pudo borrar, el índice vacío deja de ofrecer los
     // archivos y el próximo arranque los limpia por huérfanos.
   }
-  store.set({ items: {} })
+  store.set({ items: {}, esperandoWifi: false })
   guardarIndice()
 }
 
 /**
- * Baja la primera de la cola, y al terminar sigue con la que venga.
+ * Si se puede bajar con la conexión que hay ahora.
  *
- * Es recursiva por el final y no un bucle `while` para que cada canción sea una
- * pasada limpia: si algo lanza a mitad de camino, lo único que se pierde es esa.
+ * Frena **solo cuando el sistema dice que es celular**. `UNKNOWN` —lo que
+ * devuelve cuando no puede clasificar la red— cuenta como permitida: dejar las
+ * descargas colgadas para siempre por no poder confirmar el tipo de conexión
+ * sería un problema peor que el que resuelve la preferencia. Lo mismo si la
+ * consulta falla.
  */
-async function arrancar() {
-  if (bajando) return
-  const audioPath = cola.shift()
-  if (!audioPath) {
-    avisado = false
-    return
-  }
-  /* Puede haber sido quitada mientras esperaba su turno. */
-  if (!store.get().items[audioPath]) {
-    void arrancar()
-    return
-  }
-
-  bajando = audioPath
-  actualizar(audioPath, { estado: 'bajando', progreso: 0 })
-
+async function redPermitida(): Promise<boolean> {
+  if (!leerAjustes().soloWifi) return true
   try {
-    await bajarUna(audioPath)
-  } catch (causa) {
-    /*
-     * La entrada se borra y la canción vuelve a estar «sin bajar». El archivo a
-     * medio escribir también: en iOS `downloadAsync` mueve al destino recién
-     * cuando termina, así que normalmente no hay nada, pero una cancelación en
-     * Android sí puede dejarlo.
-     */
-    const item = store.get().items[audioPath]
-    try {
-      borrarSiEsta(archivoAudio(audioPath))
-      if (item?.artworkPath) borrarSiEsta(archivoArte(item.artworkPath))
-    } catch {
-      // Ya se hizo lo que se podía.
-    }
-    sacar(audioPath)
-    /* Cancelada a mano no es un fallo: es exactamente lo que se pidió. */
-    if (!avisado && cancelado !== audioPath) {
-      avisado = true
-      avisar(`No se pudo descargar «${item?.title ?? 'la canción'}»: ${mensajeError(causa)}`, true)
+    const { type } = await getNetworkStateAsync()
+    return type !== NetworkStateType.CELLULAR
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Baja la cola entera, de a una, y se detiene sola cuando no queda nada.
+ *
+ * Es un bucle y no una recursión porque ahora la cola se puede **pausar**: con
+ * «solo Wi-Fi» prendido y datos móviles, lo que corresponde no es fallar cada
+ * canción sino dejarlas esperando. Sacando el elemento recién cuando se lo va a
+ * bajar, la pausa no pierde nada — la cola queda tal cual y la retoma el aviso
+ * de red, o apagar la preferencia.
+ *
+ * `corriendo` es lo que garantiza que hay un solo bucle: `descargar` llama a
+ * esto sin esperar, y la primera pausa del bucle es un `await`, así que sin la
+ * marca dos llamadas seguidas arrancarían dos descargas en paralelo.
+ */
+let corriendo = false
+
+async function arrancar() {
+  if (corriendo) return
+  corriendo = true
+  try {
+    for (;;) {
+      const audioPath = cola[0]
+      if (!audioPath) {
+        avisado = false
+        if (store.get().esperandoWifi) store.set({ esperandoWifi: false })
+        break
+      }
+
+      if (!(await redPermitida())) {
+        /* El cartel una sola vez: quedarse sin Wi-Fi con veinte encoladas no
+           puede ser veinte carteles diciendo lo mismo. */
+        if (!store.get().esperandoWifi) {
+          store.set({ esperandoWifi: true })
+          avisar('Las descargas siguen cuando haya Wi-Fi.')
+        }
+        break
+      }
+      if (store.get().esperandoWifi) store.set({ esperandoWifi: false })
+
+      cola.shift()
+      /* Puede haber sido quitada mientras esperaba su turno. */
+      if (!store.get().items[audioPath]) continue
+
+      bajando = audioPath
+      actualizar(audioPath, { estado: 'bajando', progreso: 0 })
+
+      try {
+        await bajarUna(audioPath)
+      } catch (causa) {
+        /*
+         * La entrada se borra y la canción vuelve a estar «sin bajar». El archivo
+         * a medio escribir también: en iOS `downloadAsync` mueve al destino recién
+         * cuando termina, así que normalmente no hay nada, pero una cancelación en
+         * Android sí puede dejarlo.
+         */
+        const item = store.get().items[audioPath]
+        try {
+          borrarSiEsta(archivoAudio(audioPath))
+          if (item?.artworkPath) borrarSiEsta(archivoArte(item.artworkPath))
+        } catch {
+          // Ya se hizo lo que se podía.
+        }
+        sacar(audioPath)
+        /* Cancelada a mano no es un fallo: es exactamente lo que se pidió. */
+        if (!avisado && cancelado !== audioPath) {
+          avisado = true
+          avisar(
+            `No se pudo descargar «${item?.title ?? 'la canción'}»: ${mensajeError(causa)}`,
+            true,
+          )
+        }
+      } finally {
+        if (cancelado === audioPath) cancelado = null
+        bajando = null
+        tarea = null
+      }
     }
   } finally {
-    if (cancelado === audioPath) cancelado = null
-    bajando = null
-    tarea = null
+    corriendo = false
   }
+}
 
+/**
+ * Vuelve a mirar la cola. La llama el aviso de red y el interruptor de Ajustes.
+ *
+ * Es la única forma de salir de la pausa por datos móviles: el bucle se cortó y
+ * nadie lo va a despertar solo.
+ */
+export function reanudarDescargas() {
+  if (!HAY_DESCARGAS) return
   void arrancar()
 }
 

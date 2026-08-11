@@ -53,20 +53,28 @@ descarta (prometer que algo está bajado cuando no está es peor que no ofrecerl
 un archivo sin entrada se borra (basura de una descarga cortada, que ocuparía
 espacio para siempre sin que nadie sepa que está).
 
+**Solo con Wi-Fi, y la cola se pausa en vez de fallar.** Prendido por defecto,
+como en Spotify: un disco son decenas de megas y nadie espera que apretar
+«descargar» le coma el plan de datos. Con datos móviles la cola **no falla cada
+canción**, se detiene y las deja esperando; la retoma el aviso del sistema cuando
+aparece el Wi-Fi, o apagar la preferencia. Frena solo cuando el sistema **dice**
+que la red es celular: `UNKNOWN` cuenta como permitida, porque dejar las descargas
+colgadas para siempre por no poder clasificar la conexión es peor que gastar unos
+megas.
+
 **Nada de esto existe en la web.** `expo-file-system` es un no-op ahí: cada método
 imprime un aviso y devuelve vacío. `HAY_DESCARGAS` es lo que consultan las
 pantallas para no dibujar controles que no podrían cumplir.
 
 ## Lo que hace falta para que ande
 
-Dos dependencias nativas nuevas —`expo-file-system` y `modules/backup-exclusion`—
-así que **hay que compilar de nuevo** el development client y el preview. Sin eso,
-`HAY_DESCARGAS` es cierto pero el módulo de archivos no está en el binario.
+Tres dependencias nativas nuevas —`expo-file-system`, `expo-network` y
+`modules/backup-exclusion`— así que **hay que compilar de nuevo** el development
+client y el preview. Sin eso, `HAY_DESCARGAS` es cierto pero el módulo de archivos
+no está en el binario.
 
 ## Lo que no está
 
-- **Solo por Wi-Fi.** Necesita `expo-network` (otra dependencia nativa). Es la
-  siguiente que vale la pena.
 - **Una pantalla de «Descargas»** con todo lo bajado junto. Hoy se ve desde cada
   lista y el total desde Ajustes.
 - **Bajar un álbum o el top de un artista.** Esas pantallas trabajan con canciones

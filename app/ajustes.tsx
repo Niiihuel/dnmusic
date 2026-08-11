@@ -11,16 +11,19 @@ import {
   IconDisc,
   IconDisk,
   IconTrash,
+  IconWifi,
 } from '../src/ui/icons'
 import {
   borrarTodo,
   cuantasListas,
+  cuantasPendientes,
   espacioUsado,
   formatoBytes,
   HAY_DESCARGAS,
+  reanudarDescargas,
   useDescargas,
 } from '../src/state/descargas'
-import { setAutoplay, useAjustes } from '../src/state/ajustes'
+import { setAutoplay, setSoloWifi, useAjustes } from '../src/state/ajustes'
 import { programarApagado, useDormirMin } from '../src/state/playback'
 import { borrarHistorial } from '../src/services/plays'
 import { avisar } from '../src/state/aviso'
@@ -88,13 +91,14 @@ function useDobleToque() {
  */
 export default function Ajustes() {
   const router = useRouter()
-  const { autoplay } = useAjustes()
+  const { autoplay, soloWifi } = useAjustes()
   const dormirMin = useDormirMin()
 
   const historial = useDobleToque()
   const descargas = useDobleToque()
-  const { items } = useDescargas()
+  const { items, esperandoWifi } = useDescargas()
   const bajadas = cuantasListas(items)
+  const pendientes = cuantasPendientes(items)
   const ocupado = espacioUsado(items)
 
   async function borrar() {
@@ -205,6 +209,31 @@ export default function Ajustes() {
                */}
               {HAY_DESCARGAS ? (
                 <GrupoAjustes titulo="Descargas">
+                  {/*
+                   * El detalle cambia según lo que esté pasando de verdad.
+                   *
+                   * Con la cola frenada por datos móviles, un texto fijo dejaría
+                   * la app pareciendo colgada: canciones marcadas que no bajan
+                   * nunca y ninguna explicación en pantalla. Acá dice qué está
+                   * esperando y el interruptor de al lado es justo lo que lo
+                   * destraba.
+                   */}
+                  <FilaInterruptor
+                    rotulo="Descargar solo con Wi-Fi"
+                    detalle={
+                      esperandoWifi
+                        ? `${pendientes} ${pendientes === 1 ? 'canción esperando' : 'canciones esperando'} a que haya Wi-Fi. Apagalo para bajarlas con datos.`
+                        : 'Un disco son decenas de megas. Apagalo si tenés datos de sobra.'
+                    }
+                    icono={<IconWifi size={17} color={ICON_COLOR.muted} />}
+                    activo={soloWifi}
+                    onCambiar={(v) => {
+                      setSoloWifi(v)
+                      /* Apagarlo tiene que destrabar lo que quedó esperando: el
+                         bucle de descargas se cortó y nadie lo despierta solo. */
+                      if (!v) reanudarDescargas()
+                    }}
+                  />
                   <FilaAjuste
                     rotulo={
                       descargas.armado ? 'Tocá de nuevo para confirmar' : 'Borrar las descargas'

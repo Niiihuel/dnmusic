@@ -23,9 +23,22 @@ type Ajustes = {
    * elegiste— también molesta a mucha gente.
    */
   autoplay: boolean
+  /**
+   * Bajar canciones **solo con Wi-Fi**.
+   *
+   * Prendido por defecto, como en Spotify, y por la razón obvia: un disco son
+   * decenas de megas y nadie espera que apretar «descargar» le coma el plan de
+   * datos. Quien tenga datos de sobra lo apaga una vez y no lo piensa más.
+   *
+   * Frena **solo cuando el sistema dice que la conexión es celular**. Si no la
+   * puede clasificar —lo que iOS devuelve como `UNKNOWN`— se baja igual: dejar
+   * las descargas colgadas para siempre por no poder confirmar el tipo de red
+   * sería peor que gastar unos megas.
+   */
+  soloWifi: boolean
 }
 
-const POR_DEFECTO: Ajustes = { autoplay: true }
+const POR_DEFECTO: Ajustes = { autoplay: true, soloWifi: true }
 
 const CLAVE = 'ajustes:v1'
 
@@ -42,17 +55,30 @@ export async function cargarAjustes() {
     const crudo = await AsyncStorage.getItem(CLAVE)
     if (!crudo) return
     const guardado = JSON.parse(crudo) as Partial<Ajustes>
-    store.set({ autoplay: guardado.autoplay ?? POR_DEFECTO.autoplay })
+    store.set({
+      autoplay: guardado.autoplay ?? POR_DEFECTO.autoplay,
+      soloWifi: guardado.soloWifi ?? POR_DEFECTO.soloWifi,
+    })
   } catch {
     // Quedan los valores por defecto.
   }
 }
 
-export function setAutoplay(autoplay: boolean) {
-  store.set({ autoplay })
+/** Guarda el estado entero. Cada `set` de arriba pasa por acá. */
+function persistir() {
   void AsyncStorage.setItem(CLAVE, JSON.stringify(store.get())).catch(() => {
     // No se pudo guardar: vale para esta sesión y se vuelve a preguntar.
   })
+}
+
+export function setAutoplay(autoplay: boolean) {
+  store.set({ autoplay })
+  persistir()
+}
+
+export function setSoloWifi(soloWifi: boolean) {
+  store.set({ soloWifi })
+  persistir()
 }
 
 export const useAjustes = () => useStore(store, (s) => s)
