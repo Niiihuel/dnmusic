@@ -54,3 +54,12 @@ npm-debug.*
 .env
 /ios
 /android
+# Lo agregó el CLI de Vercel al enlazar el proyecto: adentro va el id del
+# proyecto y el token OIDC que se renueva solo.
+.vercel
+
+# Cualquier .env queda afuera —ahí viven la service_role y las claves— **menos
+# el de ejemplo**, que es documentación y tiene que viajar con el repo. El CLI
+# de Vercel dejó `.env*` a secas, que también lo tapaba.
+.env*
+!.env.example
