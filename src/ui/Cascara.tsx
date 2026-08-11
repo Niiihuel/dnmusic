@@ -2,9 +2,9 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated'
-import { setTab, type Tab } from '../state/shell'
+import type { Tab } from '../state/shell'
 import { BotonVidrio, HAY_VIDRIO } from './Glass'
-import { TabPildora } from './TabBar'
+import { TabPildora, useIrATab } from './TabBar'
 import { ICON_COLOR, IconHome, IconInbox, IconMusic, IconSearch, IconUser } from './icons'
 
 /** Lado de los redondeles de los costados. */
@@ -98,6 +98,7 @@ export function Cascara({
   children: ReactNode
 }) {
   const insets = useSafeAreaInsets()
+  const ir = useIrATab()
   const [altoTabs, setAltoTabs] = useState(0)
   const [altoFila, setAltoFila] = useState(0)
   const abajo = insets.bottom > 0 ? insets.bottom - 6 : 8
@@ -192,9 +193,15 @@ export function Cascara({
         <View style={{ flex: 1, minWidth: 0, marginHorizontal: RESPIRO_MEDIA }}>{children}</View>
 
         <Animated.View style={[{ marginLeft: AIRE }, derecha]}>
+          {/*
+           * La misma lupa que la de la barra desplegada, y por eso la misma
+           * función: buscar desde el perfil tiene que **salir** del perfil, o el
+           * campo se abre encima de una pantalla que no muestra resultados. Ver
+           * `useIrATab`.
+           */}
           <BotonVidrio
             label="Buscar"
-            onPress={() => setTab('buscar')}
+            onPress={() => ir('buscar')}
             radius={LADO / 2}
             style={{ width: LADO, height: LADO }}
           >

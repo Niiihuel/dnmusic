@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'expo-router'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter, useSegments } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { setTab, type Tab } from '../state/shell'
@@ -22,6 +22,43 @@ const RESORTE = { damping: 22, stiffness: 260, mass: 0.7, overshootClamping: tru
 
 /** Las que viven en la píldora, en orden. Buscar va aparte, en su redondel. */
 const EN_PILDORA: Tab[] = ['inicio', 'listas', 'chats', 'perfil']
+
+/**
+ * Ir a una pestaña. **Cambiar de pestaña también es navegar.**
+ *
+ * El perfil es una ruta apilada y las otras cuatro son estados de la pantalla
+ * principal, así que además de mover el estado hay que desapilar: sin eso, la
+ * pantalla de perfil se queda abierta encima con otra pestaña marcada debajo.
+ *
+ * Vive acá y no adentro de la píldora porque **la lupa está dibujada dos veces**:
+ * la de la barra desplegada y la del redondel de la derecha cuando la cáscara se
+ * pliega (ver `ui/Cascara`). La segunda solo hacía `setTab('buscar')` — movía la
+ * pestaña y nada más—, así que tocándola desde el perfil se abría el campo de
+ * búsqueda **sobre el perfil** y los resultados se dibujaban en la pantalla
+ * principal, que estaba tapada debajo. Se veía como que buscar no hacía nada.
+ *
+ * Con las dos llamando acá no pueden volver a separarse.
+ */
+export function useIrATab() {
+  const router = useRouter()
+  const segmentos = useSegments()
+  const enPerfil = segmentos[0] === 'profile'
+
+  return useCallback(
+    (tab: Tab) => {
+      setTab(tab)
+      /* Estando ya en el perfil, volver a tocarlo apilaba **otro** perfil
+         encima: había que volver dos veces para salir de una pantalla a la que
+         se entró una sola. */
+      if (tab === 'perfil') {
+        if (!enPerfil) router.push('/profile')
+        return
+      }
+      if (enPerfil) volver(router, '/')
+    },
+    [enPerfil, router],
+  )
+}
 
 const ETIQUETA: Record<Tab, string> = {
   inicio: 'Inicio',
@@ -66,7 +103,7 @@ const ICONO: Record<Tab, (props: { size?: number; color?: string }) => React.Rea
  * sección solo cambia dos colores y la barra se siente muerta.
  */
 export function TabPildora({ active }: { active: Tab }) {
-  const router = useRouter()
+  const ir = useIrATab()
   /*
    * El redondel de buscar es tan alto como la píldora, y el alto de la píldora
    * lo decide su contenido —el cuerpo de la tipografía del sistema, que la
@@ -119,18 +156,6 @@ export function TabPildora({ active }: { active: Tab }) {
     width: w.value,
     opacity: opacidad.value,
   }))
-
-  /*
-   * El perfil es una ruta y las otras tres son estados de la pantalla
-   * principal. Tocar el perfil apila; tocar cualquier otra estando ahí adentro
-   * desapila, en vez de dejar la pantalla de perfil abierta abajo con otra
-   * pestaña marcada.
-   */
-  function ir(tab: Tab) {
-    setTab(tab)
-    if (tab === 'perfil') router.push('/profile')
-    else if (active === 'perfil') volver(router, '/')
-  }
 
   return (
     /*

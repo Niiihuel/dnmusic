@@ -22,6 +22,7 @@ import { ICON_COLOR, IconBack, IconPencil } from '../../src/ui/icons'
 import { listPlaylists, type Playlist } from '../../src/services/playlists'
 import { useMyProfile } from '../../src/state/session'
 import { usePiso } from '../../src/state/shell'
+import { useColapso } from '../../src/ui/useColapso'
 import { volver } from '../../src/lib/volver'
 
 /** Ancho al que el perfil deja de ser una columna centrada. */
@@ -55,6 +56,7 @@ export default function ProfileScreen() {
   const router = useRouter()
   const profile = useMyProfile()
   const piso = usePiso(24)
+  const colapso = useColapso()
   const ancho = useWindowDimensions().width >= ANCHO_PX
 
   /* Cambia al volver del editor, para releer lo que se haya tocado. */
@@ -148,9 +150,19 @@ export default function ProfileScreen() {
               pantalla donde el vidrio tiene una foto que difuminar. */}
           <FondoPerfil bannerPath={profile?.bannerPath ?? null} />
 
+          {/*
+           * Bajando, la cáscara se pliega; subiendo, vuelve.
+           *
+           * Faltaba **solo acá**: inicio, la biblioteca, cada lista y el chat lo
+           * tienen. Como el plegado es global, se llegaba al perfil ya plegado
+           * desde cualquiera de esas y no había forma de desplegarlo desplazando
+           * —era la única pantalla donde el gesto no hacía nada—. Se notaba como
+           * que el perfil tenía otro layout que el resto de la app.
+           */}
           <ScrollView
             contentContainerClassName="items-center px-4 pt-6"
             contentContainerStyle={{ paddingBottom: piso }}
+            {...colapso}
           >
             {!profile ? (
               <ActivityIndicator color="#FFFFFF" />
