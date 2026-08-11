@@ -1,6 +1,6 @@
 ---
 title: Dany — App de mensajería con flores 3D para iOS
-status: aprobado
+status: completado
 planModel: 
 execProvider: zhipu-coding
 execModel: 

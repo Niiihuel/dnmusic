@@ -1,0 +1,209 @@
+import { getSupabase } from '../lib/supabase'
+
+/**
+ * Las vitrinas de un perfil.
+ *
+ * La idea viene de Steam: el perfil no es una plantilla fija sino una lista
+ * ordenada de bloques que quien lo arma elige. Acá los bloques son de música —
+ * una canción fijada, un fragmento, una lista, un texto suelto.
+ *
+ * Cada tipo guarda cosas distintas, así que el contenido va en un JSON y la
+ * validación de su forma vive **acá**, que es el único lugar que escribe en esa
+ * tabla. La base solo garantiza el tipo y el dueño.
+ */
+
+export type ShowcaseKind = 'cancion' | 'fragmento' | 'lista' | 'texto' | 'ilustracion'
+
+/** Una canción fijada, o el fragmento de una. */
+export type ShowcaseCancion = {
+  videoId: string
+  title: string
+  artist: string
+  artworkUrl: string
+  artworkPath: string | null
+  audioPath: string
+  durationMs: number
+  /**
+   * El recorte, solo en los fragmentos.
+   *
+   * Es el mismo par que ya viaja en un mensaje con canción, así que un
+   * fragmento que mandaste se puede fijar en el perfil sin convertir nada.
+   */
+  startMs?: number
+  endMs?: number
+}
+
+export type Showcase =
+  | { id: string; kind: 'cancion'; cancion: ShowcaseCancion }
+  | { id: string; kind: 'fragmento'; cancion: ShowcaseCancion }
+  | { id: string; kind: 'lista'; playlistId: string }
+  | { id: string; kind: 'texto'; texto: string }
+  /**
+   * Una imagen grande, subida por quien arma el perfil.
+   *
+   * `alto` es la proporción respecto del ancho, para poder reservarle el lugar
+   * antes de que la imagen cargue: sin eso, el perfil da un salto cuando llega.
+   */
+  | { id: string; kind: 'ilustracion'; path: string; alto: number }
+
+type Row = {
+  id?: unknown
+  kind?: unknown
+  payload?: unknown
+}
+
+/**
+ * Una fila cruda, o `null` si no se entiende.
+ *
+ * Se descarta en silencio en vez de romper la pantalla: el contenido es JSON
+ * libre, y una vitrina guardada por una versión más nueva de la app —o a mano—
+ * no puede dejar el perfil entero en blanco. Es el mismo criterio que ya usa la
+ * cola guardada al restaurarse.
+ */
+function showcaseFromRow(row: Row): Showcase | null {
+  if (typeof row.id !== 'string' || typeof row.kind !== 'string') return null
+  const p = (row.payload ?? {}) as Record<string, unknown>
+
+  if (row.kind === 'texto') {
+    return typeof p.texto === 'string' && p.texto.trim()
+      ? { id: row.id, kind: 'texto', texto: p.texto }
+      : null
+  }
+
+  if (row.kind === 'ilustracion') {
+    if (typeof p.path !== 'string') return null
+    const alto = typeof p.alto === 'number' && p.alto > 0 ? p.alto : 1
+    /* Se acota: una imagen de 1x20 dejaría el perfil imposible de recorrer, y
+       una muy ancha se vería como una franja. */
+    return { id: row.id, kind: 'ilustracion', path: p.path, alto: Math.min(2.2, Math.max(0.4, alto)) }
+  }
+
+  if (row.kind === 'lista') {
+    return typeof p.playlistId === 'string'
+      ? { id: row.id, kind: 'lista', playlistId: p.playlistId }
+      : null
+  }
+
+  if (row.kind === 'cancion' || row.kind === 'fragmento') {
+    if (typeof p.videoId !== 'string' || typeof p.audioPath !== 'string') return null
+    const cancion: ShowcaseCancion = {
+      videoId: p.videoId,
+      title: typeof p.title === 'string' ? p.title : '',
+      artist: typeof p.artist === 'string' ? p.artist : '',
+      artworkUrl: typeof p.artworkUrl === 'string' ? p.artworkUrl : '',
+      artworkPath: typeof p.artworkPath === 'string' ? p.artworkPath : null,
+      audioPath: p.audioPath,
+      durationMs: typeof p.durationMs === 'number' ? p.durationMs : 0,
+      startMs: typeof p.startMs === 'number' ? p.startMs : undefined,
+      endMs: typeof p.endMs === 'number' ? p.endMs : undefined,
+    }
+    return { id: row.id, kind: row.kind, cancion }
+  }
+
+  return null
+}
+
+/** Las vitrinas de alguien, en su orden. Se leen entre todos. */
+export async function listShowcases(ownerId: string): Promise<Showcase[]> {
+  const { data, error } = await getSupabase()
+    .from('profile_showcases')
+    .select('id, kind, payload')
+    .eq('owner_id', ownerId)
+    .order('position', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map(showcaseFromRow).filter((s): s is Showcase => s !== null)
+}
+
+/**
+ * Suma una vitrina al final.
+ *
+ * La posición se calcula acá con la cantidad que ya hay, y no con un contador
+ * en la base: entre dos personas nadie va a agregar dos al mismo tiempo, y una
+ * secuencia sería más maquinaria de la que el problema pide.
+ */
+export async function addShowcase(
+  ownerId: string,
+  kind: ShowcaseKind,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const { count, error: countError } = await getSupabase()
+    .from('profile_showcases')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_id', ownerId)
+  if (countError) throw countError
+
+  const { error } = await getSupabase()
+    .from('profile_showcases')
+    .insert({ owner_id: ownerId, kind, position: count ?? 0, payload })
+  if (error) throw error
+}
+
+export async function removeShowcase(id: string): Promise<void> {
+  const { error } = await getSupabase().from('profile_showcases').delete().eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * Reacomoda: recibe los ids en el orden nuevo y les reescribe la posición.
+ *
+ * Se mandan todas y no solo la que se movió porque las posiciones son relativas
+ * entre sí: mover una cambia el lugar de todas las que estaban en el medio.
+ */
+export async function reorderShowcases(ids: string[]): Promise<void> {
+  const supabase = getSupabase()
+  await Promise.all(
+    ids.map((id, position) =>
+      supabase.from('profile_showcases').update({ position }).eq('id', id),
+    ),
+  )
+}
+
+const TIPOS_VITRINA = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'video/mp4',
+  'video/quicktime',
+]
+const VITRINA_MAX_BYTES = 25 * 1024 * 1024
+
+/** Si esa ruta es un clip y no una imagen. Lo mira la vitrina para dibujarla. */
+export function esVideo(path: string): boolean {
+  const ext = path.split('.').pop()?.toLowerCase() ?? ''
+  return ext === 'mp4' || ext === 'mov'
+}
+
+/** Sube una ilustración y devuelve su ruta. Va en la carpeta de su dueño. */
+export async function uploadIlustracion(
+  ownerId: string,
+  file: Blob,
+  fileName: string,
+  /* Igual que el avatar: el tipo lo trae el selector, no el Blob. */
+  mime = file.type,
+): Promise<string> {
+  /* Espejo de lo que acepta el bucket: rechazar acá evita mandar veinte megas
+     para que el servidor diga que no. */
+  if (!TIPOS_VITRINA.includes(mime)) {
+    throw new Error('Tiene que ser una imagen (JPG, PNG, WebP, GIF) o un video MP4.')
+  }
+  if (file.size > VITRINA_MAX_BYTES) {
+    throw new Error('No puede pesar más de 25 MB.')
+  }
+
+  const ext = fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+  /* La carpeta es el id de quien sube: la policy del bucket lo exige, y es lo
+     que impide pisar la ilustración de otro. */
+  const path = `${ownerId}/${Date.now()}.${ext}`
+
+  const { error } = await getSupabase()
+    .storage.from('showcases')
+    .upload(path, file, { contentType: mime, upsert: true })
+  if (error) throw error
+  return path
+}
+
+/** La URL pública de una ilustración. El bucket es público, no hay que firmar. */
+export function ilustracionUrl(path: string): string {
+  return getSupabase().storage.from('showcases').getPublicUrl(path).data.publicUrl
+}

@@ -38,3 +38,19 @@ Pods/
 
 # OpenIDE: estado interno del IDE (conservamos planes y skills)
 .openide/memory-indexes/
+
+# ── Node / Expo (app TypeScript) ──
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+npm-debug.*
+*.tsbuildinfo
+.env*.local
+# Config de docker compose: lleva la service_role key, que saltea RLS por
+# completo. Nunca se commitea.
+.env
+/ios
+/android

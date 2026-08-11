@@ -1,0 +1,242 @@
+import { useEffect, useState } from 'react'
+import { Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { artworkSource } from '../lib/artwork'
+import { fetchAlbum, type AlbumInfo, type AlbumTrack } from '../services/music'
+import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
+import { CollectionHeader, CollectionTitle, useCoverSize } from './CollectionHeader'
+import { Menu, type MenuItem } from './Menu'
+import { formatLength } from './SeekBar'
+import { Skeleton, SkeletonList } from './Skeleton'
+import { TrackColumnHeader, TrackRow } from './TrackRow'
+import { ICON_COLOR, IconClose, IconMusic, IconPause, IconPlay, IconPlus } from './icons'
+
+/**
+ * Un álbum o una lista de afuera, en el panel del medio.
+ *
+ * Se ve exactamente igual que una lista propia —misma tapa grande, mismo botón
+ * redondo, misma tabla— porque para quien mira son lo mismo: canciones que se
+ * pueden escuchar. Lo único que falta son las acciones de dueño: la tapa no se
+ * cambia, el nombre no se edita y no hay nada que borrar, porque el álbum no es
+ * nuestro. Por eso la tapa acá es una imagen y no un botón.
+ */
+export function AlbumPanel({
+  albumId,
+  kind,
+  onPlay,
+  onAdd,
+  onPlayAll,
+  onBack,
+  menuFor,
+  pendingId,
+}: {
+  albumId: string
+  /** Álbum o lista: cambian de dónde se piden, no cómo se ven. */
+  kind: 'album' | 'playlist'
+  onPlay: (track: AlbumTrack, artworkUrl: string) => void
+  onAdd: (track: AlbumTrack, artworkUrl: string) => void
+  onPlayAll?: (tracks: AlbumTrack[], artworkUrl: string) => void
+  onBack?: () => void
+  /**
+   * Las opciones de los tres puntos de una canción.
+   *
+   * Las mismas que en el buscador, en una lista tuya y en la página de un
+   * artista: una canción ofrece lo mismo en toda la app, esté guardada o no.
+   * Las arma la pantalla porque dependen de qué listas tenés.
+   */
+  menuFor?: (track: AlbumTrack, artworkUrl: string) => MenuItem[]
+  /** Canción que se está resolviendo, para mostrarla ocupada. */
+  pendingId: string | null
+}) {
+  const [loaded, setLoaded] = useState<{ id: string; info: AlbumInfo | null } | null>(null)
+  const [hovered, setHovered] = useState<string | null>(null)
+  const cover = useCoverSize()
+  /** En el teléfono la fila deja de ser una tabla. Ver `TrackRow`. */
+  const suelto = useWindowDimensions().width < 780
+  const fresh = loaded?.id === albumId
+
+  /*
+   * Acá no hay cola propia como en una lista: cada canción se manda suelta a la
+   * barra. Así que «cuál suena» no es un índice sino la que está cargada, y se
+   * la reconoce por su id de video.
+   */
+  const sounding = usePlaybackTrack()
+  const soundingPlay = useWantPlay()
+
+  useEffect(() => {
+    if (fresh) return
+    const controller = new AbortController()
+    const id = albumId
+    fetchAlbum(id, controller.signal, kind).then((info) => setLoaded({ id, info }))
+    return () => controller.abort()
+  }, [albumId, kind, fresh])
+
+  if (!fresh) {
+    return (
+      <View className="gap-4 px-6 pb-5 pt-6">
+        <Skeleton width="100%" height={220} radius={12} />
+        <SkeletonList rows={5} />
+      </View>
+    )
+  }
+
+  const album = loaded.info
+  if (!album) {
+    return (
+      <View className="items-center gap-3 px-8 py-10">
+        <IconMusic size={22} color={ICON_COLOR.muted} />
+        <Text className="text-muted-foreground text-center text-[13px] leading-5">
+          No pude traer {kind === 'album' ? 'este álbum' : 'esta lista'}. Puede que YouTube no lo
+          esté publicando.
+        </Text>
+      </View>
+    )
+  }
+
+  const tapa = artworkSource(album.artworkPath, album.artworkUrl, 640)
+  const total = album.tracks.length
+  const totalMs = album.tracks.reduce((sum, t) => sum + t.durationMs, 0)
+  const ids = new Set(album.tracks.map((t) => t.videoId))
+  /* Algo de este álbum está en la barra: el botón grande pasa a ser pausa, como
+     en una lista propia, en vez de arrancar de cero lo que ya está sonando. */
+  const mine = sounding !== null && ids.has(sounding.videoId)
+
+  /* Las opciones son las de una lista propia menos las de dueño: queda cerrar,
+     que es la misma acción que la flecha de volver. */
+  const menu: MenuItem[] = onBack
+    ? [
+        {
+          label: kind === 'album' ? 'Cerrar el álbum' : 'Cerrar la lista',
+          onPress: onBack,
+          icon: <IconClose size={15} color={ICON_COLOR.muted} />,
+          sfSymbol: 'xmark',
+        },
+      ]
+    : []
+
+  return (
+    <View className="pb-6">
+      <CollectionHeader
+        kind={kind === 'album' ? 'Álbum' : 'Lista'}
+        title={<CollectionTitle>{album.title}</CollectionTitle>}
+        meta={[
+          album.artist,
+          album.subtitle,
+          `${total} ${total === 1 ? 'canción' : 'canciones'}`,
+          totalMs > 0 ? formatLength(totalMs) : '',
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+        image={
+          tapa ? (
+            <Image
+              source={{ uri: tapa }}
+              className="rounded-lg bg-card"
+              style={{ width: cover, height: cover }}
+            />
+          ) : (
+            <View
+              className="items-center justify-center rounded-lg bg-card"
+              style={{ width: cover, height: cover }}
+            >
+              <IconMusic size={26} color={ICON_COLOR.muted} />
+            </View>
+          )
+        }
+        actions={
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={mine && soundingPlay ? 'Pausar' : `Reproducir ${album.title}`}
+              onPress={() => {
+                if (mine) togglePlayback()
+                else if (onPlayAll && total > 0) onPlayAll(album.tracks, album.artworkUrl)
+              }}
+              disabled={total === 0 || (!mine && !onPlayAll)}
+              className={`h-14 w-14 items-center justify-center rounded-full ${
+                total === 0 ? 'bg-muted' : 'bg-primary active:opacity-80'
+              }`}
+            >
+              {mine && soundingPlay ? (
+                <IconPause
+                  size={20}
+                  color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
+                />
+              ) : (
+                <IconPlay size={20} color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary} />
+              )}
+            </Pressable>
+
+            {menu.length ? (
+              <Menu items={menu} label={`Opciones de ${album.title}`} size={17} />
+            ) : null}
+          </>
+        }
+      />
+
+      {total > 0 ? <TrackColumnHeader trailing={72} /> : null}
+
+      <View className="gap-1">
+        {album.tracks.map((track, i) => {
+          const esta = sounding?.videoId === track.videoId
+          return (
+            <TrackRow
+              key={track.videoId}
+              index={i}
+              title={track.title}
+              artist={track.artist}
+              artwork={tapa}
+              durationMs={track.durationMs}
+              sounding={esta}
+              playing={esta && soundingPlay}
+              busy={pendingId === track.videoId}
+              hovered={hovered === track.videoId}
+              onHover={(on) => setHovered(on ? track.videoId : null)}
+              /* Ya suena esta canción: tocarla pausa o sigue, en vez de
+                 volver a resolverla y arrancarla de cero. */
+              onPlay={() => (esta ? togglePlayback() : onPlay(track, album.artworkUrl))}
+              /*
+               * En escritorio los dos huecos existen siempre y solo se llenan
+               * bajo el cursor: si aparecieran de la nada, la fila entera se
+               * correría al pasar por encima.
+               *
+               * En el teléfono queda solo el menú, y siempre visible. El «+»
+               * ahí sobra: adentro del menú ya están «Agregar a…» y «Nueva
+               * lista con esta canción», y su hueco de 36px es ancho que le
+               * falta al título.
+               */
+              /* La misma lista por los dos caminos: el botón y el gesto. */
+              menu={menuFor ? menuFor(track, album.artworkUrl) : undefined}
+              trailing={
+                <>
+                  <View className={suelto ? '' : 'w-9 items-center'}>
+                    {menuFor ? (
+                      <Menu
+                        items={menuFor(track, album.artworkUrl)}
+                        label={`Opciones de ${track.title}`}
+                        size={14}
+                      />
+                    ) : null}
+                  </View>
+                  {suelto ? null : (
+                    <View className="w-9 items-center">
+                      {hovered === track.videoId ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Agregar ${track.title}`}
+                          onPress={() => onAdd(track, album.artworkUrl)}
+                          className="h-7 w-7 items-center justify-center active:opacity-60"
+                        >
+                          <IconPlus size={15} color={ICON_COLOR.foreground} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  )}
+                </>
+              }
+            />
+          )
+        })}
+      </View>
+    </View>
+  )
+}

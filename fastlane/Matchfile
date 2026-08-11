@@ -1,8 +1,0 @@
-# Configuración de fastlane match.
-# Editá el git_url por tu repo privado donde se guardan los certificados.
-# Repo para certificados (privado): https://github.com/USUARIO/dany-certificados
-git_url("https://github.com/USUARIO/dany-certificados")
-storage_mode("git")
-type("appstore")
-app_identifier("com.dany.app")
-# username("tu-apple-id@email.com")  # solo hace falta para generar certificados localmente

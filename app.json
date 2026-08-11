@@ -1,0 +1,73 @@
+{
+  "expo": {
+    "name": "dnmusic",
+    "slug": "flora",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "dnmusic",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.nihuel.dnmusic",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Dany necesita tus fotos para poner tu foto de perfil y las ilustraciones que muestres en él."
+      }
+    },
+    "android": {
+      "package": "com.nihuel.dnmusic",
+      "adaptiveIcon": {
+        "backgroundColor": "#121212",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png",
+      "name": "dnmusic",
+      "shortName": "dnmusic",
+      "display": "standalone",
+      "themeColor": "#121212",
+      "backgroundColor": "#121212",
+      "startUrl": "/",
+      "orientation": "portrait"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-audio",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Dany necesita tus fotos para poner tu foto de perfil y las ilustraciones que muestres.",
+          "cameraPermission": false
+        }
+      ],
+      "expo-video"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "00b92a9e-b7f1-4c0f-b26d-62681d3236a1"
+      }
+    },
+    "owner": "niihuel"
+  }
+}

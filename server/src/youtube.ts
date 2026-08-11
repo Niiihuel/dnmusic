@@ -1,0 +1,766 @@
+import { ClientType, Innertube, Platform, UniversalCache } from 'youtubei.js'
+import { runInNewContext } from 'node:vm'
+import { execFile } from 'node:child_process'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
+import { mintSessionToken, mintVideoToken } from './potoken.js'
+
+const run = promisify(execFile)
+
+/**
+ * Deja el mp4 como un mp4 común.
+ *
+ * Lo que sirve YouTube es **fragmentado** (`moof`/`mdat` en cadena, el formato
+ * de DASH) y además conserva la duración en la cabecera. Los navegadores lo
+ * resuelven bien; AVFoundation suma las dos y en el iPhone una canción de 5:20
+ * aparecía como 10:39, con la barra de posición y el salto a un punto igual de
+ * corridos.
+ *
+ * `-c copy` no recodifica: mueve las cajas de lugar, no toca una muestra de
+ * audio. `+faststart` deja la cabecera al principio para que empiece a sonar
+ * sin bajar el archivo entero.
+ *
+ * Si ffmpeg no está o falla, se devuelve lo descargado tal cual: mejor una
+ * duración equivocada que ninguna canción.
+ */
+async function remux(bytes: Buffer): Promise<Buffer> {
+  let dir: string | null = null
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'dnmusic-'))
+    const entrada = join(dir, 'in.m4a')
+    const salida = join(dir, 'out.m4a')
+    await writeFile(entrada, bytes)
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', entrada, '-c', 'copy', '-movflags', '+faststart', salida])
+    return await readFile(salida)
+  } catch {
+    return bytes
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+/**
+ * Resolución de audio de YouTube Music.
+ *
+ * Los pasos de acá abajo son un equilibrio frágil y verificado empíricamente;
+ * cada uno está donde está por una razón concreta. Si esto se rompe en el
+ * futuro (va a pasar), los comentarios explican qué esperaba cada pieza.
+ */
+
+// youtubei.js v17 dejó de traer evaluador de JS por seguridad, y sin uno no se
+// pueden descifrar las URLs. node:vm alcanza y mantiene el código aislado del
+// scope del proceso.
+let platformLoaded = false
+function ensurePlatform() {
+  if (platformLoaded) return
+  Platform.load({
+    ...Platform.shim,
+    eval: (data: { output: string; exported: string[] }, env: Record<string, unknown>) => {
+      // El script emitido usa `return` de nivel superior: se evalúa como cuerpo
+      // de función, no como script suelto.
+      const names = Object.keys(env)
+      const factory = runInNewContext(
+        `(function(${names.join(',')}) {\n${data.output}\n})`,
+        Object.create(null),
+        { timeout: 10_000 },
+      )
+      return factory(...names.map((n) => env[n]))
+    },
+  } as never)
+  platformLoaded = true
+}
+
+let clientPromise: Promise<Innertube> | null = null
+
+/**
+ * Cliente MUSIC, y no WEB, a propósito.
+ *
+ * Al cliente WEB, YouTube ya solo le da `server_abr_streaming_url` (SABR): los
+ * formatos vienen sin `url` ni `signature_cipher`, y reproducir exige hablar el
+ * protocolo UMP. Al cliente MUSIC todavía le entrega URLs firmadas directas, que
+ * es muchísimo menos superficie que mantener.
+ */
+async function getClient(): Promise<Innertube> {
+  if (clientPromise) return clientPromise
+  ensurePlatform()
+
+  clientPromise = (async () => {
+    const bootstrap = await Innertube.create({ retrieve_player: false })
+    const visitorData = bootstrap.session.context.client.visitorData
+    if (!visitorData) throw new Error('No se obtuvo visitorData')
+
+    return Innertube.create({
+      client_type: ClientType.MUSIC,
+      po_token: await mintSessionToken(visitorData),
+      visitor_data: visitorData,
+      retrieve_player: true,
+      generate_session_locally: true,
+      cache: new UniversalCache(false),
+    })
+  })()
+
+  return clientPromise
+}
+
+export type YtTrack = {
+  videoId: string
+  title: string
+  artist: string
+  /** Canal del artista principal; sirve para pedir su ficha. */
+  artistId: string | null
+  album: string
+  /** Id de navegación del álbum; null si el resultado no lo trae. */
+  albumId: string | null
+  artworkUrl: string
+  durationMs: number
+}
+
+const GOOGLE_ARTWORK_HOST =
+  /^https:\/\/(?:yt3|lh3)\.(?:googleusercontent\.com|ggpht\.com)\//
+const GOOGLE_ARTWORK_SIZE = /=w\d+-h\d+(?=-|$)/
+
+/** URL de carátula apta para el panel grande; el cliente pide variantes chicas. */
+function fullArtworkUrl(url: string): string {
+  if (!GOOGLE_ARTWORK_HOST.test(url)) return url
+  return url.replace(GOOGLE_ARTWORK_SIZE, '=w640-h640')
+}
+
+type Thumb = { url: string; width?: number; height?: number }
+
+/** La miniatura más grande que ofrezca el ítem, venga como array o envuelta. */
+function biggestThumb(raw: unknown): Thumb | undefined {
+  const thumbs: Thumb[] = Array.isArray(raw)
+    ? (raw as Thumb[])
+    : ((raw as { contents?: Thumb[] })?.contents ?? [])
+  return thumbs.reduce<Thumb | undefined>(
+    (current, candidate) =>
+      (candidate.width ?? 0) * (candidate.height ?? 0) >
+      (current?.width ?? 0) * (current?.height ?? 0)
+        ? candidate
+        : current,
+    thumbs[0],
+  )
+}
+
+/**
+ * Una fila de canción, venga de la búsqueda o de la página de un artista.
+ *
+ * Las dos llegan como `MusicResponsiveListItem`, con los mismos campos: por eso
+ * el mapeo es uno solo. La fila del artista además trae el álbum, que es de
+ * donde sale poder ir al disco desde su top de canciones.
+ */
+function trackFrom(raw: unknown): YtTrack[] {
+  const song = raw as {
+    id?: string
+    title?: string
+    artists?: { name: string; channel_id?: string }[]
+    album?: { name?: string; id?: string }
+    duration?: { seconds?: number }
+    thumbnail?: unknown
+    flex_columns?: {
+      title?: { runs?: { text?: string; endpoint?: { payload?: { browseId?: string } } }[] }
+    }[]
+  }
+  if (!song.id) return []
+
+  /*
+   * En la búsqueda el álbum viene como campo; en el top de un artista, no: hay
+   * que sacarlo de las columnas de texto, donde el nombre del disco es el único
+   * fragmento que enlaza a una página `MPRE`. Sin esto, «Ir al álbum» quedaría
+   * apagado justo donde más ganas dan de entrar.
+   */
+  const enlace = song.album?.id
+    ? null
+    : song.flex_columns
+        ?.flatMap((col) => col.title?.runs ?? [])
+        .find((run) => run.endpoint?.payload?.browseId?.startsWith('MPRE'))
+
+  return [
+    {
+      videoId: song.id,
+      title: song.title ?? '',
+      artist: song.artists?.map((a) => a.name).join(', ') ?? '',
+      artistId: song.artists?.find((a) => a.channel_id)?.channel_id ?? null,
+      album: song.album?.name ?? enlace?.text ?? '',
+      albumId: song.album?.id ?? enlace?.endpoint?.payload?.browseId ?? null,
+      artworkUrl: fullArtworkUrl(biggestThumb(song.thumbnail)?.url ?? ''),
+      durationMs: (song.duration?.seconds ?? 0) * 1000,
+    },
+  ]
+}
+
+export async function search(query: string, limit = 20): Promise<YtTrack[]> {
+  const yt = await getClient()
+  const res = await yt.music.search(query, { type: 'song' })
+  return (res.songs?.contents ?? []).slice(0, limit).flatMap(trackFrom)
+}
+
+/**
+ * La forma de onda de una canción, para el editor de fragmentos.
+ *
+ * Se mide el **RMS por tramo** y no el pico: con el pico, en material
+ * masterizado fuerte casi todas las barras tocan el techo y la onda se ve como
+ * un bloque. El RMS conserva la dinámica que la hace reconocible.
+ *
+ * Se decodifica a mono 8 kHz porque para dibujar 160 barras no hace falta más,
+ * y bajar el muestreo hace la diferencia entre medio segundo y varios.
+ */
+export async function peaks(
+  audioUrl: string,
+  buckets: number,
+): Promise<{ peaks: number[]; durationMs: number }> {
+  const { stdout } = await run(
+    'ffmpeg',
+    ['-loglevel', 'error', '-i', audioUrl, '-ac', '1', '-ar', '8000', '-f', 's16le', '-'],
+    { encoding: 'buffer', maxBuffer: 256 * 1024 * 1024 },
+  )
+  const muestras = new Int16Array(
+    stdout.buffer.slice(stdout.byteOffset, stdout.byteOffset + stdout.byteLength - (stdout.byteLength % 2)),
+  )
+  if (!muestras.length) throw new Error('No se pudo leer el audio')
+
+  const porTramo = Math.floor(muestras.length / buckets)
+  const salida: number[] = []
+  for (let b = 0; b < buckets; b++) {
+    let suma = 0
+    const desde = b * porTramo
+    for (let i = 0; i < porTramo; i++) {
+      const v = muestras[desde + i] / 32768
+      suma += v * v
+    }
+    salida.push(Math.sqrt(suma / Math.max(porTramo, 1)))
+  }
+
+  // Normalizado: lo que importa es la forma, no el volumen absoluto.
+  const max = Math.max(...salida, 1e-6)
+  return {
+    peaks: salida.map((p) => p / max),
+    durationMs: Math.round((muestras.length / 8000) * 1000),
+  }
+}
+
+export type YtArtistHit = {
+  /** Id de canal (UC…): con esto se pide su página. */
+  id: string
+  name: string
+  photoUrl: string
+  /** Lo que YouTube ponga debajo del nombre, ej. "Artist · 4.3M subscribers". */
+  subtitle: string
+}
+
+/**
+ * Artistas que coinciden con lo buscado.
+ *
+ * Va aparte de `search` y no en la misma llamada porque YouTube filtra por tipo:
+ * pedir todo junto devuelve un rejunte con formas distintas según la sección, y
+ * dos llamadas en paralelo salen igual de rápido y se mapean sin adivinar.
+ */
+export async function searchArtists(query: string, limit = 4): Promise<YtArtistHit[]> {
+  const yt = await getClient()
+  const res = await yt.music.search(query, { type: 'artist' })
+  const found = (res.artists?.contents ?? res.contents ?? []) as unknown[]
+
+  return found
+    .flatMap((raw) => {
+      const item = raw as {
+        id?: string
+        name?: string
+        title?: string
+        subtitle?: { text?: string }
+        subscribers?: string
+        thumbnail?: unknown
+        endpoint?: { payload?: { browseId?: string } }
+      }
+      const id = item.endpoint?.payload?.browseId ?? item.id ?? ''
+      const name = item.name ?? item.title ?? ''
+      // Sin canal no hay página a la que ir: la fila sería un adorno muerto.
+      if (!id.startsWith('UC') || !name) return []
+      return [
+        {
+          id,
+          name,
+          photoUrl: fullArtworkUrl(biggestThumb(item.thumbnail)?.url ?? ''),
+          subtitle: item.subtitle?.text ?? item.subscribers ?? '',
+        },
+      ]
+    })
+    .slice(0, limit)
+}
+
+export type ResolvedAudio = {
+  videoId: string
+  title: string
+  artist: string
+  durationMs: number
+  mimeType: string
+  /** Extensión que le corresponde al contenedor: `m4a` o `webm`. */
+  ext: 'm4a' | 'webm'
+  bitrate: number
+  bytes: Buffer
+}
+
+/** googlevideo rechaza el GET completo; hay que pedir por rangos. */
+const CHUNK_BYTES = 1 << 20
+
+export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
+  const yt = await getClient()
+  const info = await yt.getBasicInfo(videoId, { client: 'YTMUSIC' })
+
+  const formats = (info.streaming_data?.adaptive_formats ?? []).filter((f) =>
+    f.mime_type.startsWith('audio'),
+  )
+  if (!formats.length) throw new Error('Sin formatos de audio')
+
+  /*
+   * Se prefiere **AAC en mp4**, aunque Opus venga con más bitrate.
+   *
+   * YouTube ofrece las dos cosas y Opus siempre gana por calidad por bit, que
+   * es lo que miraba este código antes. El problema es que iOS no sabe
+   * decodificar WebM ni Opus: en el navegador sonaba impecable y en el teléfono
+   * no sonaba absolutamente nada, sin error ni pista. Un códec que anda en los
+   * dos lados vale más que unos kbps.
+   *
+   * Si algún video no ofreciera mp4 —raro en música— se cae al mejor de todos:
+   * mejor que suene en la web a que no suene en ningún lado.
+   */
+  const enMp4 = formats.filter((f) => f.mime_type.startsWith('audio/mp4'))
+  const candidatos = enMp4.length ? enMp4 : formats
+  const best = candidatos.sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0]
+  let url = await best.decipher(yt.session.player)
+
+  /*
+   * youtubei.js estampa `cver` desde su propia constante compilada, que puede
+   * estar meses atrasada respecto de la versión que la sesión negoció. La
+   * llamada a /player firma como un cliente y la petición de media dice ser
+   * otro; googlevideo responde 403 sin cuerpo. `cver` no entra en la firma, así
+   * que reescribirlo es seguro. (Truco tomado de zuno.)
+   */
+  const cver = yt.session.context.client.clientVersion
+  if (cver) url = url.replace(/([?&]cver=)[^&]*/, `$1${encodeURIComponent(cver)}`)
+
+  /*
+   * El `pot` de la URL de media va atado al video, no a la sesión.
+   *
+   * Se elimina el parámetro entero antes de agregar el nuevo. Dejarlo vacío
+   * (`&pot=`) y añadir otro produce dos `pot` en la URL: googlevideo toma el
+   * primero, lo encuentra inválido y sirve exactamente 1 MB antes de cortar con
+   * 403 — el mismo síntoma que no tener token.
+   *
+   * Cirugía sobre el string y no URLSearchParams: re-serializar la query
+   * re-codifica valores que ya están percent-exactos y una URL firmada no
+   * sobrevive a que la normalicen.
+   */
+  url = url
+    .replace(/&pot=[^&]*/g, '')
+    .replace(/\?pot=[^&]*&/, '?')
+    .replace(/\?pot=[^&]*$/, '')
+  const videoToken = await mintVideoToken(videoId)
+  url += `${url.includes('?') ? '&' : '?'}pot=${encodeURIComponent(videoToken)}`
+
+  const chunks: Buffer[] = []
+  let offset = 0
+  let total: number | null = null
+
+  while (total === null || offset < total) {
+    const res = await fetch(url, { headers: { Range: `bytes=${offset}-${offset + CHUNK_BYTES - 1}` } })
+    if (res.status !== 206 && res.status !== 200) {
+      if (offset === 0) throw new Error(`googlevideo respondió ${res.status}`)
+      break
+    }
+    if (total === null) {
+      const range = res.headers.get('content-range')
+      total = range ? Number(range.split('/')[1]) : null
+    }
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (!buf.length) break
+    chunks.push(buf)
+    offset += buf.length
+  }
+
+  if (!chunks.length) throw new Error('No se descargó audio')
+
+  const crudo = Buffer.concat(chunks)
+  const esMp4 = best.mime_type.startsWith('audio/mp4')
+
+  return {
+    videoId,
+    title: info.basic_info.title ?? '',
+    artist: info.basic_info.author ?? '',
+    durationMs: (info.basic_info.duration ?? 0) * 1000,
+    mimeType: best.mime_type.split(';')[0],
+    ext: best.mime_type.startsWith('audio/mp4') ? 'm4a' : 'webm',
+    bitrate: best.bitrate ?? 0,
+    bytes: esMp4 ? await remux(crudo) : crudo,
+  }
+}
+
+// ── Ficha del artista ──────────────────────────────────────────────────────
+
+/**
+ * Una canción del top de un artista.
+ *
+ * Lleva el año del disco al que pertenece, que YouTube no pone en la fila pero
+ * sí en el carrusel de álbumes: se cruza acá, del lado del servidor, porque es
+ * el único lugar donde las dos listas están juntas.
+ */
+export type YtArtistSong = YtTrack & { year: number | null }
+
+export type YtArtist = {
+  name: string
+  photoUrl: string
+  /**
+   * Proporción real de la foto (ancho/alto).
+   *
+   * Se manda para que el cliente la dibuje con su forma y no recorte cabezas:
+   * las fotos de artista de YouTube son apaisadas (~2.4:1) y encajarlas en un
+   * recuadro fijo obliga a cortar.
+   */
+  photoAspect: number | null
+  description: string
+  /** Texto tal cual lo da YouTube, ej. "4.32 million". */
+  subscribers: string | null
+  /** Lo más escuchado, en el orden que lo devuelve YouTube. */
+  topSongs: YtArtistSong[]
+  /** Discos y EPs, del más nuevo al más viejo. */
+  albums: YtHomeItem[]
+  /** Simples. Van aparte porque no son lo mismo que un disco. */
+  singles: YtHomeItem[]
+}
+
+/**
+ * Qué es cada estante de la página del artista.
+ *
+ * YouTube los titula en inglés cuando no hay sesión con idioma, y en español
+ * cuando sí: se miran las dos formas porque el título es lo único que dice qué
+ * hay adentro — el tipo de nodo es el mismo para todos.
+ */
+function shelfKind(title: string): 'songs' | 'albums' | 'singles' | null {
+  const t = title.toLocaleLowerCase('es')
+  if (t.includes('song') || t.includes('canci')) return 'songs'
+  if (t.includes('album') || t.includes('álbum')) return 'albums'
+  if (t.includes('single') || t.includes('simple')) return 'singles'
+  return null
+}
+
+export async function getArtist(channelId: string): Promise<YtArtist> {
+  const yt = await getClient()
+  const artist = await yt.music.getArtist(channelId)
+
+  /*
+   * Las secciones vienen todas mezcladas —el top de canciones como `MusicShelf`
+   * y los discos como carruseles— y sin nada que las distinga salvo el título.
+   * Las que no reconocemos («Videos», «Fans might also like») se descartan: son
+   * paseos laterales que no llevan a ningún lado dentro de la app.
+   */
+  const topSongs: YtTrack[] = []
+
+  const albums: YtHomeItem[] = []
+  const singles: YtHomeItem[] = []
+  for (const raw of artist.sections ?? []) {
+    const shelf = raw as unknown as {
+      title?: { text?: string }
+      header?: { title?: { text?: string } }
+      contents?: unknown[]
+    }
+    const kind = shelfKind(shelf.header?.title?.text ?? shelf.title?.text ?? '')
+    if (!kind) continue
+    const contents = shelf.contents ?? []
+    if (kind === 'songs') topSongs.push(...contents.flatMap(trackFrom))
+    else if (kind === 'albums') albums.push(...contents.flatMap(mapHomeItem))
+    else singles.push(...contents.flatMap(mapHomeItem))
+  }
+
+  const header = artist.header as unknown as {
+    title?: { text?: string }
+    description?: { text?: string }
+    thumbnail?: { contents?: { url: string; width?: number; height?: number }[] }
+    subscription_button?: { subscribe_accessibility_label?: string }
+  }
+
+  const thumbs = header?.thumbnail?.contents ?? []
+  const biggest = thumbs.reduce<{ url: string; width?: number; height?: number } | undefined>(
+    (a, b) => ((a?.width ?? 0) >= (b.width ?? 0) ? a : b),
+    thumbs[0],
+  )
+
+  /*
+   * El conteo de suscriptores no viene como dato: solo aparece dentro de la
+   * etiqueta de accesibilidad del botón de suscripción
+   * ("Subscribe to this channel. 4.32 million"). Se extrae de ahí porque no hay
+   * otro lugar donde YouTube Music lo exponga.
+   */
+  const label = header?.subscription_button?.subscribe_accessibility_label ?? ''
+  const match = /([\d.,]+\s*(?:million|thousand|mil|K|M|B)?)\s*$/i.exec(label.trim())
+
+  return {
+    name: header?.title?.text ?? '',
+    photoUrl: biggest?.url ?? '',
+    photoAspect:
+      biggest?.width && biggest?.height ? biggest.width / biggest.height : null,
+    description: header?.description?.text ?? '',
+    subscribers: match ? match[1].trim() : null,
+    topSongs: topSongs.map((song) => ({
+      ...song,
+      year: [...albums, ...singles].find((r) => r.id === song.albumId)?.year ?? null,
+    })),
+    albums: byYearDesc(albums),
+    singles: byYearDesc(singles),
+  }
+}
+
+/** Lo más nuevo primero; lo que no tiene año se va al final sin reordenarse. */
+function byYearDesc(items: YtHomeItem[]): YtHomeItem[] {
+  return [...items].sort((a, b) => (b.year ?? -1) - (a.year ?? -1))
+}
+
+export type YtAlbumTrack = {
+  videoId: string
+  title: string
+  artist: string
+  durationMs: number
+}
+
+export type YtAlbum = {
+  title: string
+  artist: string
+  /** Texto tal cual lo da YouTube, ej. "2017 · 10 canciones". */
+  subtitle: string
+  artworkUrl: string
+  tracks: YtAlbumTrack[]
+}
+
+/**
+ * Un álbum con sus canciones.
+ *
+ * El id de álbum viaja en cada resultado de búsqueda (`albumId`); sin él no hay
+ * forma de llegar acá, porque YouTube Music no permite buscar un álbum por
+ * nombre y quedarse con el correcto.
+ *
+ * La cabecera viene en dos formas según qué versión de la interfaz responda
+ * —`MusicDetailHeader` o `MusicResponsiveHeader`— y los campos no se llaman
+ * igual en las dos. Se leen las dos y gana la que tenga algo.
+ */
+export async function getAlbum(albumId: string): Promise<YtAlbum> {
+  const yt = await getClient()
+  const album = await yt.music.getAlbum(albumId)
+  return collectionFrom(album.header, album.contents ?? [])
+}
+
+/**
+ * Una lista de YouTube Music, en la misma forma que un álbum.
+ *
+ * Se devuelven iguales a propósito: del lado de la app las dos son «una tapa y
+ * una lista de canciones», y darles formas distintas obligaría a dos pantallas
+ * para dibujar lo mismo.
+ *
+ * El id llega con el prefijo `VL` cuando sale de la portada —así es como
+ * YouTube marca la *vista* de una lista— y la API lo quiere sin él.
+ */
+export async function getPlaylistInfo(playlistId: string): Promise<YtAlbum> {
+  const yt = await getClient()
+  const clean = playlistId.startsWith('VL') ? playlistId.slice(2) : playlistId
+  const playlist = await yt.music.getPlaylist(clean)
+  return collectionFrom(playlist.header, playlist.contents ?? [])
+}
+
+function collectionFrom(rawHeader: unknown, contents: unknown[]): YtAlbum {
+  const header = rawHeader as unknown as {
+    title?: { text?: string }
+    subtitle?: { text?: string }
+    strapline_text_one?: { text?: string }
+    second_subtitle?: { text?: string }
+    author?: { name?: string }
+    thumbnail?:
+      | { contents?: { url: string; width?: number; height?: number }[] }
+      | { url: string }[]
+  }
+  const thumbs = Array.isArray(header?.thumbnail)
+    ? header.thumbnail
+    : (header?.thumbnail?.contents ?? [])
+  const biggest = thumbs.reduce<{ url: string; width?: number; height?: number } | undefined>(
+    (a, b) => (((a as { width?: number })?.width ?? 0) >= ((b as { width?: number }).width ?? 0) ? a : b),
+    thumbs[0],
+  )
+
+  const albumArtist = header?.strapline_text_one?.text ?? header?.author?.name ?? ''
+
+  /*
+   * Adentro de un álbum, YouTube no repite el artista en cada canción: se da
+   * por sobreentendido que es el del álbum. Si lo dejáramos vacío, la fila se
+   * vería a medias, así que se completa con el del álbum.
+   */
+  const tracks = contents.map((item) => {
+    const song = item as unknown as {
+      id?: string
+      title?: string
+      artists?: { name: string }[]
+      authors?: { name: string }[]
+      duration?: { seconds?: number }
+    }
+    /*
+     * De dónde sale el artista, en orden.
+     *
+     * En un álbum viene vacío —se sobreentiende que es el del disco— y en una
+     * lista aparece a veces como `artists` y a veces como `authors`, según de
+     * dónde la haya armado YouTube. El último recurso es el artista de la
+     * colección, que en un álbum es exacto y en una lista queda vacío antes
+     * que mentir.
+     */
+    const quien =
+      song.artists?.map((a) => a.name).join(', ') ||
+      song.authors?.map((a) => a.name).join(', ') ||
+      albumArtist
+    return {
+      videoId: song.id ?? '',
+      title: song.title ?? '',
+      artist: quien,
+      durationMs: (song.duration?.seconds ?? 0) * 1000,
+    }
+  }).filter((t) => t.videoId)
+
+  return {
+    title: header?.title?.text ?? '',
+    artist: albumArtist,
+    subtitle: header?.subtitle?.text ?? header?.second_subtitle?.text ?? '',
+    artworkUrl: fullArtworkUrl(biggest?.url ?? ''),
+    tracks,
+  }
+}
+
+export type YtHomeItem = {
+  /** Qué es: define a dónde lleva al tocarlo. */
+  kind: 'song' | 'album' | 'playlist' | 'artist'
+  /** videoId para canciones; id de navegación para el resto. */
+  id: string
+  title: string
+  subtitle: string
+  artworkUrl: string
+  /**
+   * Año de salida, sacado del subtítulo («Album • 2019»).
+   *
+   * No viene como dato aparte, pero es lo único con lo que se puede ordenar la
+   * discografía de alguien: sin esto, los discos salen en el orden arbitrario
+   * en que YouTube arme el carrusel.
+   */
+  year: number | null
+}
+
+export type YtHomeSection = {
+  title: string
+  items: YtHomeItem[]
+}
+
+/**
+ * La portada de YouTube Music, en carruseles.
+ *
+ * Es lo que llena el panel principal cuando no hay ninguna lista abierta: en
+ * vez de un cartel diciendo «elegí una lista», hay música para mirar. Cada
+ * sección viene ya armada por YouTube —novedades, mezclas, lo que escuchaste—
+ * así que no hay que inventar ningún criterio de recomendación.
+ *
+ * Se filtra sin piedad: cualquier ítem sin id utilizable no sirve para nada
+ * salvo ocupar lugar, porque no se puede abrir ni reproducir.
+ */
+export async function getHome(): Promise<YtHomeSection[]> {
+  const yt = await getClient()
+
+  /*
+   * Dos fuentes, en este orden.
+   *
+   * `getExplore` es la que trae lo que uno espera de una portada —álbumes
+   * nuevos, lo que está sonando— y no depende de tener sesión. `getHomeFeed`
+   * sin cuenta iniciada devuelve poco y nada: un par de carruseles de listas.
+   * Juntas alcanzan; por separado, ninguna llena la pantalla.
+   */
+  const [explore, feed] = await Promise.all([
+    yt.music.getExplore().catch(() => null),
+    yt.music.getHomeFeed().catch(() => null),
+  ])
+
+  const shelves = [
+    ...((explore as unknown as { sections?: unknown[] } | null)?.sections ?? []),
+    ...(feed?.sections ?? []),
+  ]
+
+  const sections: YtHomeSection[] = []
+  for (const shelf of shelves) {
+    const s = shelf as unknown as {
+      title?: { text?: string }
+      header?: { title?: { text?: string } }
+      contents?: unknown[]
+    }
+    const title = s.header?.title?.text ?? s.title?.text ?? ''
+    const items = (s.contents ?? []).flatMap((raw) => mapHomeItem(raw))
+    // Una sección sin nada abrible es una fila de huecos: mejor no mostrarla.
+    if (title && items.length) sections.push({ title, items })
+  }
+  return sections
+}
+
+function mapHomeItem(raw: unknown): YtHomeItem[] {
+  const item = raw as {
+    id?: string
+    title?: { text?: string } | string
+    subtitle?: { text?: string }
+    subtitles?: { text?: string }[]
+    artists?: { name: string }[]
+    item_type?: string
+    endpoint?: { payload?: { browseId?: string; videoId?: string } }
+    thumbnail?:
+      | { contents?: { url: string; width?: number; height?: number }[] }
+      | { url: string; width?: number; height?: number }[]
+  }
+
+  const thumbs = Array.isArray(item.thumbnail) ? item.thumbnail : (item.thumbnail?.contents ?? [])
+  const biggest = thumbs.reduce<{ url: string; width?: number }|undefined>(
+    (a, b) => ((a?.width ?? 0) >= (b.width ?? 0) ? a : b),
+    thumbs[0],
+  )
+
+  const title = typeof item.title === 'string' ? item.title : (item.title?.text ?? '')
+  const subtitle =
+    item.subtitle?.text ??
+    item.subtitles?.map((x) => x.text).filter(Boolean).join(' · ') ??
+    item.artists?.map((a) => a.name).join(', ') ??
+    ''
+
+  const esCancion = item.item_type === 'song' || item.item_type === 'video'
+  const videoId = item.endpoint?.payload?.videoId ?? (esCancion ? item.id : undefined)
+  const browseId = item.endpoint?.payload?.browseId
+
+  /*
+   * El tipo lo dice `item_type` cuando está; si no, se deduce del prefijo del
+   * id de navegación, que es como YouTube distingue sus páginas: MPRE para
+   * álbumes, UC para canales de artista, VL/RD para listas.
+   */
+  let kind: YtHomeItem['kind'] | null = null
+  let id = ''
+  if (videoId) {
+    kind = 'song'
+    id = videoId
+  } else if (browseId?.startsWith('MPRE')) {
+    kind = 'album'
+    id = browseId
+  } else if (browseId?.startsWith('UC')) {
+    kind = 'artist'
+    id = browseId
+  } else if (browseId) {
+    kind = 'playlist'
+    id = browseId
+  }
+
+  if (!kind || !id || !title) return []
+  const year = /\b(19|20)\d{2}\b/.exec(subtitle)
+  return [
+    {
+      kind,
+      id,
+      title,
+      subtitle,
+      artworkUrl: fullArtworkUrl(biggest?.url ?? ''),
+      year: year ? Number(year[0]) : null,
+    },
+  ]
+}

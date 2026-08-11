@@ -1,0 +1,290 @@
+import { useState } from 'react'
+import { Image, Pressable, ScrollView, Text, View } from 'react-native'
+import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
+import { useKeyboardH, usePiso } from '../state/shell'
+import { Menu, type MenuItem } from './Menu'
+import { EstadoTapa } from './CoverState'
+import { SkeletonList } from './Skeleton'
+import { ICON_COLOR, IconMusic, IconPlus, IconUser } from './icons'
+import { proxiedImage, type ArtistResult, type TrackResult } from '../services/music'
+import { artworkUrlAtSize } from '../lib/artwork'
+
+const MAX_H = 420
+
+type Props = {
+  visible: boolean
+  loading: boolean
+  results: TrackResult[]
+  /**
+   * Los artistas que coinciden, arriba de las canciones.
+   *
+   * Van primero y no mezclados: quien escribe el nombre de una banda suele
+   * querer la banda, y tenerla que buscar entre veinte temas sería empezar por
+   * el final. Vacío cuando quien usa esto no tiene a dónde llevarlos.
+   */
+  artists?: ArtistResult[]
+  onOpenArtist?: (artist: ArtistResult) => void
+  error: string | null
+  onSelect: (track: TrackResult) => void
+  /** Dentro de una página de búsqueda, en vez de flotando bajo el campo. */
+  embedded?: boolean
+  /**
+   * El «+» de cada fila: sumar sin elegir nada. Va cuando hay un destino
+   * obvio —la lista que estás mirando—; si no lo hay, no se dibuja.
+   */
+  quickAddLabel?: string
+  onQuickAdd?: (track: TrackResult) => void
+  /** Reproducir sin guardar en ningún lado. Aparece sobre la carátula. */
+  onPlay?: (track: TrackResult) => void
+  /** Canción que se está resolviendo, para mostrarla ocupada. */
+  pendingId?: string | null
+  /** Las opciones de los tres puntos. Sin esto, la fila no los muestra. */
+  menuFor?: (track: TrackResult) => MenuItem[]
+}
+
+/**
+ * Panel de resultados que cuelga del campo de búsqueda.
+ *
+ * Va posicionado absoluto sobre el contenido en vez de empujarlo: así el campo
+ * no se mueve al aparecer los resultados, que es lo que hace que buscar se
+ * sienta instantáneo. El contenedor padre necesita `z-index` y NO puede tener
+ * `overflow: hidden`, o el panel queda recortado.
+ *
+ * Mientras carga se muestran filas de esqueleto con la misma altura que las
+ * reales, para que la lista no salte de tamaño cuando llegan los datos.
+ */
+export function SearchDropdown({
+  visible,
+  loading,
+  results,
+  artists = [],
+  onOpenArtist,
+  error,
+  onSelect,
+  embedded = false,
+  quickAddLabel,
+  onQuickAdd,
+  onPlay,
+  pendingId,
+  menuFor,
+}: Props) {
+  const [hovered, setHovered] = useState<string | null>(null)
+  /*
+   * Qué está sonando, para que el resultado que ya está puesto no ofrezca
+   * reproducir de nuevo: sobre la carátula muestra las barras, y con el cursor
+   * encima el botón de pausa. Es el mismo lenguaje que las filas de una lista.
+   */
+  const current = usePlaybackTrack()
+  const wantPlay = useWantPlay()
+  /* Los resultados terminan justo antes del teclado: si siguen por debajo, los
+     últimos quedan tapados y no hay forma de llegar a ellos sin cerrarlo. */
+  const teclado = useKeyboardH()
+  /* Lo que flota abajo, para que la tarjeta de resultados termine antes.
+     Colgada del campo esto no se usa: ahí flota sobre una ventana grande y no
+     llega nunca al borde de abajo. */
+  const cascara = usePiso()
+  if (!visible) return null
+
+  return (
+    <View
+      /*
+       * Embebida **no lleva tarjeta**.
+       *
+       * Antes era una caja opaca que terminaba arriba de lo que flota, para que
+       * no se la viera cortada. Pero así es como lo hace Apple Music y tiene
+       * más sentido: las filas sueltas sobre el fondo corren por debajo del
+       * campo y del reproductor, y se leen difuminadas a través del vidrio. Lo
+       * que se veía mal no era pasar por detrás — era que pasara por detrás
+       * *una caja con bordes*. Sin bordes no hay nada que se corte.
+       *
+       * Colgada del campo sigue siendo tarjeta: ahí flota sobre una ventana
+       * grande y necesita despegarse de lo que tapa.
+       */
+      className={
+        embedded
+          ? 'min-h-0 flex-1'
+          : 'absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl bg-card'
+      }
+      style={
+        embedded
+          ? undefined
+          : {
+              maxHeight: MAX_H,
+              // Sombra pesada: sobre casi negro, una sutil no se ve y el panel
+              // parece pegado al fondo en vez de flotar.
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            }
+      }
+    >
+      {loading ? (
+        <View className="p-2">
+          <SkeletonList rows={6} />
+        </View>
+      ) : error ? (
+        <View className="p-5">
+          <Text className="text-muted-foreground text-center text-sm">{error}</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={embedded ? undefined : { maxHeight: MAX_H }}
+          contentContainerClassName="p-2"
+          /* El hueco se reserva adentro del contenido, no descontándole alto al
+             contenedor: así se llega a la última fila y las de arriba pasan por
+             debajo del material. Es la misma regla que el resto de las listas
+             —ver `usePiso`— de la que esta tarjeta era la única excepción. */
+          contentContainerStyle={{ paddingBottom: embedded ? cascara : 8 + teclado }}
+          keyboardShouldPersistTaps="handled"
+          /* Arrastrar la lista cierra el teclado, como en Apple Music: al
+             desplazar ya dejaste de escribir, y el teclado tapa media pantalla
+             justo cuando querés mirar los resultados. */
+          keyboardDismissMode="on-drag"
+        >
+          {onOpenArtist && artists.length
+            ? artists.map((a) => (
+                <ArtistHit key={a.id} artist={a} onPress={() => onOpenArtist(a)} />
+              ))
+            : null}
+
+          {results.map((r) => {
+            const over = hovered === r.videoId
+            const isCurrent = current?.videoId === r.videoId
+            const busy = pendingId === r.videoId
+            return (
+              /*
+               * La fila es un View y no un Pressable: adentro van más botones,
+               * y un Pressable dentro de otro se convierte en web en un
+               * <button> dentro de otro <button>. Lo tocable es la parte de la
+               * izquierda, que ocupa todo lo que sobra.
+               */
+              <View
+                key={r.videoId}
+                onPointerEnter={() => setHovered(r.videoId)}
+                onPointerLeave={() => setHovered(null)}
+                /*
+                 * El cursor se marca solo con el fondo, igual que en las filas
+                 * de una lista: `docs/DESIGN.md` pide separar superficies por
+                 * luminancia y nunca por bordes, y este desplegable no es una
+                 * excepción — la carátula, que se oscurece y muestra el play,
+                 * ya dice de sobra cuál fila se va a accionar.
+                 */
+                className={`flex-row items-center gap-1 rounded-lg pr-1 ${over ? 'bg-muted' : ''}`}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={r.title}
+                  // Si ya es la que suena, tocarla pausa o sigue; no la
+                  // reinicia ni la vuelve a resolver.
+                  onPress={() => (isCurrent ? togglePlayback() : onSelect(r))}
+                  className="min-w-0 flex-1 flex-row items-center gap-3 rounded-lg p-2"
+                >
+                  {/* La carátula se convierte en el botón de reproducir al
+                      pasar el cursor: escuchar antes de decidir es lo primero
+                      que uno quiere hacer con un resultado. */}
+                  <View className="h-11 w-11 overflow-hidden rounded bg-muted">
+                    {r.artworkUrl ? (
+                      /* Por nuestro proxy y no directo al CDN de Google: sin
+                         CORS, Chrome descarta la respuesta entera (ORB) y la
+                         fila queda con un cuadrado vacío. Es el mismo camino
+                         que usan las tapas de la portada. */
+                      <Image
+                        source={{ uri: proxiedImage(artworkUrlAtSize(r.artworkUrl, 96)) }}
+                        className="h-11 w-11"
+                      />
+                    ) : (
+                      <View className="h-11 w-11 items-center justify-center">
+                        <IconMusic size={16} color={ICON_COLOR.muted} />
+                      </View>
+                    )}
+                    {/*
+                     * La capa vive siempre y se muestra por opacidad, nunca
+                     * montándose y desmontándose: si el nodo donde empezó la
+                     * pulsación desaparece antes de soltar, el navegador no
+                     * emite `click` y el toque se pierde.
+                     */}
+                    <EstadoTapa busy={busy} sounding={isCurrent} playing={wantPlay} hovered={over} />
+                  </View>
+                  <View className="min-w-0 flex-1">
+                    <Text className="text-foreground text-[14px]" numberOfLines={1}>
+                      {r.title}
+                    </Text>
+                    <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+                      {r.artist}
+                    </Text>
+                  </View>
+                  <Text className="text-muted-foreground text-[11px] tabular-nums">
+                    {fmtDur(r.durationMs)}
+                  </Text>
+                </Pressable>
+
+                {/* Los tres puntos aparecen con el cursor encima; el «+» está
+                    siempre, porque es la acción que uno viene a hacer. */}
+                <View className="w-9 items-center">
+                  {menuFor && over ? (
+                    <Menu items={menuFor(r)} label={`Opciones de ${r.title}`} size={15} />
+                  ) : null}
+                </View>
+                {onQuickAdd ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={quickAddLabel ? `${quickAddLabel}: ${r.title}` : `Agregar ${r.title}`}
+                    onPress={() => onQuickAdd(r)}
+                    /* Sin círculo alrededor: es un ícono y nada más. El aro lo
+                       hacía competir con el botón de reproducir, que es el
+                       único redondo del sistema (ver docs/DESIGN.md). */
+                    className="h-9 w-9 items-center justify-center active:opacity-60"
+                  >
+                    <IconPlus size={17} color={ICON_COLOR.foreground} />
+                  </Pressable>
+                ) : null}
+              </View>
+            )
+          })}
+        </ScrollView>
+      )}
+    </View>
+  )
+}
+
+/**
+ * Un artista en el desplegable.
+ *
+ * Foto redonda y una sola línea: es lo que lo distingue de una canción de un
+ * vistazo, sin necesidad de un rótulo que diga «artista».
+ */
+function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => void }) {
+  const [over, setOver] = useState(false)
+  /* Por el proxy y no directo: las fotos de artista viven en `yt3`, que
+     responde sin CORS y deja el hueco en blanco (ver `proxiedImage`). */
+  const photo = artist.photoUrl ? proxiedImage(artworkUrlAtSize(artist.photoUrl, 96)) : ''
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Ir a ${artist.name}`}
+      onPress={onPress}
+      onPointerEnter={() => setOver(true)}
+      onPointerLeave={() => setOver(false)}
+      className={`flex-row items-center gap-3 rounded-lg p-2 ${over ? 'bg-muted' : ''}`}
+    >
+      {photo ? (
+        <Image source={{ uri: photo }} className="h-11 w-11 rounded-full bg-muted" />
+      ) : (
+        <View className="h-11 w-11 items-center justify-center rounded-full bg-muted">
+          <IconUser size={16} color={ICON_COLOR.muted} />
+        </View>
+      )}
+      <View className="min-w-0 flex-1">
+        <Text className="text-foreground text-[14px]" numberOfLines={1}>
+          {artist.name}
+        </Text>
+        <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+          Artista
+        </Text>
+      </View>
+    </Pressable>
+  )
+}
+
+function fmtDur(ms: number): string {
+  const s = Math.round(ms / 1000)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}

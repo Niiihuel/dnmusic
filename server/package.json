@@ -1,0 +1,23 @@
+{
+  "name": "flora-music",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch --preserveWatchOutput & node --watch dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.2",
+    "bgutils-js": "^4.0.3",
+    "jsdom": "^28.0.0",
+    "youtubei.js": "^17.2.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^27.0.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.0"
+  }
+}

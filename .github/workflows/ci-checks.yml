@@ -1,37 +1,36 @@
 name: CI Checks
 
-# Compilación rápida SIN firma en simulador, para feedback al abrir un PR.
-# No consume certificados ni sube nada.
+# Tipos y lint de la app y del servicio de música, al abrir un PR.
+#
+# Antes esto compilaba el scaffold Swift en un runner macOS: costaba 10× en
+# minutos y verificaba una app que ya no es la que usamos. Los chequeos que
+# sirven hoy corren en Linux y en menos de un minuto.
 on:
   pull_request:
     branches: [main]
 
 jobs:
-  compile-check:
-    name: Build for simulator (no sign)
-    runs-on: macos-15
-    timeout-minutes: 30
+  checks:
+    name: Types & lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install deps
+        run: npm ci
 
-      - name: Generate project
-        run: xcodegen generate
+      - name: Types
+        run: npx tsc --noEmit
 
-      - name: Use placeholder GoogleService-Info.plist (solo para compilar)
-        run: cp DanyApp/Support/GoogleService-Info.example.plist DanyApp/Support/GoogleService-Info.plist
+      - name: Lint
+        run: npx eslint .
 
-      - name: Resolve SPM & build for simulator
-        run: |
-          set -o pipefail
-          xcodebuild -project DanyApp.xcodeproj \
-            -scheme DanyApp \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            build | xcpretty
+      - name: Music service — types
+        working-directory: server
+        run: npm ci && npx tsc --noEmit
