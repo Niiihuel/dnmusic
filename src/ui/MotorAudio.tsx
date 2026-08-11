@@ -9,12 +9,14 @@ import {
   advance,
   pausePlayback,
   registerEngine,
+  registerRelleno,
   reportCargada,
   reportError,
   reportProgress,
   resumePlayback,
   usePlaybackState,
 } from '../state/playback'
+import { proximasRecomendadas } from '../services/recomendaciones'
 import { saltar } from '../lib/seek'
 import { useAppActiva } from '../lib/appActiva'
 import { avisar } from '../state/aviso'
@@ -208,6 +210,21 @@ export function MotorAudio() {
         }
       : null,
   )
+
+  /*
+   * De dónde saca la cola con qué seguir cuando se termina la lista.
+   *
+   * Se registra desde acá y no desde `state/playback` porque el servicio de
+   * recomendaciones importa el de música, que importaría a playback: un ciclo.
+   * Este componente ya conoce a los dos, así que es el lugar natural del puente.
+   *
+   * Le pasa lo que ya está esperando en la cola para que no le ofrezca lo mismo
+   * dos veces.
+   */
+  useEffect(() => {
+    registerRelleno(() => proximasRecomendadas(upNext.map((t) => t.videoId)))
+    return () => registerRelleno(null)
+  }, [upNext])
 
   // Un salto no se puede expresar como estado: pedir dos veces el mismo segundo
   // tiene que saltar dos veces. La cola deja el pedido acá.

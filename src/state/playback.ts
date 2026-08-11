@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { PlaylistTrack } from '../services/playlists'
 import { createStore, useStore } from './store'
+import { leerAjustes } from './ajustes'
 
 /**
  * Lo que suena, para toda la app.
@@ -173,6 +174,25 @@ let engine: Engine | null = null
 export function registerEngine(next: Engine | null) {
   engine = next
 }
+
+/*
+ * Cómo conseguir con qué seguir cuando se termina la lista.
+ *
+ * Es el mismo puente que `registerEngine`, y por la misma razón: el relleno sale
+ * de `services/recomendaciones`, que importa el servicio de música, que importaría
+ * este archivo — un ciclo. Lo registra `MotorAudio`, que ya conoce a los dos.
+ *
+ * También es asíncrono, y `advance` no puede serlo: la cola tiene que decidir en
+ * el acto qué suena ahora. Así que pide y sigue; cuando llega, se encola.
+ */
+let relleno: (() => Promise<PlaylistTrack[]>) | null = null
+
+export function registerRelleno(fn: (() => Promise<PlaylistTrack[]>) | null) {
+  relleno = fn
+}
+
+/** Si ya hay una tanda en camino, para no pedir dos veces al mismo final. */
+let pidiendo = false
 
 /** El motor avisa si el audio de la canción actual ya está listo para sonar. */
 export function reportCargada(cargada: boolean) {
@@ -411,9 +431,43 @@ export function advance() {
   const track = next === null ? null : state.tracks[next]
   if (track && next !== null) {
     store.set({ manual: null, index: next, positionMs: 0, durationMs: track.durationMs })
-  } else {
-    store.set({ manual: null, wantPlay: false, positionMs: state.durationMs })
+    return
   }
+
+  /*
+   * Se acabó la lista.
+   *
+   * Con «seguir al terminar» prendido se pide una tanda de recomendaciones y la
+   * música **no se corta**: se queda en la última mientras llega. Encolarlas es
+   * suficiente para que suenen, porque `enqueue` sobre una cola terminada vuelve
+   * a arrancar sola.
+   *
+   * Si el relleno no está registrado —la web sin sesión, o un error— o vuelve
+   * vacío, se para como se paraba antes. La preferencia apagada es lo mismo: el
+   * silencio al final de la lista es una opción legítima.
+   */
+  if (leerAjustes().autoplay && relleno && !pidiendo) {
+    pidiendo = true
+    void relleno()
+      .then((tandas) => {
+        if (!tandas.length) {
+          store.set({ manual: null, wantPlay: false, positionMs: state.durationMs })
+          return
+        }
+        const ahora = store.get()
+        store.set({ manual: null, upNext: [...ahora.upNext, ...tandas] })
+        advance()
+      })
+      .catch(() => {
+        store.set({ manual: null, wantPlay: false, positionMs: state.durationMs })
+      })
+      .finally(() => {
+        pidiendo = false
+      })
+    return
+  }
+
+  store.set({ manual: null, wantPlay: false, positionMs: state.durationMs })
 }
 
 export function reportProgress(positionMs: number, durationMs: number) {
