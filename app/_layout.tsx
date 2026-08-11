@@ -571,7 +571,35 @@ function SessionGate() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#121212' } }}>
+    // El gesto de volver: ver el comentario de abajo.
+    /*
+     * El gesto de volver, dicho explícitamente.
+     *
+     * El estándar de iOS es **arrastrar desde el borde izquierdo**: lo hace todo
+     * el sistema y la gente lo tiene en el dedo, sobre todo en pantallas grandes
+     * donde la flecha de arriba a la izquierda queda lejos del pulgar. Android
+     * no lo usa: ahí manda el gesto o el botón de atrás del sistema, que el
+     * navegador ya atiende solo.
+     *
+     * Va escrito aunque sea el valor por defecto del stack nativo. Con el
+     * encabezado oculto —que es nuestro caso en todas las pantallas— es fácil
+     * dar por hecho que el gesto se fue con él, y esto deja constancia de que es
+     * una decisión y no un descuido.
+     *
+     * `fullScreenGestureEnabled` queda **apagado** a propósito, que es lo que
+     * hace el sistema. Arrastrar desde cualquier punto pelearía con los gestos
+     * horizontales que ya existen adentro del contenido: la barra de posición
+     * (`SeekBar`), la ventana de recorte sobre la onda (`Waveform`) y el arrastre
+     * del reproductor. Los tres se activan a los 4px de movimiento horizontal, y
+     * un gesto de pantalla completa se los comería.
+     */
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        gestureEnabled: true,
+        contentStyle: { backgroundColor: '#121212' },
+      }}
+    >
       <Stack.Screen name="index" />
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="sign-up" />

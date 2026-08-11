@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Image, Pressable, ScrollView, Text, View } from 'react-native'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { useKeyboardH, usePiso } from '../state/shell'
-import { Menu, type MenuItem } from './Menu'
+import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { EstadoTapa } from './CoverState'
 import { SkeletonList } from './Skeleton'
 import { ICON_COLOR, IconMusic, IconPlus, IconUser } from './icons'
@@ -149,7 +149,17 @@ export function SearchDropdown({
             const over = hovered === r.videoId
             const isCurrent = current?.videoId === r.videoId
             const busy = pendingId === r.videoId
-            return (
+            /*
+             * La fila entera responde a la **pulsación larga**, con el mismo
+             * menú de los tres puntos.
+             *
+             * Es lo que ya hacían las filas de una lista (`TrackRow`) y el
+             * buscador se había quedado afuera: sobre un resultado de búsqueda
+             * mantener apretado no hacía nada, y las mismas acciones estaban a
+             * un blanco de 36px contra el borde derecho. En el teléfono el gesto
+             * natural sobre una fila es apretarla, no apuntarle a un ícono.
+             */
+            const fila = (
               /*
                * La fila es un View y no un Pressable: adentro van más botones,
                * y un Pressable dentro de otro se convierte en web en un
@@ -216,10 +226,22 @@ export function SearchDropdown({
                   </Text>
                 </Pressable>
 
-                {/* Los tres puntos aparecen con el cursor encima; el «+» está
-                    siempre, porque es la acción que uno viene a hacer. */}
+                {/*
+                 * Los tres puntos, **siempre que haya menú**.
+                 *
+                 * Estaban detrás de `over`, que es el hover del cursor. En una
+                 * computadora se entiende: aparecen al apuntar la fila y no
+                 * ensucian la lista. En un teléfono no hay cursor — `over` solo
+                 * se prendía de rebote, con el dedo apoyado, y por eso los tres
+                 * puntos «a veces andaban y a veces no». Una acción que existe
+                 * no puede depender de un evento que en el teléfono no ocurre.
+                 *
+                 * El hueco se reserva igual cuando no hay menú, para que la
+                 * duración y el «+» de todas las filas queden en la misma
+                 * columna.
+                 */}
                 <View className="w-9 items-center">
-                  {menuFor && over ? (
+                  {menuFor ? (
                     <Menu items={menuFor(r)} label={`Opciones de ${r.title}`} size={15} />
                   ) : null}
                 </View>
@@ -237,6 +259,12 @@ export function SearchDropdown({
                   </Pressable>
                 ) : null}
               </View>
+            )
+            if (!menuFor) return fila
+            return (
+              <MantenerApretado key={r.videoId} items={menuFor(r)}>
+                {fila}
+              </MantenerApretado>
             )
           })}
         </ScrollView>

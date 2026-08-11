@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { usePlaybackTrack } from '../state/playback'
 import { listPlaylists, type Playlist } from '../services/playlists'
 import { Avatar } from './Avatar'
+import { Glass } from './Glass'
 import {
   ICON_COLOR,
   IconDisc,
@@ -103,7 +104,7 @@ export function AppDrawer({
           gastar el tramo más visible del panel en un dato que no es un destino. */}
       <Text className="text-foreground px-5 pb-4 pt-2 text-[22px] font-bold">dnmusic</Text>
 
-      <ScrollView className="min-h-0 flex-1" contentContainerClassName="pb-4">
+      <ScrollView className="min-h-0 flex-1" contentContainerClassName="pb-16">
         <View className="gap-0.5 px-2">
           <Fila
             icon={<IconMusic size={18} color={ICON_COLOR.foreground} />}
@@ -159,8 +160,16 @@ export function AppDrawer({
        * primaria— y por eso hay **una** píldora y no dos. Cerrar sesión queda al
        * lado del avatar, en gris y sin texto: es la única de acá que no te lleva
        * a ningún lado sino que te saca, y no compite con crear una lista.
+       *
+       * **Acá sí va vidrio, y en el resto del panel no.** `DESIGN.md` reserva el
+       * material para lo que flota sobre contenido, y lo niega a los paneles
+       * —que son el fondo y no tienen nada detrás que difuminar—. El panel
+       * entero es fondo; esta barra no: se apoya sobre la lista de listas y,
+       * cuando esa lista es larga, las filas le pasan por debajo. Ahí el material
+       * tiene justo lo que necesita para leerse como material.
        */}
-      <View className="flex-row items-center gap-1 px-4 pt-2">
+      <Glass radius={28} style={{ marginHorizontal: 12, marginTop: 4 }}>
+      <View className="flex-row items-center gap-1 px-2 py-2">
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Ver tu perfil"
@@ -191,6 +200,7 @@ export function AppDrawer({
           <Text className="text-primary-foreground text-[14px] font-semibold">Nueva lista</Text>
         </Pressable>
       </View>
+      </Glass>
     </View>
   )
 }
