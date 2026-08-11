@@ -5,6 +5,7 @@ import { artworkSource } from '../lib/artwork'
 import { headroomGain, signedUrl } from '../services/music'
 import { useLockScreen } from '../state/lockScreen'
 import { anotarEscucha } from '../services/plays'
+import type { PlaylistTrack } from '../services/playlists'
 import {
   advance,
   pausePlayback,
@@ -326,27 +327,40 @@ export function MotorAudio() {
    * Va en una ref y no en estado porque nadie lo dibuja: es un dato que se
    * junta mientras suena y se despacha una vez.
    */
-  const escuchado = useRef({ id: '', ms: 0 })
+  /*
+   * Se guarda **la canción entera**, no su id.
+   *
+   * Antes era `{ id, ms }` y al despachar se la buscaba con
+   * `tracks.find(...) ?? manual`. Eso funcionaba solo para las de la lista: una
+   * canción encolada a mano —y **todas las de la radio lo son**, llegan por
+   * `upNext`— no está en `tracks`, así que la búsqueda fallaba y caía al
+   * `?? manual`, que para cuando corre este efecto ya es la canción **nueva**.
+   *
+   * El resultado era que el tiempo de cada tema encolado se le anotaba al
+   * siguiente: artista equivocado y canción equivocada. Con la radio eso se
+   * vuelve grave, porque este historial es justo lo que elige las
+   * recomendaciones — se habría envenenado solo, y cuanto más la usaras, peor.
+   *
+   * Guardando el objeto no hay nada que buscar y no puede confundirse.
+   */
+  const escuchado = useRef<{ track: PlaylistTrack | null; ms: number }>({ track: null, ms: 0 })
   useEffect(() => {
     const previo = escuchado.current
     /* Al cambiar de canción se despacha lo de la anterior. En el primer
        dibujado no hay nada anterior que anotar. */
-    if (previo.id && previo.id !== current?.id) {
-      const cancion = tracks.find((t) => t.id === previo.id) ?? manual
-      if (cancion) {
-        void anotarEscucha({
-          videoId: cancion.videoId,
-          title: cancion.title,
-          artist: cancion.artist,
-          artistId: cancion.artistId,
-          ms: previo.ms,
-        })
-      }
+    if (previo.track && previo.track.id !== current?.id) {
+      void anotarEscucha({
+        videoId: previo.track.videoId,
+        title: previo.track.title,
+        artist: previo.track.artist,
+        artistId: previo.track.artistId,
+        ms: previo.ms,
+      })
     }
-    if (previo.id !== (current?.id ?? '')) {
-      escuchado.current = { id: current?.id ?? '', ms: 0 }
+    if (previo.track?.id !== current?.id) {
+      escuchado.current = { track: current, ms: 0 }
     }
-  }, [current?.id, tracks, manual])
+  }, [current])
 
   /*
    * Retomar donde habías dejado, al abrir la app.
