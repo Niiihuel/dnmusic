@@ -12,6 +12,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { volver } from '../src/lib/volver'
 import { saltar } from '../src/lib/seek'
+import { useAppActiva } from '../src/lib/appActiva'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAudioPlayer } from 'expo-audio'
 import { Waveform } from '../src/ui/Waveform'
@@ -377,6 +378,7 @@ function SnippetEditor({
   paraPerfil: boolean
   ocupado: boolean
 }) {
+  const alaVista = useAppActiva()
   /* El botón es uno solo; esto es lo que hace. */
   const entregar = onDone
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
@@ -570,7 +572,8 @@ function SnippetEditor({
   const shownLyrics = (lang === 'off' ? lyrics : versions[lang]) ?? lyrics
 
   useEffect(() => {
-    if (!playing) {
+    /* Con la app atrás nadie mira la onda ni la letra. Ver `useAppActiva`. */
+    if (!playing || !alaVista) {
       if (raf.current) cancelAnimationFrame(raf.current)
       raf.current = null
       return
@@ -620,7 +623,7 @@ function SnippetEditor({
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current)
     }
-  }, [playing, startMs, snippetMs, player, lyrics, positionSV])
+  }, [playing, startMs, snippetMs, player, lyrics, positionSV, alaVista])
 
   const toggle = async () => {
     if (playing) {

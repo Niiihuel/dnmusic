@@ -4,6 +4,7 @@ import type { SongSnippet } from '../models/message'
 import { headroomGain, signedUrl } from '../services/music'
 import { pauseForSnippet, registerSnippetStopper } from './playback'
 import { saltar } from '../lib/seek'
+import { useAppActiva } from '../lib/appActiva'
 
 /** Mínimo entre dos saltos al mismo punto. Ver el loop de reproducción. */
 const SEEK_RETRY_MS = 600
@@ -23,6 +24,7 @@ const SEEK_RETRY_MS = 600
  * Sonar los dos encimados no le sirve a nadie.
  */
 export function useSnippetPlayer() {
+  const alaVista = useAppActiva()
   const [current, setCurrent] = useState<{ id: string; song: SongSnippet } | null>(null)
   const [url, setUrl] = useState<string | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -164,7 +166,8 @@ export function useSnippetPlayer() {
   }, [url, current, player])
 
   useEffect(() => {
-    if (!playing || !current) {
+    /* Con la app atrás no hay barra de fragmento que mover. Ver `useAppActiva`. */
+    if (!playing || !current || !alaVista) {
       if (raf.current) cancelAnimationFrame(raf.current)
       raf.current = null
       return
@@ -215,7 +218,7 @@ export function useSnippetPlayer() {
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current)
     }
-  }, [playing, current, player])
+  }, [playing, current, player, alaVista])
 
   return { currentId: current?.id ?? null, playing, positionMs, toggle, seek, stop }
 }

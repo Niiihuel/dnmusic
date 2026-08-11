@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAppActiva } from '../lib/appActiva'
 import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
@@ -285,10 +286,14 @@ function Elapsed({
 }) {
   const [ms, setMs] = useState(startMs)
 
+  /* Con la app atrás el reloj no se ve; no hay razón para seguir contando.
+     Es la misma regla que los bucles de posición — ver `useAppActiva`. */
+  const alaVista = useAppActiva()
   useEffect(() => {
+    if (!alaVista) return
     const id = setInterval(() => setMs(positionMs.value), CLOCK_MS)
     return () => clearInterval(id)
-  }, [positionMs])
+  }, [positionMs, alaVista])
 
   const shown = Math.max(startMs, Math.min(startMs + snippetMs, Number.isFinite(ms) ? ms : startMs))
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AppState, Platform } from 'react-native'
+import { Platform } from 'react-native'
 import { preload, setAudioModeAsync, useAudioPlayer } from 'expo-audio'
 import { artworkSource } from '../lib/artwork'
 import { headroomGain, signedUrl } from '../services/music'
@@ -16,6 +16,7 @@ import {
   usePlaybackState,
 } from '../state/playback'
 import { saltar } from '../lib/seek'
+import { useAppActiva } from '../lib/appActiva'
 import { avisar } from '../state/aviso'
 import { mensajeError } from '../lib/mensajeError'
 
@@ -28,6 +29,13 @@ const END_EPSILON_S = 0.35
  * nunca mientras lo sigan siendo. Ver `remember`.
  */
 const CACHE_URLS = 3
+/**
+ * Cada cuánto se le avisa al store la posición.
+ *
+ * El bucle corre a sesenta cuadros por segundo porque el corte de fin de
+ * canción lo necesita; los dibujados, no. Ver el `tick`.
+ */
+const AVISO_CADA_MS = 100
 
 /**
  * El motor de audio: **el que suena**. No dibuja nada.
@@ -178,6 +186,8 @@ export function MotorAudio() {
   const raf = useRef<number | null>(null)
   /** El cuadro anterior, para medir cuánto sonó de verdad entre uno y otro. */
   const ultimoTick = useRef(0)
+  /** El último aviso al store, para no inundarlo. Ver `AVISO_CADA_MS`. */
+  const ultimoAviso = useRef(0)
 
   const player = useAudioPlayer(url ? { uri: url } : null)
   const playing = wantPlay && url !== null
@@ -462,13 +472,7 @@ export function MotorAudio() {
    * el bucle no estaba sosteniendo nada, solo gastando batería hasta que lo
    * mataran.
    */
-  const [alaVista, setAlaVista] = useState(AppState.currentState === 'active')
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (estado) => {
-      setAlaVista(estado === 'active')
-    })
-    return () => sub.remove()
-  }, [])
+  const alaVista = useAppActiva()
 
   /*
    * Al volver, la posición se relee del reproductor de una sola vez.
@@ -500,7 +504,30 @@ export function MotorAudio() {
           finish()
           return
         }
-        reportProgress(t * 1000, total * 1000)
+        /*
+         * Al store se avisa **diez veces por segundo, no sesenta**.
+         *
+         * Cada `reportProgress` es un `store.set`, y de ahí salen los dibujados
+         * de la barra de abajo, de la letra sincronizada y de este mismo motor.
+         * A sesenta cuadros eran sesenta rondas de render por segundo para mover
+         * una barra de trescientos píxeles y un reloj que muestra **segundos**:
+         * cincuenta de esas sesenta no cambiaban un solo píxel.
+         *
+         * Diez por segundo es más fino de lo que el ojo distingue en una barra
+         * de progreso y de sobra para la letra, cuya sincronía se tolera en
+         * decenas de milisegundos. Es el mismo criterio que ya usaba
+         * `PlayerBar`, que lee su reloj cada 200ms de un shared value en vez de
+         * suscribirse a esto.
+         *
+         * El bucle sigue a sesenta porque el corte de fin de canción —el `if` de
+         * arriba— sí quiere la resolución máxima: es lo que encadena un tema con
+         * el siguiente sin hueco audible.
+         */
+        const ahoraMs = performance.now()
+        if (ahoraMs - ultimoAviso.current >= AVISO_CADA_MS) {
+          ultimoAviso.current = ahoraMs
+          reportProgress(t * 1000, total * 1000)
+        }
         /*
          * El tiempo se suma del reloj que ya corre, no de la posición.
          *
