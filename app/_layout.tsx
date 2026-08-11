@@ -21,6 +21,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { restorePlayback, usePlaybackTrack } from '../src/state/playback'
+import { cargarAjustes } from '../src/state/ajustes'
 import { endSession, startSession, useMyProfile, useUser } from '../src/state/session'
 import { emailToUsername } from '../src/services/auth'
 import { AppDrawer } from '../src/ui/AppDrawer'
@@ -332,6 +333,7 @@ function Chrome() {
             onPlaylists={cerrandoIr(() => setTab('listas'))}
             onChats={cerrandoIr(() => setTab('chats'))}
             onNowPlaying={cerrandoIr(() => router.push('/playing'))}
+            onAjustes={cerrandoIr(() => router.push('/ajustes'))}
             onNewPlaylist={cerrandoIr(newPlaylist)}
             onOpenPlaylist={(id) => cerrandoIr(() => abrirLista(id))()}
             onLogout={cerrandoIr(() => void endSession())}
@@ -551,6 +553,7 @@ function SessionGate() {
     startSession()
     // La cola de la sesión anterior, en pausa y donde la dejaste.
     void restorePlayback()
+    void cargarAjustes()
   }, [])
 
   useEffect(() => {
@@ -607,6 +610,7 @@ function SessionGate() {
       {/* El perfil es una carpeta: la vista y su editor son pantallas
           distintas, apiladas. Ver `app/profile/`. */}
       <Stack.Screen name="perfil/[usuario]" />
+      <Stack.Screen name="ajustes" />
       <Stack.Screen name="profile/index" />
       <Stack.Screen name="profile/editar/index" />
       <Stack.Screen name="profile/editar/musica" />

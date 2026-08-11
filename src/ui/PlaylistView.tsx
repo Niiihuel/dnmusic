@@ -5,6 +5,8 @@ import { listTracks, removeTrack, type Playlist, type PlaylistTrack } from '../s
 import {
   playAt,
   playQueue,
+  toggleShuffle,
+  usePlaybackState,
   syncQueue,
   togglePlayback,
   usePlaybackTrack,
@@ -33,6 +35,7 @@ import {
   IconPause,
   IconPencil,
   IconPlay,
+  IconShuffle,
   IconSearch,
   IconTrash,
   IconUser,
@@ -369,6 +372,9 @@ function Header({
   onPickCover: () => void
   children: React.ReactNode
 }) {
+  /* El aleatorio es global —una sola cola suena a la vez— así que se lee del
+     store y no viaja como prop desde la pantalla. */
+  const aleatorio = usePlaybackState().shuffle !== null
   const [overCover, setOverCover] = useState(false)
   const cover = useCoverSize()
 
@@ -433,6 +439,37 @@ function Header({
               ) : (
                 <IconPlay size={20} color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary} />
               )}
+            </Pressable>
+            {/*
+             * Lineal o aleatorio, al lado de reproducir.
+             *
+             * Va acá y no escondido en el menú porque es una decisión que se
+             * toma **al poner la lista**, no una preferencia que se configura una
+             * vez: hay listas que uno quiere en su orden —un disco, algo armado
+             * para escuchar seguido— y otras que solo tienen sentido barajadas.
+             *
+             * Se marca por luminancia y no por color: encendido es el blanco de
+             * `primary`, que en este sistema **es** el acento (`docs/DESIGN.md`).
+             * Apagado queda en gris, como cualquier control inactivo.
+             */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={aleatorio ? 'Reproducir en orden' : 'Reproducir al azar'}
+              accessibilityState={{ selected: aleatorio }}
+              onPress={toggleShuffle}
+              disabled={total === 0}
+              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+            >
+              <IconShuffle
+                size={19}
+                color={
+                  total === 0
+                    ? ICON_COLOR.muted
+                    : aleatorio
+                      ? ICON_COLOR.foreground
+                      : ICON_COLOR.muted
+                }
+              />
             </Pressable>
             <Menu items={menu} label={`Opciones de ${playlist.name}`} size={17} />
           </>

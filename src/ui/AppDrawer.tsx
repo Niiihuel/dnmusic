@@ -12,6 +12,7 @@ import {
   IconLogOut,
   IconMusic,
   IconPlus,
+  IconSliders,
 } from './icons'
 
 /**
@@ -51,6 +52,7 @@ export function AppDrawer({
   onNowPlaying,
   onNewPlaylist,
   onOpenPlaylist,
+  onAjustes,
   onLogout,
 }: {
   name: string
@@ -62,6 +64,7 @@ export function AppDrawer({
   onNewPlaylist: () => void
   /** Abre una lista puntual, sin pasar por la pestaña. */
   onOpenPlaylist: (id: string) => void
+  onAjustes: () => void
   onLogout: () => void
 }) {
   const insets = useSafeAreaInsets()
@@ -124,6 +127,13 @@ export function AppDrawer({
               onPress={onNowPlaying}
             />
           ) : null}
+          {/* Los ajustes son el último destino de la navegación: se entra de
+              vez en cuando, y no compite con lo que uno viene a hacer. */}
+          <Fila
+            icon={<IconSliders size={18} color={ICON_COLOR.foreground} />}
+            label="Ajustes"
+            onPress={onAjustes}
+          />
         </View>
 
         {/*
