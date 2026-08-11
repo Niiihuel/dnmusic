@@ -57,6 +57,29 @@ type PlaybackState = {
    * primera para que prender el aleatorio no corte lo que estás escuchando.
    */
   shuffle: number[] | null
+  /**
+   * Qué pasa al llegar al final.
+   *
+   * `no` se detiene —o sigue con recomendaciones, si están prendidas—; `lista`
+   * vuelve a empezar por el principio; `una` repite el tema actual para siempre.
+   *
+   * Las tres son excluyentes y se rotan en ese orden, que es el de todos los
+   * reproductores desde el primer iPod: apagado → la lista → esta sola.
+   */
+  repetir: 'no' | 'lista' | 'una'
+  /**
+   * Cuándo se apaga sola la música, en milisegundos desde época. `null` sin
+   * temporizador puesto. Ver `programarApagado`.
+   */
+  dormirA: number | null
+  /**
+   * Cuántos minutos se pidieron, para poder marcar cuál está puesto.
+   *
+   * Se guarda además de `dormirA` porque deducirlo del instante restante obliga
+   * a leer el reloj mientras se dibuja —impuro, y encima drift: a los treinta
+   * segundos ya no coincide con ningún preset—.
+   */
+  dormirMin: number | null
   /** Qué muestra el panel de la derecha mientras suena algo. */
   view: NowPlayingView
   error: string | null
@@ -93,6 +116,9 @@ const EMPTY: PlaybackState = {
   volume: 1,
   cargada: false,
   shuffle: null,
+  repetir: 'no',
+  dormirA: null,
+  dormirMin: null,
   view: 'info',
   error: null,
 }
@@ -384,6 +410,41 @@ function barajar(n: number): number[] {
  * puede cortarte el tema que estás escuchando, solo cambia lo que viene después.
  * Al apagarlo se vuelve al orden de la lista desde donde estás, sin saltos.
  */
+/*
+ * El temporizador de apagado.
+ *
+ * Existe por una razón muy concreta y muy poco técnica: mucha gente se duerme
+ * escuchando música, y sin esto la única forma de que pare es despertarse a
+ * pararla. Spotify lo tiene y es de las cosas que más se usan de noche.
+ *
+ * Guarda **cuándo** hay que parar y no cuánto falta, porque un contador
+ * regresivo obligaría a un tick propio corriendo todo el tiempo — justo lo que
+ * acabamos de sacar de la app por comernos el 80% de CPU. Con un instante
+ * absoluto alcanza con un `setTimeout`, que duerme sin gastar nada.
+ */
+let dormirTimer: ReturnType<typeof setTimeout> | null = null
+
+export function programarApagado(minutos: number | null) {
+  if (dormirTimer) clearTimeout(dormirTimer)
+  dormirTimer = null
+  if (minutos === null) {
+    store.set({ dormirA: null, dormirMin: null })
+    return
+  }
+  store.set({ dormirA: Date.now() + minutos * 60_000, dormirMin: minutos })
+  dormirTimer = setTimeout(() => {
+    pausePlayback()
+    store.set({ dormirA: null, dormirMin: null })
+    dormirTimer = null
+  }, minutos * 60_000)
+}
+
+/** Rota apagado → lista → una sola, como cualquier reproductor. */
+export function toggleRepetir() {
+  const actual = store.get().repetir
+  store.set({ repetir: actual === 'no' ? 'lista' : actual === 'lista' ? 'una' : 'no' })
+}
+
 export function toggleShuffle() {
   const state = store.get()
   if (state.shuffle) {
@@ -415,6 +476,22 @@ function siguienteIndice(state: PlaybackState): number | null {
 export function advance() {
   const state = store.get()
 
+  /*
+   * Repetir una sola gana sobre todo lo demás.
+   *
+   * Va antes que la cola manual a propósito: si dejaste un tema en repetición y
+   * encolaste otro, lo que pediste último —la repetición— es lo que mandás. La
+   * cola encolada te espera para cuando la apagues.
+   *
+   * Se pide el salto al motor en vez de tocar el índice: la canción no cambia,
+   * así que no hay nada que recargar; solo vuelve al principio.
+   */
+  if (state.repetir === 'una') {
+    store.set({ positionMs: 0 })
+    engine?.seekTo(0)
+    return
+  }
+
   // Lo encolado a mano va primero: es lo que alguien pidió expresamente.
   const [encolada, ...resto] = state.upNext
   if (encolada) {
@@ -432,6 +509,20 @@ export function advance() {
   if (track && next !== null) {
     store.set({ manual: null, index: next, positionMs: 0, durationMs: track.durationMs })
     return
+  }
+
+  /*
+   * Con «repetir la lista», el final es el principio. Va antes que las
+   * recomendaciones: pediste explícitamente que se repita, y eso gana sobre un
+   * relleno automático.
+   */
+  if (state.repetir === 'lista' && state.tracks.length) {
+    const primera = state.shuffle?.[0] ?? 0
+    const track = state.tracks[primera]
+    if (track) {
+      store.set({ manual: null, index: primera, positionMs: 0, durationMs: track.durationMs })
+      return
+    }
   }
 
   /*

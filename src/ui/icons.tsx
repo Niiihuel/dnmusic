@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Clock,
   Disc3,
   SlidersHorizontal,
   Eye,
@@ -113,6 +114,7 @@ export const IconShuffle = make(Shuffle)
 export const IconRepeat = make(Repeat)
 /** Ajustes: las perillas, no un engranaje — acá no se configura un sistema. */
 export const IconSliders = make(SlidersHorizontal)
+export const IconClock = make(Clock)
 export const IconTrash = make(Trash2)
 export const IconQueue = make(ListPlus)
 export const IconVolume = make(Volume2)

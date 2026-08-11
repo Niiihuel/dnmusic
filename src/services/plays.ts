@@ -77,3 +77,23 @@ export async function fetchStats(userId: string): Promise<EstadisticasPerfil | n
     minutosArtistaTop: fila.minutos_artista_top ?? 0,
   }
 }
+
+/**
+ * Borra tu historial de escucha, entero.
+ *
+ * Existe porque ese historial dejó de ser un dato de vitrina: desde que hay
+ * recomendaciones, es lo que decide qué te propone la app cuando se termina una
+ * lista. Poder rehacerlo desde cero es la única forma de corregir un gusto que
+ * cambió, o de sacarse de encima una racha que no te representa.
+ *
+ * La policy de RLS ya limita el borrado a lo propio, así que no hace falta
+ * filtrar por dueño acá: mandar `owner_id` sería confiar en el cliente para algo
+ * que la base ya garantiza.
+ */
+export async function borrarHistorial(): Promise<void> {
+  const { data } = await getSupabase().auth.getUser()
+  const me = data.user?.id
+  if (!me) return
+  const { error } = await getSupabase().from('plays').delete().eq('owner_id', me)
+  if (error) throw error
+}
