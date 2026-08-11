@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Platform } from 'react-native'
+import { AppState, Platform } from 'react-native'
 import { preload, setAudioModeAsync, useAudioPlayer } from 'expo-audio'
 import { artworkSource } from '../lib/artwork'
 import { headroomGain, signedUrl } from '../services/music'
@@ -435,8 +435,56 @@ export function MotorAudio() {
     if (!wantPlay) player.pause()
   }, [wantPlay, player])
 
+  /*
+   * Si la app está a la vista. **El reloj de abajo depende de esto.**
+   *
+   * Esta app pidió el modo de audio en segundo plano, así que cuando bloqueás la
+   * pantalla iOS **no la suspende**: la deja corriendo para que siga sonando. Y
+   * ahí estaba el problema — el bucle de posición asumía lo contrario. El
+   * comentario de más arriba decía que «el sistema congela `requestAnimationFrame`
+   * apenas la app deja de estar a la vista», y con audio de fondo eso no pasa:
+   * seguía girando a sesenta cuadros por segundo, leyendo `currentTime` y
+   * escribiendo en el store, con la pantalla apagada y nadie mirando.
+   *
+   * El resultado lo dictaminó el propio iOS, en `dnmusic.cpu_resource_fatal`:
+   *
+   *     Event:        cpu usage
+   *     Action taken: Process killed
+   *     CPU:          48 seconds cpu time over 50 seconds (97% cpu average),
+   *                   exceeding limit of 80% cpu over 60 seconds
+   *
+   * Eso es lo que se veía como «dejo la música sonando y al rato la app se
+   * cerró sola». No era un crash: el sistema la mataba por consumo.
+   *
+   * Con la pantalla apagada no hay ninguna barra que mover, y la posición que se
+   * ve en la pantalla bloqueada no sale de acá — la publica el sistema desde
+   * `MPNowPlayingInfoCenter`, que expo-audio mantiene del lado nativo. O sea que
+   * el bucle no estaba sosteniendo nada, solo gastando batería hasta que lo
+   * mataran.
+   */
+  const [alaVista, setAlaVista] = useState(AppState.currentState === 'active')
   useEffect(() => {
-    if (!playing || !current) {
+    const sub = AppState.addEventListener('change', (estado) => {
+      setAlaVista(estado === 'active')
+    })
+    return () => sub.remove()
+  }, [])
+
+  /*
+   * Al volver, la posición se relee del reproductor de una sola vez.
+   *
+   * Mientras estuvo atrás el reloj no corrió, así que el store quedó con el
+   * segundo en que bloqueaste la pantalla mientras la canción siguió sonando.
+   * Sin esto, la barra aparecería atrasada hasta el siguiente cuadro.
+   */
+  useEffect(() => {
+    if (!alaVista || !current) return
+    const t = player.currentTime
+    if (Number.isFinite(t)) reportProgress(t * 1000, playerTotalS(player, current) * 1000)
+  }, [alaVista, current, player])
+
+  useEffect(() => {
+    if (!playing || !current || !alaVista) {
       if (raf.current) cancelAnimationFrame(raf.current)
       raf.current = null
       return
@@ -474,7 +522,7 @@ export function MotorAudio() {
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current)
     }
-  }, [playing, current, player, finish])
+  }, [playing, current, player, finish, alaVista])
   /* La barra dibuja el botón según esto: sin la URL firmada todavía no suena
      nada, por más que la intención de quien escucha sea reproducir. */
   useEffect(() => {
