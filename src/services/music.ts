@@ -72,6 +72,14 @@ export type ArtistInfo = {
   description: string
   /** Texto tal cual lo da YouTube, ej. "4.32 million". */
   subscribers: string | null
+  /**
+   * Artistas relacionados, de la sección «Fans might also like».
+   *
+   * Lo calcula YouTube sobre la escucha agregada de todo el mundo; acá se
+   * consume igual que su catálogo. Es la única puerta de la app a artistas que
+   * quien escucha todavía no conoce — ver `services/recomendaciones`.
+   */
+  relacionados: HomeItem[]
   /** Lo más escuchado. Puede venir vacío si YouTube no arma ese estante. */
   topSongs: ArtistSong[]
   /** Discos, del más nuevo al más viejo. */

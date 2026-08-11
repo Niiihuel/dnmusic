@@ -10,9 +10,20 @@ import type { PlaylistTrack } from './playlists'
  * pone YouTube Music, que la app ya consulta para todo lo demás. Es cómo
  * funcionaban las radios antes de que todo fuera una recomendación aprendida.
  *
- * Hay que ser honesto sobre qué hace y qué no: esto te trae **más de lo que ya
- * escuchás**, no cosas nuevas. Descubrir algo distinto exige salir de tu propio
- * historial, y eso este archivo no lo intenta.
+ * Son **dos capas**, y la segunda es la que hace que esto sirva para descubrir:
+ *
+ * 1. **El ancla.** Un artista tuyo, sorteado con peso por lo que lo escuchaste.
+ *    Sale enteramente de tu historial y nunca sale de él.
+ * 2. **La exploración.** Los artistas relacionados de ese mismo artista, que
+ *    YouTube publica en su página como «Fans might also like». Eso sí es un
+ *    sistema de recomendación —un grafo de co-escucha sobre el comportamiento
+ *    agregado de todo el mundo— pero lo calcula YouTube y acá se consume como se
+ *    consume su catálogo: sin entrenar nada, sin inferir nada y sin que salga un
+ *    dato tuyo a ningún lado.
+ *
+ * La segunda capa arranca **desde la primera**, y por eso no es azar: si
+ * escuchás mucho a alguien, lo que entra es lo que escucha la gente que escucha
+ * a ese alguien.
  */
 
 /** Cuántos artistas entran en el sorteo. */
@@ -21,6 +32,16 @@ const ARTISTAS = 8
 const DIAS_RECIENTES = 7
 /** Cuántas canciones se preparan por tanda. */
 const POR_TANDA = 3
+/**
+ * Cuántas de la tanda salen de artistas que **no** escuchás.
+ *
+ * Dos de tres. La proporción no es un capricho: una tanda enteramente
+ * desconocida es lo que hace que la gente apague el autoplay, y una enteramente
+ * conocida es lo que hacía que esto no sirviera para descubrir nada. Con una
+ * ancla propia por tanda, la cola sigue sonando a vos aunque la mayoría sea
+ * nueva.
+ */
+const EXPLORACION = 2
 
 type ArtistaEscuchado = { artist_id: string; artist: string; ms: number }
 
@@ -83,11 +104,71 @@ export async function proximasRecomendadas(
      */
     const elegidas: TrackResult[] = []
     const usados = new Set<string>()
-    for (let intento = 0; intento < 4 && elegidas.length < POR_TANDA; intento++) {
+    /* Los que ya escuchás no pueden entrar como «descubrimiento»: YouTube los
+       lista como relacionados entre sí, y sin esto la exploración te devolvería
+       a tu propio catálogo con otro nombre. */
+    const conocidos = new Set(candidatos.map((a) => a.artist_id))
+    const parientes: { id: string; nombre: string }[] = []
+
+    /*
+     * Primero **el ancla**: una canción de un artista tuyo.
+     *
+     * Va primero a propósito. La tanda arranca con algo reconocible y recién
+     * después se abre; al revés, el salto desde tu lista a dos desconocidos
+     * seguidos se siente como si la app hubiera cambiado de estación.
+     *
+     * De paso, la página de ese artista es de donde salen los relacionados, así
+     * que el mismo pedido sirve para las dos cosas.
+     */
+    for (let intento = 0; intento < 4 && elegidas.length < POR_TANDA - EXPLORACION; intento++) {
       const artista = elegirPesado(candidatos.filter((a) => !usados.has(a.artist_id)))
       if (!artista) break
       usados.add(artista.artist_id)
 
+      const info = await fetchArtist(artista.artist_id)
+      for (const rel of info?.relacionados ?? []) {
+        if (!conocidos.has(rel.id) && !parientes.some((p) => p.id === rel.id)) {
+          parientes.push({ id: rel.id, nombre: rel.title })
+        }
+      }
+      for (const song of info?.topSongs ?? []) {
+        if (elegidas.length >= POR_TANDA - EXPLORACION) break
+        if (vetados.has(song.videoId)) continue
+        vetados.add(song.videoId)
+        elegidas.push(song)
+      }
+    }
+
+    /*
+     * Después, **lo nuevo**: los relacionados de tus artistas.
+     *
+     * Barajados y no en el orden de YouTube, que devuelve siempre los mismos
+     * primeros: sin esto, dos tandas seguidas te traerían al mismo desconocido.
+     */
+    for (let i = parientes.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[parientes[i], parientes[j]] = [parientes[j], parientes[i]]
+    }
+    for (const pariente of parientes) {
+      if (elegidas.length >= POR_TANDA) break
+      const info = await fetchArtist(pariente.id)
+      for (const song of info?.topSongs ?? []) {
+        if (elegidas.length >= POR_TANDA) break
+        if (vetados.has(song.videoId)) continue
+        vetados.add(song.videoId)
+        elegidas.push(song)
+      }
+    }
+
+    /*
+     * Si no hubo relacionados —un artista sin esa sección, o YouTube que no la
+     * devolvió— la tanda se completa con lo tuyo. Es mejor seguir sonando con
+     * algo conocido que cortar la música por no haber encontrado novedades.
+     */
+    for (let intento = 0; intento < 3 && elegidas.length < POR_TANDA; intento++) {
+      const artista = elegirPesado(candidatos.filter((a) => !usados.has(a.artist_id)))
+      if (!artista) break
+      usados.add(artista.artist_id)
       const info = await fetchArtist(artista.artist_id)
       for (const song of info?.topSongs ?? []) {
         if (elegidas.length >= POR_TANDA) break

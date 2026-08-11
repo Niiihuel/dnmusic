@@ -421,6 +421,19 @@ export type YtArtist = {
   description: string
   /** Texto tal cual lo da YouTube, ej. "4.32 million". */
   subscribers: string | null
+  /**
+   * Artistas relacionados: la sección «Fans might also like» de la página.
+   *
+   * Es un grafo de co-escucha que calcula YouTube sobre el comportamiento
+   * agregado de todo el mundo —quién escucha a quién junto con quién—, no algo
+   * que infiera esta app. Acá se consume como se consume su catálogo.
+   *
+   * Se venía descartando junto con «Videos» por no ser un destino navegable.
+   * Sigue sin serlo, pero es la única puerta que tenemos a artistas que quien
+   * escucha todavía no conoce: la recomendación propia solo sabe de su historial
+   * y por definición nunca sale de él.
+   */
+  relacionados: YtHomeItem[]
   /** Lo más escuchado, en el orden que lo devuelve YouTube. */
   topSongs: YtArtistSong[]
   /** Discos y EPs, del más nuevo al más viejo. */
@@ -436,11 +449,20 @@ export type YtArtist = {
  * cuando sí: se miran las dos formas porque el título es lo único que dice qué
  * hay adentro — el tipo de nodo es el mismo para todos.
  */
-function shelfKind(title: string): 'songs' | 'albums' | 'singles' | null {
+function shelfKind(title: string): 'songs' | 'albums' | 'singles' | 'relacionados' | null {
   const t = title.toLocaleLowerCase('es')
   if (t.includes('song') || t.includes('canci')) return 'songs'
   if (t.includes('album') || t.includes('álbum')) return 'albums'
   if (t.includes('single') || t.includes('simple')) return 'singles'
+  /*
+   * Los artistas relacionados. YouTube Music titula esta sección de varias
+   * formas según el idioma y el momento —«Fans might also like», «Los fans
+   * también escuchan», «Artistas similares»— así que se reconoce por las
+   * palabras que sobreviven a todas las variantes en vez de por un título
+   * exacto, que se rompería con el próximo cambio de copy.
+   */
+  if (t.includes('fan') || t.includes('similar') || t.includes('relacionad') || t.includes('parecid'))
+    return 'relacionados'
   return null
 }
 
@@ -458,6 +480,7 @@ export async function getArtist(channelId: string): Promise<YtArtist> {
 
   const albums: YtHomeItem[] = []
   const singles: YtHomeItem[] = []
+  const relacionados: YtHomeItem[] = []
   for (const raw of artist.sections ?? []) {
     const shelf = raw as unknown as {
       title?: { text?: string }
@@ -469,7 +492,13 @@ export async function getArtist(channelId: string): Promise<YtArtist> {
     const contents = shelf.contents ?? []
     if (kind === 'songs') topSongs.push(...contents.flatMap(trackFrom))
     else if (kind === 'albums') albums.push(...contents.flatMap(mapHomeItem))
-    else singles.push(...contents.flatMap(mapHomeItem))
+    else if (kind === 'singles') singles.push(...contents.flatMap(mapHomeItem))
+    else {
+      /* `mapHomeItem` ya sabe leer un artista: le saca el `browseId` que empieza
+         con UC y lo marca como `artist`. Se filtra por eso y no por confiar en
+         que la sección traiga solo artistas — a veces mezcla videos. */
+      relacionados.push(...contents.flatMap(mapHomeItem).filter((i) => i.kind === 'artist'))
+    }
   }
 
   const header = artist.header as unknown as {
@@ -501,6 +530,7 @@ export async function getArtist(channelId: string): Promise<YtArtist> {
       biggest?.width && biggest?.height ? biggest.width / biggest.height : null,
     description: header?.description?.text ?? '',
     subscribers: match ? match[1].trim() : null,
+    relacionados,
     topSongs: topSongs.map((song) => ({
       ...song,
       year: [...albums, ...singles].find((r) => r.id === song.albumId)?.year ?? null,
