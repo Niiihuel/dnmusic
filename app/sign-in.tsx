@@ -5,21 +5,14 @@ import {
   Platform,
   Pressable,
   Text,
-  TextInput,
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { signIn } from '../src/services/auth'
 import { isSupabaseConfigured } from '../src/lib/supabase'
-import {
-  ICON_COLOR,
-  IconAt,
-  IconEye,
-  IconEyeOff,
-  IconLock,
-  IconMusic,
-} from '../src/ui/icons'
+import { ICON_COLOR, IconAt, IconMusic } from '../src/ui/icons'
+import { Field, PasswordField } from '../src/ui/Field'
 
 /** Login privado, compacto y completamente acromático. */
 export default function SignIn() {
@@ -81,62 +74,43 @@ export default function SignIn() {
                 </View>
               ) : null}
 
-              <View className="gap-4">
-                <View className="gap-2">
-                  <Text className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.8px]">
-                    Usuario
-                  </Text>
-                  <View className="h-14 flex-row items-center gap-3 rounded-lg bg-muted px-4">
-                    <IconAt size={18} color={ICON_COLOR.muted} />
-                    <TextInput
-                      value={username}
-                      onChangeText={setUsername}
-                      placeholder="tu_usuario"
-                      placeholderTextColor="#777777"
-                      accessibilityLabel="Usuario"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      autoComplete="username"
-                      textContentType="username"
-                      returnKeyType="next"
-                      className="h-full flex-1 text-foreground text-[15px]"
-                    />
-                  </View>
-                </View>
+              {/*
+                Los campos son los **compartidos**, no dibujados a mano.
 
-                <View className="gap-2">
-                  <Text className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.8px]">
-                    Contraseña
-                  </Text>
-                  <View className="h-14 flex-row items-center gap-3 rounded-lg bg-muted px-4">
-                    <IconLock size={18} color={ICON_COLOR.muted} />
-                    <TextInput
-                      value={password}
-                      onChangeText={setPassword}
-                      placeholder="Tu contraseña"
-                      placeholderTextColor="#777777"
-                      accessibilityLabel="Contraseña"
-                      secureTextEntry={!showPassword}
-                      autoComplete="current-password"
-                      textContentType="password"
-                      onSubmitEditing={submit}
-                      returnKeyType="go"
-                      className="h-full flex-1 text-foreground text-[15px]"
-                    />
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                      onPress={() => setShowPassword((visible) => !visible)}
-                      className="h-10 w-10 items-center justify-center rounded-full active:bg-background"
-                    >
-                      {showPassword ? (
-                        <IconEyeOff size={18} color={ICON_COLOR.muted} />
-                      ) : (
-                        <IconEye size={18} color={ICON_COLOR.muted} />
-                      )}
-                    </Pressable>
-                  </View>
-                </View>
+                Esta pantalla los tenía inline, con su etiqueta, su alto de 56 y
+                su ojito de mostrar contraseña repetidos a mano — sesenta líneas
+                que ya existían en `src/ui/Field.tsx`, extraídas justamente de
+                acá y usadas por el registro y por el editor de perfil. El login
+                se había quedado con la copia vieja, y por eso las dos pantallas
+                de entrada se sentían de apps distintas: cualquier ajuste al
+                campo llegaba a todos los formularios menos a este.
+              */}
+              <View className="gap-4">
+                <Field
+                  label="Usuario"
+                  icon={<IconAt size={18} color={ICON_COLOR.muted} />}
+                  value={username}
+                  onChangeText={setUsername}
+                  placeholder="tu_usuario"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="username"
+                  textContentType="username"
+                  returnKeyType="next"
+                />
+
+                <PasswordField
+                  label="Contraseña"
+                  visible={showPassword}
+                  onToggleVisible={() => setShowPassword((v) => !v)}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Tu contraseña"
+                  autoComplete="current-password"
+                  textContentType="password"
+                  onSubmitEditing={submit}
+                  returnKeyType="go"
+                />
               </View>
 
               {error ? (
