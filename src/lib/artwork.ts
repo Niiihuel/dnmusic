@@ -26,12 +26,45 @@ export function artworkUrlAtSize(url: string, requestedPx: number): string {
 }
 
 /**
- * De dónde sacar una imagen: de nuestra copia si existe, si no del CDN.
+ * La copia de una carátula en Storage, sin mirar el teléfono.
+ *
+ * La usa el descargador para saber **qué bajar**. `artworkSource` no sirve para
+ * eso: consulta primero lo que ya está en el teléfono y devolvería el archivo
+ * local, que es justamente lo que todavía no existe.
+ */
+export function artworkRemoto(path: string): string | null {
+  const { data } = getSupabase().storage.from(ARTWORK_BUCKET).getPublicUrl(path)
+  return data.publicUrl || null
+}
+
+/*
+ * Dónde preguntar si una carátula ya está en el teléfono.
+ *
+ * Es el mismo puente que usan `registerEngine` y `registerRelleno`, y por la
+ * misma razón: quien sabe la respuesta es `state/descargas`, y este archivo está
+ * una capa más abajo —`lib` no puede importar `state`— así que la dependencia se
+ * invierte y la registra el que sí puede.
+ *
+ * Sin registrar, `artworkSource` se comporta exactamente como antes.
+ */
+let arteLocal: ((path: string) => string | null) | null = null
+
+export function registerArteLocal(fn: ((path: string) => string | null) | null) {
+  arteLocal = fn
+}
+
+/**
+ * De dónde sacar una imagen: del teléfono si está bajada, de nuestra copia si
+ * existe, si no del CDN.
  *
  * La copia es la buena. El CDN de Google responde 429 cada tanto y el navegador
  * descarta esa respuesta sin dibujar nada (ver la migración del bucket
  * `artwork`), así que la URL original queda solo como respaldo para lo que se
  * guardó antes de que existiera el caché.
+ *
+ * El archivo del teléfono va **antes que todo**: es el único que se puede
+ * dibujar sin conexión, que es el punto entero de haberlo bajado. Sin él, una
+ * lista descargada sonaba pero se veía con todos los cuadros vacíos.
  *
  * `path` no lleva reescritura de tamaño: lo que guardamos ya viene en una
  * medida que sirve para todos los usos, y Storage no tiene un redimensionador.
@@ -42,8 +75,10 @@ export function artworkSource(
   requestedPx: number,
 ): string | null {
   if (path) {
-    const { data } = getSupabase().storage.from(ARTWORK_BUCKET).getPublicUrl(path)
-    if (data.publicUrl) return data.publicUrl
+    const local = arteLocal?.(path)
+    if (local) return local
+    const remoto = artworkRemoto(path)
+    if (remoto) return remoto
   }
   return fallbackUrl ? artworkUrlAtSize(fallbackUrl, requestedPx) : null
 }

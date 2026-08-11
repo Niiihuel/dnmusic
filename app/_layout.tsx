@@ -22,6 +22,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient'
 import { restorePlayback, usePlaybackTrack } from '../src/state/playback'
 import { cargarAjustes } from '../src/state/ajustes'
+import { cargarDescargas } from '../src/state/descargas'
 import { endSession, startSession, useMyProfile, useUser } from '../src/state/session'
 import { emailToUsername } from '../src/services/auth'
 import { AppDrawer } from '../src/ui/AppDrawer'
@@ -554,6 +555,9 @@ function SessionGate() {
     // La cola de la sesión anterior, en pausa y donde la dejaste.
     void restorePlayback()
     void cargarAjustes()
+    /* Antes que nada de música: es lo que decide si una canción suena del
+       teléfono o de la red, y contrasta el índice contra el disco. */
+    void cargarDescargas()
   }, [])
 
   useEffect(() => {

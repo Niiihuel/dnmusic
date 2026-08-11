@@ -9,17 +9,19 @@ import {
   IconBack,
   IconClock,
   IconDisc,
-  IconRepeat,
-  IconShuffle,
+  IconDisk,
   IconTrash,
 } from '../src/ui/icons'
-import { setAutoplay, useAjustes } from '../src/state/ajustes'
 import {
-  programarApagado,
-  toggleRepetir,
-  toggleShuffle,
-  usePlaybackState,
-} from '../src/state/playback'
+  borrarTodo,
+  cuantasListas,
+  espacioUsado,
+  formatoBytes,
+  HAY_DESCARGAS,
+  useDescargas,
+} from '../src/state/descargas'
+import { setAutoplay, useAjustes } from '../src/state/ajustes'
+import { programarApagado, useDormirMin } from '../src/state/playback'
 import { borrarHistorial } from '../src/services/plays'
 import { avisar } from '../src/state/aviso'
 import { mensajeError } from '../src/lib/mensajeError'
@@ -32,6 +34,44 @@ const SHELL_PX = 780
 const CAP = 672
 /** Los cortes del temporizador. El 0 es «no apagar». */
 const MINUTOS = [0, 15, 30, 60]
+/** Cuánto queda armada una confirmación antes de desarmarse sola. */
+const CONFIRMAR_MS = 5000
+
+/**
+ * Confirmación **en la propia fila**, con dos toques.
+ *
+ * No es un `Alert.alert` porque `react-native-web` no lo implementa: en la web
+ * el diálogo no aparecería y la acción no se dispararía nunca. Un patrón que
+ * funciona en una plataforma y falla en silencio en la otra es peor que no tener
+ * confirmación.
+ *
+ * El primer toque arma y cambia el texto; el segundo hace la cosa. Se desarma
+ * solo a los cinco segundos, para que un toque olvidado no quede esperando a que
+ * alguien roce la pantalla más tarde.
+ *
+ * `confirmar()` devuelve si hay que actuar, así quien lo usa escribe el caso
+ * normal —«si no me confirmaron, no hago nada»— en una línea y sin anidar.
+ */
+function useDobleToque() {
+  const [armado, setArmado] = useState(false)
+  useEffect(() => {
+    if (!armado) return
+    const id = setTimeout(() => setArmado(false), CONFIRMAR_MS)
+    return () => clearTimeout(id)
+  }, [armado])
+
+  return {
+    armado,
+    confirmar: () => {
+      if (!armado) {
+        setArmado(true)
+        return false
+      }
+      setArmado(false)
+      return true
+    },
+  }
+}
 
 /**
  * Los ajustes de la app.
@@ -49,39 +89,28 @@ const MINUTOS = [0, 15, 30, 60]
 export default function Ajustes() {
   const router = useRouter()
   const { autoplay } = useAjustes()
-  const { shuffle, repetir, dormirMin } = usePlaybackState()
+  const dormirMin = useDormirMin()
 
-  /*
-   * Borrar pide confirmación **en la propia fila**, con dos toques.
-   *
-   * No es un `Alert.alert` porque `react-native-web` no lo implementa: en la web
-   * el diálogo no aparecería y el borrado no se dispararía nunca. Un patrón que
-   * funciona en una plataforma y falla en silencio en la otra es peor que no
-   * tener confirmación.
-   *
-   * El primer toque arma y cambia el texto; el segundo borra. Se desarma solo a
-   * los cinco segundos, para que un toque olvidado no quede esperando a que
-   * alguien roce la pantalla más tarde.
-   */
-  const [armado, setArmado] = useState(false)
-  useEffect(() => {
-    if (!armado) return
-    const id = setTimeout(() => setArmado(false), 5000)
-    return () => clearTimeout(id)
-  }, [armado])
+  const historial = useDobleToque()
+  const descargas = useDobleToque()
+  const { items } = useDescargas()
+  const bajadas = cuantasListas(items)
+  const ocupado = espacioUsado(items)
 
   async function borrar() {
-    if (!armado) {
-      setArmado(true)
-      return
-    }
-    setArmado(false)
+    if (!historial.confirmar()) return
     try {
       await borrarHistorial()
       avisar('Historial borrado')
     } catch (e) {
       avisar(`No se pudo borrar: ${mensajeError(e)}`, true)
     }
+  }
+
+  function borrarDescargas() {
+    if (!descargas.confirmar()) return
+    borrarTodo()
+    avisar('Descargas borradas')
   }
   const suelto = useWindowDimensions().width < SHELL_PX
   const piso = usePiso(24)
@@ -110,40 +139,21 @@ export default function Ajustes() {
             contentContainerStyle={{ paddingBottom: piso }}
           >
             <View className="w-full gap-6" style={{ maxWidth: suelto ? undefined : CAP }}>
+              {/*
+               * El aleatorio y el repetir **no están acá**, y es a propósito.
+               *
+               * Estuvieron, y estaba mal: son decisiones que se toman mientras
+               * escuchás y mirando lo que suena, no configuración. Tener que
+               * abrir Ajustes para barajar la lista que tenés puesta es demasiado
+               * camino para algo que en cualquier reproductor es un toque al lado
+               * del play. Ahora viven ahí —`ui/Transport`, en la pantalla de
+               * «Sonando» y en la barra de escritorio— y el aleatorio además en la
+               * cabecera de cada lista, que es donde se decide cómo escucharla.
+               *
+               * Lo que queda es lo que sí es configuración: lo que la app hace
+               * **sola**, cuando vos ya no estás decidiendo nada.
+               */}
               <GrupoAjustes titulo="Reproducción">
-                {/*
-                 * El aleatorio también vive acá, además de en el menú del
-                 * reproductor. No es duplicar por duplicar: en el menú lo
-                 * prendés para *esta* lista mientras la escuchás, y acá lo ves
-                 * junto a lo demás cuando venís a configurar. Es el mismo
-                 * estado, así que no pueden desincronizarse.
-                 */}
-                <FilaInterruptor
-                  rotulo="Aleatorio"
-                  detalle="Baraja la lista una vez y la recorre entera, sin repetir."
-                  icono={<IconShuffle size={17} color={ICON_COLOR.muted} />}
-                  activo={shuffle !== null}
-                  onCambiar={toggleShuffle}
-                />
-                {/*
-                 * Repetir rota entre tres estados, así que es una fila que
-                 * muestra el actual y no un interruptor: un switch solo sabe
-                 * decir sí o no, y acá «la lista» y «esta canción» son cosas
-                 * distintas que no se pueden expresar con dos posiciones.
-                 */}
-                <FilaAjuste
-                  rotulo="Repetir"
-                  valor={
-                    repetir === 'lista'
-                      ? 'La lista entera'
-                      : repetir === 'una'
-                        ? 'Esta canción'
-                        : ''
-                  }
-                  vacio="No repetir"
-                  icono={<IconRepeat size={17} color={ICON_COLOR.muted} />}
-                  onPress={toggleRepetir}
-                />
                 <FilaInterruptor
                   rotulo="Seguir al terminar la lista"
                   detalle="Cuando se acaban tus canciones, sigue con recomendaciones a partir de lo que más escuchás."
@@ -181,14 +191,51 @@ export default function Ajustes() {
               </GrupoAjustes>
 
               {/*
+               * Las descargas.
+               *
+               * Acá no se baja nada: eso se hace desde la lista o desde la
+               * canción, que es donde uno está cuando decide que quiere tenerla.
+               * Esta pantalla es la que responde la pregunta que solo se hace
+               * acá — «¿cuánto me están ocupando?»— y da la única forma de
+               * recuperar todo ese espacio de una vez.
+               *
+               * En la web no aparece: `expo-file-system` no guarda nada ahí, así
+               * que un grupo diciendo «0 MB» para siempre sería mentir sobre una
+               * función que no existe.
+               */}
+              {HAY_DESCARGAS ? (
+                <GrupoAjustes titulo="Descargas">
+                  <FilaAjuste
+                    rotulo={
+                      descargas.armado ? 'Tocá de nuevo para confirmar' : 'Borrar las descargas'
+                    }
+                    valor={
+                      descargas.armado
+                        ? 'Se pueden volver a bajar'
+                        : bajadas > 0
+                          ? `${bajadas} ${bajadas === 1 ? 'canción' : 'canciones'} · ${formatoBytes(ocupado)}`
+                          : ''
+                    }
+                    vacio="Todavía no bajaste ninguna"
+                    icono={<IconDisk size={17} color={ICON_COLOR.muted} />}
+                    onPress={borrarDescargas}
+                    ultima
+                  />
+                </GrupoAjustes>
+              ) : null}
+
+              {/*
                * Borrar el historial no tiene vuelta, así que pide dos toques.
                * Va al final y separado: es lo único de esta pantalla que borra
-               * algo, y lo único que le importa a las recomendaciones.
+               * algo que **no se puede recuperar** —las descargas sí— y lo único
+               * que le importa a las recomendaciones.
                */}
               <GrupoAjustes titulo="Tus datos">
                 <FilaAjuste
-                  rotulo={armado ? 'Tocá de nuevo para confirmar' : 'Borrar historial de escucha'}
-                  valor={armado ? 'Esto no se puede deshacer' : ''}
+                  rotulo={
+                    historial.armado ? 'Tocá de nuevo para confirmar' : 'Borrar historial de escucha'
+                  }
+                  valor={historial.armado ? 'Esto no se puede deshacer' : ''}
                   vacio="Las recomendaciones vuelven a empezar de cero"
                   icono={<IconTrash size={17} color={ICON_COLOR.muted} />}
                   onPress={() => void borrar()}

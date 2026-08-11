@@ -18,6 +18,7 @@ import {
   usePlaybackState,
 } from '../state/playback'
 import { proximasRecomendadas } from '../services/recomendaciones'
+import { rutaLocal } from '../state/descargas'
 import { saltar } from '../lib/seek'
 import { useAppActiva } from '../lib/appActiva'
 import { avisar } from '../state/aviso'
@@ -261,6 +262,21 @@ export function MotorAudio() {
   useEffect(() => {
     // Si la veníamos preparando ya está firmada, y encima a medio bajar.
     if (!current || urlOf(current.id)) return
+    /*
+     * Si está bajada, suena del teléfono y no se firma nada.
+     *
+     * Se consulta **acá**, en el momento de conseguir la fuente, y no en un
+     * efecto que reaccione a las descargas: cambiarle la URL a `useAudioPlayer`
+     * lo hace recrear el reproductor, así que una canción que termine de bajarse
+     * mientras suena volvería a empezar de cero. Terminar una descarga no puede
+     * cortar la música. Lo que ya suena sigue por donde venía; lo local se usa la
+     * próxima vez que le toque.
+     */
+    const local = rutaLocal(current.audioPath)
+    if (local) {
+      remember(current.id, local)
+      return
+    }
     let alive = true
     const id = current.id
     signedUrl(current.audioPath)
@@ -287,6 +303,16 @@ export function MotorAudio() {
    */
   useEffect(() => {
     if (!nextUp || urlOf(nextUp.id)) return
+    /*
+     * La bajada no se precarga: ya está entera en el disco, así que no hay buffer
+     * que adelantar ni firma que conseguir. Guardarla alcanza para que el cambio
+     * de canción sea instantáneo.
+     */
+    const local = rutaLocal(nextUp.audioPath)
+    if (local) {
+      remember(nextUp.id, local)
+      return
+    }
     let alive = true
     const id = nextUp.id
     signedUrl(nextUp.audioPath)

@@ -6,13 +6,13 @@ import {
   playAt,
   playQueue,
   toggleShuffle,
-  usePlaybackState,
   syncQueue,
   togglePlayback,
   usePlaybackTrack,
   useManualPlaying,
   usePlaybackIndex,
   usePlaybackOriginId,
+  useShuffle,
   useWantPlay,
 } from '../state/playback'
 import { usePiso } from '../state/shell'
@@ -30,6 +30,8 @@ import { TrackColumnHeader, TrackRow } from './TrackRow'
 import {
   ICON_COLOR,
   IconClose,
+  IconDownload,
+  IconDownloaded,
   IconImage,
   IconMusic,
   IconPause,
@@ -40,6 +42,16 @@ import {
   IconTrash,
   IconUser,
 } from './icons'
+import {
+  descargar,
+  descargarLista,
+  HAY_DESCARGAS,
+  quitarDescarga,
+  quitarLista,
+  resumenLista,
+  useDescargas,
+  type Descarga,
+} from '../state/descargas'
 
 /**
  * Una lista, en el panel del medio.
@@ -113,6 +125,16 @@ export function PlaylistView({
   /** El nombre se edita en su lugar, no en un diálogo aparte. */
   const [renaming, setRenaming] = useState(false)
 
+  /*
+   * Lo que hay bajado, para toda la pantalla.
+   *
+   * Se lee el índice entero una vez acá y se reparte, en vez de que cada fila se
+   * suscriba por su cuenta: el progreso de una descarga cambia cinco veces por
+   * segundo y despertaría a las cincuenta filas de la lista igual, pero
+   * suscribiéndose cincuenta veces al mismo store.
+   */
+  const { items: descargas } = useDescargas()
+
   const soundingId = usePlaybackOriginId()
   const soundingIndex = usePlaybackIndex()
   const soundingPlay = useWantPlay()
@@ -173,11 +195,35 @@ export function PlaylistView({
   /** Lo que ofrece una canción de esta lista, para el botón y para el gesto. */
   const opcionesDe = (track: PlaylistTrack): MenuItem[] => [
     ...(menuFor?.(track) ?? []),
+    /*
+     * Bajar o quitar del teléfono, una canción sola.
+     *
+     * Es la misma acción que el botón de la cabecera pero por tema, porque no
+     * siempre se quiere la lista entera: alcanza con los cuatro que uno va a
+     * escuchar en el avión. Va en el menú y no como un control fijo en la fila
+     * —donde ya están los tres puntos y el indicador— porque es algo que se hace
+     * una vez y después se olvida.
+     */
+    ...(HAY_DESCARGAS
+      ? [
+          descargas[track.audioPath]
+            ? {
+                label: 'Quitar la descarga',
+                onPress: () => quitarDescarga(track.audioPath),
+                sfSymbol: 'arrow.down.circle.fill' as const,
+              }
+            : {
+                label: 'Descargar',
+                onPress: () => descargar(track),
+                sfSymbol: 'arrow.down.circle' as const,
+              },
+        ]
+      : []),
     {
       label: 'Quitar de la lista',
       onPress: () => void drop(track.id),
       destructive: true,
-      sfSymbol: 'minus.circle',
+      sfSymbol: 'minus.circle' as const,
     },
   ]
 
@@ -199,6 +245,23 @@ export function PlaylistView({
   }
 
   const total = tracks?.length ?? 0
+  const bajado = resumenLista(tracks ?? [], descargas)
+
+  /**
+   * El botón de la cabecera: baja la lista entera, o la saca del teléfono.
+   *
+   * Es un interruptor y no dos botones, como en Spotify. Con algo a medio bajar,
+   * apagarlo cancela **y borra lo que ya había** — que suena drástico pero es lo
+   * correcto: el estado del botón dice «esta lista está en el teléfono», y dejar
+   * media lista bajada haría que dijera algo que no es cierto. Y volver a bajarla
+   * es tocar el mismo botón.
+   */
+  function alternarDescarga() {
+    const lista = tracks ?? []
+    if (!lista.length) return
+    if (bajado.listas === lista.length || bajado.bajando > 0) quitarLista(lista)
+    else descargarLista(lista)
+  }
   const piso = usePiso(16)
   const colapso = useColapso()
   const menu: MenuItem[] = [
@@ -261,6 +324,8 @@ export function PlaylistView({
               totalMs={tracks?.reduce((sum, t) => sum + t.durationMs, 0) ?? playlist.totalMs}
               playing={isMine && soundingPlay}
               menu={menu}
+              bajado={bajado}
+              onDescarga={alternarDescarga}
               onPlay={() => (total > 0 ? play(isMine ? soundingIndex : 0) : undefined)}
               onPickCover={onPickCover}
               onRename={() => setRenaming(true)}
@@ -330,11 +395,14 @@ export function PlaylistView({
                  escritorio bajo el cursor—. Antes se decidía acá con `hovered`
                  y en el teléfono no aparecía nunca. */
               trailing={
-                <Menu
-                  items={opcionesDe(item)}
-                  label={`Opciones de ${item.title}`}
-                  size={14}
-                />
+                <>
+                  <MarcaDescarga descarga={descargas[item.audioPath]} />
+                  <Menu
+                    items={opcionesDe(item)}
+                    label={`Opciones de ${item.title}`}
+                    size={14}
+                  />
+                </>
               }
             />
           )}
@@ -353,6 +421,8 @@ function Header({
   totalMs,
   playing,
   menu,
+  bajado,
+  onDescarga,
   onPlay,
   onPickCover,
   onRename,
@@ -368,13 +438,17 @@ function Header({
   totalMs: number
   playing: boolean
   menu: MenuItem[]
+  /** Cuánto de la lista está en el teléfono. Ver `resumenLista`. */
+  bajado: ReturnType<typeof resumenLista>
+  onDescarga: () => void
   onPlay: () => void
   onPickCover: () => void
   children: React.ReactNode
 }) {
   /* El aleatorio es global —una sola cola suena a la vez— así que se lee del
-     store y no viaja como prop desde la pantalla. */
-  const aleatorio = usePlaybackState().shuffle !== null
+     store y no viaja como prop desde la pantalla. Por su selector propio y no
+     con el estado entero: la cabecera no puede redibujarse con la posición. */
+  const aleatorio = useShuffle()
   const [overCover, setOverCover] = useState(false)
   const cover = useCoverSize()
 
@@ -471,12 +545,100 @@ function Header({
                 }
               />
             </Pressable>
+            <BotonDescarga total={total} bajado={bajado} onPress={onDescarga} />
             <Menu items={menu} label={`Opciones de ${playlist.name}`} size={17} />
           </>
         }
       />
 
       {children}
+    </View>
+  )
+}
+
+/**
+ * Bajar la lista al teléfono, o sacarla.
+ *
+ * Va al lado de reproducir y del aleatorio porque es del mismo orden de cosa:
+ * algo que se decide sobre **esta** lista, mirándola. Escondido en el menú de
+ * los tres puntos nadie lo encontraría, y es la única forma de que la música
+ * funcione sin señal.
+ *
+ * Mientras baja muestra el porcentaje en vez de un ícono. Una rueda girando dice
+ * «esperá» sin decir cuánto, y bajar un disco entero con datos móviles puede ser
+ * un rato largo — el número es lo que deja decidir si vale la pena esperar.
+ *
+ * El estado se marca por luminancia, como todo el resto: bajada es el blanco de
+ * `primary`, sin bajar es el gris de los controles inactivos. Ver `docs/DESIGN.md`.
+ */
+function BotonDescarga({
+  total,
+  bajado,
+  onPress,
+}: {
+  total: number
+  bajado: ReturnType<typeof resumenLista>
+  onPress: () => void
+}) {
+  if (!HAY_DESCARGAS) return null
+
+  const completa = total > 0 && bajado.listas === total
+  const enCurso = bajado.bajando > 0
+  const vacia = total === 0
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={
+        enCurso
+          ? `Descargando, ${Math.round(bajado.progreso * 100)} por ciento. Tocá para cancelar`
+          : completa
+            ? 'Quitar la descarga'
+            : 'Descargar la lista'
+      }
+      accessibilityState={{ selected: completa }}
+      onPress={onPress}
+      disabled={vacia}
+      className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+    >
+      {enCurso ? (
+        <Text className="text-foreground text-[11px] font-semibold tabular-nums">
+          {Math.round(bajado.progreso * 100)}%
+        </Text>
+      ) : completa ? (
+        <IconDownloaded size={19} color={ICON_COLOR.foreground} />
+      ) : (
+        <IconDownload size={19} color={ICON_COLOR.muted} />
+      )}
+    </Pressable>
+  )
+}
+
+/**
+ * La marca de «esta la tenés bajada», al final de la fila.
+ *
+ * Es de solo mirar: lo que se puede hacer con ella está en el menú de la propia
+ * canción. Un control más en la fila competiría con los tres puntos por el mismo
+ * rincón, y en el teléfono ese rincón ya está justo.
+ */
+function MarcaDescarga({ descarga }: { descarga: Descarga | undefined }) {
+  if (!HAY_DESCARGAS || !descarga) return null
+
+  return (
+    <View className="mr-1">
+      {descarga.estado === 'lista' ? (
+        <IconDownloaded size={13} color={ICON_COLOR.muted} />
+      ) : descarga.estado === 'bajando' ? (
+        <Text className="text-muted-foreground text-[10px] tabular-nums">
+          {Math.round(descarga.progreso * 100)}%
+        </Text>
+      ) : (
+        /* En espera: el ícono a media luz dice «va a bajar» sin fingir progreso
+           con un 0% que se queda quieto. */
+        <View style={{ opacity: 0.5 }}>
+          <IconDownload size={13} color={ICON_COLOR.muted} />
+        </View>
+      )}
     </View>
   )
 }

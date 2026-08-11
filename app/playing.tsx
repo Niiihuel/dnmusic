@@ -16,6 +16,7 @@ import {
   usePlaybackState,
 } from '../src/state/playback'
 import { LyricsView } from '../src/ui/LyricsView'
+import { BotonAleatorio, BotonRepetir } from '../src/ui/Transport'
 import { SeekBar } from '../src/ui/SeekBar'
 import { SongDisc } from '../src/ui/SongDisc'
 import {
@@ -175,7 +176,20 @@ export default function Playing() {
             onSeek={seekFraction}
           />
 
-          <View className="flex-row items-center justify-center gap-8">
+          {/*
+           * La fila de siempre: aleatorio, anterior, play, siguiente, repetir.
+           *
+           * Es el orden de cualquier reproductor —Spotify, Apple Music, el
+           * Winamp— y no es capricho: los dos modos van a los extremos porque
+           * cambian **cómo** suena la cola, y los tres del medio son lo que hacés
+           * con la canción de ahora. Mezclarlos obligaría a leer los cinco íconos
+           * cada vez para encontrar el play.
+           *
+           * El hueco baja de 8 a 5 para que entren los cinco sin apretarse contra
+           * los bordes en un teléfono angosto.
+           */}
+          <View className="flex-row items-center justify-center gap-5">
+            <BotonAleatorio size={22} lado={44} />
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Anterior"
@@ -205,6 +219,7 @@ export default function Playing() {
             >
               <IconNext size={26} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />
             </Pressable>
+            <BotonRepetir size={22} lado={44} />
           </View>
 
           <View className="flex-row items-center justify-center gap-3">

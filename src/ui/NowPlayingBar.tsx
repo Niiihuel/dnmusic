@@ -21,6 +21,7 @@ import {
 import { Glass } from './Glass'
 import { Menu, type MenuItem } from './Menu'
 import { SeekBar, formatClock } from './SeekBar'
+import { BotonAleatorio, BotonRepetir } from './Transport'
 import {
   ICON_COLOR,
   IconClose,
@@ -119,20 +120,28 @@ export function NowPlayingBar({
       icon: <IconMusic size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'music.note.list',
     },
-    {
-      /*
-       * El aleatorio vive en el menú y no como botón fijo en la tarjeta.
-       *
-       * En el teléfono la tarjeta tiene lugar para la tapa, el título y
-       * pausa/siguiente, y nada más — meterle un cuarto control la vuelve una
-       * fila de íconos. Acá está a un toque y dice en qué estado está, que es
-       * más de lo que comunica un ícono teñido de gris contra otro gris.
-       */
-      label: shuffle ? 'Aleatorio: activado' : 'Aleatorio',
-      onPress: toggleShuffle,
-      icon: <IconShuffle size={15} color={shuffle ? ICON_COLOR.foreground : ICON_COLOR.muted} />,
-      sfSymbol: 'shuffle',
-    },
+    /*
+     * El aleatorio, **solo en el teléfono**.
+     *
+     * En escritorio es un botón de verdad al lado del play —ver más abajo—, así
+     * que acá sería el mismo control dos veces en la misma barra. En el teléfono
+     * no hay dónde ponerlo: la tarjeta tiene lugar para la tapa, el título y
+     * pausa/siguiente y nada más, y un cuarto ícono la vuelve una fila de
+     * controles del ancho de la pantalla. Ahí el botón vive en la pantalla
+     * completa de «Sonando», y esto queda como atajo para no tener que abrirla.
+     */
+    ...(wide
+      ? []
+      : [
+          {
+            label: shuffle ? 'Aleatorio: activado' : 'Aleatorio',
+            onPress: toggleShuffle,
+            icon: (
+              <IconShuffle size={15} color={shuffle ? ICON_COLOR.foreground : ICON_COLOR.muted} />
+            ),
+            sfSymbol: 'shuffle' as const,
+          },
+        ]),
     {
       label: 'Volver a empezar',
       onPress: () => seekToMs(0),
@@ -294,6 +303,9 @@ export function NowPlayingBar({
       {/* Controles y posición, centrados como en cualquier reproductor. */}
       <View className={wide ? 'w-[38%] max-w-[560px] gap-1' : ''}>
         <View className="flex-row items-center justify-center gap-4">
+          {/* Aleatorio y repetir rodean al play, como en cualquier reproductor.
+              Ver `ui/Transport`, que es donde viven los dos. */}
+          {wide ? <BotonAleatorio size={16} lado={36} /> : null}
           {wide ? (
             <Pressable
               accessibilityRole="button"
@@ -326,6 +338,7 @@ export function NowPlayingBar({
               <IconNext size={17} color={ICON_COLOR.muted} />
             </Pressable>
           ) : null}
+          {wide ? <BotonRepetir size={16} lado={36} /> : null}
         </View>
         {wide ? (
           <SeekBar

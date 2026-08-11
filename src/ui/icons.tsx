@@ -4,12 +4,15 @@ import {
   AtSign,
   AudioWaveform,
   Check,
+  CircleCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   Clock,
   Disc3,
+  Download,
+  HardDrive,
   SlidersHorizontal,
   Eye,
   EyeOff,
@@ -35,6 +38,7 @@ import {
   Plus,
   ListPlus,
   Repeat,
+  Repeat1,
   Search,
   Send,
   Shuffle,
@@ -112,10 +116,16 @@ export const IconImage = make(ImagePlus)
 export const IconPencil = make(Pencil)
 export const IconShuffle = make(Shuffle)
 export const IconRepeat = make(Repeat)
+/** Repetir **esta** canción. El «1» es lo único que distingue un modo del otro. */
+export const IconRepeatOne = make(Repeat1)
 /** Ajustes: las perillas, no un engranaje — acá no se configura un sistema. */
 export const IconSliders = make(SlidersHorizontal)
 export const IconClock = make(Clock)
 export const IconTrash = make(Trash2)
+export const IconDownload = make(Download)
+/** Bajada del todo. El círculo lleno es lo que distingue «está» de «bajala». */
+export const IconDownloaded = make(CircleCheck)
+export const IconDisk = make(HardDrive)
 export const IconQueue = make(ListPlus)
 export const IconVolume = make(Volume2)
 export const IconVolumeOff = make(VolumeX)

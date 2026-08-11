@@ -649,6 +649,12 @@ export const usePlaybackState = () => useStore(store, (state) => state)
  */
 export const usePlaybackTrack = () => useStore(store, currentOf)
 export const useVolume = () => useStore(store, (state) => state.volume)
+/* El aleatorio y la repetición los dibujan los controles del reproductor, que
+   están al lado de la barra de posición: suscribirse al estado entero los haría
+   redibujarse cinco veces por segundo para mostrar un ícono que no cambió. */
+export const useShuffle = () => useStore(store, (state) => state.shuffle !== null)
+export const useRepetir = () => useStore(store, (state) => state.repetir)
+export const useDormirMin = () => useStore(store, (state) => state.dormirMin)
 export const useNowPlayingView = () => useStore(store, (state) => state.view)
 export const useManualPlaying = () => useStore(store, (state) => state.manual !== null)
 export const useUpNextCount = () => useStore(store, (state) => state.upNext.length)
