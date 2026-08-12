@@ -2,7 +2,7 @@
   "applinks": {
     "details": [
       {
-        "appIDs": ["TEAMID.com.nihuel.dnmusic"],
+        "appIDs": ["2K2U374CJC.com.nihuel.dnmusic"],
         "components": [
           {
             "/": "/jam/*",

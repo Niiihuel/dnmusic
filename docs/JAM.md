@@ -92,17 +92,22 @@ sheet. Se chequean en SQL —la única verdad— y en el cliente solo para avisa
 con palabras antes del viaje. Quitar no es permiso: el host quita cualquiera,
 cada uno lo suyo, y lo que suena no lo quita nadie.
 
-## Lo que le falta al link
+## El link
 
-`https://dany-sandy.vercel.app/jam/CODIGO` ya rutea en la web y la app declara
-`associatedDomains`. Falta **una sola cosa**: el Team ID de Apple en
-`public/.well-known/apple-app-site-association` (está como `TEAMID`). Sale de
-`eas credentials` o del portal de desarrollador. Sin eso el link abre la web
-igual — que también sabe unirse—, solo que no salta directo a la app.
+`https://dany-sandy.vercel.app/jam/CODIGO` rutea en la web y abre la app en
+iOS. Las tres piezas están puestas: `associatedDomains` en `app.json`, el
+`apple-app-site-association` en `public/.well-known/` con el Team ID real
+(`2K2U374CJC`, sacado del perfil de aprovisionamiento del build), y el header
+`application/json` en `vercel.json` — Apple no acepta el archivo con otro tipo,
+y sin extensión Vercel lo serviría como `text/plain`.
 
-El entitlement nuevo implica **build nuevo de EAS** (el mismo que ya piden las
-descargas). Y abrir un link de Jam deslogueado te deja en el login sin volver
-al Jam después: pendiente conocido.
+Para que funcione hace falta que **el deploy de Vercel tenga el AASA** y que la
+app instalada sea de un build con el entitlement. iOS descarga el archivo al
+instalar: si cambiás el AASA después, hay que reinstalar la app para que lo
+relea.
+
+Pendiente conocido: abrir un link de Jam deslogueado te deja en el login sin
+volver al Jam después.
 
 ## Lo que no está, a propósito
 
