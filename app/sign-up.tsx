@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,7 +16,7 @@ import { isUsernameAvailable, signUp } from '../src/services/auth'
 import { isSupabaseConfigured } from '../src/lib/supabase'
 import { Field, PasswordField } from '../src/ui/Field'
 import { FormError, PrimaryButton } from '../src/ui/Button'
-import { ICON_COLOR, IconAt, IconCheck, IconClose, IconLock, IconMusic } from '../src/ui/icons'
+import { ICON_COLOR, IconAt, IconCheck, IconClose, IconLock } from '../src/ui/icons'
 import {
   normalizeUsername,
   passwordProblem,
@@ -132,16 +133,19 @@ export default function SignUp() {
             que va dentro de un scroll que se centra mientras sobra lugar. */}
         <ScrollView contentContainerClassName="grow items-center justify-center px-6 py-8">
           <View className="w-full max-w-[380px] gap-9">
+            {/* El mismo ícono que el login; ver el comentario de allá. */}
             <View className="items-center gap-4">
-              <View className="h-14 w-14 items-center justify-center rounded-full bg-muted">
-                <IconMusic size={26} color={ICON_COLOR.foreground} />
-              </View>
+              <Image
+                source={require('../assets/icon.png')}
+                className="h-16 w-16 rounded-[14px]"
+                accessibilityLabel="dnmusic"
+              />
               <View className="items-center gap-2">
                 <Text className="text-center text-foreground text-2xl font-bold">
                   Creá tu cuenta
                 </Text>
                 <Text className="max-w-xs text-center text-muted-foreground text-sm leading-5">
-                  Elegí un usuario. Es con lo que te van a encontrar.
+                  Elegí un usuario. Es con lo que te van a encontrar para escuchar juntos.
                 </Text>
               </View>
             </View>

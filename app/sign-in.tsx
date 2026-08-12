@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { KeyboardAvoidingView, Platform, Pressable, Text, View } from 'react-native'
+import { Image, KeyboardAvoidingView, Platform, Pressable, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { signIn } from '../src/services/auth'
 import { isSupabaseConfigured } from '../src/lib/supabase'
-import { ICON_COLOR, IconAt, IconMusic } from '../src/ui/icons'
+import { ICON_COLOR, IconAt } from '../src/ui/icons'
 import { Field, PasswordField } from '../src/ui/Field'
 import { FormError, PrimaryButton } from '../src/ui/Button'
 
@@ -65,16 +65,30 @@ export default function SignIn() {
       >
         <View className="flex-1 items-center justify-center px-6 py-8">
           <View className="w-full max-w-[380px] gap-9">
+            {/*
+             * El ícono de la app, no una nota genérica en un redondel.
+             *
+             * Es el mismo `assets/icon.png` que se ve en la pantalla de inicio
+             * del teléfono, así que abrir la app y llegar acá es reconocer la
+             * misma cosa. Redondeado como un ícono de iOS —el sistema recorta
+             * el suyo igual— y sin fondo gris debajo: la marca ya trae el suyo.
+             */}
             <View className="items-center gap-4">
-              <View className="h-14 w-14 items-center justify-center rounded-full bg-muted">
-                <IconMusic size={26} color={ICON_COLOR.foreground} />
-              </View>
+              <Image
+                source={require('../assets/icon.png')}
+                className="h-16 w-16 rounded-[14px]"
+                accessibilityLabel="dnmusic"
+              />
               <View className="items-center gap-2">
                 <Text className="text-center text-foreground text-2xl font-bold">
-                  Volvé a tus mensajes
+                  Volvé a tu música
                 </Text>
+                {/* El texto decía «volvé a tus mensajes» y «compartir palabras»:
+                    era de cuando la app era un chat. Hoy es un reproductor con
+                    listas, escucha compartida y chat — y lo primero es la
+                    música. */}
                 <Text className="max-w-xs text-center text-muted-foreground text-sm leading-5">
-                  Un espacio privado para compartir palabras y canciones.
+                  Tus listas, lo que estabas escuchando y con quién.
                 </Text>
               </View>
             </View>

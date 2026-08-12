@@ -59,6 +59,15 @@ const SHELL_PX = 780
 const FADE_PX = 36
 /** Lo que tarda el panel en abrirse y cerrarse. */
 const DRAWER_MS = 260
+/**
+ * Cuánto se curva la app al correrse para descubrir el panel.
+ *
+ * Generoso a propósito, y es lo que hace que se lea como una tarjeta apartada
+ * y no como la pantalla cortada por una línea: con un radio chico el borde
+ * izquierdo se ve casi recto contra el panel —una costura— y con este la app
+ * se separa como un objeto con forma propia. Es el radio del referente.
+ */
+const DRAWER_RADIO = 44
 
 export default function RootLayout() {
   // GestureHandlerRootView es obligatorio para que el arrastre de la ventana
@@ -175,7 +184,7 @@ function Chrome() {
    */
   const contenido = useAnimatedStyle(() => ({
     transform: [{ translateX: d.value * anchoDrawer }, { scale: 1 - d.value * 0.08 }],
-    borderRadius: d.value * 28,
+    borderRadius: d.value * DRAWER_RADIO,
   }))
   /*
    * El mismo redondeo, para el nodo que recorta.
@@ -190,7 +199,7 @@ function Chrome() {
    * Separado, cada nodo hace una sola: el de afuera se mueve y proyecta, el de
    * adentro redondea y recorta.
    */
-  const recorte = useAnimatedStyle(() => ({ borderRadius: d.value * 28 }))
+  const recorte = useAnimatedStyle(() => ({ borderRadius: d.value * DRAWER_RADIO }))
   /* El velo sobre la app: con el panel abierto, lo que manda es el panel. Sin
      esto, el contenido de atrás compite a plena luz y cuesta leer cuál de los
      dos está al frente. */
@@ -538,7 +547,17 @@ function Chrome() {
             <NowPlayingBar compacta />
           </Cascara>
         ) : (
-          <NowPlayingBar oculto={enEditor} />
+          /*
+           * `!usuario` **es parte de la condición**, y faltaba.
+           *
+           * Las otras tres ramas piden sesión de una forma u otra; esta es el
+           * caso por descarte, y se dibujaba también en el login y el registro
+           * — con la cola de la sesión anterior, que encima no puede sonar
+           * porque sus URLs se firman con una sesión que ya no está. Se veía
+           * como un reproductor fantasma diciendo «no se pudo abrir esa
+           * canción» sobre la pantalla de entrar.
+           */
+          <NowPlayingBar oculto={enEditor || !usuario} />
         )}
       </Animated.View>
 
@@ -581,8 +600,6 @@ function SessionGate() {
 
   useEffect(() => {
     startSession()
-    // La cola de la sesión anterior, en pausa y donde la dejaste.
-    void restorePlayback()
     void cargarAjustes()
     /* Antes que nada de música: es lo que decide si una canción suena del
        teléfono o de la red, y contrasta el índice contra el disco. */
@@ -599,12 +616,20 @@ function SessionGate() {
   }, [user, segments, router])
 
   /*
-   * Con sesión, ver si quedó un Jam abierto de antes: la membresía vive en la
-   * base, así que cerrar la app no te saca — se vuelve a enganchar solo, como
-   * un chat retoma sus mensajes. Sin Jam pendiente no hace nada.
+   * Todo lo que es «de quien escucha» espera a que haya alguien escuchando.
+   *
+   * La cola guardada **no se restaura sin sesión**: sus canciones se
+   * reproducen con URLs firmadas por la cuenta, así que en el login es una
+   * cola que no puede sonar; y si la sesión que la guardó era de otra persona,
+   * mostrarla sería filtrarle lo que escuchaba a quien esté por entrar.
+   *
+   * Lo mismo con el Jam: la membresía vive en la base, así que cerrar la app
+   * no te saca y se vuelve a enganchar solo, como un chat retoma sus mensajes.
    */
   useEffect(() => {
-    if (user) void reconectarJam()
+    if (!user) return
+    void restorePlayback()
+    void reconectarJam()
   }, [user])
 
   if (user === undefined) {
