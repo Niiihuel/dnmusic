@@ -31,8 +31,15 @@ import {
   IconUsers,
 } from '../../src/ui/icons'
 
-/** El link que se comparte. La misma URL entra por web y por la app. */
-const BASE_INVITACION = 'https://dany-sandy.vercel.app/jam'
+/**
+ * El link que se comparte. La misma URL entra por web y por la app.
+ *
+ * Va cableado y no en una variable de entorno a propósito: es el dominio que
+ * está declarado en `associatedDomains` y en el `apple-app-site-association`,
+ * y los tres tienen que decir lo mismo o el link deja de abrir la app. Un
+ * valor que se puede cambiar por build es justo lo que no queremos acá.
+ */
+const BASE_INVITACION = 'https://dnmusic-app.vercel.app/jam'
 
 /** Confirmación de dos toques, como la de Ajustes: sin Alert, que en web no existe. */
 function useDobleToque() {

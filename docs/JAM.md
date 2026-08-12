@@ -1,7 +1,7 @@
 # Jam: escuchar juntos
 
 Una sesión temporal con cola compartida, como el Jam de Spotify. El que la crea
-es el host; el resto entra con un link (`dany-sandy.vercel.app/jam/CODIGO`) o
+es el host; el resto entra con un link (`dnmusic-app.vercel.app/jam/CODIGO`) o
 con el código, y elige **dónde escuchar**: en su dispositivo, sincronizado, o
 en el del host usando el suyo de control remoto.
 
@@ -94,7 +94,7 @@ cada uno lo suyo, y lo que suena no lo quita nadie.
 
 ## El link
 
-`https://dany-sandy.vercel.app/jam/CODIGO` rutea en la web y abre la app en
+`https://dnmusic-app.vercel.app/jam/CODIGO` rutea en la web y abre la app en
 iOS. Las tres piezas están puestas: `associatedDomains` en `app.json`, el
 `apple-app-site-association` en `public/.well-known/` con el Team ID real
 (`2K2U374CJC`, sacado del perfil de aprovisionamiento del build), y el header

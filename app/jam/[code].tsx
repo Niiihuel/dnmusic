@@ -10,7 +10,7 @@ import { ICON_COLOR, IconCheck, IconUsers } from '../../src/ui/icons'
 /**
  * La puerta de un Jam: acá cae el link de WhatsApp.
  *
- * `dany-sandy.vercel.app/jam/CODIGO` abre esta ruta — en la app por universal
+ * `dnmusic-app.vercel.app/jam/CODIGO` abre esta ruta — en la app por universal
  * link, en el navegador porque es la misma ruta de Expo Router—. Antes de
  * entrar se elige **dónde escuchar**, que es la pregunta de Spotify al abrir
  * una invitación: en tu dispositivo, sincronizado; o en el del host, usando el
