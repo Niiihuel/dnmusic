@@ -401,6 +401,24 @@ export function NowPlayingBar({
               onPress={() => toggleView('lyrics')}
               icon={IconLyrics}
             />
+            {/*
+             * El Jam, a la vista y no solo adentro del menú: en escritorio hay
+             * lugar, y una función que junta gente no puede vivir escondida
+             * detrás de tres puntos. Encendido en blanco mientras hay uno
+             * andando — el mismo lenguaje que las dos vistas de al lado.
+             */}
+            <Toggle
+              label={enJam ? 'Ver el Jam' : 'Iniciar un Jam'}
+              active={enJam}
+              onPress={() => {
+                if (enJam) router.push('/jam')
+                else
+                  void crearJamActual().then((ok) => {
+                    if (ok) router.push('/jam')
+                  })
+              }}
+              icon={IconUsers}
+            />
             <Volume value={volume} onChange={setVolume} />
           </>
         ) : (
