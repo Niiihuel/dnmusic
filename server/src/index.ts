@@ -43,15 +43,49 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const supabase =
   SUPABASE_URL && SERVICE_KEY ? createClient(SUPABASE_URL, SERVICE_KEY) : null
 
-const CORS = {
-  'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN ?? '*',
-  'Access-Control-Allow-Headers': 'content-type, authorization',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+/**
+ * Los orígenes que pueden leer nuestras respuestas, separados por coma.
+ *
+ * Era **uno solo**, y eso no daba: la app vive en más de un dominio a la vez
+ * —el canónico y el que Vercel asigna al proyecto— y `Access-Control-Allow-Origin`
+ * no acepta una lista. Con un valor fijo, el dominio que no estuviera ahí se
+ * comía un error de CORS en cada búsqueda, que se ve como «no encuentra
+ * canciones» sin ninguna pista de por qué.
+ *
+ * La forma correcta es la de siempre: se compara el `Origin` del pedido contra
+ * la lista y **se devuelve ese mismo**, uno solo. Sin lista configurada se
+ * responde `*`, que es lo que hacía antes y lo que sirve en desarrollo.
+ */
+const ORIGENES = (process.env.ALLOWED_ORIGIN ?? '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
+
+function cors(req: import('node:http').IncomingMessage) {
+  const origen = req.headers.origin
+  return {
+    'Access-Control-Allow-Origin':
+      ORIGENES.length === 0 ? '*' : origen && ORIGENES.includes(origen) ? origen : ORIGENES[0],
+    /* Le avisa a las cachés intermedias que la respuesta cambia según quién
+       pregunta. Sin esto, un proxy podría servirle a un dominio la cabecera
+       que se calculó para el otro. */
+    Vary: 'Origin',
+    'Access-Control-Allow-Headers': 'content-type, authorization',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  }
 }
 
-function json(res: import('node:http').ServerResponse, status: number, body: unknown) {
+function responder(
+  res: import('node:http').ServerResponse,
+  status: number,
+  body: unknown,
+  req?: import('node:http').IncomingMessage,
+) {
   const payload = JSON.stringify(body)
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...CORS })
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    ...(req ? cors(req) : {}),
+  })
   res.end(payload)
 }
 
@@ -73,27 +107,32 @@ const IMAGE_HOSTS = /^([a-z0-9-]+\.)?(googleusercontent\.com|ytimg\.com|ggpht\.c
  * mira dos veces, así que se pasan de largo con un `Cache-Control` largo para
  * que el navegador se las quede.
  */
-async function proxyImage(res: import('node:http').ServerResponse, raw: string) {
+async function proxyImage(
+  res: import('node:http').ServerResponse,
+  raw: string,
+  req: import('node:http').IncomingMessage,
+) {
   let target: URL
   try {
     target = new URL(raw)
   } catch {
-    return json(res, 400, { error: 'URL inválida' })
+    return responder(res, 400, { error: 'URL inválida' }, req)
   }
   if (target.protocol !== 'https:' || !IMAGE_HOSTS.test(target.hostname)) {
-    return json(res, 403, { error: 'Host no permitido' })
+    return responder(res, 403, { error: 'Host no permitido' }, req)
   }
 
   const upstream = await fetch(target)
-  if (!upstream.ok || !upstream.body) return json(res, 502, { error: 'No se pudo traer la imagen' })
+  if (!upstream.ok || !upstream.body)
+    return responder(res, 502, { error: 'No se pudo traer la imagen' }, req)
 
   const type = upstream.headers.get('content-type') ?? ''
-  if (!type.startsWith('image/')) return json(res, 415, { error: 'Eso no es una imagen' })
+  if (!type.startsWith('image/')) return responder(res, 415, { error: 'Eso no es una imagen' }, req)
 
   res.writeHead(200, {
     'Content-Type': type,
     'Cache-Control': 'public, max-age=604800, immutable',
-    ...CORS,
+    ...cors(req),
   })
   res.end(Buffer.from(await upstream.arrayBuffer()))
 }
@@ -132,15 +171,18 @@ async function autorizado(req: import('node:http').IncomingMessage): Promise<boo
 }
 
 const server = createServer(async (req, res) => {
+  /* El atajo del pedido: ya sabe a quién le contesta, así que la cabecera de
+     CORS sale bien sin que cada `return` tenga que acordarse de pasarla. */
+  const json = (status: number, body: unknown) => responder(res, status, body, req)
   try {
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, CORS)
+      res.writeHead(204, cors(req))
       return res.end()
     }
 
     const url = new URL(req.url ?? '/', `http://localhost:${PORT}`)
 
-    if (url.pathname === '/health') return json(res, 200, { ok: true })
+    if (url.pathname === '/health') return json(200, { ok: true })
 
     /*
      * Todo lo demás pide sesión, con **dos excepciones**.
@@ -155,27 +197,27 @@ const server = createServer(async (req, res) => {
      * y no uno abierto. Es lo más barato que expone el servicio.
      */
     if (url.pathname !== '/img' && !(await autorizado(req))) {
-      return json(res, 401, { error: 'No autorizado' })
+      return json(401, { error: 'No autorizado' })
     }
 
     if (url.pathname === '/search' && req.method === 'GET') {
       const q = url.searchParams.get('q')?.trim()
-      if (!q) return json(res, 400, { error: 'Falta el parámetro q' })
+      if (!q) return json(400, { error: 'Falta el parámetro q' })
       /* Canciones y artistas se piden juntos y en paralelo: quien busca no
          sabe de antemano cuál de los dos quería, y esperar dos veces por lo
          mismo se sentiría el doble de lento. */
       const [results, artists] = await Promise.all([search(q), searchArtists(q)])
-      return json(res, 200, { results, artists })
+      return json(200, { results, artists })
     }
 
     if (url.pathname === '/artist' && req.method === 'GET') {
       const id = url.searchParams.get('id')?.trim()
-      if (!id) return json(res, 400, { error: 'Falta el parámetro id' })
+      if (!id) return json(400, { error: 'Falta el parámetro id' })
       const artist = await getArtist(id)
       // La foto se copia igual que la carátula: el CDN de Google la corta con
       // 429 cada tanto y el panel del artista queda con un hueco.
       const photoPath = supabase ? await cacheImage(supabase, artist.photoUrl, `artist-${id}`) : null
-      return json(res, 200, { ...artist, photoPath })
+      return json(200, { ...artist, photoPath })
     }
 
     /*
@@ -190,32 +232,32 @@ const server = createServer(async (req, res) => {
      */
     if (url.pathname === '/peaks' && req.method === 'GET') {
       const videoId = url.searchParams.get('videoId')?.trim()
-      if (!videoId) return json(res, 400, { error: 'Falta videoId' })
-      if (!supabase) return json(res, 500, { error: 'Storage no configurado' })
+      if (!videoId) return json(400, { error: 'Falta videoId' })
+      if (!supabase) return json(500, { error: 'Storage no configurado' })
 
       const buckets = Math.max(40, Math.min(600, Number(url.searchParams.get('buckets')) || 160))
       const nombre = `${videoId}.m4a`
       const { data: firmada, error: e } = await supabase.storage
         .from(BUCKET)
         .createSignedUrl(nombre, 300)
-      if (e || !firmada?.signedUrl) return json(res, 404, { error: 'Esa canción no está guardada' })
+      if (e || !firmada?.signedUrl) return json(404, { error: 'Esa canción no está guardada' })
 
-      return json(res, 200, await peaks(firmada.signedUrl, buckets))
+      return json(200, await peaks(firmada.signedUrl, buckets))
     }
 
     if (url.pathname === '/img' && req.method === 'GET') {
       const u = url.searchParams.get('u')
-      if (!u) return json(res, 400, { error: 'Falta el parámetro u' })
-      return proxyImage(res, u)
+      if (!u) return json(400, { error: 'Falta el parámetro u' })
+      return proxyImage(res, u, req)
     }
 
     if (url.pathname === '/home' && req.method === 'GET') {
-      return json(res, 200, { sections: await getHome() })
+      return json(200, { sections: await getHome() })
     }
 
     if ((url.pathname === '/album' || url.pathname === '/playlist') && req.method === 'GET') {
       const id = url.searchParams.get('id')?.trim()
-      if (!id) return json(res, 400, { error: 'Falta el parámetro id' })
+      if (!id) return json(400, { error: 'Falta el parámetro id' })
       const album =
         url.pathname === '/album' ? await getAlbum(id) : await getPlaylistInfo(id)
       // Misma razón que con la foto del artista: el CDN de Google corta con 429
@@ -223,21 +265,21 @@ const server = createServer(async (req, res) => {
       const artworkPath = supabase
         ? await cacheImage(supabase, album.artworkUrl, `album-${id}`)
         : null
-      return json(res, 200, { ...album, artworkPath })
+      return json(200, { ...album, artworkPath })
     }
 
     if (url.pathname === '/translate' && req.method === 'POST') {
       const body = (await readJson(req)) as { texts?: unknown; to?: unknown }
       const to = String(body.to ?? '')
       const texts = body.texts
-      if (!isLang(to)) return json(res, 400, { error: 'Idioma no permitido' })
+      if (!isLang(to)) return json(400, { error: 'Idioma no permitido' })
       if (!Array.isArray(texts) || texts.some((t) => typeof t !== 'string')) {
-        return json(res, 400, { error: 'Falta texts' })
+        return json(400, { error: 'Falta texts' })
       }
       // Un tope por las dudas: una letra no pasa de un par de cientos de líneas.
-      if (texts.length > 400) return json(res, 413, { error: 'Demasiadas líneas' })
+      if (texts.length > 400) return json(413, { error: 'Demasiadas líneas' })
 
-      return json(res, 200, { texts: await translate(texts as string[], to) })
+      return json(200, { texts: await translate(texts as string[], to) })
     }
 
     /*
@@ -250,16 +292,16 @@ const server = createServer(async (req, res) => {
      */
     if (url.pathname === '/artwork' && req.method === 'POST') {
       const body = (await readJson(req)) as { videoId?: string; url?: string }
-      if (!body.videoId || !body.url) return json(res, 400, { error: 'Faltan videoId y url' })
-      if (!supabase) return json(res, 500, { error: 'Storage no configurado' })
-      return json(res, 200, { path: await cacheImage(supabase, body.url, body.videoId) })
+      if (!body.videoId || !body.url) return json(400, { error: 'Faltan videoId y url' })
+      if (!supabase) return json(500, { error: 'Storage no configurado' })
+      return json(200, { path: await cacheImage(supabase, body.url, body.videoId) })
     }
 
     if (url.pathname === '/resolve' && req.method === 'POST') {
       const body = await readJson(req) as { videoId?: string; artworkUrl?: string }
       const videoId = body.videoId
-      if (!videoId) return json(res, 400, { error: 'Falta videoId' })
-      if (!supabase) return json(res, 500, { error: 'Storage no configurado' })
+      if (!videoId) return json(400, { error: 'Falta videoId' })
+      if (!supabase) return json(500, { error: 'Storage no configurado' })
 
       /*
        * El nombre canónico es `.m4a`.
@@ -283,7 +325,7 @@ const server = createServer(async (req, res) => {
       // Si ya se resolvió antes, no se vuelve a tocar YouTube.
       const { data: existing } = await supabase.storage.from(BUCKET).list('', { search: path })
       if (existing?.some((f) => f.name === path)) {
-        return json(res, 200, { path, artworkPath, cached: true })
+        return json(200, { path, artworkPath, cached: true })
       }
 
       const audio = await resolveAudio(videoId)
@@ -293,9 +335,9 @@ const server = createServer(async (req, res) => {
       const { error } = await supabase.storage
         .from(BUCKET)
         .upload(destino, audio.bytes, { contentType: audio.mimeType, upsert: true })
-      if (error) return json(res, 500, { error: `No se pudo guardar: ${error.message}` })
+      if (error) return json(500, { error: `No se pudo guardar: ${error.message}` })
 
-      return json(res, 200, {
+      return json(200, {
         // Se devuelve lo que realmente se guardó, no el nombre que se buscó.
         path: destino,
         artworkPath,
@@ -308,11 +350,11 @@ const server = createServer(async (req, res) => {
       })
     }
 
-    return json(res, 404, { error: 'No existe' })
+    return json(404, { error: 'No existe' })
   } catch (e) {
     // El detalle va al log del servidor; al cliente solo lo necesario.
     console.error('[flora-music]', e)
-    return json(res, 502, { error: (e as Error).message })
+    return json(502, { error: (e as Error).message })
   }
 })
 
