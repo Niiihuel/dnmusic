@@ -10,6 +10,7 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { LinearGradient } from 'expo-linear-gradient'
 import { isUsernameAvailable, signUp } from '../src/services/auth'
 import { isSupabaseConfigured } from '../src/lib/supabase'
 import { Field, PasswordField } from '../src/ui/Field'
@@ -30,10 +31,13 @@ type Availability = 'idle' | 'checking' | 'free' | 'taken' | 'unknown'
 /**
  * Alta de cuenta.
  *
- * Es el gemelo del login y comparte con él la caja, el ancho y el ritmo. La
- * diferencia está en que acá el usuario se verifica mientras se escribe: si el
- * nombre está tomado, enterarse recién al apretar "Crear cuenta" —después de
- * haber elegido contraseña dos veces— es la peor forma de descubrirlo.
+ * Es el gemelo del login y comparte con él el ancho, el ritmo y la decisión de
+ * **no tener tarjeta**: el formulario es todo el contenido de la pantalla, así
+ * que los campos se apoyan directo sobre el fondo y la profundidad la pone la
+ * luz de arriba — ver el comentario largo en `sign-in`. La diferencia está en
+ * que acá el usuario se verifica mientras se escribe: si el nombre está
+ * tomado, enterarse recién al apretar "Crear cuenta" —después de haber elegido
+ * contraseña dos veces— es la peor forma de descubrirlo.
  */
 export default function SignUp() {
   const router = useRouter()
@@ -112,14 +116,22 @@ export default function SignUp() {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
+      {/* La misma luz de arriba que el login: profundidad por luminancia, sin
+          una caja ni un borde. */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={['#222222', '#121212']}
+        locations={[0, 1]}
+        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 480 }}
+      />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1"
       >
         {/* Con teclado abierto en pantalla chica el formulario no entra, así
             que va dentro de un scroll que se centra mientras sobra lugar. */}
-        <ScrollView contentContainerClassName="grow items-center justify-center px-5 py-8">
-          <View className="w-full max-w-[420px] gap-7">
+        <ScrollView contentContainerClassName="grow items-center justify-center px-6 py-8">
+          <View className="w-full max-w-[380px] gap-9">
             <View className="items-center gap-4">
               <View className="h-14 w-14 items-center justify-center rounded-full bg-muted">
                 <IconMusic size={26} color={ICON_COLOR.foreground} />
@@ -134,9 +146,9 @@ export default function SignUp() {
               </View>
             </View>
 
-            <View className="gap-5 rounded-2xl bg-card p-6">
+            <View className="gap-1">
               {!isSupabaseConfigured ? (
-                <View className="rounded-lg bg-muted p-3">
+                <View className="mb-3 rounded-lg bg-muted p-3">
                   <Text className="text-muted-foreground text-xs leading-5">
                     Falta configurar Supabase. Copiá `.env.example` a `.env.local` y completá las
                     variables EXPO_PUBLIC_SUPABASE_*.
@@ -201,23 +213,25 @@ export default function SignUp() {
                 onToggleVisible={() => setShowPassword((v) => !v)}
                 error={touched.confirm ? confirmProblem : null}
               />
+            </View>
 
+            <View className="gap-5">
               <FormError message={error} />
 
               <PrimaryButton label="Crear cuenta" onPress={submit} disabled={!canSubmit} busy={busy} />
-            </View>
 
-            <View className="flex-row items-center justify-center gap-1.5">
-              <Text className="text-muted-foreground text-[13px]">¿Ya tenés cuenta?</Text>
-              <Pressable
-                accessibilityRole="link"
-                onPress={() => router.replace('/sign-in')}
-                className="active:opacity-70"
-              >
-                <Text className="text-foreground text-[13px] font-semibold underline">
-                  Iniciá sesión
-                </Text>
-              </Pressable>
+              <View className="flex-row items-center justify-center gap-1.5">
+                <Text className="text-muted-foreground text-[13px]">¿Ya tenés cuenta?</Text>
+                <Pressable
+                  accessibilityRole="link"
+                  onPress={() => router.replace('/sign-in')}
+                  className="active:opacity-70"
+                >
+                  <Text className="text-foreground text-[13px] font-semibold underline">
+                    Iniciá sesión
+                  </Text>
+                </Pressable>
+              </View>
             </View>
           </View>
         </ScrollView>
