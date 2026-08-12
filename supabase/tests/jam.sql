@@ -212,6 +212,26 @@ begin
     raise exception 'FALLO: el host no pudo quitar una ajena';
   end if;
 
+  -- ── Tocar ya ─────────────────────────────────────────────────────────────
+  -- Beto toca una canción con el Jam andando: se intercala después de la que
+  -- suena y salta ahí. Anda aunque «agregar» esté apagado, porque cambiar lo
+  -- que suena es el permiso de saltar — el más grande de los dos.
+  perform pg_temp.como(beto);
+  perform public.jam_tocar_ahora(v_jam,
+    '{"videoId":"v7","title":"Ya","artist":"B","audioPath":"v7.m4a","durationMs":700}'::jsonb);
+  if (select q.video_id from public.jam_queue q
+      where q.id = (select item_actual from public.jams where id = v_jam)) <> 'v7' then
+    raise exception 'FALLO: tocar_ahora no saltó a la canción nueva';
+  end if;
+  if not (select suena from public.jams where id = v_jam) then
+    raise exception 'FALLO: tocar_ahora no arrancó la reproducción';
+  end if;
+  -- Y quedó ENTRE la actual y lo que venía: el futuro de nadie se borró.
+  if (select array_agg(q.video_id order by q.posicion)
+      from public.jam_queue q where q.jam_id = v_jam) <> array['v2','v7','v9'] then
+    raise exception 'FALLO: tocar_ahora desordenó la cola';
+  end if;
+
   -- ── Echar y terminar ─────────────────────────────────────────────────────
   perform pg_temp.como(beto);
   perform pg_temp.debe_fallar(

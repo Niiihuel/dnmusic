@@ -257,6 +257,11 @@ export async function jamTocar(jamId: string, itemId: string): Promise<void> {
   await rpc('jam_tocar', { p_jam_id: jamId, p_item_id: itemId })
 }
 
+/** Mete la canción justo después de la que suena y salta ahí, para todos. */
+export async function jamTocarAhora(jamId: string, track: PlaylistTrack): Promise<void> {
+  await rpc('jam_tocar_ahora', { p_jam_id: jamId, p_cancion: cancionAJson(track) })
+}
+
 export async function jamSaltar(jamId: string): Promise<void> {
   await rpc('jam_saltar', { p_jam_id: jamId })
 }

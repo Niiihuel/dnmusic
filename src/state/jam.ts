@@ -14,6 +14,7 @@ import {
   jamSaltar,
   jamSeek,
   jamTocar,
+  jamTocarAhora,
   miJam,
   quitarDeJam,
   salirJam,
@@ -441,6 +442,25 @@ export function agregarCancionAlJam(track: PlaylistTrack) {
     .catch((e) => avisar(`No se pudo agregar: ${mensajeError(e)}`, true))
 }
 
+/**
+ * Tocar una canción **ya**, para todos: se intercala después de la que suena
+ * y el Jam salta ahí. Es lo que significa tocar una canción con un Jam
+ * andando — como en Spotify—; encolar sin cambiar lo que suena es la otra
+ * opción, la explícita del menú.
+ */
+export function tocarAhoraEnJam(track: PlaylistTrack) {
+  const s = store.get()
+  if (!s.jam) return
+  if (!puedo('saltar')) {
+    avisar('El host no dejó cambiar de canción. Podés agregarla a la cola.')
+    return
+  }
+  void jamTocarAhora(s.jam.id, track).catch((e) => {
+    avisar(`No se pudo poner: ${mensajeError(e)}`, true)
+    programarRefetch()
+  })
+}
+
 export function quitarCancionDelJam(itemId: string) {
   const s = store.get()
   if (!s.jam) return
@@ -555,6 +575,7 @@ registerJam({
   esHost: () => soyHost(store.get()),
   transporte,
   encolar: agregarCancionAlJam,
+  tocarAhora: tocarAhoraEnJam,
   publicarAvance: () => {
     const s = store.get()
     if (!s.jam) return
