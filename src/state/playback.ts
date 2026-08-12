@@ -362,6 +362,20 @@ export function enqueue(track: PlaylistTrack) {
   store.set({ upNext: [...state.upNext, track] })
 }
 
+/**
+ * Saca una canción de la cola manual, por posición.
+ *
+ * Solo lo encolado a mano: lo que viene de la lista se quita desde la lista, y
+ * en un Jam la cola manual ni existe (el volcado la deja vacía). Por posición y
+ * no por id porque la misma canción puede encolarse dos veces, y quitar «una»
+ * no puede llevarse a las dos.
+ */
+export function quitarEncolada(posicion: number) {
+  const { upNext } = store.get()
+  if (posicion < 0 || posicion >= upNext.length) return
+  store.set({ upNext: upNext.filter((_, i) => i !== posicion) })
+}
+
 /** Salta a una canción de la cola actual; si ya es la que suena, pausa o sigue. */
 export function playAt(index: number) {
   const state = store.get()

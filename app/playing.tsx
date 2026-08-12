@@ -23,6 +23,7 @@ import { SongDisc } from '../src/ui/SongDisc'
 import {
   ICON_COLOR,
   IconChevronDown,
+  IconCola,
   IconDisc,
   IconLyrics,
   IconMusic,
@@ -128,9 +129,16 @@ export default function Playing() {
               {manual ? 'En la cola' : listName || 'Sonando'}
             </Text>
           </View>
-          {/* Contrapeso de la flecha, para que el rótulo quede centrado de verdad
-            y no corrido por el ancho del botón. */}
-          <View className="h-10 w-10" />
+          {/* La cola, arriba a la derecha — donde la pone Spotify. De paso hace
+              de contrapeso de la flecha, que es lo que había acá antes. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ver la cola"
+            onPress={() => router.push('/cola')}
+            className="h-10 w-10 items-center justify-center rounded-full active:bg-muted"
+          >
+            <IconCola size={19} color={ICON_COLOR.foreground} />
+          </Pressable>
         </View>
 
         {/* La pieza grande: la tapa, el disco girando o la letra. Es la misma

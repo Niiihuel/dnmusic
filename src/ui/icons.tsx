@@ -20,6 +20,7 @@ import {
   House,
   Inbox,
   Languages,
+  ListMusic,
   LockKeyhole,
   LogOut,
   MessageSquareText,
@@ -131,6 +132,7 @@ export const IconDownloaded = make(CircleCheck)
 export const IconDisk = make(HardDrive)
 export const IconWifi = make(Wifi)
 export const IconQueue = make(ListPlus)
+export const IconCola = make(ListMusic)
 export const IconVolume = make(Volume2)
 export const IconVolumeOff = make(VolumeX)
 export const IconUser = make(UserRound)

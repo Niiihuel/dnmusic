@@ -109,6 +109,8 @@ function Chrome() {
     segmentos.length === 0 ||
     segmentos[0] === 'profile' ||
     segmentos[0] === 'playing' ||
+    segmentos[0] === 'jam' ||
+    segmentos[0] === 'cola' ||
     segmentos[0] === 'message'
   const tabGuardada = useTab()
   const tabActiva = segmentos[0] === 'profile' ? 'perfil' : tabGuardada
@@ -639,6 +641,8 @@ function SessionGate() {
           pantalla común — llega desde afuera y no tiene nada detrás. */}
       <Stack.Screen name="jam/index" options={{ presentation: 'modal' }} />
       <Stack.Screen name="jam/[code]" />
+      {/* La cola: qué viene después, con la anatomía de una lista. */}
+      <Stack.Screen name="cola" options={{ presentation: 'modal' }} />
       {/* El mensaje a pantalla completa, al modo de una historia. */}
       <Stack.Screen name="message/[id]" options={{ presentation: 'modal' }} />
     </Stack>

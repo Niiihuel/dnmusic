@@ -33,6 +33,7 @@ import {
   IconPrevious,
   IconRepeat,
   IconShuffle,
+  IconCola,
   IconDisc,
   IconLyrics,
   IconUsers,
@@ -142,6 +143,12 @@ export function NowPlayingBar({
       disabled: !canOpenPlaylist(),
       icon: <IconMusic size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'music.note.list',
+    },
+    {
+      label: 'Ver la cola',
+      onPress: () => router.push('/cola'),
+      icon: <IconCola size={15} color={ICON_COLOR.muted} />,
+      sfSymbol: 'list.bullet',
     },
     /*
      * El aleatorio, **solo en el teléfono**.
