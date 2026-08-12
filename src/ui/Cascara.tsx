@@ -16,10 +16,14 @@ const AIRE = 8
  *
  * Desplegada, la tarjeta ocupaba **todo** el ancho de la fila mientras la
  * píldora de abajo termina antes —le deja el lugar al redondel de la lupa— así
- * que la de arriba se veía más larga y sin aire contra los bordes. Doce píxeles
- * en total alcanzan para que las dos respiren igual sin desalinearlas.
+ * que la de arriba se veía más larga y sin aire contra los bordes.
+ *
+ * Con la fila a 12px del borde, esto la deja a 22: la tarjeta es lo más ancho
+ * que flota abajo y, pegada al borde, se leía como si la pantalla no terminara
+ * — el vidrio necesita ver fondo a los costados para que se note que es una
+ * pieza apoyada y no una franja del sistema.
  */
-const RESPIRO_MEDIA = 6
+const RESPIRO_MEDIA = 10
 /** Margen lateral de la franja. */
 const COSTADO = 12
 /**
