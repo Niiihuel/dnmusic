@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { usePlaybackTrack } from '../state/playback'
 import { listPlaylists, type Playlist } from '../services/playlists'
 import { Avatar } from './Avatar'
-import { Glass } from './Glass'
 import {
   ICON_COLOR,
+  IconChevronRight,
   IconDisc,
   IconInbox,
-  IconLogOut,
   IconMusic,
   IconPlus,
   IconSliders,
@@ -24,24 +24,20 @@ import {
  * un panel encima tapa; este **descubre**. Por eso acá no hay márgenes ni
  * esquinas redondeadas — el redondeo le toca al contenido que se aparta.
  *
- * Ocupa también la franja de la hora y la de abajo, que es justo lo que se veía
- * mal cuando el panel flotaba: quedaban dos recortes negros que no eran de
- * nadie.
+ * ## La forma es la de Claude, y el ritmo también
  *
- * ## Por qué esta forma y no una lista de filas
+ * Tres tramos con pesos distintos: marca arriba, navegación al medio,
+ * **contenido** abajo. Lo que hace que se lea como el referente no es la
+ * estructura sino el aire: filas altas de **una sola línea** —sin subtítulos
+ * que las hagan de dos alturas—, tipografía grande, y una sección de contenido
+ * que respira lejos de la navegación. Apretado, el mismo esquema se leía como
+ * un menú de opciones; con aire se lee como un lugar.
  *
- * Antes era una tarjeta grande de perfil arriba y debajo cinco filas iguales,
- * cada una con su ícono adentro de un redondel gris. Se veía ordenado y decía
- * muy poco: cinco destinos, ningún contenido, y la mitad del alto vacío.
- *
- * La forma de Claude reparte el panel en tres tramos con pesos distintos —marca
- * arriba, navegación al medio, **contenido** abajo— y ese contenido es lo que
- * hace que abrirlo sirva para algo más que cambiar de sección: entrás a una
- * lista desde acá, sin pasar por la pestaña.
- *
- * Los redondeles de los íconos se fueron con eso. Con navegación y contenido en
- * la misma columna, el chip gris de cada fila competía en peso con las carátulas
- * de las listas y hacía leer la navegación como si fuera lo importante.
+ * El pie son dos piezas sueltas —el avatar y la píldora—, no una barra: la
+ * lista de listas pasa por **debajo** de ellas a través de un fundido, que es
+ * exactamente lo que hace el «+ Nuevo chat» del referente. Cerrar sesión ya no
+ * está acá: es la única acción que te saca en vez de llevarte, y vive en
+ * Ajustes, que es donde se buscan las cosas que se hacen una vez cada tanto.
  */
 export function AppDrawer({
   name,
@@ -53,7 +49,6 @@ export function AppDrawer({
   onNewPlaylist,
   onOpenPlaylist,
   onAjustes,
-  onLogout,
 }: {
   name: string
   avatarPath: string | null | undefined
@@ -65,7 +60,6 @@ export function AppDrawer({
   /** Abre una lista puntual, sin pasar por la pestaña. */
   onOpenPlaylist: (id: string) => void
   onAjustes: () => void
-  onLogout: () => void
 }) {
   const insets = useSafeAreaInsets()
   const sonando = usePlaybackTrack()
@@ -98,132 +92,141 @@ export function AppDrawer({
      * terminaba una y empezaba el otro — el panel parecía un hueco. `DESIGN.md`
      * separa superficies por luminancia, y esta es exactamente esa situación.
      */
-    <View
-      className="flex-1 bg-card"
-      style={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }}
-    >
+    <View className="flex-1 bg-card" style={{ paddingTop: insets.top + 12 }}>
       {/* La marca, no una tarjeta de perfil.
           Quién sos ya está abajo, en el avatar: repetirlo arriba en grande era
           gastar el tramo más visible del panel en un dato que no es un destino. */}
-      <Text className="text-foreground px-5 pb-4 pt-2 text-[22px] font-bold">dnmusic</Text>
+      <Text className="text-foreground px-6 pb-6 pt-2 text-2xl font-bold">dnmusic</Text>
 
-      <ScrollView className="min-h-0 flex-1" contentContainerClassName="pb-16">
-        <View className="gap-0.5 px-2">
+      <ScrollView
+        className="min-h-0 flex-1"
+        /* El final pasa por debajo del pie: el hueco es para que la última
+           lista se pueda leer por encima del fundido. */
+        contentContainerStyle={{ paddingBottom: insets.bottom + 104 }}
+      >
+        <View className="gap-1 px-3">
           <Fila
-            icon={<IconMusic size={18} color={ICON_COLOR.foreground} />}
+            icon={<IconMusic size={20} color={ICON_COLOR.foreground} />}
             label="Tus listas"
             onPress={onPlaylists}
           />
           <Fila
-            icon={<IconInbox size={18} color={ICON_COLOR.foreground} />}
+            icon={<IconInbox size={20} color={ICON_COLOR.foreground} />}
             label="Conversaciones"
             onPress={onChats}
           />
+          {/* Una sola línea, sin el título de la canción de subtítulo: las
+              filas del panel son destinos parejos, y la que crecía al doble de
+              alto desarmaba el ritmo de la columna. Qué suena ya lo dice la
+              tarjeta del reproductor, que está siempre a la vista. */}
           {sonando ? (
             <Fila
-              icon={<IconDisc size={18} color={ICON_COLOR.foreground} />}
+              icon={<IconDisc size={20} color={ICON_COLOR.foreground} />}
               label="Lo que suena"
-              detail={sonando.title}
               onPress={onNowPlaying}
             />
           ) : null}
           {/* Los ajustes son el último destino de la navegación: se entra de
               vez en cuando, y no compite con lo que uno viene a hacer. */}
           <Fila
-            icon={<IconSliders size={18} color={ICON_COLOR.foreground} />}
+            icon={<IconSliders size={20} color={ICON_COLOR.foreground} />}
             label="Ajustes"
             onPress={onAjustes}
           />
         </View>
 
         {/*
-         * El contenido: tus listas por nombre.
-         *
-         * El encabezado va en gris y chico, como el «Recientes» del referente —
-         * es un rótulo de sección, no una fila más, y si pesara igual que las
-         * de arriba se leería como un sexto destino.
+         * El contenido: tus listas por nombre, como el «Recientes» del
+         * referente. El encabezado va en gris y chico —es un rótulo, no una
+         * fila— y lejos de la navegación: la distancia es lo que separa los
+         * tramos, no una línea.
          */}
         {listas && listas.length > 0 ? (
-          <View className="mt-6 gap-0.5 px-2">
-            <Text className="text-muted-foreground px-3 pb-1 text-[12px]">Tus listas</Text>
+          <View className="mt-8 gap-0.5 px-3">
+            <Text className="text-muted-foreground px-3 pb-2 text-[13px]">Tus listas</Text>
             {listas.map((lista) => (
               <Pressable
                 key={lista.id}
                 accessibilityRole="button"
                 accessibilityLabel={lista.name}
                 onPress={() => onOpenPlaylist(lista.id)}
-                className="rounded-xl px-3 py-2.5 active:bg-muted"
+                className="rounded-xl px-3 py-3 active:bg-muted"
               >
-                <Text className="text-foreground text-[15px]" numberOfLines={1}>
+                <Text className="text-foreground text-[16px]" numberOfLines={1}>
                   {lista.name}
                 </Text>
               </Pressable>
             ))}
+            {/* La salida de la sección, como el «Todos los chats ›»: lleva a
+                la biblioteca entera, que es donde las listas se administran. */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Todas tus listas"
+              onPress={onPlaylists}
+              className="flex-row items-center gap-1 rounded-xl px-3 py-3 active:bg-muted"
+            >
+              <Text className="text-muted-foreground text-[15px]">Todas tus listas</Text>
+              <IconChevronRight size={15} color={ICON_COLOR.muted} />
+            </Pressable>
           </View>
         ) : null}
       </ScrollView>
 
       {/*
-       * El pie: quién sos y la acción principal, en una línea.
+       * El pie: dos piezas sueltas sobre un fundido, no una barra.
        *
-       * Es el único blanco puro del panel —`DESIGN.md` lo reserva para la acción
-       * primaria— y por eso hay **una** píldora y no dos. Cerrar sesión queda al
-       * lado del avatar, en gris y sin texto: es la única de acá que no te lleva
-       * a ningún lado sino que te saca, y no compite con crear una lista.
-       *
-       * **Acá sí va vidrio, y en el resto del panel no.** `DESIGN.md` reserva el
-       * material para lo que flota sobre contenido, y lo niega a los paneles
-       * —que son el fondo y no tienen nada detrás que difuminar—. El panel
-       * entero es fondo; esta barra no: se apoya sobre la lista de listas y,
-       * cuando esa lista es larga, las filas le pasan por debajo. Ahí el material
-       * tiene justo lo que necesita para leerse como material.
+       * El avatar y la píldora flotan sobre el final de la lista, y el
+       * degradado —del gris del panel a nada— es lo que los despega de las
+       * filas que pasan por debajo. Es el mismo recurso del reproductor sobre
+       * las listas, y el mismo del referente. La píldora es el único blanco
+       * puro del panel: `DESIGN.md` lo reserva para la acción primaria, y acá
+       * la acción es crear.
        */}
-      <Glass radius={28} style={{ marginHorizontal: 12, marginTop: 4 }}>
-      <View className="flex-row items-center gap-1 px-2 py-2">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ver tu perfil"
-          onPress={onProfile}
-          className="rounded-full active:opacity-70"
+      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        <View pointerEvents="box-none" style={{ flex: 1 }} />
+        <LinearGradient
+          pointerEvents="none"
+          // card (#181818) hacia transparente, de abajo hacia arriba.
+          colors={['rgba(24,24,24,0)', 'rgba(24,24,24,0.9)', 'rgb(24,24,24)']}
+          locations={[0, 0.45, 1]}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: insets.bottom + 96 }}
+        />
+        <View
+          className="flex-row items-center justify-between px-5"
+          style={{ paddingBottom: insets.bottom + 10 }}
         >
-          <Avatar name={name} path={avatarPath} size={36} />
-        </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ver tu perfil"
+            onPress={onProfile}
+            className="rounded-full active:opacity-70"
+          >
+            <Avatar name={name} path={avatarPath} size={40} />
+          </Pressable>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Cerrar sesión"
-          onPress={onLogout}
-          className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
-        >
-          <IconLogOut size={17} color={ICON_COLOR.muted} />
-        </Pressable>
-
-        <View className="flex-1" />
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Nueva lista"
-          onPress={onNewPlaylist}
-          className="h-10 flex-row items-center gap-1.5 rounded-full bg-primary px-4 active:opacity-80"
-        >
-          <IconPlus size={16} color={ICON_COLOR.onPrimary} />
-          <Text className="text-primary-foreground text-[14px] font-semibold">Nueva lista</Text>
-        </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Nueva lista"
+            onPress={onNewPlaylist}
+            className="h-11 flex-row items-center gap-1.5 rounded-full bg-primary px-5 active:opacity-80"
+          >
+            <IconPlus size={16} color={ICON_COLOR.onPrimary} />
+            <Text className="text-primary-foreground text-[14px] font-semibold">Nueva lista</Text>
+          </Pressable>
+        </View>
       </View>
-      </Glass>
     </View>
   )
 }
 
+/** Fila de navegación: ícono y rótulo, una sola línea, con aire. */
 function Fila({
   icon,
   label,
-  detail,
   onPress,
 }: {
   icon: React.ReactNode
   label: string
-  detail?: string
   onPress: () => void
 }) {
   return (
@@ -231,17 +234,10 @@ function Fila({
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      className="flex-row items-center gap-3 rounded-xl px-3 py-2.5 active:bg-muted"
+      className="flex-row items-center gap-4 rounded-xl px-3 py-3.5 active:bg-muted"
     >
       <View className="w-6 items-center">{icon}</View>
-      <View className="min-w-0 flex-1">
-        <Text className="text-foreground text-[15px] font-medium">{label}</Text>
-        {detail ? (
-          <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
-            {detail}
-          </Text>
-        ) : null}
-      </View>
+      <Text className="text-foreground text-[17px] font-medium">{label}</Text>
     </Pressable>
   )
 }

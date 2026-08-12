@@ -10,6 +10,7 @@ import {
   IconClock,
   IconDisc,
   IconDisk,
+  IconLogOut,
   IconTrash,
   IconWifi,
 } from '../src/ui/icons'
@@ -26,6 +27,7 @@ import {
 import { setAutoplay, setSoloWifi, useAjustes } from '../src/state/ajustes'
 import { programarApagado, useDormirMin } from '../src/state/playback'
 import { borrarHistorial } from '../src/services/plays'
+import { endSession } from '../src/state/session'
 import { avisar } from '../src/state/aviso'
 import { mensajeError } from '../src/lib/mensajeError'
 import { usePiso } from '../src/state/shell'
@@ -96,6 +98,7 @@ export default function Ajustes() {
 
   const historial = useDobleToque()
   const descargas = useDobleToque()
+  const salida = useDobleToque()
   const { items, esperandoWifi } = useDescargas()
   const bajadas = cuantasListas(items)
   const pendientes = cuantasPendientes(items)
@@ -268,6 +271,25 @@ export default function Ajustes() {
                   vacio="Las recomendaciones vuelven a empezar de cero"
                   icono={<IconTrash size={17} color={ICON_COLOR.muted} />}
                   onPress={() => void borrar()}
+                  ultima
+                />
+              </GrupoAjustes>
+
+              {/*
+               * Cerrar sesión vive acá y no en el panel lateral: es la única
+               * acción de la app que te saca en vez de llevarte, y en el panel
+               * convivía —a un toque de distancia— con crear una lista. Con dos
+               * toques, porque volver a entrar pide la contraseña.
+               */}
+              <GrupoAjustes titulo="Tu cuenta">
+                <FilaAjuste
+                  rotulo={salida.armado ? 'Tocá de nuevo para confirmar' : 'Cerrar sesión'}
+                  valor={salida.armado ? 'Vas a volver a la pantalla de entrada' : ''}
+                  vacio=""
+                  icono={<IconLogOut size={17} color={ICON_COLOR.muted} />}
+                  onPress={() => {
+                    if (salida.confirmar()) void endSession()
+                  }}
                   ultima
                 />
               </GrupoAjustes>

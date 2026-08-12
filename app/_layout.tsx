@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ActivityIndicator,
   Keyboard,
@@ -24,7 +25,7 @@ import { restorePlayback, usePlaybackTrack } from '../src/state/playback'
 import { cargarAjustes } from '../src/state/ajustes'
 import { cargarDescargas } from '../src/state/descargas'
 import { reconectarJam } from '../src/state/jam'
-import { endSession, startSession, useMyProfile, useUser } from '../src/state/session'
+import { startSession, useMyProfile, useUser } from '../src/state/session'
 import { emailToUsername } from '../src/services/auth'
 import { AppDrawer } from '../src/ui/AppDrawer'
 import {
@@ -115,6 +116,8 @@ function Chrome() {
   const tabGuardada = useTab()
   const tabActiva = segmentos[0] === 'profile' ? 'perfil' : tabGuardada
   const { width } = useWindowDimensions()
+  /** El alto de la franja del reloj, para el fundido de arriba. */
+  const arriba = useSafeAreaInsets()
   const router = useRouter()
   const myProfile = useMyProfile()
   const user = useUser()
@@ -340,7 +343,6 @@ function Chrome() {
             onAjustes={cerrandoIr(() => router.push('/ajustes'))}
             onNewPlaylist={cerrandoIr(newPlaylist)}
             onOpenPlaylist={(id) => cerrandoIr(() => abrirLista(id))()}
-            onLogout={cerrandoIr(() => void endSession())}
           />
         </View>
       ) : null}
@@ -373,6 +375,30 @@ function Chrome() {
       <View className="min-h-0 flex-1">
         <SessionGate />
       </View>
+      {/*
+       * El fundido de **arriba**: el borde del reloj, resuelto como el de abajo.
+       *
+       * En iOS 26 la barra de estado no tiene fondo: el contenido pasa por
+       * detrás de la hora y de la batería, y sin esto quedaba cortado en seco
+       * contra esa franja — el único borde duro de una app que funde todos los
+       * demás. Apple recomienda exactamente esto para el borde de scroll: un
+       * degradado del fondo hacia nada, para que las filas se apaguen antes de
+       * tocar el reloj.
+       *
+       * Sobre una pantalla que ya deja la franja vacía (las que arrancan
+       * debajo del área segura) es invisible: fondo sobre el mismo fondo. Solo
+       * aparece donde hay contenido pasando por abajo, que es donde hace
+       * falta. Va solo en el teléfono y con sesión — el login tiene su propia
+       * luz arriba y este velo se la ensuciaría.
+       */}
+      {flotante && usuario ? (
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgb(18,18,18)', 'rgba(18,18,18,0.85)', 'rgba(18,18,18,0)']}
+          locations={[0, 0.55, 1]}
+          style={{ position: 'absolute', left: 0, right: 0, top: 0, height: arriba.top + 24 }}
+        />
+      ) : null}
       {/*
        * La cáscara **no se desmonta nunca**, ni con el teclado abierto.
        *
