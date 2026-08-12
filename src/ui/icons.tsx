@@ -41,8 +41,10 @@ import {
   Repeat1,
   Search,
   Send,
+  Share2,
   Shuffle,
   Trash2,
+  UsersRound,
   Volume2,
   VolumeX,
   Wifi,
@@ -132,6 +134,8 @@ export const IconQueue = make(ListPlus)
 export const IconVolume = make(Volume2)
 export const IconVolumeOff = make(VolumeX)
 export const IconUser = make(UserRound)
+export const IconUsers = make(UsersRound)
+export const IconShare = make(Share2)
 export const IconCollapseLeft = make(PanelLeftClose)
 export const IconExpandLeft = make(PanelLeftOpen)
 export const IconCollapseRight = make(PanelRightClose)

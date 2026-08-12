@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { PlaylistTrack } from '../services/playlists'
 import { createStore, useStore } from './store'
 import { leerAjustes } from './ajustes'
+import { avisar } from './aviso'
 
 /**
  * Lo que suena, para toda la app.
@@ -152,6 +153,9 @@ type Guardado = {
 }
 
 function guardar(force = false) {
+  // La cola de un Jam no es tuya: persistirla dejaría la de otro apareciendo
+  // en tu próxima sesión. Lo guardado antes de entrar queda intacto.
+  if (enJam()) return
   const now = Date.now()
   if (!force && now - ultimoGuardado < GUARDAR_CADA_MS) return
   ultimoGuardado = now
@@ -175,6 +179,8 @@ export async function restorePlayback() {
     const { tracks, index, origin, positionMs } = JSON.parse(crudo) as Guardado
     const track = tracks?.[index]
     if (!track) return
+    // Un Jam reconectado gana: lo guardado es de la sesión pasada y él es ahora.
+    if (enJam()) return
     if (store.get().index >= 0 || store.get().manual) return
     store.set({
       tracks,
@@ -215,6 +221,41 @@ let relleno: (() => Promise<PlaylistTrack[]>) | null = null
 
 export function registerRelleno(fn: (() => Promise<PlaylistTrack[]>) | null) {
   relleno = fn
+}
+
+/*
+ * El Jam, cuando hay uno. Es el sexto puente de registro, y existe por lo
+ * mismo que los otros cinco: `state/jam` importa este archivo para volcarle la
+ * cola compartida, así que este no puede importarlo a él.
+ *
+ * Estando en un Jam, la cola deja de ser tuya: es de todos y la verdad vive en
+ * el servidor. Cada acción de acá le pregunta primero al puente. `transporte`
+ * devuelve **si el Jam se quedó con la acción**: true es «no toques nada
+ * local» — o porque el permiso no alcanza, o porque la respuesta va a llegar
+ * por el canal—; false es «seguí, y yo aviso al resto» (el camino optimista:
+ * tu botón responde ya, el evento confirma después).
+ */
+export type JamBridge = {
+  activo: () => boolean
+  esHost: () => boolean
+  transporte: (
+    accion: 'play' | 'pause' | 'seek' | 'siguiente' | 'anterior' | 'tocar',
+    ms?: number,
+    itemId?: string,
+  ) => boolean
+  encolar: (track: PlaylistTrack) => void
+  /** Al host se le terminó la canción: que el servidor pase a la siguiente. */
+  publicarAvance: () => void
+}
+
+let jam: JamBridge | null = null
+
+export function registerJam(next: JamBridge | null) {
+  jam = next
+}
+
+function enJam(): boolean {
+  return jam?.activo() ?? false
 }
 
 /** Si ya hay una tanda en camino, para no pedir dos veces al mismo final. */
@@ -281,6 +322,15 @@ export function playQueue(
 ) {
   const track = tracks[index]
   if (!track) return
+  /*
+   * En un Jam no se pisa la cola: es de todos. Reproducir otra lista entera
+   * es una decisión de salirse, y esa se toma con palabras — no como efecto
+   * colateral de tocar una canción en otra pantalla.
+   */
+  if (enJam()) {
+    avisar('Estás en un Jam. Agregá la canción a la cola, o salí del Jam.')
+    return
+  }
   stopSnippets()
   store.set({
     tracks,
@@ -298,6 +348,11 @@ export function playQueue(
 
 /** Suma al final de la cola manual: suena cuando termine lo de ahora. */
 export function enqueue(track: PlaylistTrack) {
+  // En un Jam, encolar es agregarle al Jam: la cola compartida es LA cola.
+  if (enJam()) {
+    jam?.encolar(track)
+    return
+  }
   const state = store.get()
   // Sin nada cargado, encolar es simplemente ponerla.
   if (state.index < 0 && !state.manual) {
@@ -316,6 +371,11 @@ export function playAt(index: number) {
     togglePlayback()
     return
   }
+  /* En un Jam, tocar una fila salta ahí **para todos**. El id de la fila ES el
+     del ítem del Jam — la cola volcada conserva los ids del servidor. Si el
+     puente la bloquea (sin permiso), no se salta ni localmente: verse en otra
+     canción que el resto sería mentirse. */
+  if (jam?.transporte('tocar', undefined, track.id)) return
   stopSnippets()
   store.set({
     manual: null,
@@ -330,11 +390,13 @@ export function playAt(index: number) {
 
 export function resumePlayback() {
   if (store.get().index < 0) return
+  if (jam?.transporte('play')) return
   stopSnippets()
   store.set({ wantPlay: true })
 }
 
 export function pausePlayback() {
+  if (jam?.transporte('pause')) return
   store.set({ wantPlay: false })
 }
 
@@ -344,6 +406,16 @@ export function togglePlayback() {
 }
 
 export function playNext() {
+  /*
+   * En un Jam, «la que sigue» la decide el servidor adentro de su lock: si dos
+   * personas saltan a la vez, la segunda parte del resultado de la primera y
+   * no del estado que alcanzó a ver. Por eso acá **no** hay salto optimista:
+   * el cambio llega por el canal, para todos igual.
+   */
+  if (jam?.activo()) {
+    jam.transporte('siguiente')
+    return
+  }
   const state = store.get()
   const next = siguienteIndice(state)
   if (next !== null) playAt(next)
@@ -355,7 +427,15 @@ export function playPrevious() {
    * Pasados unos segundos, "anterior" reinicia la canción en vez de volver a
    * la de antes. Es lo que hace cualquier reproductor y lo que uno espera
    * cuando quiere volver a escuchar algo que recién empezó.
+   *
+   * En un Jam la regla es la misma pero viaja como intent: reiniciar es un
+   * seek a cero compartido, y «la anterior» la resuelve el servidor.
    */
+  if (jam?.activo()) {
+    if (state.positionMs > RESTART_MS) seekToMs(0)
+    else jam.transporte('anterior')
+    return
+  }
   if (state.positionMs > RESTART_MS || state.index <= 0) {
     engine?.seekTo(0)
     store.set({ positionMs: 0 })
@@ -377,6 +457,9 @@ export function seekToMs(positionMs: number) {
   const state = store.get()
   if (!Number.isFinite(positionMs) || state.durationMs <= 0) return
   const to = Math.max(0, Math.min(state.durationMs, positionMs))
+  // En un Jam el salto es de todos: se publica, y si el permiso no alcanza no
+  // se salta ni acá — la barra en otro segundo que el resto sería mentira.
+  if (jam?.transporte('seek', to)) return
   engine?.seekTo(to)
   store.set({ positionMs: to })
 }
@@ -441,11 +524,20 @@ export function programarApagado(minutos: number | null) {
 
 /** Rota apagado → lista → una sola, como cualquier reproductor. */
 export function toggleRepetir() {
+  // En un Jam el orden es compartido: un repetir local te separaría del resto.
+  if (enJam()) {
+    avisar('En un Jam el orden es de todos.')
+    return
+  }
   const actual = store.get().repetir
   store.set({ repetir: actual === 'no' ? 'lista' : actual === 'lista' ? 'una' : 'no' })
 }
 
 export function toggleShuffle() {
+  if (enJam()) {
+    avisar('En un Jam el orden es de todos.')
+    return
+  }
   const state = store.get()
   if (state.shuffle) {
     store.set({ shuffle: null })
@@ -474,6 +566,20 @@ function siguienteIndice(state: PlaybackState): number | null {
 }
 
 export function advance() {
+  /*
+   * En un Jam, el final de una canción no lo decide cada dispositivo.
+   *
+   * El **host** es el único que avanza — su motor es el que manda — y no lo
+   * hace localmente: le pide al servidor la siguiente y el cambio le llega por
+   * el canal, igual que a todos. Un invitado cuyo reproductor llegó al final
+   * simplemente espera: si avanzara solo, cada teléfono iría por su lado y a
+   * la tercera canción el Jam sería un canon.
+   */
+  if (enJam()) {
+    if (jam?.esHost()) jam.publicarAvance()
+    return
+  }
+
   const state = store.get()
 
   /*
@@ -589,7 +695,73 @@ export function toggleView(view: Exclude<NowPlayingView, 'info'>) {
 
 /** Frena la cola porque va a sonar un fragmento del chat. */
 export function pauseForSnippet() {
-  if (store.get().wantPlay) pausePlayback()
+  if (!store.get().wantPlay) return
+  /* En un Jam la pausa es solo tuya: escuchar un fragmento del chat no puede
+     pausarle la música a todos los demás. El Jam sigue; al volver, play. */
+  if (enJam()) {
+    store.set({ wantPlay: false })
+    return
+  }
+  pausePlayback()
+}
+
+/* ── El volcado del Jam ─────────────────────────────────────────────────────
+ *
+ * `state/jam` escribe por acá, directo y sin pasar por las acciones de arriba:
+ * las acciones son pedidos de una persona y esto es **la verdad llegando del
+ * servidor** — no tiene que pedir permiso, ni persistirse, ni volver a
+ * publicarse. Si pasara por `resumePlayback`, un evento del canal dispararía
+ * otro intent y el Jam conversaría consigo mismo en un eco infinito.
+ */
+
+/** El estado crudo, para que el Jam arme sus pedidos con lo que está sonando. */
+export function getPlaybackState() {
+  return store.get()
+}
+
+export function jamAplicar(a: {
+  tracks: PlaylistTrack[]
+  index: number
+  wantPlay: boolean
+  /**
+   * Solo al entrar o al cambiar de canción. Mientras la misma canción suena,
+   * la posición local la lleva el reloj del motor — pisarla desde cada evento
+   * pelearía con él y la barra temblaría.
+   */
+  positionMs?: number
+}) {
+  const track = a.tracks[a.index] ?? null
+  if (a.wantPlay && track) stopSnippets()
+  store.set({
+    tracks: a.tracks,
+    upNext: [],
+    manual: null,
+    // Sin origen: la cola no salió de una lista tuya, y «ver la lista»
+    // llevaría a una pantalla que no existe.
+    origin: null,
+    index: track ? a.index : -1,
+    wantPlay: a.wantPlay && track !== null,
+    durationMs: track?.durationMs ?? 0,
+    // El orden es compartido: nada de baraja ni repetición locales.
+    shuffle: null,
+    repetir: 'no',
+    error: null,
+    ...(a.positionMs !== undefined ? { positionMs: a.positionMs } : {}),
+  })
+}
+
+/**
+ * El Jam terminó o te fuiste. El host conserva la cola —era suya antes de
+ * compartirla y su música no tiene por qué cortarse—; un invitado vuelve al
+ * silencio: lo que sonaba no era de él. Su cola anterior sigue en el disco
+ * (guardar() no escribió durante el Jam) y reaparece al reabrir la app.
+ */
+export function jamSoltar(conservarCola: boolean) {
+  if (conservarCola) {
+    guardar(true)
+    return
+  }
+  stopPlayback()
 }
 
 /** Nombre de la lista que está sonando; para la pantalla bloqueada. */

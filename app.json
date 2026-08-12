@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.nihuel.dnmusic",
+      "associatedDomains": ["applinks:dany-sandy.vercel.app"],
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"

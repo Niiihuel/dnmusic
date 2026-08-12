@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.nihuel.dnmusic"],
+        "components": [
+          {
+            "/": "/jam/*",
+            "comment": "Invitaciones a un Jam: abre la app directo en la puerta del código"
+          }
+        ]
+      }
+    ]
+  }
+}

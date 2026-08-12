@@ -19,6 +19,15 @@ import {
 } from '../state/playback'
 import { proximasRecomendadas } from '../services/recomendaciones'
 import { rutaLocal } from '../state/descargas'
+import {
+  jamEsperaArranqueMs,
+  jamPosicionObjetivoMs,
+  jamSuena,
+  useJamActivo,
+  useJamRevision,
+  useJamSilencioso,
+  useJamSincronizo,
+} from '../state/jam'
 import { saltar } from '../lib/seek'
 import { useAppActiva } from '../lib/appActiva'
 import { avisar } from '../state/aviso'
@@ -40,6 +49,25 @@ const CACHE_URLS = 3
  * canción lo necesita; los dibujados, no. Ver el `tick`.
  */
 const AVISO_CADA_MS = 100
+/*
+ * La sincronía del Jam, en tres números.
+ *
+ * Debajo de 80ms no se toca nada: es menos que la latencia de un Bluetooth y
+ * corregirlo sería perseguir ruido. Hasta 400ms se corrige **estirando el
+ * tiempo** —velocidad 1.04 con corrección de tono, inaudible— porque un salto
+ * en medio de la música es un artefacto que se oye y esto no. Más de 400ms es
+ * un salto franco: seekTo con tolerancia cero, exacto al cuadro.
+ *
+ * La deriva se revisa cada 7 segundos con un `setInterval` — **jamás** con
+ * `requestAnimationFrame`: un bucle por cuadro leyendo la posición es la forma
+ * exacta del que hizo que iOS matara la app por CPU (ver el comentario largo
+ * de abajo). Entre revisiones, cada evento del Jam dispara una corrección
+ * puntual: los saltos y pausas de otro llegan al oído en el viaje del evento,
+ * no en el próximo tick.
+ */
+const JAM_DERIVA_MIN_MS = 80
+const JAM_SALTO_MS = 400
+const JAM_REVISA_CADA_MS = 7000
 
 /**
  * El motor de audio: **el que suena**. No dibuja nada.
@@ -186,7 +214,21 @@ export function MotorAudio() {
       })
     })
   }, [])
-  const url = urlOf(current?.id)
+  /*
+   * El Jam, visto desde el motor.
+   *
+   * `silencioso` es «control remoto»: quien eligió escuchar en el dispositivo
+   * del host. Su cola y sus controles dibujan el Jam, pero acá **no suena
+   * nada** — la fuente queda en null y ni se firma. `sincronizo` es el caso
+   * contrario: un invitado que reproduce localmente y tiene que mantenerse
+   * pegado al reloj compartido. El host no es ninguno de los dos: él ES la
+   * verdad, y corregirlo contra la derivada sería perseguirse la cola.
+   */
+  const enJam = useJamActivo()
+  const silencioso = useJamSilencioso()
+  const sincronizo = useJamSincronizo()
+  const jamRev = useJamRevision()
+  const url = silencioso ? null : urlOf(current?.id)
   const raf = useRef<number | null>(null)
   /** El cuadro anterior, para medir cuánto sonó de verdad entre uno y otro. */
   const ultimoTick = useRef(0)
@@ -260,6 +302,8 @@ export function MotorAudio() {
   // Firmar la URL de la canción actual. Se firma al reproducir y no antes: una
   // URL firmada vence, y una lista puede quedar abierta mucho rato.
   useEffect(() => {
+    // De control remoto no se firma nada: no hay reproductor que alimentar.
+    if (silencioso) return
     // Si la veníamos preparando ya está firmada, y encima a medio bajar.
     if (!current || urlOf(current.id)) return
     /*
@@ -285,7 +329,7 @@ export function MotorAudio() {
     return () => {
       alive = false
     }
-  }, [current, urlOf, remember])
+  }, [current, urlOf, remember, silencioso])
 
   /*
    * Preparar la que sigue mientras suena la de ahora.
@@ -302,6 +346,7 @@ export function MotorAudio() {
    * error se traga en vez de mostrarse — todavía no es un problema de nadie.
    */
   useEffect(() => {
+    if (silencioso) return
     if (!nextUp || urlOf(nextUp.id)) return
     /*
      * La bajada no se precarga: ya está entera en el disco, así que no hay buffer
@@ -327,7 +372,7 @@ export function MotorAudio() {
     return () => {
       alive = false
     }
-  }, [nextUp, urlOf, remember])
+  }, [nextUp, urlOf, remember, silencioso])
 
   /**
    * Pasar a la siguiente, una sola vez por canción.
@@ -417,23 +462,40 @@ export function MotorAudio() {
   // siguiente sin que nadie toque nada.
   useEffect(() => {
     if (!url || !wantPlay) return
+    const arrancar = () => {
+      /*
+       * Darle play a algo que ya terminó es empezarlo de nuevo, no quedarse
+       * clavado en el final. Pero «terminó» se decide **solo con lo que sabe el
+       * reproductor**, nunca con el largo que quedó guardado en la canción.
+       *
+       * Ese largo sale de lo que dijo YouTube al agregarla, y a veces viene
+       * corto o en cero. Con él, retomar una canción pausada pasada la marca del
+       * largo equivocado se leía como «ya terminó» y saltaba a cero: pausabas por
+       * la mitad y volvía a empezar. `player.duration` es lo que el reproductor
+       * midió del archivo que tiene abierto; mientras no lo sepa, no se toca la
+       * posición, que es lo correcto — ante la duda, seguir donde estaba.
+       */
+      const total = Number.isFinite(player.duration) ? player.duration : 0
+      if (total > 0 && player.currentTime >= total - END_EPSILON_S) saltar(player, 0)
+      ended.current = false
+      player.play()
+    }
     /*
-     * Darle play a algo que ya terminó es empezarlo de nuevo, no quedarse
-     * clavado en el final. Pero «terminó» se decide **solo con lo que sabe el
-     * reproductor**, nunca con el largo que quedó guardado en la canción.
-     *
-     * Ese largo sale de lo que dijo YouTube al agregarla, y a veces viene
-     * corto o en cero. Con él, retomar una canción pausada pasada la marca del
-     * largo equivocado se leía como «ya terminó» y saltaba a cero: pausabas por
-     * la mitad y volvía a empezar. `player.duration` es lo que el reproductor
-     * midió del archivo que tiene abierto; mientras no lo sepa, no se toca la
-     * posición, que es lo correcto — ante la duda, seguir donde estaba.
+     * En un Jam, los cambios de tema traen un instante de arranque un pelo en
+     * el futuro (ver `jam_tocar`): todos reciben el evento, cargan, y arrancan
+     * **en el instante** — no cada uno cuando se enteró. Fuera del Jam la
+     * espera es cero y esto es el arranque de siempre. `jamRev` está en las
+     * dependencias como pulso: cada mutación del Jam puede traer un instante
+     * nuevo que reprogramar.
      */
-    const total = Number.isFinite(player.duration) ? player.duration : 0
-    if (total > 0 && player.currentTime >= total - END_EPSILON_S) saltar(player, 0)
-    ended.current = false
-    player.play()
-  }, [url, wantPlay, player, current?.id])
+    const espera = jamEsperaArranqueMs()
+    if (espera <= 0) {
+      arrancar()
+      return
+    }
+    const espero = setTimeout(arrancar, espera)
+    return () => clearTimeout(espero)
+  }, [url, wantPlay, player, current?.id, jamRev])
 
   /*
    * Lo que pasa por fuera de la app: el final de la canción y quién la pausó.
@@ -501,6 +563,87 @@ export function MotorAudio() {
   useEffect(() => {
     if (!wantPlay) player.pause()
   }, [wantPlay, player])
+
+  /*
+   * Mantenerse pegado al reloj del Jam, sin que se oiga.
+   *
+   * Corre para todo el que reproduce audio dentro de un Jam. La escalera está
+   * en las constantes de arriba; acá lo que importa es **quién corrige qué**:
+   *
+   * - Un invitado corrige todo: deriva chica estirando el tiempo, deriva
+   *   grande saltando. Su reproductor persigue a la derivada del servidor.
+   * - El host solo corrige saltos grandes — un seek que pidió otro—. Su
+   *   reproductor ES la referencia: corregirlo contra la derivada, que lo
+   *   sigue a él con la latencia de sus propios eventos, sería perseguirse
+   *   la cola en círculos.
+   *
+   * La corrección puntual del arranque espera el instante programado más un
+   * respiro, para medir contra una canción que ya está sonando y no contra el
+   * silencio previo.
+   */
+  useEffect(() => {
+    if (!enJam || silencioso || !current || !url) return
+    let rateHasta: ReturnType<typeof setTimeout> | null = null
+
+    const aVelocidadNormal = () => {
+      try {
+        player.setPlaybackRate(1)
+      } catch {
+        // La implementación web puede no tenerlo; sin corrección fina, el
+        // próximo control salta si la deriva crece.
+      }
+    }
+
+    const corregir = () => {
+      if (!jamSuena()) {
+        aVelocidadNormal()
+        return
+      }
+      const objetivo = jamPosicionObjetivoMs()
+      const t = player.currentTime
+      if (objetivo === null || !Number.isFinite(t)) return
+      /*
+       * Si el Jam suena y el reproductor quedó pausado por afuera —el botón
+       * de los auriculares, la pantalla bloqueada— un invitado vuelve al
+       * ritmo: su pausa física no pausó el Jam, y quedarse callado mientras
+       * la barra avanza es el peor de los estados. El host no: su pausa
+       * física ya viajó como intent por el detector de pausas externas.
+       */
+      if (sincronizo && wantPlay && !player.playing) player.play()
+
+      const delta = objetivo - t * 1000
+      if (Math.abs(delta) > JAM_SALTO_MS) {
+        aVelocidadNormal()
+        // Tolerancia cero: el salto cae en el milisegundo pedido, no en el
+        // keyframe más cercano. Y el rechazo se traga como en `lib/seek`.
+        player.seekTo(objetivo / 1000, 0, 0).catch(() => undefined)
+        return
+      }
+      if (!sincronizo) return
+      if (Math.abs(delta) < JAM_DERIVA_MIN_MS) {
+        aVelocidadNormal()
+        return
+      }
+      try {
+        player.setPlaybackRate(delta > 0 ? 1.04 : 0.96, 'high')
+        if (rateHasta) clearTimeout(rateHasta)
+        // Lo que tarda en absorber la deriva al 4%, con un tope prudente.
+        rateHasta = setTimeout(aVelocidadNormal, Math.min(3000, Math.abs(delta) / 0.04))
+      } catch {
+        // Sin velocidad variable no hay corrección fina; el umbral de salto
+        // sigue cuidando que la deriva no se vaya de las manos.
+      }
+    }
+
+    const puntual = setTimeout(corregir, jamEsperaArranqueMs() + 150)
+    const periodica = setInterval(corregir, JAM_REVISA_CADA_MS)
+    return () => {
+      clearTimeout(puntual)
+      clearInterval(periodica)
+      if (rateHasta) clearTimeout(rateHasta)
+      aVelocidadNormal()
+    }
+  }, [enJam, silencioso, sincronizo, current, url, wantPlay, player, jamRev])
 
   /*
    * Si la app está a la vista. **El reloj de abajo depende de esto.**
@@ -608,10 +751,12 @@ export function MotorAudio() {
     }
   }, [playing, current, player, finish, alaVista])
   /* La barra dibuja el botón según esto: sin la URL firmada todavía no suena
-     nada, por más que la intención de quien escucha sea reproducir. */
+     nada, por más que la intención de quien escucha sea reproducir. El control
+     remoto de un Jam cuenta como cargado con solo tener canción: acá no se
+     carga nada — el audio está sonando en el dispositivo del host. */
   useEffect(() => {
-    reportCargada(url !== null)
-  }, [url])
+    reportCargada(url !== null || (silencioso && current !== null))
+  }, [url, silencioso, current])
 
   return null
 }

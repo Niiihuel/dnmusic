@@ -5,11 +5,20 @@
   "framework": null,
   "rewrites": [
     {
-      "source": "/((?!_expo|icons|assets|manifest.json|favicon.ico).*)",
+      "source": "/((?!_expo|icons|assets|manifest.json|favicon.ico|\\.well-known).*)",
       "destination": "/index.html"
     }
   ],
   "headers": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
     {
       "source": "/_expo/static/(.*)",
       "headers": [

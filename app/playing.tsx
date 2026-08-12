@@ -15,6 +15,7 @@ import {
   usePlaybackOriginName,
   usePlaybackState,
 } from '../src/state/playback'
+import { crearJamActual, useCuantosJam, useJamActivo } from '../src/state/jam'
 import { LyricsView } from '../src/ui/LyricsView'
 import { BotonAleatorio, BotonRepetir } from '../src/ui/Transport'
 import { SeekBar } from '../src/ui/SeekBar'
@@ -29,6 +30,7 @@ import {
   IconPause,
   IconPlay,
   IconPrevious,
+  IconUsers,
 } from '../src/ui/icons'
 
 /**
@@ -48,6 +50,8 @@ export default function Playing() {
   const { tracks, index, manual, wantPlay, positionMs, durationMs } = usePlaybackState()
   const view = useNowPlayingView()
   const listName = usePlaybackOriginName()
+  const enJam = useJamActivo()
+  const cuantosJam = useCuantosJam()
 
   const track = manual ?? (index >= 0 ? (tracks[index] ?? null) : null)
   const artwork = track ? artworkSource(track.artworkPath, track.artworkUrl, 640) : null
@@ -236,6 +240,26 @@ export default function Playing() {
               onPress={() => toggleView('lyrics')}
               icon={IconLyrics}
               text="Letra"
+            />
+
+            {/*
+             * El Jam, junto a las vistas: es lo otro que se hace **con lo que
+             * está sonando**. Sin Jam lo crea con la cola puesta; con uno
+             * abierto muestra cuántos son y abre el sheet. Encendido en blanco
+             * como todo estado activo — ver docs/DESIGN.md.
+             */}
+            <Vista
+              label={enJam ? 'Ver el Jam' : 'Iniciar un Jam'}
+              active={enJam}
+              onPress={() => {
+                if (enJam) router.push('/jam')
+                else
+                  void crearJamActual().then((ok) => {
+                    if (ok) router.push('/jam')
+                  })
+              }}
+              icon={IconUsers}
+              text={enJam ? `Jam · ${cuantosJam}` : 'Jam'}
             />
 
             {/*

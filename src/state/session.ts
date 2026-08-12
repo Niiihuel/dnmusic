@@ -10,6 +10,7 @@ import {
 import { subscribeToMessages, type Unsubscribe } from '../services/messages'
 import { fetchMyProfile, type Profile } from '../services/profile'
 import type { Message } from '../models/message'
+import { desconectarJam } from './jam'
 import { stopPlayback } from './playback'
 import { createStore, useStore } from './store'
 
@@ -209,6 +210,9 @@ export function startSession() {
 export async function endSession() {
   accountVersion++
   stopAccountListeners()
+  // El Jam se suelta antes que nada: su canal firma con la sesión que se va.
+  // Solo el cierre local — la membresía la limpia la expiración del servidor.
+  desconectarJam()
   // La música no es de la app, es de quien se está yendo: dejarla sonando en la
   // pantalla de login sería de otra cuenta, y con URLs firmadas de su sesión.
   stopPlayback()

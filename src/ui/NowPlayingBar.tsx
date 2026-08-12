@@ -18,6 +18,7 @@ import {
   toggleView,
   usePlaybackState,
 } from '../state/playback'
+import { crearJamActual, salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
 import { Glass } from './Glass'
 import { Menu, type MenuItem } from './Menu'
 import { SeekBar, formatClock } from './SeekBar'
@@ -34,6 +35,7 @@ import {
   IconShuffle,
   IconDisc,
   IconLyrics,
+  IconUsers,
   IconVolume,
   IconVolumeOff,
 } from './icons'
@@ -83,6 +85,8 @@ export function NowPlayingBar({
   const router = useRouter()
   const { width } = useWindowDimensions()
   const wide = width >= WIDE_PX
+  const enJam = useJamActivo()
+  const cuantosJam = useCuantosJam()
 
   // Lo encolado a mano manda sobre la lista mientras dure.
   const current = manual ?? (index >= 0 ? (tracks[index] ?? null) : null)
@@ -113,6 +117,25 @@ export function NowPlayingBar({
    * Cerrar sigue estando, al final y separado del resto.
    */
   const menu: MenuItem[] = [
+    /*
+     * El Jam va primero: es la única entrada que cambia **quiénes** escuchan,
+     * y con uno abierto dice cuántos son — que es lo que uno quiere saber sin
+     * abrir nada.
+     */
+    {
+      label: enJam
+        ? `Jam · ${cuantosJam} ${cuantosJam === 1 ? 'persona' : 'personas'}`
+        : 'Iniciar un Jam',
+      onPress: () => {
+        if (enJam) router.push('/jam')
+        else
+          void crearJamActual().then((ok) => {
+            if (ok) router.push('/jam')
+          })
+      },
+      icon: <IconUsers size={15} color={enJam ? ICON_COLOR.foreground : ICON_COLOR.muted} />,
+      sfSymbol: 'person.2',
+    },
     {
       label: 'Ver la lista',
       onPress: openSoundingPlaylist,
@@ -155,13 +178,23 @@ export function NowPlayingBar({
       icon: <IconNext size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'forward.end',
     },
-    {
-      label: 'Cerrar el reproductor',
-      onPress: stopPlayback,
-      destructive: true,
-      icon: <IconClose size={15} color={ICON_COLOR.muted} />,
-      sfSymbol: 'xmark',
-    },
+    /* En un Jam, «cerrar» es irse de él: cerrar solo el reproductor dejaría
+       la membresía viva y la cola volvería sola con el próximo evento. */
+    enJam
+      ? {
+          label: 'Salir del Jam',
+          onPress: salirDelJam,
+          destructive: true,
+          icon: <IconClose size={15} color={ICON_COLOR.muted} />,
+          sfSymbol: 'xmark',
+        }
+      : {
+          label: 'Cerrar el reproductor',
+          onPress: stopPlayback,
+          destructive: true,
+          icon: <IconClose size={15} color={ICON_COLOR.muted} />,
+          sfSymbol: 'xmark',
+        },
   ]
 
   /*

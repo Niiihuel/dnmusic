@@ -23,6 +23,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { restorePlayback, usePlaybackTrack } from '../src/state/playback'
 import { cargarAjustes } from '../src/state/ajustes'
 import { cargarDescargas } from '../src/state/descargas'
+import { reconectarJam } from '../src/state/jam'
 import { endSession, startSession, useMyProfile, useUser } from '../src/state/session'
 import { emailToUsername } from '../src/services/auth'
 import { AppDrawer } from '../src/ui/AppDrawer'
@@ -569,6 +570,15 @@ function SessionGate() {
     if (user && onGate) router.replace('/')
   }, [user, segments, router])
 
+  /*
+   * Con sesión, ver si quedó un Jam abierto de antes: la membresía vive en la
+   * base, así que cerrar la app no te saca — se vuelve a enganchar solo, como
+   * un chat retoma sus mensajes. Sin Jam pendiente no hace nada.
+   */
+  useEffect(() => {
+    if (user) void reconectarJam()
+  }, [user])
+
   if (user === undefined) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
@@ -625,6 +635,10 @@ function SessionGate() {
       {/* Lo que suena, a pantalla completa. Modal para que suba desde abajo y
           se pueda bajar con el gesto, como en cualquier reproductor. */}
       <Stack.Screen name="playing" options={{ presentation: 'modal' }} />
+      {/* El Jam: el sheet sube como «Sonando», y la puerta del link es una
+          pantalla común — llega desde afuera y no tiene nada detrás. */}
+      <Stack.Screen name="jam/index" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="jam/[code]" />
       {/* El mensaje a pantalla completa, al modo de una historia. */}
       <Stack.Screen name="message/[id]" options={{ presentation: 'modal' }} />
     </Stack>
