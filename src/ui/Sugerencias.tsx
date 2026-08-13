@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native'
+import { Image, Pressable, Text, View } from 'react-native'
 import { sugerenciasParaLista } from '../services/recomendaciones'
 import type { PlaylistTrack } from '../services/playlists'
 import { proxiedImage, type TrackResult } from '../services/music'
@@ -197,11 +197,14 @@ function Fila({
         disabled={busy}
         className="h-11 w-11 items-center justify-center active:opacity-60"
       >
-        {busy ? (
-          <ActivityIndicator size="small" color={ICON_COLOR.muted} />
-        ) : (
-          <IconPlus size={17} color={ICON_COLOR.foreground} />
-        )}
+        {/*
+         * La espera se dice sobre la tapa (`EstadoTapa`) y acá el «+» solo se
+         * apaga. Antes este botón se convertía en spinner también cuando lo que
+         * estaba ocupado era **escuchar** la sugerencia —`busy` no distingue
+         * cuál de las dos acciones se pidió— y tocar «escuchar» se veía como si
+         * la app estuviera agregando la canción a la lista.
+         */}
+        <IconPlus size={17} color={busy ? ICON_COLOR.muted : ICON_COLOR.foreground} />
       </Pressable>
     </View>
   )

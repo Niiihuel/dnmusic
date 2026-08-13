@@ -579,12 +579,18 @@ export function playPrevious() {
     else jam.transporte('anterior')
     return
   }
-  if (state.positionMs > RESTART_MS || state.index <= 0) {
+  /*
+   * «La de antes» respeta el aleatorio —con la baraja puesta, la anterior es
+   * la anterior **del orden barajado**, no la fila de arriba en la lista— y
+   * una encolada a mano no tiene anterior: lo único razonable es reiniciarla.
+   */
+  const previo = state.manual ? null : anteriorIndice(state)
+  if (state.positionMs > RESTART_MS || previo === null) {
     engine?.seekTo(0)
     store.set({ positionMs: 0 })
     return
   }
-  playAt(state.index - 1)
+  playAt(previo)
 }
 
 export function seekFraction(fraction: number) {
@@ -706,6 +712,19 @@ function siguienteIndice(state: PlaybackState): number | null {
   const donde = validos.indexOf(state.index)
   const next = validos[donde + 1]
   return next === undefined ? null : next
+}
+
+/** La de antes, con el mismo criterio que `siguienteIndice`. */
+function anteriorIndice(state: PlaybackState): number | null {
+  if (!state.shuffle) {
+    const prev = state.index - 1
+    return state.tracks[prev] ? prev : null
+  }
+  const validos = state.shuffle.filter((i) => i >= 0 && i < state.tracks.length)
+  const donde = validos.indexOf(state.index)
+  if (donde <= 0) return null
+  const prev = validos[donde - 1]
+  return prev === undefined ? null : prev
 }
 
 export function advance() {

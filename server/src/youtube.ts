@@ -82,12 +82,64 @@ let clientPromise: Promise<Innertube> | null = null
  * protocolo UMP. Al cliente MUSIC todavía le entrega URLs firmadas directas, que
  * es muchísimo menos superficie que mantener.
  */
+/**
+ * Cookie de una sesión de YouTube, opcional (`YT_COOKIE` en el entorno).
+ *
+ * Es la salida contra el anti-bot de datacenter: a la IP de Railway, YouTube
+ * le responde `LOGIN_REQUIRED — Sign in to confirm you're not a bot` a
+ * **todos** los clientes, con o sin PO token — la IP entera está marcada, y
+ * ningún truco de cliente lo destraba. Con una sesión iniciada, el pedido vale
+ * por la cuenta y no por la IP, que es exactamente lo que pide el cartel.
+ *
+ * Cómo conseguirla: entrar a music.youtube.com con una cuenta **de descarte**
+ * (no la personal: YouTube puede marcarla), DevTools → Network → cualquier
+ * pedido a music.youtube.com → copiar la cabecera `cookie` entera y pegarla en
+ * la variable `YT_COOKIE` del servicio en Railway.
+ */
+const YT_COOKIE = process.env.YT_COOKIE
+
+/**
+ * Cuánto vive una sesión de Innertube antes de rehacerse.
+ *
+ * La sesión lleva un PO token **congelado al crearla**, y el integrity token
+ * del que sale vence a las ~12 horas. El cache de acá era para siempre, y esa
+ * diferencia era EL bug de producción: el servidor local se reinicia a cada
+ * rato y nunca lo ve, pero en Railway el proceso vive días — a las doce horas
+ * el token moría, YouTube respondía `LOGIN_REQUIRED` a todo, y cada /resolve
+ * fallaba con «Sin formatos de audio» hasta el siguiente redeploy. Seis horas
+ * deja margen de sobra.
+ */
+const CLIENT_TTL_MS = 6 * 60 * 60_000
+let clientExpiraEn = 0
+let clientNacioEn = 0
+
+/**
+ * No rehacer la sesión más seguido que esto.
+ *
+ * Cada sesión nueva corre el challenge de BotGuard, y una ráfaga de sesiones
+ * desde la misma IP es exactamente la firma de un bot: reintentar sin freno
+ * ante una tanda de fallos terminaba de quemar la IP en vez de destrabarla.
+ */
+const RESET_MIN_MS = 10 * 60_000
+
+function puedeResetear(): boolean {
+  return Date.now() - clientNacioEn > RESET_MIN_MS
+}
+
+/** Tira la sesión para que la próxima llamada arme una nueva. */
+function resetClient() {
+  clientPromise = null
+  clientExpiraEn = 0
+}
+
 async function getClient(): Promise<Innertube> {
-  if (clientPromise) return clientPromise
+  if (clientPromise && Date.now() < clientExpiraEn) return clientPromise
   ensurePlatform()
+  clientExpiraEn = Date.now() + CLIENT_TTL_MS
+  clientNacioEn = Date.now()
 
   clientPromise = (async () => {
-    const bootstrap = await Innertube.create({ retrieve_player: false })
+    const bootstrap = await Innertube.create({ retrieve_player: false, cookie: YT_COOKIE })
     const visitorData = bootstrap.session.context.client.visitorData
     if (!visitorData) throw new Error('No se obtuvo visitorData')
 
@@ -95,11 +147,20 @@ async function getClient(): Promise<Innertube> {
       client_type: ClientType.MUSIC,
       po_token: await mintSessionToken(visitorData),
       visitor_data: visitorData,
+      cookie: YT_COOKIE,
       retrieve_player: true,
       generate_session_locally: true,
       cache: new UniversalCache(false),
     })
   })()
+
+  /* Una creación que falló no puede quedar cacheada seis horas: se suelta para
+     que el próximo pedido lo intente de nuevo. Solo si sigue siendo la actual —
+     un reset ajeno pudo haber puesto otra en el medio. */
+  const propia = clientPromise
+  propia.catch(() => {
+    if (clientPromise === propia) resetClient()
+  })
 
   return clientPromise
 }
@@ -304,14 +365,79 @@ export type ResolvedAudio = {
 /** googlevideo rechaza el GET completo; hay que pedir por rangos. */
 const CHUNK_BYTES = 1 << 20
 
-export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
-  const yt = await getClient()
-  const info = await yt.getBasicInfo(videoId, { client: 'YTMUSIC' })
+/**
+ * Con qué clientes pedir los formatos, en orden. Gana el primero que traiga
+ * audio.
+ *
+ * Con MUSIC solo alcanzaba en desarrollo y no en producción: a la IP de un
+ * datacenter (Railway), YouTube le responde al cliente MUSIC **sin
+ * `streaming_data`** —su anti-bot— y todos los /resolve morían con «Sin
+ * formatos de audio». En la app eso era «no puedo escuchar ni agregar ninguna
+ * recomendación» y el autoplay mudo al final de la lista, mientras que lo ya
+ * cacheado en Storage seguía sonando como si nada. Los clientes de TV, iOS y
+ * VR pasan por otras rejas y alguno suele sobrevivir; el recorrido con caída
+ * es lo mismo que hacen yt-dlp y zuno.
+ */
+const CLIENTES_RESOLVE = ['YTMUSIC', 'TV', 'TV_SIMPLY', 'IOS', 'ANDROID_VR', 'WEB_EMBEDDED'] as const
 
+/** Qué cliente vio el video, o por qué dijo que no cada uno. */
+type Formatos =
+  | { info: Awaited<ReturnType<Innertube['getBasicInfo']>>; cliente: (typeof CLIENTES_RESOLVE)[number] }
+  | { info: null; razones: string[] }
+
+async function buscarFormatos(yt: Innertube, videoId: string): Promise<Formatos> {
+  /* Por qué dijo que no cada cliente, para que el error final cuente la
+     historia entera: un «Sin formatos» pelado obligó a mirar los logs de
+     producción para descubrir que era el anti-bot. */
+  const razones: string[] = []
+  for (const candidato of CLIENTES_RESOLVE) {
+    try {
+      const intento = await yt.getBasicInfo(videoId, { client: candidato })
+      const audio = (intento.streaming_data?.adaptive_formats ?? []).filter((f) =>
+        f.mime_type.startsWith('audio'),
+      )
+      if (audio.length) {
+        /* Que quede en los logs cuándo el titular dejó de alcanzar: si esto
+           aparece seguido, el anti-bot volvió a correr la reja. */
+        if (candidato !== 'YTMUSIC') console.log(`[resolve] ${videoId} vía ${candidato}`)
+        return { info: intento, cliente: candidato }
+      }
+      const estado = intento.playability_status
+      razones.push(
+        `${candidato}: ${estado?.status ?? 'sin streaming_data'}${estado?.reason ? ` — ${estado.reason}` : ''}`,
+      )
+    } catch (e) {
+      razones.push(`${candidato}: ${(e as Error).message}`)
+    }
+  }
+  return { info: null, razones }
+}
+
+export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
+  // La misma sesión de punta a punta: la que firmó los formatos es la única
+  // cuyo reproductor los sabe descifrar.
+  let yt = await getClient()
+  let encontrado = await buscarFormatos(yt, videoId)
+
+  if (!encontrado.info && puedeResetear()) {
+    /*
+     * Ningún cliente vio el video: el caso conocido es la sesión pasada de
+     * fecha — su PO token venció y YouTube contesta `LOGIN_REQUIRED` a todo —
+     * y una sesión recién nacida es exactamente lo que lo destraba. Una vez
+     * sola, y nunca sobre una sesión joven: si acaba de nacer y tampoco puede,
+     * rehacerla no aporta nada más que ruido de bot (ver `RESET_MIN_MS`).
+     */
+    console.log(`[resolve] ${videoId} sin formatos; reintento con sesión nueva`)
+    resetClient()
+    yt = await getClient()
+    encontrado = await buscarFormatos(yt, videoId)
+  }
+  if (!encontrado.info) throw new Error(`Sin formatos de audio (${encontrado.razones.join('; ')})`)
+
+  const { info, cliente } = encontrado
   const formats = (info.streaming_data?.adaptive_formats ?? []).filter((f) =>
     f.mime_type.startsWith('audio'),
   )
-  if (!formats.length) throw new Error('Sin formatos de audio')
 
   /*
    * Se prefiere **AAC en mp4**, aunque Opus venga con más bitrate.
@@ -336,9 +462,14 @@ export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
    * llamada a /player firma como un cliente y la petición de media dice ser
    * otro; googlevideo responde 403 sin cuerpo. `cver` no entra en la firma, así
    * que reescribirlo es seguro. (Truco tomado de zuno.)
+   *
+   * Solo para el cliente MUSIC: la versión que negoció la sesión es la de
+   * MUSIC, y estampársela a una URL firmada por el cliente de TV o iOS crearía
+   * exactamente el desajuste que este parche arregla.
    */
   const cver = yt.session.context.client.clientVersion
-  if (cver) url = url.replace(/([?&]cver=)[^&]*/, `$1${encodeURIComponent(cver)}`)
+  if (cver && cliente === 'YTMUSIC')
+    url = url.replace(/([?&]cver=)[^&]*/, `$1${encodeURIComponent(cver)}`)
 
   /*
    * El `pot` de la URL de media va atado al video, no a la sesión.

@@ -301,11 +301,28 @@ export function MotorAudio() {
     rellenarSiFalta()
   }, [current, nextUp, playing])
 
+  /**
+   * El salto que la cola pidió y el reproductor todavía no aplicó.
+   *
+   * `seekTo` tarda unos cuadros en reflejarse en `currentTime`, y en ese hueco
+   * el reloj de abajo seguía reportando la posición **vieja**. Eso pisaba el
+   * `positionMs: 0` que acababa de poner «anterior», así que el segundo toque
+   * volvía a leer «va por el segundo 40» y reiniciaba otra vez: el botón nunca
+   * llegaba a la canción de antes. El mismo hueco hacía parpadear la barra al
+   * arrastrarla hacia atrás y, cerca del final, un reinicio podía leerse como
+   * «terminó» y saltar de tema.
+   *
+   * Con el objetivo anotado, el reloj calla hasta que la posición aterriza
+   * cerca — o hasta un tope de tiempo, para no enmudecer si el salto se pierde.
+   */
+  const saltoEnVuelo = useRef<{ objetivoS: number; pedidoEn: number } | null>(null)
+
   // Un salto no se puede expresar como estado: pedir dos veces el mismo segundo
   // tiene que saltar dos veces. La cola deja el pedido acá.
   useEffect(() => {
     registerEngine({
       seekTo: (ms) => {
+        saltoEnVuelo.current = { objetivoS: ms / 1000, pedidoEn: performance.now() }
         saltar(player, ms / 1000)
       },
     })
@@ -753,6 +770,19 @@ export function MotorAudio() {
     const tick = () => {
       const t = player.currentTime
       const total = playerTotalS(player, current)
+
+      /* Con un salto en vuelo, `currentTime` todavía es la posición vieja: ni
+         se reporta ni se mira el corte de final hasta que aterrice. Ver la
+         declaración de `saltoEnVuelo`. */
+      const salto = saltoEnVuelo.current
+      if (salto) {
+        const aterrizo = Number.isFinite(t) && Math.abs(t - salto.objetivoS) <= 0.75
+        if (!aterrizo && performance.now() - salto.pedidoEn < 1200) {
+          raf.current = requestAnimationFrame(tick)
+          return
+        }
+        saltoEnVuelo.current = null
+      }
 
       if (Number.isFinite(t)) {
         if (total > 0 && t >= total - END_EPSILON_S) {
