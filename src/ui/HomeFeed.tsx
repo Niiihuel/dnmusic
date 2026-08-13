@@ -4,7 +4,7 @@ import { artworkUrlAtSize } from '../lib/artwork'
 import { fetchHome, proxiedImage, type HomeItem, type HomeSection } from '../services/music'
 import { FadingRow } from './FadingScroll'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
-import { usePiso } from '../state/shell'
+import { usePiso, useTecho } from '../state/shell'
 import { useColapso } from './useColapso'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
@@ -51,6 +51,9 @@ export function HomeFeed({
   const [sections, setSections] = useState<HomeSection[] | null>(null)
   /* Lo que ocupan el reproductor y las pestañas, más el respiro de siempre. */
   const piso = usePiso(24)
+  /* Y lo que flota arriba —reloj y encabezado—, con el respiro que ya tenía
+     (`pt-6`). Al desplazar, las tapas pasan por detrás del velo. */
+  const techo = useTecho(24)
   /* Bajando, la cáscara se pliega; subiendo, vuelve. Ver `useColapso`. */
   const colapso = useColapso()
 
@@ -90,8 +93,8 @@ export function HomeFeed({
     <Panel className="flex-1">
       <ScrollView
         className="min-h-0 flex-1"
-        contentContainerClassName="gap-7 pt-6"
-        contentContainerStyle={{ paddingBottom: piso }}
+        contentContainerClassName="gap-7"
+        contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
         {...colapso}
       >
         {sections === null ? (
@@ -322,8 +325,17 @@ function SongRow({
         </View>
       </Pressable>
 
+      {/*
+       * Los tres puntos van **siempre**, no solo con el cursor encima.
+       *
+       * `over` es el hover: en el teléfono no existe, así que las opciones de
+       * una canción de la portada —fijarla, usar su tapa de fondo, sumarla a
+       * una lista— directamente no se podían abrir. Es el mismo bug que ya se
+       * corrigió en los resultados de búsqueda, y con el mantener apretado
+       * inerte (ver `MantenerApretado`), este botón es la única puerta.
+       */}
       <View className="w-8 items-center">
-        {over ? <Menu items={menu} label={`Opciones de ${item.title}`} size={14} /> : null}
+        <Menu items={menu} label={`Opciones de ${item.title}`} size={14} />
       </View>
     </View>
   )
@@ -371,6 +383,8 @@ function SectionPage({
 }) {
   const songs = section.items.every((item) => item.kind === 'song')
   const piso = usePiso(24)
+  /* La cabecera de la sección arranca debajo del encabezado flotante. */
+  const techo = useTecho(24)
   const colapso = useColapso()
 
   /*
@@ -387,7 +401,7 @@ function SectionPage({
 
   return (
     <View className="min-h-0 flex-1">
-      <View className="flex-row items-center gap-3 px-6 pb-4 pt-6">
+      <View className="flex-row items-center gap-3 px-6 pb-4" style={{ paddingTop: techo }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Volver a la portada"

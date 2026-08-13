@@ -1,4 +1,5 @@
 import {
+  AlignJustify,
   ArrowLeft,
   ArrowRight,
   AtSign,
@@ -138,6 +139,8 @@ export const IconVolumeOff = make(VolumeX)
 export const IconUser = make(UserRound)
 export const IconUsers = make(UsersRound)
 export const IconShare = make(Share2)
+/** La manija de reordenar: las tres líneas que se agarran para arrastrar una fila. */
+export const IconManija = make(AlignJustify)
 export const IconCollapseLeft = make(PanelLeftClose)
 export const IconExpandLeft = make(PanelLeftOpen)
 export const IconCollapseRight = make(PanelRightClose)

@@ -10,8 +10,8 @@ import * as ImagePicker from 'expo-image-picker'
  * de fotos de verdad. Quien llama recibe lo mismo en los dos casos —un Blob y
  * un nombre de archivo— y no se entera de la diferencia.
  *
- * Devuelve `null` si se canceló o si no se dio permiso. Cancelar no es un
- * error: no hay nada que avisar.
+ * Devuelve `null` si se canceló. Cancelar no es un error: no hay nada que
+ * avisar. Permisos no pide — ver el comentario dentro de `pickImage`.
  */
 export type PickedImage = {
   blob: Blob
@@ -98,22 +98,18 @@ export async function pickImage({
   if (Platform.OS === 'web') return pickOnWeb(conVideo)
 
   /*
-   * El permiso puede estar denegado **para siempre**.
+   * **Sin pedir permiso.**
    *
-   * `granted` en falso no distingue «dijo que no ahora» de «lo bloqueó»; para
-   * eso está `canAskAgain`. Sin la diferencia, el mensaje decía «necesito
-   * permiso» y volver a tocar el botón no hacía nada, porque iOS ya no vuelve a
-   * preguntar — hay que ir a los ajustes del teléfono, y eso hay que decirlo.
+   * El selector de fotos del sistema (PHPicker en iOS, el Photo Picker en
+   * Android) corre en un proceso aparte: la app nunca ve la fototeca, solo
+   * recibe lo que se eligió, así que abrirlo no requiere ningún permiso.
+   *
+   * Acá se pedía `requestMediaLibraryPermissionsAsync` igual, y eso era la
+   * trampa: si alguna vez se contestó que no, iOS no vuelve a preguntar y la
+   * puerta quedaba clavada en «las fotos están bloqueadas — andá a Ajustes»
+   * para un permiso que el selector ni siquiera necesita. Sin el pedido, tocar
+   * «Subir foto» abre el selector directo, siempre.
    */
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
-  if (!permission.granted) {
-    throw new Error(
-      permission.canAskAgain
-        ? 'Necesito permiso para ver tus fotos.'
-        : 'Las fotos están bloqueadas para esta app. Activalas en Ajustes › Dany › Fotos.',
-    )
-  }
-
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: conVideo ? ['images', 'videos'] : ['images'],
     // Cuadrada: es como se ve en todos lados, del mosaico de la portada al

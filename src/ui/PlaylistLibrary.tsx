@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import type { Playlist } from '../services/playlists'
-import { usePiso } from '../state/shell'
+import { usePiso, useTecho } from '../state/shell'
 import { useColapso } from './useColapso'
 import { Panel } from './Panel'
 import { PlaylistCover } from './PlaylistCover'
 import { SkeletonList } from './Skeleton'
 import { AnimatedSidebarTitle } from './SidebarMotion'
+import { BotonVidrio } from './Glass'
 import { ICON_COLOR, IconCollapseRight, IconMusic, IconPlus } from './icons'
 
 /**
@@ -42,6 +43,9 @@ export function PlaylistLibrary({
   /* En el teléfono esto es la pestaña «Listas» y llega hasta el borde: la
      última tiene que quedar arriba de lo que flota. */
   const piso = usePiso(12)
+  /* Como pestaña del teléfono, el título arranca debajo del encabezado que
+     flota, con el respiro que ya tenía (`pt-4`). En escritorio vale eso solo. */
+  const techo = useTecho(16)
   /* Mismo criterio que las filas de canciones: con el dedo, las medidas de
      escritorio quedan apretadas. Ver `TrackRow`. */
   const suelto = useWindowDimensions().width < 780
@@ -65,8 +69,8 @@ export function PlaylistLibrary({
   }
 
   return (
-    <Panel className="flex-1">
-      <View className="flex-row items-center justify-between gap-4 px-4 pb-2 pt-4">
+    <Panel tone="lateral" className="flex-1">
+      <View className="flex-row items-center justify-between gap-4 px-4 pb-2" style={{ paddingTop: techo }}>
         <AnimatedSidebarTitle
           visible={showCollapse}
           label="Contraer las listas"
@@ -86,19 +90,21 @@ export function PlaylistLibrary({
           </View>
         </AnimatedSidebarTitle>
         <View className="flex-row items-center gap-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Nueva lista"
+          {/* En vidrio como los redondeles del encabezado: es un control
+              apoyado sobre el panel, y era el único que quedaba gris plano. */}
+          <BotonVidrio
+            label="Nueva lista"
             onPress={() => void create()}
             disabled={busy}
-            className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
+            radius={18}
+            style={{ width: 36, height: 36 }}
           >
             {busy ? (
               <ActivityIndicator size="small" color={ICON_COLOR.muted} />
             ) : (
               <IconPlus size={15} color={ICON_COLOR.foreground} />
             )}
-          </Pressable>
+          </BotonVidrio>
         </View>
       </View>
 

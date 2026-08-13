@@ -359,29 +359,71 @@ export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
   const videoToken = await mintVideoToken(videoId)
   url += `${url.includes('?') ? '&' : '?'}pot=${encodeURIComponent(videoToken)}`
 
-  const chunks: Buffer[] = []
-  let offset = 0
-  let total: number | null = null
-
-  while (total === null || offset < total) {
-    const res = await fetch(url, { headers: { Range: `bytes=${offset}-${offset + CHUNK_BYTES - 1}` } })
-    if (res.status !== 206 && res.status !== 200) {
-      if (offset === 0) throw new Error(`googlevideo respondió ${res.status}`)
-      break
+  /*
+   * El primer rango dice el total; el resto baja **en paralelo**.
+   *
+   * En serie, una canción de 4 MB eran cuatro viajes encadenados a
+   * googlevideo, y esa espera era el grueso de lo que tarda un /resolve
+   * nuevo. Son exactamente los mismos bytes —ni un kbps menos—, solo que
+   * llegan juntos. De a cuatro a la vez y no todos: una ráfaga de decenas de
+   * rangos sobre la misma URL firmada es la forma de que googlevideo corte
+   * con 403.
+   *
+   * Un rango que falla ahora **tira**, no recorta: el `break` de antes
+   * guardaba en Storage lo que hubiera llegado, y una canción trunca cacheada
+   * es para siempre — el caché de arriba no la vuelve a pedir nunca.
+   */
+  const pedir = async (desde: number) => {
+    const res = await fetch(url, {
+      headers: { Range: `bytes=${desde}-${desde + CHUNK_BYTES - 1}` },
+    })
+    /*
+     * Un 200 en un rango que no arranca en cero es el archivo ENTERO metido en
+     * el medio: pegado con los demás daría un audio con las tablas del
+     * contenedor apuntando a bytes corridos — se «reproduce», pero suena roto.
+     * Mejor fallar y reintentar que cachear eso para siempre.
+     */
+    if (res.status !== 206 && !(res.status === 200 && desde === 0)) {
+      throw new Error(`googlevideo respondió ${res.status} al rango ${desde}`)
     }
-    if (total === null) {
-      const range = res.headers.get('content-range')
-      total = range ? Number(range.split('/')[1]) : null
+    const range = res.headers.get('content-range')
+    const inicio = range ? Number(range.split(' ')[1]?.split('-')[0]) : desde
+    if (Number.isFinite(inicio) && inicio !== desde) {
+      throw new Error(`googlevideo sirvió el rango ${inicio} en vez de ${desde}`)
     }
-    const buf = Buffer.from(await res.arrayBuffer())
-    if (!buf.length) break
-    chunks.push(buf)
-    offset += buf.length
+    return {
+      buf: Buffer.from(await res.arrayBuffer()),
+      total: range ? Number(range.split('/')[1]) : null,
+    }
   }
 
-  if (!chunks.length) throw new Error('No se descargó audio')
+  const primero = await pedir(0)
+  if (!primero.buf.length) throw new Error('No se descargó audio')
+  const total = primero.total
+  const chunks: Buffer[] = [primero.buf]
+
+  if (total !== null && total > primero.buf.length) {
+    const desde: number[] = []
+    for (let o = primero.buf.length; o < total; o += CHUNK_BYTES) desde.push(o)
+    const PARALELO = 4
+    const resto: Buffer[] = new Array<Buffer>(desde.length)
+    let puntero = 0
+    await Promise.all(
+      Array.from({ length: Math.min(PARALELO, desde.length) }, async () => {
+        while (puntero < desde.length) {
+          const i = puntero++
+          resto[i] = (await pedir(desde[i])).buf
+        }
+      }),
+    )
+    chunks.push(...resto)
+  }
 
   const crudo = Buffer.concat(chunks)
+  /* Exacto, no «al menos»: bytes de más son tan corruptos como bytes de menos. */
+  if (total !== null && crudo.length !== total) {
+    throw new Error(`Descarga inconsistente: ${crudo.length} de ${total} bytes`)
+  }
   const esMp4 = best.mime_type.startsWith('audio/mp4')
 
   return {
@@ -668,6 +710,15 @@ export type YtHomeItem = {
   subtitle: string
   artworkUrl: string
   /**
+   * El canal del artista, cuando el ítem es una canción y YouTube lo trae.
+   *
+   * Sin esto, una escucha nacida en la portada se anotaba sin id de artista, y
+   * el historial que alimenta las recomendaciones no la podía usar: quien
+   * escuchaba solo desde la portada llegaba al final de la cola y el autoplay
+   * no tenía de dónde sacar con qué seguir.
+   */
+  artistId: string | null
+  /**
    * Año de salida, sacado del subtítulo («Album • 2019»).
    *
    * No viene como dato aparte, pero es lo único con lo que se puede ordenar la
@@ -735,7 +786,7 @@ function mapHomeItem(raw: unknown): YtHomeItem[] {
     title?: { text?: string } | string
     subtitle?: { text?: string }
     subtitles?: { text?: string }[]
-    artists?: { name: string }[]
+    artists?: { name: string; channel_id?: string }[]
     item_type?: string
     endpoint?: { payload?: { browseId?: string; videoId?: string } }
     thumbnail?:
@@ -790,6 +841,11 @@ function mapHomeItem(raw: unknown): YtHomeItem[] {
       title,
       subtitle,
       artworkUrl: fullArtworkUrl(biggest?.url ?? ''),
+      /* Mismo criterio que la búsqueda: el primer artista con canal. */
+      artistId:
+        kind === 'song'
+          ? (item.artists?.find((a) => a.channel_id)?.channel_id ?? null)
+          : null,
       year: year ? Number(year[0]) : null,
     },
   ]

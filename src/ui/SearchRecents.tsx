@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { cargarRecientes, limpiarRecientes, olvidarBusqueda, useRecientes } from '../state/recientes'
-import { useKeyboardH, usePiso } from '../state/shell'
+import { useKeyboardH, usePiso, useTecho } from '../state/shell'
 import { ICON_COLOR, IconClose, IconSearch } from './icons'
 
 /**
@@ -22,6 +22,9 @@ export function SearchRecents({ onPick }: { onPick: (termino: string) => void })
   /* La cáscara ya incluye el campo: mientras buscás, la fila de abajo es él.
      Ver `SearchRow`. */
   const piso = usePiso()
+  /* El encabezado de la portada flota (ver `useTecho`): el título arranca
+     debajo de él, con el mismo respiro que ya tenía (`pt-3`). */
+  const techo = useTecho(12)
   const teclado = useKeyboardH()
 
   useEffect(() => {
@@ -43,7 +46,7 @@ export function SearchRecents({ onPick }: { onPick: (termino: string) => void })
        */
       <View
         className="flex-1 items-center justify-center gap-3 px-10"
-        style={{ paddingBottom: piso + teclado }}
+        style={{ paddingTop: techo, paddingBottom: piso + teclado }}
       >
         <IconSearch size={34} color={ICON_COLOR.muted} />
         <Text className="text-foreground text-center text-[17px] font-semibold">
@@ -58,7 +61,7 @@ export function SearchRecents({ onPick }: { onPick: (termino: string) => void })
 
   return (
     <View className="min-h-0 flex-1">
-      <View className="flex-row items-center justify-between px-4 pb-1 pt-3">
+      <View className="flex-row items-center justify-between px-4 pb-1" style={{ paddingTop: techo }}>
         <Text className="text-foreground text-[17px] font-bold">Búsquedas recientes</Text>
         <Pressable
           accessibilityRole="button"

@@ -16,10 +16,11 @@ import {
   stopPlayback,
   togglePlayback,
   toggleView,
+  useHaySiguiente,
   usePlaybackState,
 } from '../state/playback'
-import { crearJamActual, salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
-import { Glass } from './Glass'
+import { salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
+import { BORDE_REFERENTE, Glass, HAY_VIDRIO } from './Glass'
 import { Menu, type MenuItem } from './Menu'
 import { SeekBar, formatClock } from './SeekBar'
 import { BotonAleatorio, BotonRepetir } from './Transport'
@@ -43,6 +44,13 @@ import {
 
 /** Debajo de este ancho la barra se queda con lo esencial. */
 const WIDE_PX = 720
+/**
+ * Desde este ancho existe el panel derecho (el `DETAIL_PX` de `app/index.tsx`;
+ * si cambia allá tiene que cambiar acá). Con panel, el Jam se abre ahí como
+ * una cara más —al modo del panel de Spotify—; sin panel sigue siendo la
+ * pantalla modal de siempre.
+ */
+const PANEL_PX = 1120
 
 /**
  * La barra de abajo: qué suena, y los controles.
@@ -91,6 +99,10 @@ export function NowPlayingBar({
 
   // Lo encolado a mano manda sobre la lista mientras dure.
   const current = manual ?? (index >= 0 ? (tracks[index] ?? null) : null)
+  /* «Siguiente» se apaga solo si de verdad no hay a dónde ir: la cola manual,
+     el repetir y el relleno de recomendaciones cuentan — antes se miraba solo
+     la lista, y el botón moría en la última canción con la tanda esperando. */
+  const last = !useHaySiguiente()
   const artwork = current ? artworkSource(current.artworkPath, current.artworkUrl, 96) : null
   /*
    * Suena de verdad: hay intención **y** hay audio cargado.
@@ -108,7 +120,6 @@ export function NowPlayingBar({
   if (!current || oculto) return null
 
   const progress = durationMs > 0 ? Math.max(0, Math.min(1, positionMs / durationMs)) : 0
-  const last = !manual && index >= tracks.length - 1
 
   /*
    * Reemplaza a la cruz que había acá.
@@ -126,13 +137,16 @@ export function NowPlayingBar({
     {
       label: enJam
         ? `Jam · ${cuantosJam} ${cuantosJam === 1 ? 'persona' : 'personas'}`
-        : 'Iniciar un Jam',
+        : 'Ver el Jam',
+      /*
+       * Con panel, el Jam se abre ahí al lado; sin panel, en su pantalla. Y
+       * **ya no crea ninguno**: abrir algo compartido no puede ser el efecto
+       * secundario de mirar qué es — el botón de crear está adentro, y dice
+       * lo que hace.
+       */
       onPress: () => {
-        if (enJam) router.push('/jam')
-        else
-          void crearJamActual().then((ok) => {
-            if (ok) router.push('/jam')
-          })
+        if (width >= PANEL_PX) toggleView('jam')
+        else router.push('/jam')
       },
       icon: <IconUsers size={15} color={enJam ? ICON_COLOR.foreground : ICON_COLOR.muted} />,
       sfSymbol: 'person.2',
@@ -228,70 +242,92 @@ export function NowPlayingBar({
      */
     return (
       <View
-        className={compacta ? '' : `px-3 ${conTabs ? 'pb-2' : ''}`}
+        /* 22px y no 12: pegada al borde, la tarjeta se leía cortada contra la
+           curva de la pantalla del teléfono. Es el mismo aire que le da la
+           cáscara cuando la envuelve ella (ver RESPIRO_GRANDE en Cascara). */
+        className={compacta ? '' : `px-[22px] ${conTabs ? 'pb-2' : ''}`}
         style={compacta || conTabs ? undefined : { paddingBottom: 8 + insets.bottom }}
       >
         <Glass
           radius={compacta ? 26 : 18}
           style={{ boxShadow: '0 6px 20px rgba(0,0,0,0.45)' }}
         >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${current.title}, de ${current.artist}`}
-          onPress={() => router.push('/playing')}
-          className="flex-row items-center gap-3 px-2.5 py-2 active:opacity-90"
-        >
-          {artwork ? (
-            <Image source={{ uri: artwork }} className="h-10 w-10 rounded-lg bg-muted" />
-          ) : (
-            <View className="h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <IconMusic size={16} color={ICON_COLOR.muted} />
+        {/*
+         * La fila es un View y **el área que abre «Sonando» es solo la mitad
+         * de la izquierda** —la tapa y los títulos—, no la tarjeta entera.
+         *
+         * Antes el Pressable envolvía también a pausa y siguiente, y en web
+         * eso es un `<button>` con botones adentro: HTML inválido, que React
+         * marca en dev y que confunde a un lector de pantalla — un botón
+         * adentro de otro no se puede anunciar. Como hermanos, cada toque
+         * tiene un solo dueño.
+         */}
+        <View className="flex-row items-center gap-3 px-2.5 py-2">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${current.title}, de ${current.artist}`}
+            onPress={() => router.push('/playing')}
+            className="min-w-0 flex-1 flex-row items-center gap-3 active:opacity-90"
+          >
+            {artwork ? (
+              <Image source={{ uri: artwork }} className="h-10 w-10 rounded-lg bg-muted" />
+            ) : (
+              <View className="h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                <IconMusic size={16} color={ICON_COLOR.muted} />
+              </View>
+            )}
+
+            <View className="min-w-0 flex-1 gap-0.5">
+              <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
+                {current.title}
+              </Text>
+              <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+                {error ?? current.artist}
+              </Text>
             </View>
-          )}
+          </Pressable>
 
-          <View className="min-w-0 flex-1 gap-0.5">
-            <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
-              {current.title}
-            </Text>
-            <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-              {error ?? current.artist}
-            </Text>
-          </View>
-
-          {/* «Anterior» solo cuando hay una cola de verdad detrás: puesta una
-              canción suelta de la búsqueda no hay a dónde volver, y un botón
-              que nunca hace nada es peor que no tenerlo. */}
-          {tracks.length > 1 ? (
+          {/* Los controles van **pegados entre sí**, como en el mini
+              reproductor de Apple Music: cada botón ya lleva su área táctil
+              de 40px adentro, y sumarle huecos entre uno y otro desparramaba
+              tres íconos por media tarjeta — el espacio que sobra es del
+              título, no de los botones. */}
+          <View className="flex-row items-center">
+            {/* «Anterior» solo cuando hay una cola de verdad detrás: puesta
+                una canción suelta de la búsqueda no hay a dónde volver, y un
+                botón que nunca hace nada es peor que no tenerlo. */}
+            {tracks.length > 1 ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Anterior"
+                onPress={playPrevious}
+                className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
+              >
+                <IconPrevious size={19} color={ICON_COLOR.foreground} />
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Anterior"
-              onPress={playPrevious}
+              accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}
+              onPress={togglePlayback}
               className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
             >
-              <IconPrevious size={19} color={ICON_COLOR.foreground} />
+              {playing ? (
+                <IconPause size={19} color={ICON_COLOR.foreground} />
+              ) : (
+                <IconPlay size={19} color={ICON_COLOR.foreground} />
+              )}
             </Pressable>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}
-            onPress={togglePlayback}
-            className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
-          >
-            {playing ? (
-              <IconPause size={19} color={ICON_COLOR.foreground} />
-            ) : (
-              <IconPlay size={19} color={ICON_COLOR.foreground} />
-            )}
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Siguiente"
-            onPress={playNext}
-            disabled={last}
-            className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
-          >
-            <IconNext size={19} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />
-          </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Siguiente"
+              onPress={playNext}
+              disabled={last}
+              className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
+            >
+              <IconNext size={19} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />
+            </Pressable>
+          </View>
 
           {/*
            * La posición, como una línea fina al pie de la tarjeta.
@@ -310,13 +346,17 @@ export function NowPlayingBar({
               style={{ width: `${Math.round(progress * 100)}%` }}
             />
           </View>
-        </Pressable>
+        </View>
         </Glass>
       </View>
     )
   }
 
-  return (
+  /*
+   * La barra ancha **sin vidrio**: la franja opaca de siempre, apilada al pie.
+   * Con vidrio no se usa — ver la píldora más abajo.
+   */
+  const barra = (
     <View
       className="flex-row items-center gap-3 bg-canvas px-3 pt-2"
       style={{ paddingBottom: 8 + insets.bottom }}
@@ -415,14 +455,13 @@ export function NowPlayingBar({
              * andando — el mismo lenguaje que las dos vistas de al lado.
              */}
             <Toggle
-              label={enJam ? 'Ver el Jam' : 'Iniciar un Jam'}
-              active={enJam}
+              label="Jam"
+              active={enJam || view === 'jam'}
+              /* Abre la cara del Jam en el panel de al lado (o su pantalla,
+                 si el ancho no da para panel). Crear es un botón de adentro. */
               onPress={() => {
-                if (enJam) router.push('/jam')
-                else
-                  void crearJamActual().then((ok) => {
-                    if (ok) router.push('/jam')
-                  })
+                if (width >= PANEL_PX) toggleView('jam')
+                else router.push('/jam')
               }}
               icon={IconUsers}
             />
@@ -435,6 +474,143 @@ export function NowPlayingBar({
         )}
         <Menu items={menu} label={`Opciones de ${current.title}`} size={17} />
       </View>
+    </View>
+  )
+
+  if (!HAY_VIDRIO) return barra
+
+  /*
+   * Con vidrio, la barra es una **píldora flotante y centrada**, al modo del
+   * reproductor de Apple Music en la web: una sola fila, compacta, con el
+   * contenido de los paneles corriendo difuminado por detrás. No ocupa todo el
+   * ancho a propósito — el material necesita ver fondo a los costados para
+   * leerse como una pieza apoyada y no como una franja del sistema.
+   *
+   * En una fila no entra todo en cualquier ancho, así que la píldora suelta
+   * lastre por etapas: primero las vistas y el volumen (que siguen en el panel
+   * y en el menú), después la barra de posición, que deja en su lugar el
+   * reloj. El play sigue siendo lo más brillante — el acento de siempre.
+   */
+  const conSeek = width >= 980
+  const conVistas = width >= 1200
+
+  return (
+    <View className="items-center px-3" style={{ paddingBottom: 12 + insets.bottom }}>
+      <Glass
+        radius={32}
+        style={{
+          width: '100%',
+          maxWidth: 1080,
+          /* La sombra que la despega del fondo más el filo del referente: el
+             anillo y el resplandor interno que la leen como una pieza. */
+          boxShadow: `0 10px 28px rgba(0,0,0,0.5), ${BORDE_REFERENTE}`,
+        }}
+      >
+        <View className="flex-row items-center gap-3 py-2 pl-3 pr-2">
+          {/* Qué suena. Es también el toque que abre la lista de origen. */}
+          <View className="min-w-0 flex-1 flex-row items-center gap-3">
+            {artwork ? (
+              <Image source={{ uri: artwork }} className="h-10 w-10 rounded-lg bg-muted" />
+            ) : (
+              <View className="h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                <IconMusic size={16} color={ICON_COLOR.muted} />
+              </View>
+            )}
+            <View className="min-w-0 flex-1 gap-0.5">
+              <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
+                {current.title}
+              </Text>
+              <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+                {error ?? current.artist}
+              </Text>
+            </View>
+          </View>
+
+          {/* El transporte, con aleatorio y repetir rodeando al play como en
+              cualquier reproductor. Ver `ui/Transport`. */}
+          <View className="flex-row items-center gap-1">
+            <BotonAleatorio size={16} lado={36} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Anterior"
+              onPress={playPrevious}
+              className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+            >
+              <IconPrevious size={17} color={ICON_COLOR.muted} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}
+              onPress={togglePlayback}
+              className="h-10 w-10 items-center justify-center rounded-full bg-primary active:opacity-80"
+            >
+              {playing ? (
+                <IconPause size={16} color={ICON_COLOR.onPrimary} />
+              ) : (
+                <IconPlay size={16} color={ICON_COLOR.onPrimary} />
+              )}
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Siguiente"
+              onPress={playNext}
+              disabled={last}
+              className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+            >
+              <IconNext size={17} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />
+            </Pressable>
+            <BotonRepetir size={16} lado={36} />
+          </View>
+
+          {conSeek ? (
+            <View className="min-w-0 flex-[1.4] px-2" style={{ maxWidth: 440 }}>
+              <SeekBar
+                label={current.title}
+                progress={progress}
+                elapsedMs={positionMs}
+                totalMs={durationMs}
+                onSeek={seekFraction}
+              />
+            </View>
+          ) : (
+            <Text className="text-muted-foreground text-[11px] tabular-nums">
+              {formatClock(positionMs)}
+            </Text>
+          )}
+
+          <View className="flex-row items-center justify-end gap-1">
+            {conVistas ? (
+              <>
+                <Toggle
+                  label="Ver el disco girando"
+                  active={view === 'disc'}
+                  onPress={() => toggleView('disc')}
+                  icon={IconDisc}
+                />
+                <Toggle
+                  label="Ver solo la letra"
+                  active={view === 'lyrics'}
+                  onPress={() => toggleView('lyrics')}
+                  icon={IconLyrics}
+                />
+                <Toggle
+                  label="Jam"
+                  active={enJam || view === 'jam'}
+                  /* La misma regla que en la franja sin vidrio: el panel de
+                     al lado si existe, la pantalla si no. */
+                  onPress={() => {
+                    if (width >= PANEL_PX) toggleView('jam')
+                    else router.push('/jam')
+                  }}
+                  icon={IconUsers}
+                />
+                <Volume value={volume} onChange={setVolume} />
+              </>
+            ) : null}
+            <Menu items={menu} label={`Opciones de ${current.title}`} size={17} />
+          </View>
+        </View>
+      </Glass>
     </View>
   )
 }

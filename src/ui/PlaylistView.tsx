@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { FlatList, Pressable, Text, TextInput, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import { listTracks, removeTrack, type Playlist, type PlaylistTrack } from '../services/playlists'
+import type { TrackResult } from '../services/music'
+import { Sugerencias } from './Sugerencias'
 import {
   playAt,
   playQueue,
@@ -15,7 +17,7 @@ import {
   useShuffle,
   useWantPlay,
 } from '../state/playback'
-import { usePiso } from '../state/shell'
+import { usePiso, useTecho } from '../state/shell'
 import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { useColapso } from './useColapso'
@@ -71,6 +73,9 @@ export function PlaylistView({
   onClose,
   onSearch,
   menuFor,
+  onAddSugerencia,
+  onPlaySugerencia,
+  pendingId = null,
 }: {
   playlist: Playlist
   /**
@@ -103,6 +108,17 @@ export function PlaylistView({
    * es lo único que solo se puede hacer desde adentro.
    */
   menuFor?: (track: PlaylistTrack) => MenuItem[]
+  /**
+   * Sumar una sugerencia del pie a esta lista, y escucharla sin sumar.
+   *
+   * Los implementa la pantalla porque resolver el audio y encolar son cosas
+   * que la lista no sabe hacer — son los mismos caminos que usa el buscador.
+   * Sin estos dos, la sección de sugerencias no se dibuja.
+   */
+  onAddSugerencia?: (track: TrackResult) => void
+  onPlaySugerencia?: (track: TrackResult) => void
+  /** Canción que se está resolviendo, para mostrarla ocupada en el pie. */
+  pendingId?: string | null
 }) {
   /*
    * Las canciones se guardan **junto al id de su lista**.
@@ -118,7 +134,16 @@ export function PlaylistView({
     tracks: PlaylistTrack[]
   } | null>(null)
   const fresh = loaded?.playlistId === playlist.id && loaded.token === reloadToken
-  const tracks = fresh ? loaded.tracks : null
+  /*
+   * Mientras se relee la misma lista, **se sigue mostrando lo que había**.
+   *
+   * `fresh` decide si hay que volver a pedir; qué mostrar lo decide solo el id.
+   * Antes las dos cosas iban juntas, y agregar una canción —que sube el token—
+   * tiraba las filas cargadas: la lista entera volvía al esqueleto y el pie de
+   * sugerencias se desmontaba, perdía su tanda y pedía otra de cero. Por una
+   * canción sumada, segundos de esqueleto en dos lugares.
+   */
+  const tracks = loaded?.playlistId === playlist.id ? loaded.tracks : null
   const [error, setError] = useState<string | null>(null)
   /** Fila bajo el cursor: es lo que destapa los íconos, como en Spotify. */
   const [hovered, setHovered] = useState<string | null>(null)
@@ -263,6 +288,9 @@ export function PlaylistView({
     else descargarLista(lista)
   }
   const piso = usePiso(16)
+  /* El encabezado del teléfono flota: la cabecera de la lista arranca debajo
+     y pasa por detrás del velo al desplazar. En escritorio vale 0. */
+  const techo = useTecho()
   const colapso = useColapso()
   const menu: MenuItem[] = [
     {
@@ -308,8 +336,8 @@ export function PlaylistView({
           contentContainerClassName="gap-1"
           /* Lo que ocupan el reproductor y las pestañas: la última canción
              tiene que quedar al alcance, aunque las de arriba pasen por
-             detrás del material. */
-          contentContainerStyle={{ paddingBottom: piso }}
+             detrás del material. Arriba, lo mismo con el encabezado. */
+          contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
           {...colapso}
           ListHeaderComponent={
             <Header
@@ -338,6 +366,23 @@ export function PlaylistView({
 
               {total > 0 ? <TrackColumnHeader /> : null}
             </Header>
+          }
+          /*
+           * Las sugerencias van como pie de la misma FlatList, no como un
+           * bloque aparte debajo: así llegan con el scroll natural de la
+           * lista, después de la última canción — que es donde las pone
+           * Spotify y donde uno ya está mirando cuando se le acabó lo suyo.
+           */
+          ListFooterComponent={
+            tracks?.length && onAddSugerencia && onPlaySugerencia ? (
+              <Sugerencias
+                playlistId={playlist.id}
+                enLista={tracks}
+                onAdd={onAddSugerencia}
+                onPlay={onPlaySugerencia}
+                pendingId={pendingId}
+              />
+            ) : null
           }
           ListEmptyComponent={
             tracks === null ? (

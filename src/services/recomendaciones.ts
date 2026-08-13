@@ -43,7 +43,160 @@ const POR_TANDA = 3
  */
 const EXPLORACION = 2
 
-type ArtistaEscuchado = { artist_id: string; artist: string; ms: number }
+export type ArtistaEscuchado = { artist_id: string; artist: string; ms: number }
+
+/**
+ * Tope de canciones del mismo artista por tanda.
+ *
+ * Sin él, el primer artista sorteado podía llenar la tanda entera con su
+ * catálogo: tres «recomendaciones» que son el mismo nombre tres veces. Dos es
+ * el máximo que no se siente monotemático.
+ */
+const MAX_POR_ARTISTA = 2
+
+/**
+ * El núcleo de las recomendaciones: de unas anclas, una tanda de canciones.
+ *
+ * Recibe los artistas ancla ya elegidos —de dónde salen es problema de quien
+ * llama: del historial para el autoplay, de la propia lista para las
+ * sugerencias— y devuelve resultados de búsqueda **sin resolver**: traer el
+ * audio es caro y solo corresponde cuando algo se va a escuchar o guardar.
+ *
+ * Las dos capas son las de siempre: primero lo propio (canciones de las
+ * anclas), después la exploración (sus «Fans might also like»), y si no hubo
+ * relacionados se completa con lo propio antes que devolver de menos.
+ */
+async function recomendarDesdeAnclas(
+  anclas: ArtistaEscuchado[],
+  vetados: Set<string>,
+  cuantas: number,
+  exploracion: number,
+): Promise<TrackResult[]> {
+  const propias = Math.max(0, cuantas - exploracion)
+  const elegidas: TrackResult[] = []
+  const usados = new Set<string>()
+  const porArtista = new Map<string, number>()
+  /* Los que ya escuchás no pueden entrar como «descubrimiento»: YouTube los
+     lista como relacionados entre sí, y sin esto la exploración te devolvería
+     a tu propio catálogo con otro nombre. */
+  const conocidos = new Set(anclas.map((a) => a.artist_id))
+  const parientes: { id: string; nombre: string }[] = []
+
+  const sumar = (song: TrackResult): boolean => {
+    if (vetados.has(song.videoId)) return false
+    const artista = song.artistId ?? song.artist
+    if ((porArtista.get(artista) ?? 0) >= MAX_POR_ARTISTA) return false
+    vetados.add(song.videoId)
+    porArtista.set(artista, (porArtista.get(artista) ?? 0) + 1)
+    elegidas.push(song)
+    return true
+  }
+
+  /*
+   * Primero **lo propio**: canciones de las anclas.
+   *
+   * Va primero a propósito. La tanda arranca con algo reconocible y recién
+   * después se abre; al revés, el salto a dos desconocidos seguidos se siente
+   * como si la app hubiera cambiado de estación. De paso, la página de cada
+   * ancla es de donde salen los relacionados: el mismo pedido sirve dos veces.
+   */
+  for (let intento = 0; intento < 4 + anclas.length && elegidas.length < propias; intento++) {
+    const artista = elegirPesado(anclas.filter((a) => !usados.has(a.artist_id)))
+    if (!artista) break
+    usados.add(artista.artist_id)
+
+    const info = await fetchArtist(artista.artist_id)
+    for (const rel of info?.relacionados ?? []) {
+      if (!conocidos.has(rel.id) && !parientes.some((p) => p.id === rel.id)) {
+        parientes.push({ id: rel.id, nombre: rel.title })
+      }
+    }
+    for (const song of info?.topSongs ?? []) {
+      if (elegidas.length >= propias) break
+      sumar(song)
+    }
+  }
+
+  /*
+   * Después, **lo nuevo**: los relacionados. Barajados y no en el orden de
+   * YouTube, que devuelve siempre los mismos primeros: sin esto, dos tandas
+   * seguidas traerían al mismo desconocido.
+   */
+  for (let i = parientes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[parientes[i], parientes[j]] = [parientes[j], parientes[i]]
+  }
+  for (const pariente of parientes) {
+    if (elegidas.length >= cuantas) break
+    const info = await fetchArtist(pariente.id)
+    for (const song of info?.topSongs ?? []) {
+      if (elegidas.length >= cuantas) break
+      sumar(song)
+    }
+  }
+
+  /*
+   * Si no hubo relacionados —un ancla sin esa sección, o YouTube que no la
+   * devolvió— la tanda se completa con lo propio. Es mejor seguir sonando con
+   * algo conocido que quedarse corto por no haber encontrado novedades.
+   */
+  for (let intento = 0; intento < 3 && elegidas.length < cuantas; intento++) {
+    const artista = elegirPesado(anclas.filter((a) => !usados.has(a.artist_id)))
+    if (!artista) break
+    usados.add(artista.artist_id)
+    const info = await fetchArtist(artista.artist_id)
+    for (const song of info?.topSongs ?? []) {
+      if (elegidas.length >= cuantas) break
+      sumar(song)
+    }
+  }
+
+  return elegidas
+}
+
+/** Cuántas sugerencias trae la sección al pie de una lista. */
+const SUGERENCIAS = 6
+
+/**
+ * Sugerencias para el pie de una lista, como las de Spotify.
+ *
+ * El ancla es **la lista misma**: sus artistas, pesados por cuánto de la lista
+ * es de cada uno. No mira el historial — la sección dice «según las canciones
+ * de esta lista», y tiene que ser cierto: una lista de cumbia sugiere cumbia
+ * aunque el resto del día escuches otra cosa.
+ *
+ * `yaVistas` son las sugerencias que ya se mostraron en esta sesión: el botón
+ * de actualizar tiene que traer caras nuevas, no rebarajar las mismas seis.
+ * Devuelve resultados sin resolver; el audio se trae recién al agregar o
+ * escuchar una.
+ */
+export async function sugerenciasParaLista(
+  enLista: PlaylistTrack[],
+  yaVistas: string[] = [],
+  cuantas = SUGERENCIAS,
+): Promise<TrackResult[]> {
+  try {
+    const porArtista = new Map<string, ArtistaEscuchado>()
+    for (const t of enLista) {
+      if (!t.artistId) continue
+      const previo = porArtista.get(t.artistId)
+      if (previo) previo.ms += Math.max(1, t.durationMs)
+      else porArtista.set(t.artistId, { artist_id: t.artistId, artist: t.artist, ms: Math.max(1, t.durationMs) })
+    }
+    const anclas = [...porArtista.values()]
+    if (!anclas.length) return []
+
+    const vetados = new Set<string>([...enLista.map((t) => t.videoId), ...yaVistas])
+    /* Mitad y mitad: la mitad son los artistas de la lista, la otra mitad sus
+       relacionados. Es la mezcla de la captura de Spotify — conocidos para
+       confiar, nuevos para descubrir. */
+    return await recomendarDesdeAnclas(anclas, vetados, cuantas, Math.floor(cuantas / 2))
+  } catch {
+    /* Igual que el autoplay: esto es un pie de página, no puede romper la
+       lista. Sin red o sin catálogo, la sección simplemente no aparece. */
+    return []
+  }
+}
 
 /**
  * Elige un artista al azar, **pesado por lo que lo escuchaste**.
@@ -77,6 +230,16 @@ function elegirPesado(artistas: ArtistaEscuchado[]): ArtistaEscuchado | null {
  */
 export async function proximasRecomendadas(
   yaEnCola: string[] = [],
+  /**
+   * Los artistas de la cola que está sonando, como ancla de **respaldo**.
+   *
+   * El historial puede no alcanzar: una cuenta nueva, o escuchas anotadas sin
+   * el id del artista —las de la portada venían así—. `artistas_mas_escuchados`
+   * devuelve vacío en los dos casos, y el autoplay se quedaba mudo justo cuando
+   * más obvio era con qué seguir: con algo parecido a la lista que acaba de
+   * terminar. Si el historial no dice nada, manda la cola.
+   */
+  delaCola: ArtistaEscuchado[] = [],
 ): Promise<PlaylistTrack[]> {
   try {
     const supabase = getSupabase()
@@ -85,7 +248,8 @@ export async function proximasRecomendadas(
       supabase.rpc('escuchadas_recientes', { p_dias: DIAS_RECIENTES }),
     ])
 
-    const candidatos = (artistas ?? []) as ArtistaEscuchado[]
+    const escuchados = (artistas ?? []) as ArtistaEscuchado[]
+    const candidatos = escuchados.length ? escuchados : delaCola
     if (!candidatos.length) return []
 
     /* Lo que no se puede volver a ofrecer: lo de esta semana y lo que ya está
@@ -96,87 +260,10 @@ export async function proximasRecomendadas(
     ])
 
     /*
-     * Se intenta con varios artistas y no con uno solo.
-     *
-     * El elegido puede no tener catálogo devuelto, o tener solo temas que ya
-     * escuchaste esta semana. Sin reintento, la cola se quedaría muda por mala
-     * suerte en un sorteo.
+     * El armado en sí es el núcleo compartido con las sugerencias de una
+     * lista: lo propio primero, la exploración después, reintentos incluidos.
      */
-    const elegidas: TrackResult[] = []
-    const usados = new Set<string>()
-    /* Los que ya escuchás no pueden entrar como «descubrimiento»: YouTube los
-       lista como relacionados entre sí, y sin esto la exploración te devolvería
-       a tu propio catálogo con otro nombre. */
-    const conocidos = new Set(candidatos.map((a) => a.artist_id))
-    const parientes: { id: string; nombre: string }[] = []
-
-    /*
-     * Primero **el ancla**: una canción de un artista tuyo.
-     *
-     * Va primero a propósito. La tanda arranca con algo reconocible y recién
-     * después se abre; al revés, el salto desde tu lista a dos desconocidos
-     * seguidos se siente como si la app hubiera cambiado de estación.
-     *
-     * De paso, la página de ese artista es de donde salen los relacionados, así
-     * que el mismo pedido sirve para las dos cosas.
-     */
-    for (let intento = 0; intento < 4 && elegidas.length < POR_TANDA - EXPLORACION; intento++) {
-      const artista = elegirPesado(candidatos.filter((a) => !usados.has(a.artist_id)))
-      if (!artista) break
-      usados.add(artista.artist_id)
-
-      const info = await fetchArtist(artista.artist_id)
-      for (const rel of info?.relacionados ?? []) {
-        if (!conocidos.has(rel.id) && !parientes.some((p) => p.id === rel.id)) {
-          parientes.push({ id: rel.id, nombre: rel.title })
-        }
-      }
-      for (const song of info?.topSongs ?? []) {
-        if (elegidas.length >= POR_TANDA - EXPLORACION) break
-        if (vetados.has(song.videoId)) continue
-        vetados.add(song.videoId)
-        elegidas.push(song)
-      }
-    }
-
-    /*
-     * Después, **lo nuevo**: los relacionados de tus artistas.
-     *
-     * Barajados y no en el orden de YouTube, que devuelve siempre los mismos
-     * primeros: sin esto, dos tandas seguidas te traerían al mismo desconocido.
-     */
-    for (let i = parientes.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[parientes[i], parientes[j]] = [parientes[j], parientes[i]]
-    }
-    for (const pariente of parientes) {
-      if (elegidas.length >= POR_TANDA) break
-      const info = await fetchArtist(pariente.id)
-      for (const song of info?.topSongs ?? []) {
-        if (elegidas.length >= POR_TANDA) break
-        if (vetados.has(song.videoId)) continue
-        vetados.add(song.videoId)
-        elegidas.push(song)
-      }
-    }
-
-    /*
-     * Si no hubo relacionados —un artista sin esa sección, o YouTube que no la
-     * devolvió— la tanda se completa con lo tuyo. Es mejor seguir sonando con
-     * algo conocido que cortar la música por no haber encontrado novedades.
-     */
-    for (let intento = 0; intento < 3 && elegidas.length < POR_TANDA; intento++) {
-      const artista = elegirPesado(candidatos.filter((a) => !usados.has(a.artist_id)))
-      if (!artista) break
-      usados.add(artista.artist_id)
-      const info = await fetchArtist(artista.artist_id)
-      for (const song of info?.topSongs ?? []) {
-        if (elegidas.length >= POR_TANDA) break
-        if (vetados.has(song.videoId)) continue
-        vetados.add(song.videoId)
-        elegidas.push(song)
-      }
-    }
+    const elegidas = await recomendarDesdeAnclas(candidatos, vetados, POR_TANDA, EXPLORACION)
 
     /*
      * Resolver es traer el audio a Storage, y la primera vez de cada tema es un

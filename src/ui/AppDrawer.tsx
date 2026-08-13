@@ -86,13 +86,17 @@ export function AppDrawer({
 
   return (
     /*
-     * Un escalón más claro que la app: `card` contra `background`.
+     * Del color del piso, no un escalón más claro.
      *
-     * Los dos eran el mismo gris y, con la app corrida encima, no se veía dónde
-     * terminaba una y empezaba el otro — el panel parecía un hueco. `DESIGN.md`
-     * separa superficies por luminancia, y esta es exactamente esa situación.
+     * El panel ES el fondo de la escena: la app se aparta y lo descubre. Cuando
+     * era `card` sobre un telón `background`, la costura entre los dos era una
+     * línea recta vertical justo donde termina el panel — el «difuminado
+     * cortado» que no seguía la curva de la tarjeta. Ahora el piso entero es
+     * canvas (ver la raíz en `app/_layout.tsx`) y la jerarquía la pone la
+     * luminancia al revés que antes: el fondo es lo más oscuro y **la app
+     * flota más clara encima**, que es como lo dibuja el referente.
      */
-    <View className="flex-1 bg-card" style={{ paddingTop: insets.top + 12 }}>
+    <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top + 12 }}>
       {/* La marca, no una tarjeta de perfil.
           Quién sos ya está abajo, en el avatar: repetirlo arriba en grande era
           gastar el tramo más visible del panel en un dato que no es un destino. */}
@@ -186,8 +190,9 @@ export function AppDrawer({
         <View pointerEvents="box-none" style={{ flex: 1 }} />
         <LinearGradient
           pointerEvents="none"
-          // card (#181818) hacia transparente, de abajo hacia arriba.
-          colors={['rgba(24,24,24,0)', 'rgba(24,24,24,0.9)', 'rgb(24,24,24)']}
+          // canvas (#000) hacia transparente, de abajo hacia arriba: el mismo
+          // color del panel, o el fundido se vería como una mancha más clara.
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.9)', 'rgb(0,0,0)']}
           locations={[0, 0.45, 1]}
           style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: insets.bottom + 96 }}
         />

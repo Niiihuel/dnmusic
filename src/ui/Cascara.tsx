@@ -24,6 +24,16 @@ const AIRE = 8
  * pieza apoyada y no una franja del sistema.
  */
 const RESPIRO_MEDIA = 10
+/**
+ * Cuánto más se achica **solo desplegada**.
+ *
+ * A 22 del borde la tarjeta seguía leyéndose cortada contra la curva de la
+ * pantalla del teléfono — la captura no lo muestra porque la captura no tiene
+ * bordes curvos. Va interpolado con el plegado: plegada este aire no existe,
+ * porque ahí los costados los ocupan los redondeles y achicarla más dejaría a
+ * la tarjeta flaca entre ellos.
+ */
+const RESPIRO_GRANDE = 12
 /** Margen lateral de la franja. */
 const COSTADO = 12
 /**
@@ -162,6 +172,20 @@ export function Cascara({
   const tabs = useAnimatedStyle(() => ({
     transform: [{ translateY: p.value * abajo }],
   }))
+  /* El aire extra de la tarjeta, solo desplegada: se cierra al plegarse con
+     el mismo resorte que mueve todo lo demás. Es un margen que se anima — el
+     mismo mecanismo por el que entran y salen los redondeles.
+
+     Va como `marginLeft`/`marginRight` sueltos y NO como `marginHorizontal`:
+     en web, Reanimated aplica el primer cuadro a través del pipeline de RNW
+     —que sí entiende el atajo— pero las actualizaciones por cuadro van
+     directo al estilo del nodo, donde `marginHorizontal` no existe. El margen
+     quedaba clavado en el valor inicial: plegada, la tarjeta conservaba el
+     aire de desplegada y quedaban dos huecos contra los redondeles. */
+  const media = useAnimatedStyle(() => {
+    const margen = RESPIRO_MEDIA + (1 - p.value) * RESPIRO_GRANDE
+    return { marginLeft: margen, marginRight: margen }
+  })
 
   return (
     <Animated.View style={columna}>
@@ -194,7 +218,7 @@ export function Cascara({
           </BotonVidrio>
         </Animated.View>
 
-        <View style={{ flex: 1, minWidth: 0, marginHorizontal: RESPIRO_MEDIA }}>{children}</View>
+        <Animated.View style={[{ flex: 1, minWidth: 0 }, media]}>{children}</Animated.View>
 
         <Animated.View style={[{ marginLeft: AIRE }, derecha]}>
           {/*

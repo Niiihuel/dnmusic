@@ -137,7 +137,8 @@ export default function SignUp() {
             <View className="items-center gap-4">
               <Image
                 source={require('../assets/icon.png')}
-                className="h-16 w-16 rounded-[14px]"
+                /* Por `style`, no por clase; ver el comentario del login. */
+                style={{ width: 64, height: 64, borderRadius: 14 }}
                 accessibilityLabel="dnmusic"
               />
               <View className="items-center gap-2">

@@ -153,6 +153,9 @@ export default function BuscarParaPerfil() {
                 <SearchDropdown
                   visible
                   embedded
+                  /* Este buscador elige, no reproduce: la que está sonando
+                     también se tiene que poder fijar — es el caso más común. */
+                  alwaysSelect
                   loading={cargando}
                   results={resultados}
                   error={error}

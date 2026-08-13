@@ -232,6 +232,39 @@ begin
     raise exception 'FALLO: tocar_ahora desordenó la cola';
   end if;
 
+  -- ── Mover ────────────────────────────────────────────────────────────────
+  -- Reordenar es editar la fila: pide el permiso de agregar, que sigue
+  -- apagado — así que Beto no puede.
+  select id into v_item1 from public.jam_queue where jam_id = v_jam and video_id = 'v9';
+  select id into v_item2 from public.jam_queue where jam_id = v_jam and video_id = 'v2';
+  perform pg_temp.debe_fallar(
+    format('select public.jam_mover(%L, %L, %L)', v_jam, v_item1, v_item2),
+    'El host no permite');
+
+  -- El host sí: v9 pasa a estar después de v2, entre medio de lo que había.
+  perform pg_temp.como(ana);
+  perform public.jam_mover(v_jam, v_item1, v_item2);
+  if (select array_agg(q.video_id order by q.posicion)
+      from public.jam_queue q where q.jam_id = v_jam) <> array['v2','v9','v7'] then
+    raise exception 'FALLO: mover no dejó v9 después de v2';
+  end if;
+
+  -- Sin ancla es «al frente de la fila».
+  perform public.jam_mover(v_jam, v_item1, null);
+  if (select array_agg(q.video_id order by q.posicion)
+      from public.jam_queue q where q.jam_id = v_jam) <> array['v9','v2','v7'] then
+    raise exception 'FALLO: mover sin ancla no fue al frente';
+  end if;
+
+  -- Referencias rotas: moverse tras sí misma, o tras algo que ya no está.
+  perform pg_temp.debe_fallar(
+    format('select public.jam_mover(%L, %L, %L)', v_jam, v_item1, v_item1),
+    'ya está ahí');
+  perform pg_temp.debe_fallar(
+    format('select public.jam_mover(%L, %L, %L)', v_jam, gen_random_uuid(), v_item1),
+    'no está en el Jam');
+  perform pg_temp.como(beto);
+
   -- ── Echar y terminar ─────────────────────────────────────────────────────
   perform pg_temp.como(beto);
   perform pg_temp.debe_fallar(

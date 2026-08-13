@@ -106,7 +106,12 @@ export default function SongPicker() {
   async function fijarFragmento(song: SongSnippet) {
     const { data } = await getSupabase().auth.getUser()
     const me = data.user?.id
-    if (!me) return
+    if (!me) {
+      /* Sin sesión no hay dónde fijar. Antes esto salía en silencio y el botón
+         parecía roto: si pasa, que al menos lo diga. */
+      avisar('No se pudo fijar: no hay sesión.', true)
+      return
+    }
     setFijando(true)
     try {
       await addShowcase(me, 'fragmento', {
@@ -130,6 +135,10 @@ export default function SongPicker() {
        * colgar. `dismissTo` desapila todo lo del medio de una vez.
        */
       router.dismissTo('/profile')
+    } catch (e) {
+      /* Sin esto el rechazo quedaba sin atrapar: el botón dejaba de girar y no
+         pasaba nada, que se lee como «no funciona» sin ninguna pista de por qué. */
+      avisar(`No se pudo fijar: ${(e as Error).message}`, true)
     } finally {
       setFijando(false)
     }
@@ -303,6 +312,9 @@ export default function SongPicker() {
                     results={results}
                     error={error}
                     onSelect={setTrack}
+                    /* Acá se elige qué recortar: la que está sonando también
+                       cuenta. Sin esto, tocarla solo pausaba. */
+                    alwaysSelect
                     embedded
                   />
 
@@ -935,9 +947,7 @@ function SnippetEditor({
             <CollapsedSidebar
               side="right"
               hovered={hovered}
-              expandedWidth={sideWidth}
               label="Expandir la ficha del artista"
-              preview={sidebar}
               onExpand={() => setSideCollapsed(false)}
             />
           ) : (

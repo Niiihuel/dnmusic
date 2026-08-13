@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Panel } from '../src/ui/Panel'
-import { FilaAjuste, FilaInterruptor, GrupoAjustes } from '../src/ui/Ajustes'
+import { Panel } from '../../src/ui/Panel'
+import { FilaAjuste, FilaInterruptor, GrupoAjustes } from '../../src/ui/Ajustes'
+import { FilaSostener } from '../../src/ui/Mantener'
 import {
   ICON_COLOR,
   IconBack,
@@ -12,26 +12,23 @@ import {
   IconDisk,
   IconLogOut,
   IconTrash,
-  IconWifi,
-} from '../src/ui/icons'
+} from '../../src/ui/icons'
 import {
-  borrarTodo,
   cuantasListas,
   cuantasPendientes,
   espacioUsado,
   formatoBytes,
   HAY_DESCARGAS,
-  reanudarDescargas,
   useDescargas,
-} from '../src/state/descargas'
-import { setAutoplay, setSoloWifi, useAjustes } from '../src/state/ajustes'
-import { programarApagado, useDormirMin } from '../src/state/playback'
-import { borrarHistorial } from '../src/services/plays'
-import { endSession } from '../src/state/session'
-import { avisar } from '../src/state/aviso'
-import { mensajeError } from '../src/lib/mensajeError'
-import { usePiso } from '../src/state/shell'
-import { volver } from '../src/lib/volver'
+} from '../../src/state/descargas'
+import { setAutoplay, useAjustes } from '../../src/state/ajustes'
+import { programarApagado, useDormirMin } from '../../src/state/playback'
+import { borrarHistorial } from '../../src/services/plays'
+import { endSession } from '../../src/state/session'
+import { avisar } from '../../src/state/aviso'
+import { mensajeError } from '../../src/lib/mensajeError'
+import { usePiso } from '../../src/state/shell'
+import { volver } from '../../src/lib/volver'
 
 /** Debajo de esto la app es pestañas y el contenido va de borde a borde. */
 const SHELL_PX = 780
@@ -39,44 +36,6 @@ const SHELL_PX = 780
 const CAP = 672
 /** Los cortes del temporizador. El 0 es «no apagar». */
 const MINUTOS = [0, 15, 30, 60]
-/** Cuánto queda armada una confirmación antes de desarmarse sola. */
-const CONFIRMAR_MS = 5000
-
-/**
- * Confirmación **en la propia fila**, con dos toques.
- *
- * No es un `Alert.alert` porque `react-native-web` no lo implementa: en la web
- * el diálogo no aparecería y la acción no se dispararía nunca. Un patrón que
- * funciona en una plataforma y falla en silencio en la otra es peor que no tener
- * confirmación.
- *
- * El primer toque arma y cambia el texto; el segundo hace la cosa. Se desarma
- * solo a los cinco segundos, para que un toque olvidado no quede esperando a que
- * alguien roce la pantalla más tarde.
- *
- * `confirmar()` devuelve si hay que actuar, así quien lo usa escribe el caso
- * normal —«si no me confirmaron, no hago nada»— en una línea y sin anidar.
- */
-function useDobleToque() {
-  const [armado, setArmado] = useState(false)
-  useEffect(() => {
-    if (!armado) return
-    const id = setTimeout(() => setArmado(false), CONFIRMAR_MS)
-    return () => clearTimeout(id)
-  }, [armado])
-
-  return {
-    armado,
-    confirmar: () => {
-      if (!armado) {
-        setArmado(true)
-        return false
-      }
-      setArmado(false)
-      return true
-    },
-  }
-}
 
 /**
  * Los ajustes de la app.
@@ -87,25 +46,25 @@ function useDobleToque() {
  * juntos obligaba a bajar por tu foto y tu biografía para llegar a una perilla
  * de reproducción.
  *
- * Reusa `GrupoAjustes` y `FilaInterruptor`, que ya existían para el editor: la
- * forma de una lista de ajustes en esta app está resuelta y no hay razón para
- * inventar otra.
+ * Navega como los Ajustes de iOS —un *navigation stack* sobre listas
+ * agrupadas—: esta pantalla es el índice y lo que tiene entidad propia se abre
+ * en la suya, empujada con el deslizamiento del sistema. Hoy la única
+ * sub-pantalla es Descargas; el patrón ya queda armado para las que vengan.
+ *
+ * Lo que borra o te saca no confirma con diálogos ni dobles toques: se
+ * **sostiene** (`FilaSostener`), que es el gesto que no se hace sin querer.
  */
 export default function Ajustes() {
   const router = useRouter()
-  const { autoplay, soloWifi } = useAjustes()
+  const { autoplay } = useAjustes()
   const dormirMin = useDormirMin()
 
-  const historial = useDobleToque()
-  const descargas = useDobleToque()
-  const salida = useDobleToque()
-  const { items, esperandoWifi } = useDescargas()
+  const { items } = useDescargas()
   const bajadas = cuantasListas(items)
   const pendientes = cuantasPendientes(items)
   const ocupado = espacioUsado(items)
 
   async function borrar() {
-    if (!historial.confirmar()) return
     try {
       await borrarHistorial()
       avisar('Historial borrado')
@@ -114,11 +73,6 @@ export default function Ajustes() {
     }
   }
 
-  function borrarDescargas() {
-    if (!descargas.confirmar()) return
-    borrarTodo()
-    avisar('Descargas borradas')
-  }
   const suelto = useWindowDimensions().width < SHELL_PX
   const piso = usePiso(24)
 
@@ -198,79 +152,46 @@ export default function Ajustes() {
               </GrupoAjustes>
 
               {/*
-               * Las descargas.
-               *
-               * Acá no se baja nada: eso se hace desde la lista o desde la
-               * canción, que es donde uno está cuando decide que quiere tenerla.
-               * Esta pantalla es la que responde la pregunta que solo se hace
-               * acá — «¿cuánto me están ocupando?»— y da la única forma de
-               * recuperar todo ese espacio de una vez.
+               * Las descargas tienen pantalla propia: acá solo la puerta, con
+               * el resumen en la fila — cuántas hay y cuánto ocupan, que es lo
+               * que uno viene a averiguar. Adentro está la lista completa, el
+               * interruptor de Wi-Fi y el borrado.
                *
                * En la web no aparece: `expo-file-system` no guarda nada ahí, así
-               * que un grupo diciendo «0 MB» para siempre sería mentir sobre una
+               * que una puerta a «0 MB» para siempre sería mentir sobre una
                * función que no existe.
                */}
               {HAY_DESCARGAS ? (
-                <GrupoAjustes titulo="Descargas">
-                  {/*
-                   * El detalle cambia según lo que esté pasando de verdad.
-                   *
-                   * Con la cola frenada por datos móviles, un texto fijo dejaría
-                   * la app pareciendo colgada: canciones marcadas que no bajan
-                   * nunca y ninguna explicación en pantalla. Acá dice qué está
-                   * esperando y el interruptor de al lado es justo lo que lo
-                   * destraba.
-                   */}
-                  <FilaInterruptor
-                    rotulo="Descargar solo con Wi-Fi"
-                    detalle={
-                      esperandoWifi
-                        ? `${pendientes} ${pendientes === 1 ? 'canción esperando' : 'canciones esperando'} a que haya Wi-Fi. Apagalo para bajarlas con datos.`
-                        : 'Un disco son decenas de megas. Apagalo si tenés datos de sobra.'
-                    }
-                    icono={<IconWifi size={17} color={ICON_COLOR.muted} />}
-                    activo={soloWifi}
-                    onCambiar={(v) => {
-                      setSoloWifi(v)
-                      /* Apagarlo tiene que destrabar lo que quedó esperando: el
-                         bucle de descargas se cortó y nadie lo despierta solo. */
-                      if (!v) reanudarDescargas()
-                    }}
-                  />
+                <GrupoAjustes titulo="Almacenamiento">
                   <FilaAjuste
-                    rotulo={
-                      descargas.armado ? 'Tocá de nuevo para confirmar' : 'Borrar las descargas'
-                    }
+                    rotulo="Descargas"
                     valor={
-                      descargas.armado
-                        ? 'Se pueden volver a bajar'
+                      pendientes > 0
+                        ? `${pendientes} en camino`
                         : bajadas > 0
                           ? `${bajadas} ${bajadas === 1 ? 'canción' : 'canciones'} · ${formatoBytes(ocupado)}`
                           : ''
                     }
                     vacio="Todavía no bajaste ninguna"
                     icono={<IconDisk size={17} color={ICON_COLOR.muted} />}
-                    onPress={borrarDescargas}
+                    onPress={() => router.push('/ajustes/descargas')}
                     ultima
                   />
                 </GrupoAjustes>
               ) : null}
 
               {/*
-               * Borrar el historial no tiene vuelta, así que pide dos toques.
+               * Borrar el historial no tiene vuelta, así que se sostiene.
                * Va al final y separado: es lo único de esta pantalla que borra
                * algo que **no se puede recuperar** —las descargas sí— y lo único
                * que le importa a las recomendaciones.
                */}
               <GrupoAjustes titulo="Tus datos">
-                <FilaAjuste
-                  rotulo={
-                    historial.armado ? 'Tocá de nuevo para confirmar' : 'Borrar historial de escucha'
-                  }
-                  valor={historial.armado ? 'Esto no se puede deshacer' : ''}
-                  vacio="Las recomendaciones vuelven a empezar de cero"
+                <FilaSostener
+                  rotulo="Borrar historial de escucha"
+                  detalle="Las recomendaciones vuelven a empezar de cero. No se puede deshacer."
                   icono={<IconTrash size={17} color={ICON_COLOR.muted} />}
-                  onPress={() => void borrar()}
+                  onCompletar={() => void borrar()}
                   ultima
                 />
               </GrupoAjustes>
@@ -278,18 +199,15 @@ export default function Ajustes() {
               {/*
                * Cerrar sesión vive acá y no en el panel lateral: es la única
                * acción de la app que te saca en vez de llevarte, y en el panel
-               * convivía —a un toque de distancia— con crear una lista. Con dos
-               * toques, porque volver a entrar pide la contraseña.
+               * convivía —a un toque de distancia— con crear una lista.
+               * Sostenida, porque volver a entrar pide la contraseña.
                */}
               <GrupoAjustes titulo="Tu cuenta">
-                <FilaAjuste
-                  rotulo={salida.armado ? 'Tocá de nuevo para confirmar' : 'Cerrar sesión'}
-                  valor={salida.armado ? 'Vas a volver a la pantalla de entrada' : ''}
-                  vacio=""
+                <FilaSostener
+                  rotulo="Cerrar sesión"
+                  detalle="Vas a volver a la pantalla de entrada."
                   icono={<IconLogOut size={17} color={ICON_COLOR.muted} />}
-                  onPress={() => {
-                    if (salida.confirmar()) void endSession()
-                  }}
+                  onCompletar={() => void endSession()}
                   ultima
                 />
               </GrupoAjustes>

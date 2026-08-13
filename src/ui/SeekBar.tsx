@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Text, View } from 'react-native'
+import { Text, View, type ViewStyle } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { runOnJS } from 'react-native-reanimated'
+import { HAY_VIDRIO } from './Glass'
 
 /** Alto de la zona sensible: la barra es fina, pero agarrarla no debe serlo. */
 const HIT_H = 16
@@ -105,7 +106,25 @@ export function SeekBar({
             enteros: en un fragmento largo el avance por cuadro es menor a un
             píxel y la barra se ve saltar cada varios cuadros en vez de fluir.
           */}
-          <View className="overflow-hidden rounded-full bg-border" style={{ height: TRACK_H }}>
+          {/* Con vidrio la pista es material, no un gris pintado: blanco
+              translúcido que deja adivinar lo que pasa por detrás, con un
+              canal apenas hundido. Es la pista del slider de iOS 26. El gris
+              sólido queda de respaldo donde no hay vidrio. */}
+          <View
+            className={`overflow-hidden rounded-full ${HAY_VIDRIO ? '' : 'bg-border'}`}
+            style={[
+              { height: TRACK_H },
+              HAY_VIDRIO
+                ? ({
+                    backgroundColor: 'rgba(255,255,255,0.16)',
+                    /* El anillo del referente, a escala de una pista de 4px:
+                       el filo frío de 1px más el canal apenas hundido. */
+                    boxShadow:
+                      'inset 0 0 0 1px rgba(94,100,112,0.45), inset 0 0.5px 1px rgba(0,0,0,0.35)',
+                  } as ViewStyle)
+                : null,
+            ]}
+          >
             <View
               className="h-full w-full rounded-full bg-foreground"
               style={{ transformOrigin: 'left', transform: [{ scaleX: shown }] }}
@@ -118,6 +137,10 @@ export function SeekBar({
               width: THUMB,
               height: THUMB,
               transform: [{ translateX: shown * width - THUMB / 2 }],
+              /* La perilla se despega de la pista con sombra, como la del
+                 sistema — sobre una pista translúcida un círculo plano se
+                 fundía con el relleno. */
+              boxShadow: '0 1px 4px rgba(0,0,0,0.45)',
             }}
           />
         </View>

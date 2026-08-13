@@ -454,8 +454,6 @@ export default function Compose() {
                     <CollapsedSidebar
                       side="left"
                       hovered={hovered}
-                      expandedWidth={leftWidth}
-                      preview={contactPanel(false, () => undefined)}
                       onExpand={() => setLeftCollapsed(false)}
                       label="Expandir destinatarios"
                     />
@@ -532,8 +530,6 @@ export default function Compose() {
                     <CollapsedSidebar
                       side="right"
                       hovered={hovered}
-                      expandedWidth={rightWidth}
-                      preview={songPanel(false, () => undefined)}
                       onExpand={() => setRightCollapsed(false)}
                       label="Expandir canción"
                     />

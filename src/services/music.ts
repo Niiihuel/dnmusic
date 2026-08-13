@@ -137,6 +137,15 @@ export type HomeItem = {
   title: string
   subtitle: string
   artworkUrl: string
+  /**
+   * El canal del artista, en las canciones que lo traen.
+   *
+   * Opcional porque un servidor sin actualizar no lo manda: la portada tiene
+   * que seguir dibujándose igual. Con él, una escucha nacida acá se anota con
+   * su artista y alimenta las recomendaciones; sin él, se anota sin id, que es
+   * lo que dejaba al autoplay sin ancla.
+   */
+  artistId?: string | null
   /** Año de salida, cuando el subtítulo lo trae. Ordena la discografía. */
   year: number | null
 }

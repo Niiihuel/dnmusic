@@ -40,6 +40,19 @@ type ShellState = {
    */
   chromeH: number
   /**
+   * Alto de lo que flota **arriba** en el teléfono: la franja del reloj más
+   * los redondeles del encabezado, medido por la pantalla principal.
+   *
+   * Es el gemelo de `chromeH`. `docs/DESIGN.md` dice que los redondeles del
+   * encabezado flotan sobre el contenido —igual que el reproductor y las
+   * pestañas—, así que el contenido corre hasta el borde de **arriba** y pasa
+   * por detrás de ellos, apagándose contra un degradado en vez de cortarse en
+   * seco contra una línea. El lugar para que la primera fila arranque a la
+   * vista se reserva adentro de cada lista, como margen del contenido; lo lee
+   * `useTecho`. En escritorio es 0: ahí el encabezado está en el flujo.
+   */
+  techoH: number
+  /**
    * Alto del teclado, 0 si está cerrado.
    *
    * Lo miran tres piezas a la vez —el campo de escribir, la lista de mensajes y
@@ -76,6 +89,7 @@ const store = createStore<ShellState>({
   tab: 'inicio',
   tabsVisible: false,
   chromeH: 0,
+  techoH: 0,
   keyboardH: 0,
   colapsada: false,
   enChat: false,
@@ -148,6 +162,10 @@ export function setChromeH(chromeH: number) {
   if (store.get().chromeH !== chromeH) store.set({ chromeH })
 }
 
+export function setTechoH(techoH: number) {
+  if (store.get().techoH !== techoH) store.set({ techoH })
+}
+
 /*
  * El alto del teclado, para decidir **qué se dibuja**.
  *
@@ -184,6 +202,23 @@ export function setKeyboardH(keyboardH: number) {
  */
 export function usePiso(extra = 0) {
   return useChromeH() + extra
+}
+
+/**
+ * Lo que hay que dejar libre al principio de una lista para que la primera
+ * fila arranque a la vista, debajo del encabezado que flota.
+ *
+ * Es el espejo de `usePiso` y sigue su misma regla: el contenedor corre hasta
+ * el borde de arriba —por detrás del reloj y de los redondeles— y el hueco se
+ * reserva **adentro**, como margen del contenido. Al desplazar, las filas
+ * pasan por detrás del degradado del encabezado y se apagan antes de tocar el
+ * reloj, como en Apple Music.
+ *
+ * `extra` es el margen que la lista quiere de todos modos, el que tendría sin
+ * nada flotando encima. En escritorio es lo único que queda.
+ */
+export function useTecho(extra = 0) {
+  return useStore(store, (s) => s.techoH) + extra
 }
 
 export const useTab = () => useStore(store, (s) => s.tab)

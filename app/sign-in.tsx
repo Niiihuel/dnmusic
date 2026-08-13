@@ -76,7 +76,10 @@ export default function SignIn() {
             <View className="items-center gap-4">
               <Image
                 source={require('../assets/icon.png')}
-                className="h-16 w-16 rounded-[14px]"
+                /* Por `style` y no por clase: en web, RNW escribe el tamaño
+                   intrínseco del asset (1024px) como estilo inline y pisa
+                   cualquier className (docs/DESIGN.md). */
+                style={{ width: 64, height: 64, borderRadius: 14 }}
                 accessibilityLabel="dnmusic"
               />
               <View className="items-center gap-2">

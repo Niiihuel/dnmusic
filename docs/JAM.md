@@ -10,11 +10,18 @@ en el del host usando el suyo de control remoto.
 | Archivo | Qué hace |
 | --- | --- |
 | `supabase/migrations/20260812100000_jam.sql` | La verdad: tablas, RLS, todos los RPCs |
+| `supabase/migrations/20260812150000_jam_mover.sql` | Reordenar la cola: `jam_mover`, midpoint sobre `posicion` |
 | `src/services/jam.ts` | Los pedidos y el canal; parsers fila→tipo |
 | `src/state/jam.ts` | La copia local: conexión, resync, permisos, volcado |
 | `src/state/playback.ts` | `registerJam`, el puente; `jamAplicar`/`jamSoltar` |
 | `src/ui/MotorAudio.tsx` | La sincronía: arranque diferido y corrección de deriva |
-| `app/jam/index.tsx` | El sheet: gente, cola, permisos, invitar, salir |
+| `app/jam/index.tsx` | La hoja principal del teléfono: título, avatares, la fila |
+| `app/jam/personas.tsx` | Invitar (link, código, QR) y quiénes están; se apila encima |
+| `app/jam/opciones.tsx` | Permisos del host / salida del invitado; tercera hoja |
+| `src/ui/ColaJam.tsx` | La fila compartida: lo que suena y lo que viene, arrastrable |
+| `src/ui/BotonSostener.tsx` | Terminar sosteniendo: el botón que se llena |
+| `src/lib/invitarJam.ts` | El link de invitación y el gesto de compartirlo, una sola vez |
+| `src/ui/JamPanel.tsx` | Lo mismo en escritorio, como cara del panel derecho |
 | `app/jam/[code].tsx` | La puerta del link: elegir dónde escuchar y entrar |
 | `supabase/tests/jam.sql` | Las pruebas, contra el Docker local |
 

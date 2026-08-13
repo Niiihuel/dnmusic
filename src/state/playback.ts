@@ -97,13 +97,17 @@ type PlaybackState = {
 }
 
 /**
- * Las tres caras del panel de la derecha.
+ * Las caras del panel de la derecha.
  *
  * `info` es la de siempre —carátula, tema, artista—; `disc` es el vinilo
- * girando y `lyrics` la letra sincronizada. Vive acá y no en la pantalla
- * porque quien las alterna es la barra de abajo, que está en el layout.
+ * girando, `lyrics` la letra sincronizada y `jam` la escucha compartida:
+ * quiénes están, la cola con quién puso cada tema y las perillas del host. En
+ * el teléfono el Jam sigue siendo su pantalla modal; esta vista es la forma
+ * de escritorio, al lado de la lista, como el panel de Spotify. Vive acá y no
+ * en la pantalla porque quien las alterna es la barra de abajo, que está en
+ * el layout.
  */
-export type NowPlayingView = 'info' | 'disc' | 'lyrics'
+export type NowPlayingView = 'info' | 'disc' | 'lyrics' | 'jam'
 
 const EMPTY: PlaybackState = {
   tracks: [],
@@ -262,6 +266,76 @@ function enJam(): boolean {
 
 /** Si ya hay una tanda en camino, para no pedir dos veces al mismo final. */
 let pidiendo = false
+/**
+ * La cola llegó al final **mientras la tanda venía en camino**: al llegar, hay
+ * que avanzar. Sin esta marca había una carrera boba: si el pedido ya estaba en
+ * vuelo cuando terminó la última canción, `advance` no podía volver a pedir
+ * —`pidiendo` lo trababa— y caía al final de la función, que pausa. La tanda
+ * llegaba dos segundos después y se quedaba muda en `upNext`.
+ */
+let avanzarAlLlegar = false
+
+/**
+ * Pide una tanda y la encola cuando llega.
+ *
+ * Es un solo camino para los dos momentos en que se pide: **antes** de que la
+ * última canción termine (ver `rellenarSiFalta`) y, si no llegó a pasar, al
+ * terminarse la lista desde `advance`. Si para cuando llega la cola ya está
+ * parada en el final, avanza; si la última todavía suena, la tanda queda
+ * esperando en `upNext` y el cambio de tema es el de siempre, sin hueco.
+ */
+function pedirRelleno() {
+  if (!relleno || pidiendo) return
+  pidiendo = true
+  const alFinal = () => {
+    const s = store.get()
+    /* Si la canción va por la mitad, el pedido vino de apretar «siguiente» y
+       no del final: sin recomendaciones no hay a dónde saltar, pero lo que
+       sonaba sigue sonando — pausarlo sería castigar el botón. */
+    if (s.durationMs - s.positionMs > 1500) return
+    store.set({ manual: null, wantPlay: false, positionMs: s.durationMs })
+  }
+  void relleno()
+    .then((tanda) => {
+      if (tanda.length) {
+        const ahora = store.get()
+        store.set({ upNext: [...ahora.upNext, ...tanda] })
+        if (avanzarAlLlegar) advance()
+      } else if (avanzarAlLlegar) {
+        // Sin recomendaciones no hay con qué seguir: se para como siempre.
+        alFinal()
+      }
+    })
+    .catch(() => {
+      if (avanzarAlLlegar) alFinal()
+    })
+    .finally(() => {
+      pidiendo = false
+      avanzarAlLlegar = false
+    })
+}
+
+/**
+ * Pide la próxima tanda **antes** de que haga falta.
+ *
+ * La llama el motor cuando empieza a sonar la última canción que queda. Pedir
+ * recién al terminarse —que era lo único que había— dejaba un silencio de
+ * varios segundos entre el final y la primera recomendada, y en el teléfono ese
+ * silencio es fatal: sin audio sonando, iOS puede suspender la app con la
+ * pantalla bloqueada y la música no vuelve más. Con la tanda ya en `upNext`
+ * para cuando el tema termina, el cambio es el encadenado normal de la cola.
+ */
+export function rellenarSiFalta() {
+  const state = store.get()
+  /* En un Jam la cola es de todos; rellenarla por tu cuenta la rompería. */
+  if (enJam()) return
+  if (!leerAjustes().autoplay) return
+  /* Con repetir prendido la lista no tiene final: no hay nada que rellenar. */
+  if (state.repetir !== 'no') return
+  if (!state.wantPlay) return
+  if (state.upNext.length || siguienteIndice(state) !== null) return
+  pedirRelleno()
+}
 
 /** El motor avisa si el audio de la canción actual ya está listo para sonar. */
 export function reportCargada(cargada: boolean) {
@@ -436,8 +510,58 @@ export function playNext() {
     return
   }
   const state = store.get()
+
+  /*
+   * Lo encolado a mano va primero, **igual que al terminar la canción sola**.
+   *
+   * Antes esto solo miraba la lista, y ahí vivía un bug con dos caras: saltar
+   * con algo en la cola manual se la salteaba, y en la última canción el botón
+   * directamente no hacía nada — aunque la tanda de recomendaciones ya
+   * estuviera esperando en `upNext`, puesta ahí por el motor justamente para
+   * este momento. La regla es una sola: «siguiente» significa lo mismo apretado
+   * que llegado — el orden de `advance`.
+   */
+  const [encolada, ...resto] = state.upNext
+  if (encolada) {
+    stopSnippets()
+    store.set({
+      manual: encolada,
+      upNext: resto,
+      wantPlay: true,
+      positionMs: 0,
+      durationMs: encolada.durationMs,
+      error: null,
+    })
+    guardar(true)
+    return
+  }
+
   const next = siguienteIndice(state)
-  if (next !== null) playAt(next)
+  if (next !== null) {
+    playAt(next)
+    return
+  }
+
+  /* Con «repetir la lista», después de la última viene la primera — apretado
+     o llegado, la rueda es la misma. */
+  if (state.repetir === 'lista' && state.tracks.length) {
+    const primera = state.shuffle?.[0] ?? 0
+    if (state.tracks[primera]) {
+      playAt(primera)
+      return
+    }
+  }
+
+  /*
+   * Fin de la lista con «seguir al terminar» prendido: saltar también sigue
+   * con recomendaciones. Es el mismo mecanismo del final natural — se pide la
+   * tanda y se avanza en cuanto llega; si ya había un pedido en vuelo, la
+   * marca alcanza para que ese mismo avance.
+   */
+  if (state.repetir === 'no' && leerAjustes().autoplay && relleno) {
+    avanzarAlLlegar = true
+    pedirRelleno()
+  }
 }
 
 export function playPrevious() {
@@ -653,33 +777,20 @@ export function advance() {
   /*
    * Se acabó la lista.
    *
-   * Con «seguir al terminar» prendido se pide una tanda de recomendaciones y la
-   * música **no se corta**: se queda en la última mientras llega. Encolarlas es
-   * suficiente para que suenen, porque `enqueue` sobre una cola terminada vuelve
-   * a arrancar sola.
+   * Con «seguir al terminar» prendido, la música **no se corta**: lo normal es
+   * que la tanda ya esté esperando en `upNext` —el motor la pide cuando arranca
+   * la última canción, ver `rellenarSiFalta`— y entonces ni se llega acá. Si el
+   * pedido sigue en vuelo, se marca que hay que avanzar al llegar; si ni
+   * siquiera se pidió —la preferencia se prendió a mitad del último tema—, se
+   * pide ahora y se espera en la última mientras tanto.
    *
    * Si el relleno no está registrado —la web sin sesión, o un error— o vuelve
    * vacío, se para como se paraba antes. La preferencia apagada es lo mismo: el
    * silencio al final de la lista es una opción legítima.
    */
-  if (leerAjustes().autoplay && relleno && !pidiendo) {
-    pidiendo = true
-    void relleno()
-      .then((tandas) => {
-        if (!tandas.length) {
-          store.set({ manual: null, wantPlay: false, positionMs: state.durationMs })
-          return
-        }
-        const ahora = store.get()
-        store.set({ manual: null, upNext: [...ahora.upNext, ...tandas] })
-        advance()
-      })
-      .catch(() => {
-        store.set({ manual: null, wantPlay: false, positionMs: state.durationMs })
-      })
-      .finally(() => {
-        pidiendo = false
-      })
+  if (leerAjustes().autoplay && relleno) {
+    avanzarAlLlegar = true
+    pedirRelleno()
     return
   }
 
@@ -852,3 +963,22 @@ export const useUpNextCount = () => useStore(store, (state) => state.upNext.leng
 export const usePlaybackIndex = () => useStore(store, (state) => state.index)
 export const usePlaybackOriginId = () => useStore(store, (state) => state.origin?.id ?? null)
 export const useWantPlay = () => useStore(store, (state) => state.wantPlay)
+
+/**
+ * Si «siguiente» tiene a dónde ir. Es lo que decide si el botón se apaga.
+ *
+ * Mira lo mismo que `playNext`, en el mismo orden: la cola manual, la lista,
+ * la rueda de repetir y el relleno de recomendaciones. Antes los botones
+ * calculaban `index >= tracks.length - 1` por su cuenta, y eso apagaba el
+ * salto justo cuando las recomendadas estaban esperando en `upNext` — o cuando
+ * el autoplay podía traerlas.
+ */
+export const useHaySiguiente = () =>
+  useStore(
+    store,
+    (state) =>
+      state.upNext.length > 0 ||
+      siguienteIndice(state) !== null ||
+      (state.repetir === 'lista' && state.tracks.length > 0) ||
+      (state.repetir === 'no' && leerAjustes().autoplay && relleno !== null),
+  )

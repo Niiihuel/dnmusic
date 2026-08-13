@@ -1,6 +1,26 @@
+import { useEffect } from 'react'
 import { useRouter } from 'expo-router'
 import { volver } from '../src/lib/volver'
-import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import {
+  Image,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import Animated, {
+  Easing,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated'
+import { usePiso } from '../src/state/shell'
 import { LinearGradient } from 'expo-linear-gradient'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { haySelectorDeSalida, SelectorDeSalida } from '../modules/audio-route'
@@ -11,6 +31,7 @@ import {
   seekFraction,
   toggleView,
   togglePlayback,
+  useHaySiguiente,
   useNowPlayingView,
   usePlaybackOriginName,
   usePlaybackState,
@@ -35,6 +56,22 @@ import {
 } from '../src/ui/icons'
 
 /**
+ * Ancho máximo de la columna del reproductor en ventana grande.
+ *
+ * Es más ancho que el tope de las listas (672) porque acá la pieza principal es
+ * una imagen cuadrada: con 672 la tapa se comía el alto entero y no quedaba
+ * lugar para el título ni los controles.
+ */
+const COLUMNA = 520
+
+/** Lo que tarda en crecer y en volver a guardarse. */
+const SUBE_MS = 380
+const BAJA_MS = 300
+/** Cuánto hay que arrastrar —o con cuánta fuerza soltar— para que se cierre. */
+const ARRASTRE_CIERRA = 120
+const VELOCIDAD_CIERRA = 800
+
+/**
  * Lo que suena, a pantalla completa.
  *
  * Es la otra mitad del reproductor del teléfono: la tarjeta de abajo se queda
@@ -42,9 +79,13 @@ import {
  * hay nada nuevo inventado: la carátula, el disco girando, la letra y la barra
  * de posición son los mismos componentes del panel derecho del escritorio.
  *
- * Va como ruta modal y no como una capa dentro de la pantalla principal: la
- * animación de subida, el gesto para bajarla y el que la música siga sonando
- * detrás salen gratis del navegador, y no hay que sincronizar nada.
+ * Va como ruta y no como una capa dentro de la pantalla principal: la música
+ * sigue sonando detrás sin sincronizar nada, y la pantalla tiene su URL.
+ *
+ * **La subida y el gesto los hace ella**, no el navegador. Eran los de un
+ * `presentation: 'modal'`, que sube desde el borde de abajo de la pantalla; pero
+ * acá no se entra por el borde, se entra tocando la tarjeta del reproductor, que
+ * está más arriba. Ver `crece` y `arrastre`.
  */
 export default function Playing() {
   const router = useRouter()
@@ -53,11 +94,107 @@ export default function Playing() {
   const listName = usePlaybackOriginName()
   const enJam = useJamActivo()
   const cuantosJam = useCuantosJam()
+  /* «Siguiente» cuenta la cola manual, el repetir y el relleno de
+     recomendaciones — mirar solo la lista apagaba el botón en la última
+     canción, con la tanda recomendada ya esperando. */
+  const last = !useHaySiguiente()
+
+  /*
+   * **Desde dónde crece**: el borde de arriba de la tarjeta del reproductor.
+   *
+   * No hace falta medir nada nuevo. `usePiso()` ya devuelve lo que ocupa la
+   * cáscara flotante, medida de su propio layout, así que el techo de la
+   * tarjeta es el alto de la ventana menos eso — exactamente la altura donde
+   * apoyaste el dedo para abrir esto.
+   *
+   * Al cerrar se vuelve al mismo número, así que la pantalla se guarda dentro
+   * de la tarjeta de la que salió en vez de irse por el piso.
+   */
+  const { height: alturaVentana } = useWindowDimensions()
+  const desde = Math.max(0, alturaVentana - usePiso())
+
+  /** 0 es abierta del todo; `desde` es guardada en la tarjeta. */
+  const y = useSharedValue(desde)
+
+  const cerrar = () => {
+    /* Se navega **cuando terminó de bajar**, no antes: quitar la pantalla del
+       árbol a mitad de camino corta el movimiento en seco. `runOnJS` porque el
+       final de la animación llega en el hilo de la interfaz. */
+    y.value = withTiming(desde, { duration: BAJA_MS, easing: Easing.in(Easing.cubic) }, (fin) => {
+      if (fin) runOnJS(volver)(router, '/')
+    })
+  }
+
+  /*
+   * Arrastrar hacia abajo para cerrar: es lo que daba el modal nativo y lo que
+   * cualquiera intenta sobre una pantalla que subió.
+   *
+   * Solo hacia abajo —tirar hacia arriba de algo que ya está arriba no hace
+   * nada— y **cede el gesto horizontal**: adentro están la barra de posición y
+   * las píldoras de vista, que se manejan de costado. Sin `failOffsetX`, mover
+   * el dedo en diagonal sobre la barra de posición cerraba la pantalla en vez
+   * de buscar en la canción.
+   */
+  const arrastre = Gesture.Pan()
+    .activeOffsetY(15)
+    .failOffsetX([-20, 20])
+    .onUpdate((e) => {
+      y.value = Math.max(0, e.translationY)
+    })
+    .onEnd((e) => {
+      /* Soltado lejos o con impulso, se cierra por el mismo camino que el botón
+         de bajar: `cerrar` sigue desde donde quedó el dedo. Va por `runOnJS`
+         porque esto corre en el hilo de la interfaz y `cerrar` es una función
+         común — que además es la razón de no duplicar la animación acá. */
+      if (e.translationY > ARRASTRE_CIERRA || e.velocityY > VELOCIDAD_CIERRA) {
+        runOnJS(cerrar)()
+        return
+      }
+      /* No alcanzó: vuelve arriba con resorte, como el sheet del sistema. */
+      y.value = withSpring(0, { damping: 22, stiffness: 260 })
+    })
+
+  /*
+   * Sube y aparece a la vez.
+   *
+   * El desvanecido va sobre el **último tramo** del recorrido: cerca de la
+   * tarjeta la pantalla todavía es casi transparente, así que lo que se ve es
+   * la tarjeta creciendo y no una lámina tapándola. Todo por `style`:
+   * NativeWind no procesa clases en componentes animados.
+   */
+  const crece = useAnimatedStyle(() => {
+    /* Normalizado, y no interpolando sobre `desde` directo: con `desde` en cero
+       —una ventana sin medir todavía— el rango de entrada sería [0,0,0] y la
+       pantalla saldría transparente en vez de abierta. */
+    const p = desde > 0 ? y.value / desde : 0
+    return {
+      transform: [{ translateY: y.value }],
+      /* El rango de entrada va CRECIENTE: `interpolate` lo exige, y con el
+         rango al revés devolvía cualquier cosa — la pantalla quedaba
+         translúcida incluso abierta del todo. p=0 es abierta (opaca), p=1 es
+         guardada en la tarjeta (invisible). */
+      opacity: interpolate(p, [0, 0.55, 1], [1, 0.85, 0], 'clamp'),
+    }
+  })
+
+  /*
+   * La entrada, una sola vez al montarse.
+   *
+   * Va **al final del cuerpo**, después de `cerrar` y del gesto, porque la
+   * regla no admite que se escriba un valor compartido en código que aparezca
+   * debajo del efecto que lo usa. Y se la silencia acá por lo mismo que en
+   * `MotorAudio` con el volumen: un `SharedValue` de Reanimated se maneja
+   * escribiéndole `.value` —es su API— y esta animación tiene que ser
+   * imperativa porque el mismo valor lo mueve el arrastre.
+   */
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
+    y.value = withTiming(0, { duration: SUBE_MS, easing: Easing.out(Easing.cubic) })
+  }, [y])
 
   const track = manual ?? (index >= 0 ? (tracks[index] ?? null) : null)
   const artwork = track ? artworkSource(track.artworkPath, track.artworkUrl, 640) : null
   const progress = durationMs > 0 ? Math.max(0, Math.min(1, positionMs / durationMs)) : 0
-  const last = !manual && index >= tracks.length - 1
   const first = !manual && index <= 0
 
   /*
@@ -83,7 +220,18 @@ export default function Playing() {
   }
 
   return (
-    <View className="flex-1 bg-canvas">
+    /* El gesto envuelve todo y la animación también: lo que crece desde la
+       tarjeta es la pantalla entera, fondo desenfocado incluido.
+
+       La base negra va ACÁ y no en la escena: la escena es transparente a
+       propósito —mientras la pantalla crece se ve la app detrás— así que el
+       cuerpo opaco tiene que ser parte de lo que crece. Sin él, la pantalla
+       entera quedaba translúcida abierta: su «fondo» es una carátula al 55%
+       con un velo, que son ambiente, no piso. #000 es el token canvas. */
+    <GestureDetector gesture={arrastre}>
+      <Animated.View
+        style={[{ flex: 1, overflow: 'hidden', backgroundColor: '#000000' }, crece]}
+      >
       {/*
        * El fondo lo pone la tapa.
        *
@@ -114,12 +262,35 @@ export default function Playing() {
         style={StyleSheet.absoluteFill}
       />
 
-      <SafeAreaView className="flex-1" edges={['top', 'bottom']}>
+      {/*
+       * En ventana ancha, el reproductor es una **columna centrada**.
+       *
+       * La tapa es `w-full` con proporción cuadrada, así que sin tope crecía con
+       * la ventana: en un monitor quedaba un cuadrado de mil y pico de píxeles
+       * desbordando el alto, con el título y los controles empujados fuera de
+       * la pantalla. El fondo desenfocado sigue ocupando todo —es el ambiente,
+       * y ahí sí queremos que llene— y lo que se acota es lo que se lee. Es la
+       * forma que toma Apple Music en el iPad y en la Mac.
+       */}
+      <SafeAreaView
+        className="flex-1 self-center"
+        style={{ width: '100%', maxWidth: COLUMNA }}
+        edges={['top', 'bottom']}
+      >
+        {/* La manijita, dibujada por nosotros. Apple Music dibuja la suya
+            exactamente así: la cápsula dice «esto se arrastra» sin gastar un
+            botón. **También en web**, que desde que el gesto es nuestro
+            —`arrastre`, arriba— responde igual al arrastre del mouse; antes
+            dependía del sheet nativo y ahí no había nada que anunciar. */}
+        <View
+          pointerEvents="none"
+          className="mt-2 h-[5px] w-9 self-center rounded-full bg-white/25"
+        />
         <View className="flex-row items-center gap-3 px-4 py-3">
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Bajar"
-            onPress={() => volver(router, '/')}
+            onPress={cerrar}
             className="h-10 w-10 items-center justify-center rounded-full active:bg-muted"
           >
             <IconChevronDown size={22} color={ICON_COLOR.foreground} />
@@ -155,11 +326,7 @@ export default function Playing() {
               size={300}
             />
           ) : artwork ? (
-            <Image
-              source={{ uri: artwork }}
-              className="w-full rounded-2xl bg-card"
-              style={{ aspectRatio: 1 }}
-            />
+            <TapaGrande uri={artwork} playing={wantPlay} />
           ) : (
             <View
               className="w-full items-center justify-center rounded-2xl bg-card"
@@ -295,7 +462,48 @@ export default function Playing() {
           </View>
         </View>
       </SafeAreaView>
-    </View>
+      </Animated.View>
+    </GestureDetector>
+  )
+}
+
+/** El resorte de la tapa: crece decidida al sonar, se recoge suave al pausar. */
+const RESORTE_TAPA = { damping: 17, stiffness: 190, mass: 0.9 }
+
+/**
+ * La carátula grande, que **respira con la reproducción**.
+ *
+ * Es la terminación de Apple Music: sonando, la tapa está a tamaño pleno y
+ * despegada del fondo por una sombra profunda; en pausa se recoge y la sombra
+ * se acerca. La pantalla dice el estado sin que haya que mirar el botón — la
+ * música «se achica» cuando se calla.
+ *
+ * La sombra vive en el contenedor animado y el redondeo en los dos: recortar
+ * y proyectar en la misma capa se pelean (el mismo motivo documentado en el
+ * drawer de `_layout`). Todo por `style`: NativeWind no procesa `className`
+ * sobre componentes animados.
+ */
+function TapaGrande({ uri, playing }: { uri: string; playing: boolean }) {
+  const respira = useAnimatedStyle(() => ({
+    transform: [{ scale: withSpring(playing ? 1 : 0.82, RESORTE_TAPA) }],
+  }))
+  return (
+    <Animated.View
+      style={[
+        {
+          width: '100%',
+          borderRadius: 16,
+          boxShadow: '0 22px 56px rgba(0,0,0,0.55)',
+        },
+        respira,
+      ]}
+    >
+      <Image
+        source={{ uri }}
+        className="w-full rounded-2xl bg-card"
+        style={{ aspectRatio: 1 }}
+      />
+    </Animated.View>
   )
 }
 

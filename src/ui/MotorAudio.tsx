@@ -11,13 +11,14 @@ import {
   pausePlayback,
   registerEngine,
   registerRelleno,
+  rellenarSiFalta,
   reportCargada,
   reportError,
   reportProgress,
   resumePlayback,
   usePlaybackState,
 } from '../state/playback'
-import { proximasRecomendadas } from '../services/recomendaciones'
+import { proximasRecomendadas, type ArtistaEscuchado } from '../services/recomendaciones'
 import { rutaLocal } from '../state/descargas'
 import {
   jamEsperaArranqueMs,
@@ -266,9 +267,39 @@ export function MotorAudio() {
    * dos veces.
    */
   useEffect(() => {
-    registerRelleno(() => proximasRecomendadas(upNext.map((t) => t.videoId)))
+    /* Lo que no puede volver a ofrecer: la lista entera y lo que ya espera —
+       antes solo se vetaba lo encolado, y la tanda podía repetir la lista que
+       acababa de sonar si esos temas no habían llegado al historial. */
+    const enCola = [...tracks, ...upNext].map((t) => t.videoId)
+    /*
+     * Los artistas de la cola, pesados por el largo de sus temas.
+     *
+     * Son el ancla de **respaldo** de las recomendaciones: si el historial no
+     * tiene artistas con id —cuenta nueva, o escuchas anotadas sin id—, seguir
+     * con algo parecido a la lista que está sonando es mejor que quedarse mudo.
+     */
+    const porArtista = new Map<string, ArtistaEscuchado>()
+    for (const t of [...tracks, ...upNext]) {
+      if (!t.artistId) continue
+      const previo = porArtista.get(t.artistId)
+      if (previo) previo.ms += t.durationMs
+      else porArtista.set(t.artistId, { artist_id: t.artistId, artist: t.artist, ms: t.durationMs })
+    }
+    registerRelleno(() => proximasRecomendadas(enCola, [...porArtista.values()]))
     return () => registerRelleno(null)
-  }, [upNext])
+  }, [tracks, upNext])
+
+  /*
+   * La próxima tanda se pide cuando **arranca** lo último que queda, no cuando
+   * termina. Pedirla al final dejaba un silencio de varios segundos hasta la
+   * primera recomendada, y con la pantalla bloqueada ese silencio es fatal:
+   * sin audio sonando, iOS suspende la app y la música no vuelve. La función
+   * revisa sola que corresponda — autoplay prendido, sin repetir, nada después.
+   */
+  useEffect(() => {
+    if (!current || nextUp || !playing) return
+    rellenarSiFalta()
+  }, [current, nextUp, playing])
 
   // Un salto no se puede expresar como estado: pedir dos veces el mismo segundo
   // tiene que saltar dos veces. La cola deja el pedido acá.
@@ -517,6 +548,18 @@ export function MotorAudio() {
    */
   const soundingBefore = useRef(false)
   useEffect(() => {
+    /*
+     * Reproductor nuevo, memoria en blanco.
+     *
+     * La ref sobrevive a la recreación del reproductor —que pasa en cada cambio
+     * de URL— y ahí había un agujero: saltando rápido entre canciones, la firma
+     * de la nueva tarda y el reproductor recién creado reporta «paused» un rato
+     * largo. Con el `true` heredado del tema anterior, el detector de abajo lo
+     * leía como una pausa **tuya** y apagaba `wantPlay`: todo lo que pusieras
+     * quedaba en pausa. Lo que detecta este bloque son pausas de afuera sobre
+     * ESTE reproductor, así que arranca sin historia.
+     */
+    soundingBefore.current = false
     const sub = player.addListener('playbackStatusUpdate', (status) => {
       if (status.didJustFinish) {
         soundingBefore.current = false
@@ -594,7 +637,7 @@ export function MotorAudio() {
       }
     }
 
-    const corregir = () => {
+    const corregir = (deEvento: boolean) => {
       if (!jamSuena()) {
         aVelocidadNormal()
         return
@@ -613,6 +656,17 @@ export function MotorAudio() {
 
       const delta = objetivo - t * 1000
       if (Math.abs(delta) > JAM_SALTO_MS) {
+        /*
+         * Al host solo lo mueve **un evento**: el seek que pidió otro.
+         *
+         * La escalera de arriba lo dice — «su reproductor ES la referencia» —
+         * pero la revisión periódica lo saltaba igual: la derivada corre sobre
+         * el reloj estimado del servidor, y apenas su deriva pasaba los 400ms
+         * esto le pegaba un salto al host **cada 7 segundos**. Un salto hacia
+         * atrás vuelve a tocar el último medio segundo: se oía como si la
+         * canción estuviera doble, con eco — sin que nadie hubiera tocado nada.
+         */
+        if (!sincronizo && !deEvento) return
         aVelocidadNormal()
         // Tolerancia cero: el salto cae en el milisegundo pedido, no en el
         // keyframe más cercano. Y el rechazo se traga como en `lib/seek`.
@@ -635,8 +689,10 @@ export function MotorAudio() {
       }
     }
 
-    const puntual = setTimeout(corregir, jamEsperaArranqueMs() + 150)
-    const periodica = setInterval(corregir, JAM_REVISA_CADA_MS)
+    /* La puntual responde a un evento del Jam —puede traer el seek de otro—;
+       la periódica solo persigue deriva, y al host no lo toca. */
+    const puntual = setTimeout(() => corregir(true), jamEsperaArranqueMs() + 150)
+    const periodica = setInterval(() => corregir(false), JAM_REVISA_CADA_MS)
     return () => {
       clearTimeout(puntual)
       clearInterval(periodica)

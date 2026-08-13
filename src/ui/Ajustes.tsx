@@ -5,7 +5,7 @@ import Animated, {
   useDerivedValue,
   withSpring,
 } from 'react-native-reanimated'
-import { Glass, HAY_VIDRIO } from './Glass'
+import { BORDE_REFERENTE, Glass, HAY_VIDRIO } from './Glass'
 import { ICON_COLOR, IconChevronRight } from './icons'
 
 /**
@@ -213,7 +213,11 @@ function Interruptor({ activo }: { activo: boolean }) {
     return <View className="rounded-full bg-muted">{cuerpo}</View>
   }
   return (
-    <Glass radius={15} style={{ alignSelf: 'center' }}>
+    /* Con el filo del referente: el interruptor es un **input**, y en la
+       librería de referencia los inputs llevan el anillo y el resplandor que
+       los leen como una pieza hundida — a diferencia de los botones, que van
+       lisos. */
+    <Glass radius={15} style={{ alignSelf: 'center', boxShadow: BORDE_REFERENTE }}>
       {cuerpo}
     </Glass>
   )

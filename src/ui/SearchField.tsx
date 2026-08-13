@@ -1,6 +1,6 @@
 import { useState, type RefObject } from 'react'
 import { ActivityIndicator, Pressable, TextInput, View } from 'react-native'
-import { Glass, HAY_VIDRIO } from './Glass'
+import { ES_WEB, Glass, HAY_VIDRIO } from './Glass'
 import { ICON_COLOR, IconClose, IconSearch } from './icons'
 
 /**
@@ -61,13 +61,14 @@ export function SearchField({
        * separa solo. El teclado abierto y el cursor titilando lo dicen de
        * sobra.
        *
-       * Sin vidrio se queda: ahí sí es la única señal, y en web hace falta para
-       * poder seguir el foco con el teclado.
+       * Sin vidrio se queda: ahí sí es la única señal. Y **en web se queda
+       * aunque haya vidrio**: con mouse el cursor titilando alcanza, pero
+       * navegando con Tab el anillo es lo único que dice dónde está el foco.
        */
       className={`h-12 flex-row items-center gap-3 rounded-full px-4 ${
-        HAY_VIDRIO
+        HAY_VIDRIO && !ES_WEB
           ? ''
-          : `bg-muted ${focused ? 'border border-foreground' : 'border border-transparent'}`
+          : `${HAY_VIDRIO ? '' : 'bg-muted'} ${focused ? 'border border-foreground' : 'border border-transparent'}`
       }`}
     >
       <IconSearch size={18} color={ICON_COLOR.muted} />

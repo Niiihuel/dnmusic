@@ -1,16 +1,83 @@
 import type { PropsWithChildren, ReactNode } from 'react'
-import { Pressable, View, type ViewStyle } from 'react-native'
+import { Platform, Pressable, View, type ViewStyle } from 'react-native'
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect'
+
+/**
+ * En web el vidrio no lo dibuja el módulo nativo sino CSS: `backdrop-filter`
+ * difumina lo que pasa por detrás igual que el material de iOS. No es idéntico
+ * —no refracta— pero es la misma idea: una lente, no un color.
+ */
+export const ES_WEB = Platform.OS === 'web'
 
 /**
  * Si el sistema puede dibujar el material de verdad.
  *
- * Se resuelve una vez: es una propiedad del dispositivo —iOS 26 en adelante—,
- * no algo que cambie mientras la app corre. En web y en Android el propio
- * módulo devuelve `false` y `GlassView` cae a un `View` común, así que acá no
- * hace falta preguntar por la plataforma.
+ * Se resuelve una vez: es una propiedad del dispositivo —iOS 26 en adelante, o
+ * un navegador—, no algo que cambie mientras la app corre. Android y los iPhone
+ * anteriores caen al gris de siempre.
+ *
+ * Que web cuente como vidrio no es solo estética: abre las mismas decisiones de
+ * layout que en iOS (el contenido corre hasta el borde, nada opaco entre el
+ * contenido y el material — ver `docs/DESIGN.md`, sección Vidrio).
  */
-export const HAY_VIDRIO = isLiquidGlassAvailable()
+export const HAY_VIDRIO = isLiquidGlassAvailable() || ES_WEB
+
+/**
+ * La receta CSS del vidrio, una sola vez.
+ *
+ * Tres capas en una: el desenfoque con saturación (la lente), un fondo apenas
+ * gris para que el texto encima se lea sobre cualquier contenido, y un filo de
+ * luz arriba —el brillo especular del material de Apple— que lo separa sin
+ * dibujar un borde gris, que es lo que `docs/DESIGN.md` prohíbe.
+ *
+ * Con `tint` el vidrio se tiñe casi opaco: es la acción principal (la píldora
+ * blanca), que tiene que seguir siendo lo más brillante de la pantalla pero
+ * dejando adivinar lo que pasa por detrás.
+ *
+ * `backdropFilter` no está en los tipos de ViewStyle pero react-native-web lo
+ * pasa tal cual al CSS, igual que `boxShadow`. El prefijo -webkit- va escrito
+ * porque Safari todavía lo pide.
+ */
+function vidrioCss(tint?: string): ViewStyle {
+  return {
+    backdropFilter: 'blur(18px) saturate(160%)',
+    WebkitBackdropFilter: 'blur(18px) saturate(160%)',
+    backgroundColor: tint ? conAlfa(tint, 0.85) : 'rgba(28,28,28,0.52)',
+    /* Solo la línea de luz de arriba: el brillo especular del material. El
+       anillo del referente va únicamente en la píldora del reproductor —ver
+       `BORDE_REFERENTE` abajo—, no en cada botón. */
+    boxShadow: tint
+      ? '0 8px 24px rgba(0,0,0,0.35)'
+      : 'inset 0 1px 0 rgba(255,255,255,0.09), inset 0 0 0 0.5px rgba(255,255,255,0.05)',
+  } as ViewStyle
+}
+
+/**
+ * El filo del referente (Jakubantalik/Libraries, `.mock-icon-btn`): un anillo
+ * interior de 1px apenas azulado más un resplandor interno grande y muy tenue
+ * (50px al 2–3%) que le da volumen a la pieza. Es **para la tarjeta del
+ * reproductor**, que es la pieza grande que necesita leerse como un objeto;
+ * repartido en cada botón chico se vuelve un borde gris de los que DESIGN.md
+ * prohíbe. Quien lo use lo suma a su `boxShadow` por `style`.
+ */
+export const BORDE_REFERENTE = [
+  'inset 0 0 0 1px rgba(94,100,112,0.42)',
+  'inset 0 0 50px 0 rgba(255,255,255,0.03)',
+  'inset 0 1px 0 rgba(255,255,255,0.10)',
+].join(', ')
+
+/**
+ * `#RRGGBB` → `rgba(...)`, en JS y no con `color-mix`: el normalizador de
+ * colores de react-native-web no entiende funciones CSS modernas y descarta el
+ * valor entero — el tinte del botón primario desaparecía y el «Entrar» del
+ * login quedaba como un vidrio gris con el rótulo oscuro invisible encima.
+ */
+function conAlfa(hex: string, alfa: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex)
+  if (!m) return hex
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alfa})`
+}
 
 /**
  * Una superficie flotante: vidrio donde se pueda, gris sólido donde no.
@@ -36,6 +103,10 @@ export function Glass({
   tint?: string
 }>) {
   const forma: ViewStyle = { borderRadius: radius, overflow: 'hidden' }
+
+  if (ES_WEB) {
+    return <View style={[forma, vidrioCss(tint), style]}>{children}</View>
+  }
 
   if (!HAY_VIDRIO) {
     return <View style={[forma, { backgroundColor: 'rgb(24,24,24)' }, style]}>{children}</View>

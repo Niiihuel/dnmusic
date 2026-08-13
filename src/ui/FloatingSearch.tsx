@@ -68,11 +68,24 @@ export function BuscadorFlotante({
    */
   const insets = useSafeAreaInsets()
   const abajo = insets.bottom > 0 ? insets.bottom - 6 : 8
-  /* Pegado al teclado real, como la cáscara y como el campo del chat: el mismo
-     número en el hilo de la interfaz, así ninguno se queda atrás. */
+  /*
+   * Pegado al teclado real, como la cáscara y como el campo del chat: el mismo
+   * número en el hilo de la interfaz, así ninguno se queda atrás.
+   *
+   * Pero no se traslada el alto entero del teclado. En reposo el campo ya está
+   * a `base` del borde —la cáscara más el margen del indicador— y ese colchón
+   * pierde sentido con el teclado puesto: la cáscara se fue y el indicador
+   * quedó tapado por las teclas. Trasladar todo dejaba el campo flotando a
+   * treinta y pico de píxeles del teclado. Se traslada solo lo que hace falta
+   * para quedar a un respiro de las teclas; mientras el teclado sube y todavía
+   * no lo alcanzó, el campo ni se mueve — y cuando lo alcanza, lo lleva.
+   */
+  const cascaraBase = cascara + abajo
   const tecladoVivo = useAnimatedKeyboard()
   const sobreTeclado = useAnimatedStyle(() => ({
-    transform: [{ translateY: -tecladoVivo.height.value }],
+    transform: [
+      { translateY: -Math.max(0, tecladoVivo.height.value + 8 - cascaraBase) },
+    ],
   }))
 
   // Con algo escrito se queda aunque se cierre el teclado: si no, no habría
@@ -88,7 +101,7 @@ export function BuscadorFlotante({
           position: 'absolute',
           left: 12,
           right: 12,
-          bottom: cascara + abajo,
+          bottom: cascaraBase,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 8,

@@ -21,7 +21,7 @@
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://tdvndpjaxuqhibcpufat.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkdm5kcGpheHVxaGliY3B1ZmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0NzMwOTIsImV4cCI6MjEwMjA0OTA5Mn0.bQ-AXAYL79ECGXc19SG0lj7zD_vh0qgwedIeOhxGPXE",
-        "EXPO_PUBLIC_MUSIC_API": "https://dany-music-production.up.railway.app"
+        "EXPO_PUBLIC_MUSIC_API": "https://dnmusic-production.up.railway.app"
       }
     },
     "production": {
@@ -32,11 +32,16 @@
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://tdvndpjaxuqhibcpufat.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkdm5kcGpheHVxaGliY3B1ZmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0NzMwOTIsImV4cCI6MjEwMjA0OTA5Mn0.bQ-AXAYL79ECGXc19SG0lj7zD_vh0qgwedIeOhxGPXE",
-        "EXPO_PUBLIC_MUSIC_API": "https://dany-music-production.up.railway.app"
+        "EXPO_PUBLIC_MUSIC_API": "https://dnmusic-production.up.railway.app"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6800738366",
+        "appleTeamId": "2K2U374CJC"
+      }
+    }
   }
 }

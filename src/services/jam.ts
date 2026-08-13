@@ -241,6 +241,19 @@ export async function quitarDeJam(jamId: string, itemId: string): Promise<void> 
   await rpc('jam_quitar', { p_jam_id: jamId, p_item_id: itemId })
 }
 
+/**
+ * Mover un ítem: queda justo después de `tras`, o al frente si `tras` es null.
+ * El destino viaja como id y no como índice — un índice sería relativo a la
+ * cola que este cliente vio, que puede estar vieja.
+ */
+export async function jamMover(
+  jamId: string,
+  itemId: string,
+  tras: string | null,
+): Promise<void> {
+  await rpc('jam_mover', { p_jam_id: jamId, p_item_id: itemId, p_tras: tras })
+}
+
 export async function jamPlay(jamId: string, ms?: number): Promise<void> {
   await rpc('jam_play', { p_jam_id: jamId, p_ms: ms == null ? null : Math.round(ms) })
 }

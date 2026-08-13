@@ -7,11 +7,11 @@ import {
   useNowPlayingView,
   usePlaybackOriginName,
   usePlaybackTrack,
-  useWantPlay,
 } from '../state/playback'
+import { useJam } from '../state/jam'
+import { usePiso } from '../state/shell'
 import { ArtistCard } from './ArtistCard'
-import { LyricsView } from './LyricsView'
-import { SongDisc } from './SongDisc'
+import { JamBody } from './JamPanel'
 import { Panel } from './Panel'
 import { AnimatedSidebarTitle } from './SidebarMotion'
 import { ICON_COLOR, IconCollapseRight, IconMusic } from './icons'
@@ -34,13 +34,23 @@ export function NowPlayingPanel({
   showCollapse: boolean
   onCollapse: () => void
 }) {
+  /*
+   * Lo que tapa el reproductor, reservado **adentro** del contenido.
+   *
+   * Es la regla 2 de `docs/DESIGN.md` y lo que pide Apple para el contenido
+   * bajo material flotante: la barra *insetea el área segura* del panel en vez
+   * de taparlo. Acá había un `pb-5` a mano, que alcanzaba cuando la barra se
+   * apilaba debajo en escritorio; desde que flota también ahí, la tarjeta del
+   * artista quedaba cortada por el reproductor sin forma de llegar al final.
+   */
+  const piso = usePiso(20)
   const track = usePlaybackTrack()
-  const playing = useWantPlay()
   const listName = usePlaybackOriginName()
   // Lo encolado a mano no salió de ninguna lista: decir el nombre de la que
   // sonaba antes sería mentir sobre de dónde vino.
   const fromQueue = useManualPlaying()
   const view = useNowPlayingView()
+  const jam = useJam()
   const [artist, setArtist] = useState<{ id: string; info: ArtistInfo | null } | null>(null)
 
   const artistId = track?.artistId ?? null
@@ -59,7 +69,7 @@ export function NowPlayingPanel({
   const artwork = track ? artworkSource(track.artworkPath, track.artworkUrl, 640) : null
 
   return (
-    <Panel className="flex-1">
+    <Panel tone="lateral" className="flex-1">
       <View className="flex-row items-center justify-between gap-4 px-4 pb-2 pt-4">
         <AnimatedSidebarTitle
           visible={showCollapse}
@@ -71,29 +81,40 @@ export function NowPlayingPanel({
           <View className="min-w-0 flex-row items-center gap-2">
             <View className="min-w-0 gap-0.5">
               <Text className="text-foreground text-lg font-bold" numberOfLines={1}>
-                {track ? track.title : 'Sonando'}
+                {view === 'jam' ? 'Jam' : track ? track.title : 'Sonando'}
               </Text>
               <Text className="text-muted-foreground text-xs" numberOfLines={1}>
-                {!track
-                  ? 'Nada por ahora'
-                  : view === 'lyrics'
-                    ? 'Letra'
-                    : view === 'disc'
-                      ? 'Sonando'
-                      : fromQueue
-                        ? 'En la cola'
-                        : /* Sin lista detrás —una canción suelta de la
-                             búsqueda, o una lista que se borró mientras
-                             sonaba— decir «Tu lista» sería inventar una. */
-                          listName || 'Sonando'}
+                {view === 'jam'
+                  ? /* El código a la vista: es lo que se dicta en voz alta
+                       cuando el link no llega. */
+                    jam
+                      ? `Código ${jam.code}`
+                      : 'Escucha compartida'
+                  : !track
+                    ? 'Nada por ahora'
+                    : fromQueue
+                      ? 'En la cola'
+                      : /* Sin lista detrás —una canción suelta de la
+                           búsqueda, o una lista que se borró mientras
+                           sonaba— decir «Tu lista» sería inventar una. */
+                        listName || 'Sonando'}
               </Text>
             </View>
           </View>
         </AnimatedSidebarTitle>
       </View>
 
-      {!track ? (
-        <View className="flex-1 items-center justify-center gap-3 px-8">
+      {/* El Jam va antes que el vacío: existe aunque no suene nada — una cola
+          compartida recién creada es exactamente eso. */}
+      {view === 'jam' ? (
+        <JamBody />
+      ) : !track ? (
+        /* El cartel se centra en **lo que se ve**, descontando lo que tapa el
+           reproductor: centrado a secas cae detrás de la barra. */
+        <View
+          className="flex-1 items-center justify-center gap-3 px-8"
+          style={{ paddingBottom: piso }}
+        >
           <View className="h-14 w-14 items-center justify-center rounded-full bg-muted">
             <IconMusic size={22} color={ICON_COLOR.muted} />
           </View>
@@ -104,28 +125,15 @@ export function NowPlayingPanel({
             Poné una canción y acá vas a ver la carátula y de quién es.
           </Text>
         </View>
-      ) : view === 'disc' ? (
-        <View className="flex-1 items-center justify-center gap-5 px-6">
-          <SongDisc
-            artworkUrl={track.artworkUrl}
-            artworkPath={track.artworkPath}
-            title={track.title}
-            playing={playing}
-            size={240}
-          />
-          <View className="gap-1">
-            <Text className="text-foreground text-center text-lg font-bold" numberOfLines={2}>
-              {track.title}
-            </Text>
-            <Text className="text-muted-foreground text-center text-[13px]" numberOfLines={1}>
-              {track.artist}
-            </Text>
-          </View>
-        </View>
-      ) : view === 'lyrics' ? (
-        <LyricsView track={track} />
       ) : (
-        <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-4 px-4 pb-5">
+        /* La ficha, siempre: el disco y la letra ya no son caras de este
+           panel — toman el del medio, como en Spotify (ver `CentroSonando`
+           en `app/index.tsx`), y mientras tanto acá queda quién canta. */
+        <ScrollView
+          className="min-h-0 flex-1"
+          contentContainerClassName="gap-4 px-4"
+          contentContainerStyle={{ paddingBottom: piso }}
+        >
           {artwork ? (
             <Image
               source={{ uri: artwork }}

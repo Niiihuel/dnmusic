@@ -13,6 +13,7 @@ import {
   jamPlay,
   jamSaltar,
   jamSeek,
+  jamMover,
   jamTocar,
   jamTocarAhora,
   miJam,
@@ -473,6 +474,37 @@ export function quitarCancionDelJam(itemId: string) {
   void quitarDeJam(s.jam.id, itemId).catch((e) =>
     avisar(`No se pudo quitar: ${mensajeError(e)}`, true),
   )
+}
+
+/**
+ * Mover una canción a otro lugar de la fila. `aIndice` es el destino dentro
+ * de la cola entera. Optimista como los permisos: la fila se acomoda ya —un
+ * arrastre que espera al servidor se siente roto— y el evento confirma o el
+ * refetch corrige. Reordenar es editar la fila: pide el permiso de agregar.
+ */
+export function moverCancionDelJam(itemId: string, aIndice: number) {
+  const s = store.get()
+  if (!s.jam) return
+  if (!puedo('agregar')) {
+    avisar('El host no dejó reordenar la cola.')
+    return
+  }
+  const desde = s.cola.findIndex((i) => i.id === itemId)
+  if (desde < 0) return
+  const a = Math.max(0, Math.min(s.cola.length - 1, aIndice))
+  if (a === desde) return
+  const cola = [...s.cola]
+  const [item] = cola.splice(desde, 1)
+  if (!item) return
+  cola.splice(a, 0, item)
+  // El ancla que entiende el servidor: lo que queda justo antes en la fila nueva.
+  const tras = a > 0 ? (cola[a - 1]?.id ?? null) : null
+  store.set({ cola })
+  volcar()
+  void jamMover(s.jam.id, itemId, tras).catch((e) => {
+    avisar(`No se pudo mover: ${mensajeError(e)}`, true)
+    programarRefetch()
+  })
 }
 
 export function ponerPermisosJam(cambio: Partial<JamPermisos>) {

@@ -107,11 +107,18 @@ Sobre fondo casi negro, una sombra sutil es invisible. Tienen que ser pesadas:
 - Sombras sutiles: sobre negro no se ven
 - Interlineados amplios
 
-## Vidrio (iOS 26)
+## Vidrio (iOS 26 y web)
 
-En iOS 26 el reproductor y las pestañas son **Liquid Glass**; en todo lo demás
-—web, Android, iPhone anterior— caen al gris de siempre. Lo decide
-`HAY_VIDRIO`, una vez, en `src/ui/Glass.tsx`.
+En iOS 26 el reproductor y las pestañas son **Liquid Glass**, y **en web el
+mismo material se dibuja con CSS**: `backdrop-filter: blur + saturate`, un
+fondo translúcido y un filo de luz arriba en lugar de borde. En lo demás
+—Android, iPhone anterior— caen al gris de siempre. Lo decide `HAY_VIDRIO`,
+una vez, en `src/ui/Glass.tsx`; la receta CSS vive ahí mismo (`vidrioCss`).
+
+En escritorio el vidrio trae su propia consecuencia de layout: **la barra del
+reproductor flota** como tarjeta sobre los paneles —igual que la del teléfono—
+en vez de apilarse al pie, y el hueco lo reservan las listas con `usePiso`,
+como siempre.
 
 El material **no es un color: es una lente**. Necesita algo por debajo que valga
 la pena difuminar, y de ahí salen las tres reglas que ordenan el layout del
@@ -133,6 +140,25 @@ Solo flota lo que se apoya sobre el contenido —la tarjeta del reproductor, las
 pestañas, los redondeles del encabezado—. Los paneles son el fondo: ahí no hay
 nada atrás y no llevan vidrio.
 
+## Escritorio (macOS 26/27)
+
+Con el reproductor en forma de píldora de Apple Music, el resto del escritorio
+sigue el mismo lenguaje — el de macOS 27 (Golden Gate), que es el que documenta
+la HIG de Liquid Glass y **corrige** al de Tahoe:
+
+- **Las columnas van de borde a borde**, sin huecos, sin tarjetas redondeadas y
+  sin sombras entre paneles (los sidebars flotantes de Tahoe se descartaron por
+  eso mismo). La separación es un escalón de luminancia: los laterales
+  —biblioteca, inspector— en `canvas` (negro), el contenido del medio en
+  `background`. Lo decide `tone` en `src/ui/Panel.tsx`.
+- **La barra de arriba es uniforme y está en el flujo**, no flotando sobre el
+  contenido: es el cromo de la ventana, del mismo tono que los laterales.
+- **El vidrio es solo de la capa de controles**: los redondeles del encabezado,
+  el buscador y la píldora del reproductor. Los paneles son el fondo y no
+  llevan material — la misma regla de siempre.
+- **Radios contenidos y parejos**: la píldora del reproductor es la pieza más
+  redondeada; los paneles no se redondean. Nada de vidrio sobre vidrio.
+
 ## Trampa: NativeWind y los componentes animados
 
 **NativeWind no procesa `className` en componentes de Reanimated.** Un
@@ -150,3 +176,16 @@ apareció tres veces:
 **Regla:** todo `Animated.*` lleva sus estilos por `style`, nunca por
 `className`. Los colores literales que eso obliga a escribir van comentados con
 el token del que salen.
+
+## Trampa: `Image` con asset local en web
+
+En web, react-native-web escribe el **tamaño intrínseco** de un asset
+`require()` como estilo inline (`style="width: 1024px; height: 1024px"`), y el
+estilo inline le gana a cualquier clase CSS. Un
+`<Image source={require(...)} className="h-16 w-16" />` se ve bien en iOS y
+gigante en el navegador — así apareció el logo de 1024px ocupando todo el login.
+
+**Regla:** toda `Image` con `source={require(...)}` lleva su tamaño por
+`style={{ width, height }}`, nunca por `className`. Las imágenes por URI no
+sufren esto (el tamaño no se conoce al renderizar), pero seguir la misma regla
+no cuesta nada.

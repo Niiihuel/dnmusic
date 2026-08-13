@@ -1,5 +1,6 @@
 import { Keyboard, TextInput, View } from 'react-native'
 import { useRef } from 'react'
+import Animated, { interpolate, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { cerrarBusqueda, setActivo, setTermino, usePista, useTermino } from '../state/busqueda'
 import { useRouter } from 'expo-router'
@@ -34,15 +35,37 @@ export function SearchRow() {
   const teclado = useKeyboardH()
   const router = useRouter()
 
+  /*
+   * El margen de abajo depende de si el teclado está puesto.
+   *
+   * En reposo, el campo respeta el área segura: debajo está el indicador del
+   * iPhone y apoyarse ahí lo pisa. Con el teclado abierto esa franja queda
+   * **tapada por el teclado**, así que reservarla igual dejaba el campo
+   * flotando a casi treinta píxeles de las teclas — puro aire muerto.
+   *
+   * Se interpola sobre el alto real del teclado, en el hilo de la interfaz,
+   * para que el margen se achique mientras el teclado sube — un cambio seco al
+   * llegar se vería como un salto del campo dentro de la fila que ya se está
+   * moviendo. Y por eso es un `Animated.View` con el estilo inline: NativeWind
+   * no procesa clases en componentes animados (ver `docs/DESIGN.md`).
+   */
+  const reposo = insets.bottom > 0 ? insets.bottom - 6 : 8
+  const tecladoVivo = useAnimatedKeyboard()
+  const alPie = useAnimatedStyle(() => ({
+    paddingBottom: interpolate(tecladoVivo.height.value, [0, 60], [reposo, 8], 'clamp'),
+  }))
+
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 12,
-        paddingBottom: insets.bottom > 0 ? insets.bottom - 6 : 8,
-      }}
+    <Animated.View
+      style={[
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          paddingHorizontal: 12,
+        },
+        alPie,
+      ]}
     >
       {/*
        * La casa no está mientras escribís.
@@ -108,6 +131,6 @@ export function SearchRow() {
       >
         <IconClose size={18} color={ICON_COLOR.foreground} />
       </BotonVidrio>
-    </View>
+    </Animated.View>
   )
 }

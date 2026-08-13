@@ -1,15 +1,14 @@
 import { useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
-import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { volver } from '../src/lib/volver'
 import { artworkSource } from '../src/lib/artwork'
 import type { PlaylistTrack } from '../src/services/playlists'
 import { useColaJam, useJamActivo, useMiembrosJam } from '../src/state/jam'
 import { playAt, quitarEncolada, usePlaybackState } from '../src/state/playback'
+import { Hoja } from '../src/ui/Hoja'
 import { TrackRow } from '../src/ui/TrackRow'
 import { formatClock } from '../src/ui/SeekBar'
-import { ICON_COLOR, IconChevronDown, IconClose, IconCola } from '../src/ui/icons'
+import { ICON_COLOR, IconClose, IconCola } from '../src/ui/icons'
 
 /**
  * La cola, con la anatomía de una lista.
@@ -29,7 +28,6 @@ import { ICON_COLOR, IconChevronDown, IconClose, IconCola } from '../src/ui/icon
  * como una lista no es una metáfora, es literalmente el mismo componente.
  */
 export default function Cola() {
-  const router = useRouter()
   const { tracks, index, manual, upNext, shuffle, wantPlay } = usePlaybackState()
   const enJam = useJamActivo()
   const colaJam = useColaJam()
@@ -79,23 +77,11 @@ export default function Cola() {
     porVenir.reduce((suma, p) => suma + p.track.durationMs, 0)
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
-      <View className="flex-row items-center gap-3 px-4 py-3">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Bajar"
-          onPress={() => volver(router, '/')}
-          className="h-10 w-10 items-center justify-center rounded-full active:bg-muted"
-        >
-          <IconChevronDown size={22} color={ICON_COLOR.foreground} />
-        </Pressable>
-        <View className="min-w-0 flex-1 items-center">
-          <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.2px]">
-            Cola
-          </Text>
-        </View>
-        <View className="h-10 w-10" />
-      </View>
+    /* Como hoja no llega nunca al reloj: en iOS el grabber y el gesto los
+       pone el formSheet del sistema, y en web los pone `Hoja` — la subida, el
+       velo y el cierre tocando afuera. Ninguna de las dos necesita flecha. */
+    <Hoja>
+    <SafeAreaView className="flex-1 bg-background" edges={['bottom']}>
 
       {cuantas === 0 ? (
         /* El vacío se dice con palabras y con el camino para llenarlo. */
@@ -108,7 +94,9 @@ export default function Cola() {
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerClassName="pb-10">
+        /* Sin fila de chevron, el título necesita aire propio contra el
+           grabber — el del sistema en iOS, el de `Hoja` en web. */
+        <ScrollView contentContainerClassName="pb-10 pt-5">
           {/* La cabecera de lista: rótulo, título grande y el resumen. */}
           <View className="gap-1 px-5 pb-4 pt-2">
             <Text className="text-foreground text-2xl font-bold">Lo que viene</Text>
@@ -204,6 +192,7 @@ export default function Cola() {
         </ScrollView>
       )}
     </SafeAreaView>
+    </Hoja>
   )
 }
 

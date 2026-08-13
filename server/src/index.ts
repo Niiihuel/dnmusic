@@ -320,12 +320,18 @@ const server = createServer(async (req, res) => {
        * justamente el camino rápido de acá abajo existe para no hacerlo cuando
        * la canción ya está guardada.
        */
-      const artworkPath = await cacheImage(supabase, body.artworkUrl, videoId)
+      /*
+       * En paralelo con el audio, no antes: son viajes independientes, y
+       * hacerla primero le sumaba su latencia entera a todo — incluso al
+       * camino cacheado, que no toca YouTube. `cacheImage` nunca tira, así
+       * que la promesa suelta no deja un rechazo sin dueño.
+       */
+      const artworkP = cacheImage(supabase, body.artworkUrl, videoId)
 
       // Si ya se resolvió antes, no se vuelve a tocar YouTube.
       const { data: existing } = await supabase.storage.from(BUCKET).list('', { search: path })
       if (existing?.some((f) => f.name === path)) {
-        return json(200, { path, artworkPath, cached: true })
+        return json(200, { path, artworkPath: await artworkP, cached: true })
       }
 
       const audio = await resolveAudio(videoId)
@@ -340,7 +346,7 @@ const server = createServer(async (req, res) => {
       return json(200, {
         // Se devuelve lo que realmente se guardó, no el nombre que se buscó.
         path: destino,
-        artworkPath,
+        artworkPath: await artworkP,
         cached: false,
         title: audio.title,
         artist: audio.artist,

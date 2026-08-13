@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native'
 import { useRouter } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { BotonVidrio } from '../../src/ui/Glass'
 import {
@@ -58,6 +58,9 @@ export default function ProfileScreen() {
   const piso = usePiso(24)
   const colapso = useColapso()
   const ancho = useWindowDimensions().width >= ANCHO_PX
+  /* El margen del reloj, en el teléfono: la pantalla ya no reserva el área
+     segura de arriba — el fondo pasa por detrás de la hora, como la portada. */
+  const arriba = useSafeAreaInsets()
 
   /* Cambia al volver del editor, para releer lo que se haya tocado. */
   const [recarga, setRecarga] = useState(0)
@@ -129,21 +132,35 @@ export default function ProfileScreen() {
     <SafeAreaView
       className={`flex-1 ${ancho ? 'bg-canvas' : 'bg-background'}`}
       /* En el teléfono el margen de abajo lo pone la barra de pestañas.
-         Reservarlo también acá lo contaría dos veces. */
-      edges={ancho ? ['top', 'bottom'] : ['top']}
+         Reservarlo también acá lo contaría dos veces. Y el de arriba tampoco
+         va: el fondo del perfil pasa por detrás del reloj —el velo del layout
+         cuida la hora— y el margen lo reserva el contenido, como la portada. */
+      edges={ancho ? ['top', 'bottom'] : []}
     >
       <View className={`flex-1 ${ancho ? 'gap-2 p-2' : ''}`}>
-        <View className="flex-row items-center gap-3 px-3 py-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver"
-            onPress={() => volver(router, '/')}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconBack size={19} color={ICON_COLOR.foreground} />
-          </Pressable>
-          <Text className="text-foreground text-[15px] font-semibold">Tu perfil</Text>
-        </View>
+        {/*
+         * La fila de «Volver | Tu perfil», **solo en escritorio**.
+         *
+         * En el teléfono el perfil es una pestaña, y una pestaña no tiene
+         * volver: se sale tocando otra pestaña, como en Inicio o en Chats.
+         * Era la única con botón de atrás y cabecera propia, y por eso se
+         * sentía con «otro layout». Además el nombre y el avatar están a un
+         * centímetro, en el contenido: el título repetía lo que ya se ve.
+         * En escritorio no hay pestañas y la fila sigue siendo la salida.
+         */}
+        {ancho ? (
+          <View className="flex-row items-center gap-3 px-3 py-1">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Volver"
+              onPress={() => volver(router, '/')}
+              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+            >
+              <IconBack size={19} color={ICON_COLOR.foreground} />
+            </Pressable>
+            <Text className="text-foreground text-[15px] font-semibold">Tu perfil</Text>
+          </View>
+        ) : null}
 
         <Panel className="flex-1">
           {/* El fondo va detrás de todo: además de ser lo de Steam, es la única
@@ -160,8 +177,14 @@ export default function ProfileScreen() {
            * que el perfil tenía otro layout que el resto de la app.
            */}
           <ScrollView
-            contentContainerClassName="items-center px-4 pt-6"
-            contentContainerStyle={{ paddingBottom: piso }}
+            contentContainerClassName="items-center px-4"
+            /* En el teléfono el contenido arranca debajo del reloj —la
+               pantalla ya no reserva esa franja— con el respiro que ya tenía
+               (`pt-6`). El estilo pisa a la clase, así que va todo acá. */
+            contentContainerStyle={{
+              paddingTop: (ancho ? 0 : arriba.top) + 24,
+              paddingBottom: piso,
+            }}
             {...colapso}
           >
             {!profile ? (

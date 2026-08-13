@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native'
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { contactInitial, formatMessageDate } from '../src/ui/MessageCard'
@@ -70,8 +70,10 @@ import {
   setDrawer,
   setEnChat,
   setTab,
+  setTechoH,
   useKeyboardH,
   usePiso,
+  useTecho,
 } from '../src/state/shell'
 import {
   abrirBusqueda,
@@ -85,7 +87,10 @@ import {
   enqueue,
   playQueue,
   registerPlaylistOpener,
+  useNowPlayingView,
   usePlaybackOriginId,
+  usePlaybackTrack,
+  useWantPlay,
 } from '../src/state/playback'
 import { SearchDropdown } from '../src/ui/SearchDropdown'
 import { SearchRecents } from '../src/ui/SearchRecents'
@@ -94,7 +99,7 @@ import { BotonVidrio, Glass, HAY_VIDRIO } from '../src/ui/Glass'
 import { recordarBusqueda } from '../src/state/recientes'
 import { addShowcase } from '../src/services/showcases'
 import { saveMyProfile } from '../src/services/profile'
-import type { MenuItem } from '../src/ui/Menu'
+import { Menu, type MenuItem } from '../src/ui/Menu'
 import {
   addTrack,
   createPlaylist,
@@ -107,6 +112,8 @@ import {
 } from '../src/services/playlists'
 import { PlaylistLibrary, PlaylistRail } from '../src/ui/PlaylistLibrary'
 import { PlaylistView } from '../src/ui/PlaylistView'
+import { LyricsView } from '../src/ui/LyricsView'
+import { SongDisc } from '../src/ui/SongDisc'
 import { AlbumPanel } from '../src/ui/AlbumPanel'
 import { ArtistPage } from '../src/ui/ArtistPage'
 import { HomeFeed } from '../src/ui/HomeFeed'
@@ -130,6 +137,7 @@ import {
   IconQueue,
   IconSearch,
   IconSend,
+  IconSliders,
   IconUser,
 } from '../src/ui/icons'
 
@@ -213,6 +221,11 @@ export default function Home() {
    * Arranca en música porque es lo que se usa a diario; el chat es de a ratos.
    */
   const [music, setMusic] = useState(true)
+  /* La cara elegida en la barra (letra, disco) y qué suena: deciden si el
+     panel del medio muestra eso en grande, al modo de Spotify. */
+  const caraSonando = useNowPlayingView()
+  const pistaSonando = usePlaybackTrack()
+  const sonandoAhora = useWantPlay()
   const [playlists, setPlaylists] = useState<Playlist[] | null>(null)
   const [playlistError, setPlaylistError] = useState<string | null>(null)
   /** Resultados del buscador de arriba cuando estamos en música. */
@@ -347,6 +360,29 @@ export default function Home() {
    * conversación sin forma de volver a las demás.
    */
   const [chatAbierto, setChatAbierto] = useState(false)
+
+  /*
+   * El encabezado del teléfono **flota sobre el contenido**.
+   *
+   * Es la tercera pieza que `docs/DESIGN.md` lista como flotante —«la tarjeta
+   * del reproductor, las pestañas, los redondeles del encabezado»— y la única
+   * que seguía en el flujo: el contenido se cortaba en seco contra su borde,
+   * la única línea dura de una app que funde todos los demás. Ahora corre
+   * hasta el borde de arriba y se apaga contra el velo del encabezado, como en
+   * Apple Music.
+   *
+   * Su alto se mide y se publica igual que el de la cáscara de abajo
+   * (`setChromeH`): cada lista lo reserva adentro con `useTecho`. Dentro de un
+   * chat el encabezado no se dibuja, y en escritorio está en el flujo; en los
+   * dos casos el techo vale 0.
+   */
+  const arriba = useSafeAreaInsets()
+  const sinHeader = suelto && !music && chatAbierto
+  const headerFlota = suelto && !sinHeader
+  const techo = useTecho()
+  useEffect(() => {
+    if (!headerFlota) setTechoH(0)
+  }, [headerFlota])
 
   /*
    * Con una conversación abierta, la cáscara se pliega.
@@ -607,10 +643,15 @@ export default function Home() {
       else {
         changeGlobalSearch('')
         setReloadToken((n) => n + 1)
-        await loadPlaylists()
+        /* Sin esperar: es el conteo de la biblioteca, no parte de agregar. El
+           «+» de la fila queda ocupado solo lo que tarda lo suyo. */
+        void loadPlaylists()
       }
     } catch (e) {
       setPlaylistError(`No se pudo agregar: ${(e as Error).message}`)
+      /* También por aviso: el cartel de arriba vive en el panel izquierdo, y
+         desde el pie de sugerencias de una lista no se ve nunca. */
+      avisar(`No se pudo agregar: ${(e as Error).message}`, true)
     } finally {
       setAddingTrack(null)
     }
@@ -647,6 +688,7 @@ export default function Home() {
       playQueue([await resolveForPlayback(track)], 0, null)
     } catch (e) {
       setPlaylistError(`No se pudo reproducir: ${(e as Error).message}`)
+      avisar(`No se pudo reproducir: ${(e as Error).message}`, true)
     } finally {
       setAddingTrack(null)
     }
@@ -660,6 +702,7 @@ export default function Home() {
       enqueue(await resolveForPlayback(track))
     } catch (e) {
       setPlaylistError(`No se pudo encolar: ${(e as Error).message}`)
+      avisar(`No se pudo encolar: ${(e as Error).message}`, true)
     } finally {
       setAddingTrack(null)
     }
@@ -710,7 +753,10 @@ export default function Home() {
       videoId: item.id,
       title: item.title,
       artist: item.subtitle,
-      artistId: null,
+      /* Con el id del artista cuando la portada lo trae: es lo que hace que
+         una escucha nacida acá cuente para las recomendaciones, y que «Ir al
+         artista» funcione desde los tres puntos. */
+      artistId: item.artistId ?? null,
       album: '',
       albumId: null,
       artworkUrl: item.artworkUrl,
@@ -736,22 +782,32 @@ export default function Home() {
   /**
    * Las opciones de los tres puntos de un resultado.
    *
-   * Van las listas directamente y no un submenú «Agregar a…»: entre dos
-   * personas nunca van a ser tantas como para que valga la pena un nivel más,
-   * y así sumar a otra lista es un toque en vez de dos.
+   * Las listas van en un **submenú** —«Agregar a una lista ›»—, como pide la
+   * HIG de menús: una fila por lista hacía crecer el menú con los datos, y con
+   * varias listas las acciones fijas de abajo quedaban empujadas fuera de la
+   * vista. La fila dice qué se puede hacer, una sola vez; el submenú dice
+   * dónde. «Nueva lista» vive adentro, primera: es una lista más a donde ir.
    */
   function menuForTrack(track: TrackResult, omitPlaylistId?: string): MenuItem[] {
     /* La lista que estás mirando no se ofrece: la canción ya está adentro.
        Va anotado: sin el tipo, `sfSymbol` sale del `.map` como `string` a
        secas y deja de encajar en el nombre de símbolo que espera `MenuItem`. */
-    const toPlaylists: MenuItem[] = (playlists ?? [])
-      .filter((p) => p.id !== omitPlaylistId)
-      .map((p) => ({
-        label: `Agregar a «${p.name}»`,
-        onPress: () => void addToPlaylist(p, track),
+    const aLista: MenuItem[] = [
+      {
+        label: 'Nueva lista con esta canción',
+        onPress: () => void startPlaylistWith(track),
         icon: <IconPlus size={15} color={ICON_COLOR.muted} />,
         sfSymbol: 'plus',
-      }))
+      },
+      ...(playlists ?? [])
+        .filter((p) => p.id !== omitPlaylistId)
+        .map((p): MenuItem => ({
+          label: p.name,
+          onPress: () => void addToPlaylist(p, track),
+          icon: <IconMusic size={15} color={ICON_COLOR.muted} />,
+          sfSymbol: 'music.note.list',
+        })),
+    ]
     return [
       {
         label: 'Ir al artista',
@@ -787,12 +843,11 @@ export default function Home() {
         icon: <IconQueue size={15} color={ICON_COLOR.muted} />,
         sfSymbol: 'text.badge.plus',
       },
-      ...toPlaylists,
       {
-        label: 'Nueva lista con esta canción',
-        onPress: () => void startPlaylistWith(track),
-        icon: <IconMusic size={15} color={ICON_COLOR.muted} />,
-        sfSymbol: 'music.note.list',
+        label: 'Agregar a una lista',
+        icon: <IconPlus size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'plus',
+        items: aLista,
       },
       {
         label: 'Fijar en mi perfil',
@@ -1001,11 +1056,14 @@ export default function Home() {
          vive en el layout. Reservarlo también acá lo contaba dos veces: entre
          el campo de escribir y el reproductor quedaba un hueco muerto del alto
          del indicador del iPhone. */
-      edges={suelto ? ['top'] : ['top', 'bottom']}
+      /* Y con el encabezado flotando tampoco va el de arriba: el contenido
+         tiene que llegar hasta el borde para pasar por detrás del reloj y del
+         velo. El margen del reloj lo pone el propio encabezado. */
+      edges={headerFlota ? [] : suelto ? ['top'] : ['top', 'bottom']}
     >
-      {/* Sin margen ni hueco en el teléfono: con un solo panel a la vista, el
-          marco negro alrededor no separa nada — ver `Panel`. */}
-      <View className={`flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
+      {/* Sin margen ni hueco en ningún ancho: las columnas van de borde a
+          borde y se separan por luminancia — ver `Panel`. */}
+      <View className="flex-1">
         {/*
          * Dentro de una conversación, en el teléfono, la cabecera de la app se
          * va: entre las dos se comían 150px antes del primer mensaje, y el
@@ -1013,13 +1071,64 @@ export default function Home() {
          * tiene sentido. La del chat se queda con la flecha, el avatar y el
          * nombre, que es lo que hace falta para saber con quién estás hablando.
          */}
-        {suelto && !music && chatAbierto ? null : (
+        {sinHeader ? null : (
+        <>
+        {/*
+         * El velo del encabezado: el fundido que pide el estándar de iOS 26.
+         *
+         * Del fondo hacia nada, con paradas que dibujan una curva suave — un
+         * degradado lineal de dos paradas se ve como una línea que se corre,
+         * que es justo lo que se está sacando. Opaco sobre el reloj, para que
+         * la hora nunca pelee con una carátula, y transparente un poco más
+         * abajo del encabezado, donde el contenido ya manda.
+         *
+         * Los colores literales salen del token `background` (#121212):
+         * `LinearGradient` no lee variables CSS.
+         */}
+        {headerFlota ? (
+          <LinearGradient
+            pointerEvents="none"
+            colors={[
+              'rgb(18,18,18)',
+              'rgba(18,18,18,0.93)',
+              'rgba(18,18,18,0.72)',
+              'rgba(18,18,18,0.4)',
+              'rgba(18,18,18,0.13)',
+              'rgba(18,18,18,0)',
+            ]}
+            locations={[0, 0.32, 0.56, 0.76, 0.9, 1]}
+            style={{ position: 'absolute', left: 0, right: 0, top: 0, height: techo + 28, zIndex: 40 }}
+          />
+        ) : null}
         <View
-          className={`relative z-50 flex-row items-center ${
-            suelto ? 'gap-2 px-1' : 'justify-between'
+          /* Flotando, su alto es el techo que cada lista reserva adentro. */
+          onLayout={
+            headerFlota
+              ? (e) => setTechoH(Math.round(e.nativeEvent.layout.height))
+              : undefined
+          }
+          className={`z-50 flex-row items-center ${
+            /* El respiro vertical que antes ponía el margen del lienzo: la
+               barra es el cromo de la ventana y necesita su propia franja. */
+            suelto ? 'gap-2 px-1' : 'relative justify-between py-2'
           }`}
+          style={
+            headerFlota
+              ? {
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  paddingTop: arriba.top,
+                  paddingBottom: 8,
+                }
+              : undefined
+          }
         >
-          <View className={`z-10 flex-row items-center gap-3 ${suelto ? 'px-1' : 'px-3'}`}>
+          {/* En el teléfono el ícono no va pegado a la esquina: al abrir el
+              panel, la tarjeta redondea justo ahí (radio 44) y la curva se lo
+              comía. Corrido a la derecha queda fuera del mordisco. */}
+          <View className={`z-10 flex-row items-center gap-3 ${suelto ? 'pl-4 pr-1' : 'px-3'}`}>
             {/* El ícono de la app, no un glifo genérico, y del mismo cuerpo que
                 el avatar del perfil: son los dos accesos de las esquinas y
                 tienen que pesar igual. Cuadrado redondeado, que es su forma
@@ -1083,30 +1192,40 @@ export default function Home() {
                       inicio no vuelve a ningún lado, arranca de cero. Van
                       juntas porque son la misma idea: dónde estoy parado. */}
                   {music ? (
-                    <>
-                      <HeaderButton
-                        label="Atrás"
-                        disabled={!canGoBack}
-                        onPress={goBack}
-                        icon={
+                    /* Atrás y adelante comparten **una** cápsula de vidrio,
+                       como las flechas de historial de macOS: son la misma
+                       idea —dónde estoy parado— y agruparlas deja el
+                       encabezado con menos piezas sueltas. */
+                    <Glass radius={22}>
+                      <View className="flex-row">
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Atrás"
+                          accessibilityState={{ disabled: !canGoBack }}
+                          disabled={!canGoBack}
+                          onPress={goBack}
+                          className="h-11 w-11 items-center justify-center active:opacity-60"
+                        >
                           <IconBack
                             size={19}
                             color={canGoBack ? ICON_COLOR.foreground : ICON_COLOR.muted}
                           />
-                        }
-                      />
-                      <HeaderButton
-                        label="Adelante"
-                        disabled={!canGoForward}
-                        onPress={goForward}
-                        icon={
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Adelante"
+                          accessibilityState={{ disabled: !canGoForward }}
+                          disabled={!canGoForward}
+                          onPress={goForward}
+                          className="h-11 w-11 items-center justify-center active:opacity-60"
+                        >
                           <IconForward
                             size={19}
                             color={canGoForward ? ICON_COLOR.foreground : ICON_COLOR.muted}
                           />
-                        }
-                      />
-                    </>
+                        </Pressable>
+                      </View>
+                    </Glass>
                   ) : null}
                   <HeaderButton
                     label="Ir al inicio"
@@ -1186,7 +1305,9 @@ export default function Home() {
           </View>
 
           <View
-            className={`z-10 flex-row items-center gap-2 ${suelto ? 'px-1' : 'ml-auto px-2'}`}
+            /* El mismo respiro que el ícono del otro extremo: pegado al borde
+               se leía como recortado, sobre todo con la pantalla curva. */
+            className={`z-10 flex-row items-center gap-2 ${suelto ? 'pl-1 pr-4' : 'ml-auto px-2'}`}
           >
             {/* El chip es la entrada al perfil: es donde uno ya mira para
                 saber con qué cuenta está, así que también es donde busca
@@ -1203,68 +1324,90 @@ export default function Home() {
                 <IconSearch size={17} color={ICON_COLOR.muted} />
               </BotonVidrio>
             ) : null}
-            {/* Los dos accesos de la esquina van en vidrio: son controles que
-                se apoyan sobre el contenido, que es exactamente donde Apple
-                pone el material. Sin vidrio quedan como venían. */}
-            <BotonVidrio
-              label="Tu perfil"
-              onPress={() => router.push('/profile')}
-              radius={22}
-              style={
-                width >= 620 ? { height: 44, paddingHorizontal: 6 } : { width: 44, height: 44 }
+            {/*
+             * El avatar es **un menú**, no un botón más una fila de botones.
+             *
+             * Es el estándar de Apple para la cuenta: las acciones que se usan
+             * poco —salir, los ajustes— viven detrás del avatar, no siempre a
+             * la vista. Un «cerrar sesión» permanente en la barra es un botón
+             * que se toca una vez por mes ocupando el lugar de los que se
+             * tocan todo el día.
+             */}
+            <Menu
+              label="Tu cuenta"
+              items={[
+                {
+                  label: 'Tu perfil',
+                  onPress: () => router.push('/profile'),
+                  icon: <IconUser size={15} color={ICON_COLOR.muted} />,
+                  sfSymbol: 'person',
+                },
+                {
+                  label: 'Ajustes',
+                  onPress: () => router.push('/ajustes'),
+                  icon: <IconSliders size={15} color={ICON_COLOR.muted} />,
+                  sfSymbol: 'slider.horizontal.3',
+                },
+                {
+                  label: 'Cerrar sesión',
+                  onPress: () => void endSession(),
+                  destructive: true,
+                  icon: <IconLogOut size={15} color={ICON_COLOR.muted} />,
+                  sfSymbol: 'rectangle.portrait.and.arrow.right',
+                },
+              ]}
+              trigger={
+                <Glass
+                  radius={22}
+                  style={
+                    width >= 620 ? { height: 44, paddingHorizontal: 6 } : { width: 44, height: 44 }
+                  }
+                >
+                  <View className="h-full flex-row items-center justify-center gap-2">
+                    <Avatar name={myLabel} path={myProfile?.avatarPath} size={32} />
+                    {width >= 620 ? (
+                      <Text className="text-muted-foreground text-xs pr-1.5">@{myUsername}</Text>
+                    ) : null}
+                  </View>
+                </Glass>
               }
-            >
-              <View className="flex-row items-center gap-2">
-                <Avatar name={myLabel} path={myProfile?.avatarPath} size={32} />
-                {width >= 620 ? (
-                  <Text className="text-muted-foreground text-xs pr-1.5">@{myUsername}</Text>
-                ) : null}
-              </View>
-            </BotonVidrio>
+            />
             {/* En el teléfono este botón sobra: alternar entre música y
                 conversaciones es lo que hacen las pestañas de abajo, y tenerlo
                 dos veces solo compite consigo mismo. */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={music ? 'Volver a las conversaciones' : 'Tus listas'}
-              accessibilityState={{ selected: music }}
-              onPress={() => {
-                setMusic((on) => !on)
-                // Salir de música deja el historial en la portada: al volver,
-                // se entra por donde se entra siempre y no en media navegación.
-                if (music) {
-                  setStack([{ kind: 'home', section: null }])
-                  setAt(0)
-                }
-                // Lo escrito buscaba otra cosa; dejarlo mostraría resultados
-                // del modo anterior bajo un campo que ya dice otra cosa.
-                changeGlobalSearch('')
-              }}
-              className={`h-11 w-11 items-center justify-center rounded-full bg-background active:opacity-80 ${
-                showSidebar ? '' : 'hidden'
-              }`}
-            >
-              {/* El ícono dice a dónde te lleva, no dónde estás: con la música
-                  de fondo permanente, marcar el modo activo no aporta nada. */}
-              {music ? (
-                <IconInbox size={17} color={ICON_COLOR.muted} />
-              ) : (
-                <IconMusic size={17} color={ICON_COLOR.muted} />
-              )}
-            </Pressable>
-            <BotonVidrio
-              label="Cerrar sesión"
-              onPress={() => void endSession()}
-              radius={22}
-              style={{ width: 44, height: 44 }}
-            >
-              <IconLogOut size={17} color={ICON_COLOR.muted} />
-            </BotonVidrio>
+            {showSidebar ? (
+              <BotonVidrio
+                label={music ? 'Volver a las conversaciones' : 'Tus listas'}
+                onPress={() => {
+                  setMusic((on) => !on)
+                  // Salir de música deja el historial en la portada: al volver,
+                  // se entra por donde se entra siempre y no en media navegación.
+                  if (music) {
+                    setStack([{ kind: 'home', section: null }])
+                    setAt(0)
+                  }
+                  // Lo escrito buscaba otra cosa; dejarlo mostraría resultados
+                  // del modo anterior bajo un campo que ya dice otra cosa.
+                  changeGlobalSearch('')
+                }}
+                radius={22}
+                style={{ width: 44, height: 44 }}
+              >
+                {/* El ícono dice a dónde te lleva, no dónde estás: con la música
+                    de fondo permanente, marcar el modo activo no aporta nada. */}
+                {music ? (
+                  <IconInbox size={17} color={ICON_COLOR.muted} />
+                ) : (
+                  <IconMusic size={17} color={ICON_COLOR.muted} />
+                )}
+              </BotonVidrio>
+            ) : null}
           </View>
         </View>
+        </>
         )}
 
-        <View className="min-h-0 flex-1 flex-row gap-2">
+        <View className="min-h-0 flex-1 flex-row">
           {showSidebar ? (
             <ResizableRegion
               width={leftWidth}
@@ -1313,8 +1456,6 @@ export default function Home() {
                   <CollapsedSidebar
                     side="left"
                     hovered={hovered}
-                    expandedWidth={leftWidth}
-                    preview={panel(false)}
                     /* En música la franja muestra las tapas de tus listas; en
                        conversaciones no hay nada equivalente y queda el ícono. */
                     resting={music ? <PlaylistRail playlists={playlists} /> : undefined}
@@ -1327,7 +1468,13 @@ export default function Home() {
             </ResizableRegion>
           ) : null}
 
-          {openPlaylist ? (
+          {music && pistaSonando && (caraSonando === 'lyrics' || caraSonando === 'disc') ? (
+            /* La letra o el disco **toman el panel del medio**, como en
+               Spotify: es contenido para mirar, no una ficha, y el lugar para
+               mirar es el grande. El panel derecho vuelve a la ficha del
+               artista mientras tanto. Se sale con el mismo botón de la barra. */
+            <CentroSonando cara={caraSonando} pista={pistaSonando} sonando={sonandoAhora} />
+          ) : openPlaylist ? (
             <PlaylistView
               playlist={openPlaylist}
               reloadToken={reloadToken}
@@ -1343,6 +1490,11 @@ export default function Home() {
               menuFor={(track) =>
                 menuForTrack(playlistTrackAsResult(track), openPlaylist.id)
               }
+              /* El pie de sugerencias usa los mismos caminos que el buscador:
+                 sumar resuelve el audio y recarga; escuchar no guarda nada. */
+              onAddSugerencia={(track) => void addToPlaylist(openPlaylist, track)}
+              onPlaySugerencia={(track) => void playSearchResult(track)}
+              pendingId={addingTrack}
             />
           ) : music && view.kind === 'search' ? (
             /*
@@ -1394,6 +1546,9 @@ export default function Home() {
                   /* Sin «+» rápido: en esta pestaña no hay una lista abierta a
                      la que sumar. El destino se elige desde los tres puntos. */
                   menuFor={menuForTrack}
+                  /* El encabezado flota: los resultados arrancan debajo y
+                     pasan por detrás del velo al desplazar. */
+                  topInset={techo}
                 />
                 ) : (
                   /* Sin nada escrito, lo último que buscaste. Corre por debajo
@@ -1427,7 +1582,9 @@ export default function Home() {
             <Panel className="flex-1">
               <ScrollView
                 className="min-h-0 flex-1"
-                contentContainerStyle={{ paddingBottom: cascara }}
+                /* El techo, como el piso: el contenido corre hasta los bordes
+                   y el hueco para el encabezado se reserva adentro. */
+                contentContainerStyle={{ paddingTop: techo, paddingBottom: cascara }}
                 {...colapsoPantalla}
               >
                 <AlbumPanel
@@ -1455,7 +1612,9 @@ export default function Home() {
             <Panel className="flex-1">
               <ScrollView
                 className="min-h-0 flex-1"
-                contentContainerStyle={{ paddingBottom: cascara }}
+                /* Mismo techo que el álbum: la cabecera del artista arranca
+                   debajo del encabezado flotante y pasa por detrás al subir. */
+                contentContainerStyle={{ paddingTop: techo, paddingBottom: cascara }}
                 {...colapsoPantalla}
               >
                 <ArtistPage
@@ -1827,7 +1986,7 @@ export default function Home() {
                       onCollapse={vivo ? () => setRightCollapsed(true) : () => undefined}
                     />
                   ) : (
-                    <Panel className="flex-1">
+                    <Panel tone="lateral" className="flex-1">
                       <Detail
                         message={selected}
                         mine={selected ? isSentBy(selected, myUid) : false}
@@ -1852,8 +2011,6 @@ export default function Home() {
                   <CollapsedSidebar
                     side="right"
                     hovered={hovered}
-                    expandedWidth={rightWidth}
-                    preview={panel(false)}
                     onExpand={() => setRightCollapsed(false)}
                   />
                 ) : (
@@ -1875,6 +2032,70 @@ export default function Home() {
  * puede volver y cuando no: un botón que se corre mientras uno lo va a tocar es
  * peor que uno que no hace nada.
  */
+/**
+ * La letra o el disco en el panel del medio, al modo de Spotify.
+ *
+ * Son contenido para **mirar** —no una ficha— y el lugar para mirar es el
+ * panel grande; en la columna angosta de la derecha la letra entraba apretada
+ * y el disco de a ratos. Mientras esta cara está tomada, el panel derecho
+ * vuelve a la ficha del artista, y se sale con el mismo botón de la barra que
+ * la abrió.
+ */
+function CentroSonando({
+  cara,
+  pista,
+  sonando,
+}: {
+  cara: 'lyrics' | 'disc'
+  pista: {
+    title: string
+    artist: string
+    durationMs: number
+    artworkUrl?: string | null
+    artworkPath?: string | null
+  }
+  sonando: boolean
+}) {
+  const techo = useTecho(16)
+  const piso = usePiso(16)
+
+  return (
+    <Panel className="min-h-0 flex-1">
+      {cara === 'lyrics' ? (
+        /* Topada a un ancho de lectura y centrada, como la letra de Spotify:
+           una línea de lado a lado en 1440px no se puede seguir con la vista. */
+        <View
+          className="min-h-0 w-full max-w-3xl flex-1 self-center px-8"
+          style={{ paddingTop: techo, paddingBottom: piso }}
+        >
+          <LyricsView track={pista} translatable />
+        </View>
+      ) : (
+        <View
+          className="min-h-0 flex-1 items-center justify-center gap-7 px-8"
+          style={{ paddingTop: techo, paddingBottom: piso }}
+        >
+          <SongDisc
+            artworkUrl={pista.artworkUrl}
+            artworkPath={pista.artworkPath}
+            title={pista.title}
+            playing={sonando}
+            size={340}
+          />
+          <View className="gap-1">
+            <Text className="text-foreground text-center text-xl font-bold" numberOfLines={2}>
+              {pista.title}
+            </Text>
+            <Text className="text-muted-foreground text-center text-[14px]" numberOfLines={1}>
+              {pista.artist}
+            </Text>
+          </View>
+        </View>
+      )}
+    </Panel>
+  )
+}
+
 function HeaderButton({
   label,
   icon,
@@ -1886,19 +2107,19 @@ function HeaderButton({
   onPress: () => void
   disabled?: boolean
 }) {
+  /* El mismo vidrio que sus vecinos de la fila —el perfil, la salida, la
+     lupa—: eran los únicos redondeles del encabezado que seguían en gris
+     plano. Sin vidrio, `BotonVidrio` ya cae solo al gris de siempre. */
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      onPress={disabled ? undefined : onPress}
+    <BotonVidrio
+      label={label}
+      onPress={onPress}
       disabled={disabled}
-      className={`h-11 w-11 items-center justify-center rounded-full bg-background ${
-        disabled ? '' : 'active:bg-muted'
-      }`}
+      radius={22}
+      style={{ width: 44, height: 44 }}
     >
       {icon}
-    </Pressable>
+    </BotonVidrio>
   )
 }
 
@@ -1922,11 +2143,14 @@ function ConversationSidebar({
 }) {
   /* En el teléfono esto es la pestaña «Chats» y llega hasta el borde. */
   const piso = usePiso(8)
+  /* Y arriba el encabezado flota: el título arranca debajo, con el respiro
+     que ya tenía (`pt-4`). En escritorio el techo es 0 y queda igual. */
+  const techo = useTecho(16)
   const colapso = useColapso()
 
   return (
-    <Panel className="flex-1">
-      <View className="flex-row items-center justify-between gap-4 px-4 pb-2 pt-4">
+    <Panel tone="lateral" className="flex-1">
+      <View className="flex-row items-center justify-between gap-4 px-4 pb-2" style={{ paddingTop: techo }}>
         <AnimatedSidebarTitle
           visible={hovered}
           label="Colapsar conversaciones"
@@ -2091,6 +2315,9 @@ function Detail({
   onCollapse: () => void
   onPlay: () => void
 }) {
+  /* Lo que tapa el reproductor flotante. Va antes del `if`: los hooks no
+     pueden quedar detrás de un retorno temprano. */
+  const pisoDetalle = usePiso(32)
   if (!message) {
     return (
       <View className="flex-1">
@@ -2106,7 +2333,12 @@ function Detail({
             </Text>
           </AnimatedSidebarTitle>
         </View>
-        <View className="flex-1 items-center justify-center gap-3 p-8">
+        {/* Centrado en lo que se ve, descontando lo que tapa el reproductor:
+            a secas, el cartel cae justo detrás de la barra. */}
+        <View
+          className="flex-1 items-center justify-center gap-3 p-8"
+          style={{ paddingBottom: pisoDetalle }}
+        >
           <View className="h-12 w-12 items-center justify-center rounded-full bg-muted">
             <IconMusic size={22} color={ICON_COLOR.muted} />
           </View>
@@ -2123,7 +2355,12 @@ function Detail({
   const isSounding = playing && song !== null
 
   return (
-    <ScrollView contentContainerClassName="gap-5 p-5 pb-8">
+    /* Igual que el panel de lo que suena: lo que tapa el reproductor se reserva
+       adentro del contenido, no se deja que lo corte. Ver `usePiso`. */
+    <ScrollView
+      contentContainerClassName="gap-5 p-5"
+      contentContainerStyle={{ paddingBottom: pisoDetalle }}
+    >
       <View className="flex-row items-center justify-between">
         <AnimatedSidebarTitle
           visible={showCollapse}

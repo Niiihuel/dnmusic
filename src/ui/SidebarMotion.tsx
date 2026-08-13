@@ -65,19 +65,24 @@ export function AnimatedSidebarTitle({
   )
 }
 
+/**
+ * El riel de un panel colapsado, al modo de la barra lateral plegada de macOS.
+ *
+ * En reposo muestra lo que hay abajo —las tapas de tus listas, o un ícono— y
+ * con el cursor encima solo **atenúa eso y trae el chevrón**: nada de previas
+ * fantasma del panel entero. La previa a media opacidad venía de la era de las
+ * tarjetas y sobre las columnas de borde a borde se leía como un error de
+ * dibujado — dos capas peleando en una franja de 64px.
+ */
 export function CollapsedSidebar({
   side,
   hovered,
-  expandedWidth,
-  preview,
   resting,
   onExpand,
   label,
 }: {
   side: 'left' | 'right'
   hovered: boolean
-  expandedWidth: number
-  preview: ReactNode
   /**
    * Qué se ve en reposo, sin el cursor encima.
    *
@@ -100,42 +105,16 @@ export function CollapsedSidebar({
     }).start()
   }, [hovered, progress])
 
-  const previewTranslate = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [side === 'left' ? -8 : 8, 0],
-  })
-  const restingOpacity = progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] })
+  /* Las tapas no desaparecen: se corren a un segundo plano para que el
+     chevrón —lo que vas a tocar— quede al frente. */
+  const restingOpacity = progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] })
   const arrowTranslate = progress.interpolate({
     inputRange: [0, 1],
     outputRange: [side === 'left' ? -8 : 8, 0],
   })
 
   return (
-    <Panel className="relative flex-1 bg-card">
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: 0,
-          bottom: 0,
-          width: expandedWidth,
-          opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.5] }),
-          transform: [{ translateX: previewTranslate }],
-          /*
-           * La franja es el **borde por donde el panel va a crecer**, no el
-           * opuesto.
-           *
-           * Anclado al revés, lo que asomaba era el final de cada fila —donde
-           * no hay nada— y la previa se veía vacía aunque el panel estuviera
-           * lleno. La izquierda crece hacia la derecha, así que se ancla a la
-           * izquierda; la derecha, al revés.
-           */
-          ...(side === 'left' ? { left: 0 } : { right: 0 }),
-        }}
-      >
-        {preview}
-      </Animated.View>
-
+    <Panel tone="lateral" className="relative flex-1">
       <Animated.View
         pointerEvents="none"
         style={{

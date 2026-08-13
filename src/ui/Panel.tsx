@@ -7,27 +7,45 @@ const SHELL_PX = 780
 /**
  * Panel: la unidad de layout de la app.
  *
- * En escritorio el fondo de la ventana es negro puro y el contenido vive en
- * paneles redondeados de un gris apenas más claro, separados por un espacio. Es
- * el recurso que usa Spotify para dar estructura sin dibujar una sola línea: la
- * separación la produce el hueco entre paneles, no un borde.
+ * En escritorio las columnas van **de borde a borde y se separan por
+ * luminancia**: los laterales —la biblioteca, el inspector de la derecha— son
+ * más oscuros que el contenido del medio, sin huecos, sin redondeo y sin una
+ * sola línea. Es el orden de macOS 26/27: la ventana es una superficie
+ * continua, el vidrio queda para la capa de controles que flota encima
+ * (encabezado, reproductor), y los paneles son el fondo.
  *
- * **En el teléfono no hay paneles.** Con un solo panel a la vista, el redondeo y
- * el margen no separan nada de nada: lo único que hacen es dejar un marco negro
- * alrededor del contenido —una burbuja dentro de otra— y encima cortan el
- * degradado del reproductor contra el borde de la tarjeta. Ahí el contenido
- * ocupa todo el ancho, como en Spotify y en Apple Music.
+ * Antes esto era el recurso de Spotify —tarjetas redondeadas flotando sobre
+ * negro— y se cambió a propósito cuando el reproductor tomó la forma de Apple
+ * Music: dos lenguajes de escritorio a la vez se leen como dos apps.
+ *
+ * **En el teléfono no hay paneles.** Con un solo panel a la vista no hay nada
+ * que separar: el contenido ocupa todo el ancho, como en Spotify y en Apple
+ * Music.
  */
 export function Panel({
   children,
   className = '',
-}: PropsWithChildren<{ className?: string }>) {
+  tone = 'contenido',
+}: PropsWithChildren<{
+  className?: string
+  /** `lateral` es la columna oscura de los costados; `contenido` la del medio. */
+  tone?: 'contenido' | 'lateral'
+}>) {
   const { width } = useWindowDimensions()
   const suelto = width < SHELL_PX
 
   return (
     <View
-      className={`overflow-hidden bg-background ${suelto ? '' : 'rounded-2xl'} ${className}`}
+      className={`overflow-hidden ${
+        suelto
+          ? 'bg-background'
+          : tone === 'lateral'
+            ? 'bg-canvas'
+            : /* La hoja de contenido de macOS: el escalón más claro toma
+                 esquinas suaves contra el cromo, y deja de leerse como una
+                 caja recortada. 8px, el radio de contenedor de DESIGN.md. */
+              'rounded-lg bg-background'
+      } ${className}`}
     >
       {children}
     </View>
@@ -35,19 +53,18 @@ export function Panel({
 }
 
 /**
- * Contenedor raíz de una pantalla: fondo negro y separación entre paneles.
+ * Contenedor raíz de una pantalla.
  *
- * En pantallas anchas el contenido se topa a un ancho legible en vez de
- * estirarse de borde a borde; en el teléfono no hay ni margen ni hueco, por lo
- * mismo que el panel pierde el redondeo.
+ * El fondo negro del lienzo asoma solo donde no hay columna —la franja del
+ * encabezado—, que es el mismo tono de los laterales: el cromo de la ventana
+ * es una sola pieza oscura y el contenido, un escalón más claro, es lo que
+ * resalta. En el teléfono no hay ni margen ni hueco, por lo mismo que el
+ * panel pierde la separación.
  */
 export function Shell({ children, className = '' }: PropsWithChildren<{ className?: string }>) {
-  const { width } = useWindowDimensions()
-  const suelto = width < SHELL_PX
-
   return (
-    <View className={`flex-1 bg-canvas ${suelto ? '' : 'p-2'}`}>
-      <View className={`flex-1 ${suelto ? '' : 'gap-2'} ${className}`}>{children}</View>
+    <View className="flex-1 bg-canvas">
+      <View className={`flex-1 ${className}`}>{children}</View>
     </View>
   )
 }

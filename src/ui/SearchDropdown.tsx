@@ -36,6 +36,25 @@ type Props = {
   onQuickAdd?: (track: TrackResult) => void
   /** Reproducir sin guardar en ningún lado. Aparece sobre la carátula. */
   onPlay?: (track: TrackResult) => void
+  /**
+   * Tocar la fila **siempre elige**, aunque sea la canción que está sonando.
+   *
+   * Por defecto, tocar la que suena pausa o sigue — tiene sentido donde elegir
+   * es reproducir. Pero en los buscadores que existen para *otra cosa* —fijar
+   * un fragmento en el perfil, adjuntar una canción a un mensaje— ese atajo
+   * bloqueaba justo el caso más común: querer agregar lo que estás escuchando.
+   * La fila solo ofrecía pausar y no había forma de seguir el flujo.
+   */
+  alwaysSelect?: boolean
+  /**
+   * Margen de arriba del contenido, solo embebida.
+   *
+   * Lo pasa la pantalla cuyo encabezado flota (la portada del teléfono): las
+   * filas corren hasta el borde y pasan por detrás del velo, y el hueco para
+   * arrancar a la vista se reserva adentro — el mismo trato que el piso. Las
+   * pantallas apiladas, con su cabecera en el flujo, no lo mandan.
+   */
+  topInset?: number
   /** Canción que se está resolviendo, para mostrarla ocupada. */
   pendingId?: string | null
   /** Las opciones de los tres puntos. Sin esto, la fila no los muestra. */
@@ -67,6 +86,8 @@ export function SearchDropdown({
   onPlay,
   pendingId,
   menuFor,
+  alwaysSelect = false,
+  topInset = 0,
 }: Props) {
   const [hovered, setHovered] = useState<string | null>(null)
   /*
@@ -117,11 +138,11 @@ export function SearchDropdown({
       }
     >
       {loading ? (
-        <View className="p-2">
+        <View className="p-2" style={{ marginTop: embedded ? topInset : 0 }}>
           <SkeletonList rows={6} />
         </View>
       ) : error ? (
-        <View className="p-5">
+        <View className="p-5" style={{ marginTop: embedded ? topInset : 0 }}>
           <Text className="text-muted-foreground text-center text-sm">{error}</Text>
         </View>
       ) : (
@@ -132,7 +153,12 @@ export function SearchDropdown({
              contenedor: así se llega a la última fila y las de arriba pasan por
              debajo del material. Es la misma regla que el resto de las listas
              —ver `usePiso`— de la que esta tarjeta era la única excepción. */
-          contentContainerStyle={{ paddingBottom: embedded ? cascara : 8 + teclado }}
+          /* El estilo pisa el `p-2` de la clase en los lados que toca, así que
+             el respiro de 8 se repone a mano junto al techo. */
+          contentContainerStyle={{
+            paddingTop: 8 + (embedded ? topInset : 0),
+            paddingBottom: embedded ? cascara : 8 + teclado,
+          }}
           keyboardShouldPersistTaps="handled"
           /* Arrastrar la lista cierra el teclado, como en Apple Music: al
              desplazar ya dejaste de escribir, y el teclado tapa media pantalla
@@ -183,8 +209,9 @@ export function SearchDropdown({
                   accessibilityRole="button"
                   accessibilityLabel={r.title}
                   // Si ya es la que suena, tocarla pausa o sigue; no la
-                  // reinicia ni la vuelve a resolver.
-                  onPress={() => (isCurrent ? togglePlayback() : onSelect(r))}
+                  // reinicia ni la vuelve a resolver. Salvo que este buscador
+                  // exista para elegir, no para escuchar — ver `alwaysSelect`.
+                  onPress={() => (isCurrent && !alwaysSelect ? togglePlayback() : onSelect(r))}
                   className="min-w-0 flex-1 flex-row items-center gap-3 rounded-lg p-2"
                 >
                   {/* La carátula se convierte en el botón de reproducir al
