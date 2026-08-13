@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { volver } from '../lib/volver'
 import { ES_WEB } from './Glass'
 
@@ -43,7 +44,16 @@ export function Hoja({ children }: { children: ReactNode }) {
 function Panel({ children }: { children: ReactNode }) {
   const router = useRouter()
   const { height } = useWindowDimensions()
-  const recorrido = Math.max(1, height - TOPE)
+  /*
+   * El tope respeta el safe area: en un iPhone con la web instalada como app,
+   * los 48px fijos quedaban abajo del notch y la hoja se pisaba con la hora
+   * del sistema — el mismo defecto que tuvo «Sonando» en nativo. En un
+   * navegador de escritorio el inset es cero y el tope sigue siendo el de
+   * siempre.
+   */
+  const insets = useSafeAreaInsets()
+  const tope = Math.max(TOPE, insets.top + 12)
+  const recorrido = Math.max(1, height - tope)
   const y = useSharedValue(recorrido)
 
   useEffect(() => {
@@ -91,7 +101,7 @@ function Panel({ children }: { children: ReactNode }) {
             left: 0,
             right: 0,
             bottom: 0,
-            top: TOPE,
+            top: tope,
             borderTopLeftRadius: 24,
             borderTopRightRadius: 24,
             overflow: 'hidden',

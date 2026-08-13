@@ -22,7 +22,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { usePiso } from '../src/state/shell'
 import { LinearGradient } from 'expo-linear-gradient'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { haySelectorDeSalida, SelectorDeSalida } from '../modules/audio-route'
 import { artworkSource } from '../src/lib/artwork'
 import {
@@ -111,7 +111,20 @@ export default function Playing() {
    * de la tarjeta de la que salió en vez de irse por el piso.
    */
   const { height: alturaVentana } = useWindowDimensions()
-  const desde = Math.max(0, alturaVentana - usePiso())
+  /*
+   * **Hasta dónde sube**: por debajo del safe area, no hasta el borde físico.
+   *
+   * Abierta del todo llegaba a y=0, y en un iPhone eso metía el grabber y el
+   * encabezado («Sonando», la flecha de bajar) debajo de la barra de estado —
+   * la hora y la batería del sistema pisándose con los controles. Un sheet se
+   * detiene debajo del notch, con la app de atrás asomando oscurecida; es lo
+   * que hacen los formSheet del Jam y de la cola, que acá hay que imitar a
+   * mano porque la subida es nuestra. En escritorio el inset es cero y la
+   * pantalla sigue llenando la ventana, como siempre.
+   */
+  const insets = useSafeAreaInsets()
+  const tope = insets.top > 0 ? insets.top + 6 : 0
+  const desde = Math.max(0, alturaVentana - usePiso() - tope)
 
   /** 0 es abierta del todo; `desde` es guardada en la tarjeta. */
   const y = useSharedValue(desde)
@@ -178,6 +191,18 @@ export default function Playing() {
   })
 
   /*
+   * El velo sobre lo que asoma arriba de la hoja.
+   *
+   * Con el tope puesto, la franja descubierta muestra la app de atrás: un
+   * sheet del sistema la oscurece, así que este también. Acompaña la apertura
+   * —mismo `p` que `crece`— para no aparecer de golpe.
+   */
+  const velo = useAnimatedStyle(() => {
+    const p = desde > 0 ? y.value / desde : 0
+    return { opacity: (1 - p) * 0.45 }
+  })
+
+  /*
    * La entrada, una sola vez al montarse.
    *
    * Va **al final del cuerpo**, después de `cerrar` y del gesto, porque la
@@ -229,8 +254,35 @@ export default function Playing() {
        entera quedaba translúcida abierta: su «fondo» es una carátula al 55%
        con un velo, que son ambiente, no piso. #000 es el token canvas. */
     <GestureDetector gesture={arrastre}>
+      <View style={{ flex: 1 }}>
+      {tope > 0 ? (
+        <>
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }, velo]}
+          />
+          {/* La franja descubierta cierra al tocarla, como en todo sheet. La
+              hoja se dibuja después, así que sus toques no llegan acá. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Bajar"
+            onPress={cerrar}
+            style={StyleSheet.absoluteFill}
+          />
+        </>
+      ) : null}
       <Animated.View
-        style={[{ flex: 1, overflow: 'hidden', backgroundColor: '#000000' }, crece]}
+        style={[
+          {
+            flex: 1,
+            marginTop: tope,
+            borderTopLeftRadius: tope ? 24 : 0,
+            borderTopRightRadius: tope ? 24 : 0,
+            overflow: 'hidden',
+            backgroundColor: '#000000',
+          },
+          crece,
+        ]}
       >
       {/*
        * El fondo lo pone la tapa.
@@ -275,7 +327,11 @@ export default function Playing() {
       <SafeAreaView
         className="flex-1 self-center"
         style={{ width: '100%', maxWidth: COLUMNA }}
-        edges={['top', 'bottom']}
+        /* Solo abajo: el margen de arriba ya lo puso el `tope` de la hoja —
+           dentro de un transparentModal el inset de arriba además llegaba en
+           cero, que es como el encabezado terminó abajo de la hora del
+           sistema. Ver el comentario de `tope`. */
+        edges={['bottom']}
       >
         {/* La manijita, dibujada por nosotros. Apple Music dibuja la suya
             exactamente así: la cápsula dice «esto se arrastra» sin gastar un
@@ -463,6 +519,7 @@ export default function Playing() {
         </View>
       </SafeAreaView>
       </Animated.View>
+      </View>
     </GestureDetector>
   )
 }
