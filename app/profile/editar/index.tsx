@@ -220,7 +220,13 @@ export default function EditarPerfil() {
                     vacio="Elegilo desde una canción"
                     icono={<IconImage size={17} color={ICON_COLOR.muted} />}
                     onPress={() => {
-                      if (!profile.bannerPath) return
+                      /* Vacía, la fila LLEVA a elegir: antes no hacía nada y se
+                         leía como rota — una fila con chevron promete un lugar
+                         a donde ir. Con fondo puesto, tocarla lo quita. */
+                      if (!profile.bannerPath) {
+                        router.push('/profile/editar/musica?destino=fondo')
+                        return
+                      }
                       void saveMyProfile({ bannerPath: '' }).then((p) => {
                         setMyProfile(p)
                         avisar('Fondo quitado')

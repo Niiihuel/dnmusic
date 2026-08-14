@@ -17,6 +17,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAudioPlayer } from 'expo-audio'
 import { Waveform } from '../src/ui/Waveform'
 import { SearchDropdown } from '../src/ui/SearchDropdown'
+import { SearchField } from '../src/ui/SearchField'
 import { BuscadorFlotante } from '../src/ui/FloatingSearch'
 import { addShowcase } from '../src/services/showcases'
 import { leerRecorte, limpiarRecorte } from '../src/state/recorte'
@@ -306,6 +307,21 @@ export default function SongPicker() {
                       que después volvés al mensaje es lo que hace el botón de
                       atrás: repetirlo era una tarjeta de puro texto antes del
                       único campo que importa acá. */}
+                  {/* En escritorio el campo va arriba de la columna: la mirada
+                      arranca ahí, y flotando al pie era lo último que se
+                      encontraba. En el teléfono sigue abajo, cerca del pulgar
+                      (el BuscadorFlotante del final). */}
+                  {suelto ? null : (
+                    <View className="pb-4">
+                      <SearchField
+                        value={query}
+                        onChangeText={setQuery}
+                        placeholder="Título, artista o álbum"
+                        loading={searching}
+                        autoFocus
+                      />
+                    </View>
+                  )}
                   <SearchDropdown
                     visible={query.trim().length > 0}
                     loading={searching}
@@ -358,7 +374,8 @@ export default function SongPicker() {
        * de apoyado sobre él. Los otros buscadores de la app los dibuja el layout
        * a nivel de pantalla, y por eso sí quedan pegados. Este ahora también.
        */}
-      {track ? null : (
+      {/* Solo en el teléfono: en escritorio el campo vive arriba de la columna. */}
+      {track || !suelto ? null : (
         <BuscadorFlotante
           value={query}
           onChangeText={setQuery}

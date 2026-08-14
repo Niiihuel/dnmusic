@@ -61,14 +61,20 @@ export function SearchField({
        * separa solo. El teclado abierto y el cursor titilando lo dicen de
        * sobra.
        *
-       * Sin vidrio se queda: ahí sí es la única señal. Y **en web se queda
-       * aunque haya vidrio**: con mouse el cursor titilando alcanza, pero
-       * navegando con Tab el anillo es lo único que dice dónde está el foco.
+       * En web tampoco: la línea blanca alrededor del campo era lo más duro de
+       * toda la pantalla. El foco se dice como pide DESIGN.md — por
+       * luminancia: la píldora se aclara un paso con el cursor adentro, y el
+       * cursor titilando hace el resto. Solo sin vidrio (Android) queda el
+       * anillo, porque ahí sigue siendo la única señal.
        */
       className={`h-12 flex-row items-center gap-3 rounded-full px-4 ${
         HAY_VIDRIO && !ES_WEB
           ? ''
-          : `${HAY_VIDRIO ? '' : 'bg-muted'} ${focused ? 'border border-foreground' : 'border border-transparent'}`
+          : ES_WEB
+            ? focused
+              ? 'bg-white/10'
+              : ''
+            : `bg-muted ${focused ? 'border border-foreground' : 'border border-transparent'}`
       }`}
     >
       <IconSearch size={18} color={ICON_COLOR.muted} />
