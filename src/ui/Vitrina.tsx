@@ -34,6 +34,7 @@ export function Vitrina({
   playing,
   sonando,
   posicionMs,
+  transcurridoMs,
   onTogglePlay,
   onSeek,
   onOpenPlaylist,
@@ -55,6 +56,13 @@ export function Vitrina({
   sonando?: boolean
   /** Posición del reproductor de fragmentos. Ver `Onda`. */
   posicionMs?: SharedValue<number>
+  /**
+   * La misma posición como número, para el reloj.
+   *
+   * El reloj muestra segundos, así que no necesita el valor por cuadro: le
+   * alcanza con el del estado, que refresca varias veces por segundo.
+   */
+  transcurridoMs?: number
   onTogglePlay: (id: string, song: SongSnippet) => void
   /** Mover la reproducción arrastrando la onda. Sin esto, la onda no se toca. */
   onSeek?: (id: string, song: SongSnippet, fraccion: number) => void
@@ -131,6 +139,7 @@ export function Vitrina({
             playing={playing}
             sonando={sonando ?? playing}
             posicionMs={posicionMs}
+            transcurridoMs={transcurridoMs}
             onTogglePlay={onTogglePlay}
             onSeek={onSeek}
           />
@@ -152,6 +161,7 @@ function VitrinaCancion({
   playing,
   sonando,
   posicionMs,
+  transcurridoMs = 0,
   onTogglePlay,
   onSeek,
 }: {
@@ -159,6 +169,7 @@ function VitrinaCancion({
   playing: boolean
   sonando: boolean
   posicionMs?: SharedValue<number>
+  transcurridoMs?: number
   onTogglePlay: (id: string, song: SongSnippet) => void
   onSeek?: (id: string, song: SongSnippet, fraccion: number) => void
 }) {
@@ -186,6 +197,12 @@ function VitrinaCancion({
   /* La onda es la del tramo que suena: el recorte en un fragmento, el tema
      entero en una canción fijada. */
   const picos = usePicos(c.videoId, { desdeMs: song.startMs, durMs: song.durationMs })
+
+  /* Lo que va sonando **de este pedazo**: la posición viene en tiempo de la
+     canción entera, y un fragmento que empieza en 1:04 tiene que decir 0:00. */
+  const transcurrido = sonando
+    ? Math.max(0, Math.min(song.durationMs, transcurridoMs - song.startMs))
+    : 0
 
   return (
     <View className="gap-3">
@@ -278,16 +295,19 @@ function VitrinaCancion({
       )}
 
       {/*
-        De dónde sale el recorte, debajo de la onda.
-        `1:04 – 1:19` es la mitad de la información de un fragmento y no estaba
-        en ningún lado. Va acá y no arriba junto al rótulo porque arriba, en el
+        El reloj, debajo de la onda: lo que va sonando sobre el total.
+        Es el formato de cualquier reproductor —`0:07 / 0:15`— y corre de verdad
+        mientras suena. Antes decía el tramo del recorte con una raya al medio
+        (`1:04 – 1:19`): un dato fijo, que se leía como una etiqueta y no como
+        un reproductor. Va acá abajo y no junto al rótulo porque arriba, en el
         editor, viven las flechas y la cruz de ordenar: se pisaban.
       */}
-      <Text className="text-muted-foreground -mt-1 text-right text-[11px] tabular-nums">
-        {esFragmento
-          ? `${formatClock(song.startMs)} – ${formatClock(song.startMs + song.durationMs)}`
-          : formatClock(song.durationMs)}
-      </Text>
+      <View className="-mt-1 flex-row justify-end gap-1">
+        <Text className="text-foreground text-[11px] tabular-nums">{formatClock(transcurrido)}</Text>
+        <Text className="text-muted-foreground text-[11px] tabular-nums">
+          / {formatClock(song.durationMs)}
+        </Text>
+      </View>
     </View>
   )
 }

@@ -17,6 +17,7 @@ import {
   reportCargada,
   reportError,
   reportProgress,
+  reportarPosicionFina,
   usePlaybackState,
 } from '../state/playback'
 import { proximasRecomendadas, type ArtistaEscuchado } from '../services/recomendaciones'
@@ -835,6 +836,10 @@ export function MotorAudio() {
          * arriba— sí quiere la resolución máxima: es lo que encadena un tema con
          * el siguiente sin hueco audible.
          */
+        /* Al hilo de UI, en cambio, se le avisa **en cada cuadro**: de ahí sale
+           el relleno de la barra, que no pasa por React. Ver `posicionSV`. */
+        reportarPosicionFina(t * 1000)
+
         const ahoraMs = performance.now()
         if (ahoraMs - ultimoAviso.current >= AVISO_CADA_MS) {
           ultimoAviso.current = ahoraMs

@@ -113,15 +113,34 @@ export default function RootLayout() {
  */
 function Chrome() {
   /*
-   * En el editor de fragmento no va la tarjeta del reproductor.
+   * Pantallas donde la tarjeta del reproductor no va.
    *
-   * Ahí estás escuchando **otra cosa** —el pedazo que vas a mandar— y tener al
-   * lado los controles de la cola es ofrecer dos reproducciones a la vez sobre
-   * la misma pantalla. La cola sigue sonando si estaba sonando; simplemente no
+   * En el editor de fragmento, porque ahí estás escuchando **otra cosa** —el
+   * pedazo que vas a mandar— y tener al lado los controles de la cola es
+   * ofrecer dos reproducciones a la vez sobre la misma pantalla.
+   *
+   * En editar perfil y en ajustes, porque son formularios: estás configurando
+   * algo, no escuchando. La barra ahí no es un control a mano sino un pie que
+   * come sesenta píxeles de la última fila, y en escritorio se apoyaba justo
+   * encima del interruptor de «Perfil público».
+   *
+   * En los tres casos la cola sigue sonando si estaba sonando; simplemente no
    * se muestra.
    */
   const segmentos = useSegments() as string[]
   const enEditor = segmentos[0] === 'song'
+  /**
+   * Sin tarjeta del reproductor, pero con todo lo demás.
+   *
+   * Va aparte de `enEditor` porque el editor de fragmento además se queda sin
+   * pestañas y sin buscador —es una pantalla que se apodera de todo—, y estas
+   * dos no: en el teléfono son pantallas apiladas de una pestaña, y sacarles la
+   * barra de abajo sería sacarles la navegación.
+   */
+  const sinReproductor =
+    enEditor ||
+    segmentos[0] === 'ajustes' ||
+    (segmentos[0] === 'profile' && segmentos[1] === 'editar')
   /*
    * Dónde estás parado, para la fila plegada.
    *
@@ -657,7 +676,7 @@ function Chrome() {
              * puede esperar a que sueltes. Vuelve apenas cerrás el teclado, que
              * es cuando mirás resultados y tener el control a mano sirve.
              */}
-            <NowPlayingBar oculto={enEditor || teclado > 0} />
+            <NowPlayingBar oculto={sinReproductor || teclado > 0} />
             <SearchRow />
           </>
         ) : enChat && flotante && enRaiz ? (
@@ -701,7 +720,7 @@ function Chrome() {
            * como un reproductor fantasma diciendo «no se pudo abrir esa
            * canción» sobre la pantalla de entrar.
            */
-          <NowPlayingBar oculto={enEditor || !usuario} />
+          <NowPlayingBar oculto={sinReproductor || !usuario} />
         )}
       </Animated.View>
 

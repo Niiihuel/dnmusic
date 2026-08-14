@@ -34,8 +34,10 @@ import { isSentBy, type Message } from '../src/models/message'
 import {
   endSession,
   refreshConversations,
+  respondToRequest,
   selectConversation,
   useContact,
+  useContactRequests,
   useConversations,
   useMessages,
   useMyProfile,
@@ -51,6 +53,7 @@ import {
   contactTitle,
   searchContacts,
   toContact,
+  type ContactRequest,
   type ContactResult,
   type Conversation,
 } from '../src/services/contacts'

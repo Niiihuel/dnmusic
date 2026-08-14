@@ -22,7 +22,13 @@ import { SearchField } from '../src/ui/SearchField'
 import { SkeletonList } from '../src/ui/Skeleton'
 import { contactInitial } from '../src/ui/MessageCard'
 import { sendMessage } from '../src/services/messages'
-import { searchContacts, toContact, type ContactResult } from '../src/services/contacts'
+import {
+  searchContacts,
+  sendContactRequest,
+  toContact,
+  type ContactResult,
+} from '../src/services/contacts'
+import { avisar } from '../src/state/aviso'
 import {
   getSession,
   openContactConversation,
@@ -83,6 +89,19 @@ export default function Compose() {
     () => results.filter((contact) => contact.id !== recipient?.id),
     [recipient?.id, results],
   )
+  /*
+   * Escribirle es solo para contactos: con cualquier otra cuenta lo que se
+   * envía es una solicitud. Ser contacto es tener un par, y todo par está en
+   * la bandeja, así que la lista de conversaciones alcanza como registro.
+   */
+  const esContacto =
+    recipient !== null &&
+    conversations.some((conversation) => conversation.contact.id === recipient.id)
+  /* El estado de la solicitud sale de la búsqueda; si el destinatario llegó
+     de afuera y no está en los resultados, se asume que no hay ninguna. */
+  const solicitud = recipient
+    ? (results.find((contact) => contact.id === recipient.id)?.solicitud ?? null)
+    : null
 
   useEffect(() => {
     const controller = new AbortController()
@@ -106,9 +125,18 @@ export default function Compose() {
     }
   }, [query])
 
+  /*
+   * Con una solicitud recibida se escribe normal: al enviar, la base cruza
+   * las solicitudes, los hace contactos y el mensaje sale en el mismo gesto.
+   * El modo solicitud queda para las cuentas con las que no hay nada todavía.
+   */
+  const puedeEscribir = esContacto || solicitud === 'recibida'
   const hasContent = draft.text.trim().length > 0 || draft.song !== null
-  const canSend =
-    recipient !== null && hasContent && draft.text.length <= MAX_MESSAGE_LENGTH && !busy
+  const canSend = puedeEscribir
+    ? recipient !== null && hasContent && draft.text.length <= MAX_MESSAGE_LENGTH && !busy
+    : // Modo solicitud: no hay nada que escribir, alcanza con el destinatario.
+      // Con una ya enviada el botón se apaga: reenviarla no haría nada.
+      recipient !== null && solicitud !== 'enviada' && !busy
 
   function changeQuery(value: string) {
     setQuery(value)
@@ -135,6 +163,25 @@ export default function Compose() {
     setBusy(true)
     setError(null)
     try {
+      if (!esContacto) {
+        /* Con una cuenta nueva lo que sale es la solicitud. Si se cruzó con
+           una suya, la base los hace contactos ahí mismo y se sigue de largo
+           al envío normal. */
+        const estado = await sendContactRequest(recipient.id)
+        if (estado === 'enviada') {
+          avisar(`Solicitud enviada a @${recipient.username}`)
+          await refreshConversations()
+          resetDraft()
+          volver(router, '/')
+          return
+        }
+        await refreshConversations()
+        if (!hasContent) {
+          resetDraft()
+          volver(router, '/')
+          return
+        }
+      }
       const pairId = await openContactConversation(recipient)
       await sendMessage(pairId, user.id, {
         text: draft.text,
@@ -237,7 +284,13 @@ export default function Compose() {
                       @{item.username}
                     </Text>
                     <Text className="text-muted-foreground text-[11px]">
-                      {hasConversation ? 'Ya está en tus conversaciones' : 'Nuevo contacto'}
+                      {hasConversation
+                        ? 'Ya está en tus conversaciones'
+                        : item.solicitud === 'enviada'
+                          ? 'Solicitud enviada'
+                          : item.solicitud === 'recibida'
+                            ? 'Te envió una solicitud'
+                            : 'Enviarle una solicitud'}
                     </Text>
                   </View>
                   {selected ? <IconCheck size={16} color={ICON_COLOR.foreground} /> : null}
@@ -345,6 +398,28 @@ export default function Compose() {
       ) : null}
     </ScrollView>
   )
+
+  /* Lo que reemplaza al editor cuando todavía no se le puede escribir: acá lo
+     que sale es una solicitud, y esto dice qué va a pasar con ella. */
+  const requestNotice = recipient ? (
+    <View className="flex-1 gap-4">
+      <View className="gap-2 rounded-xl bg-muted p-5">
+        <Text className="text-foreground text-[15px] font-semibold">
+          {solicitud === 'enviada' ? 'Solicitud enviada' : 'Todavía no son contactos'}
+        </Text>
+        <Text className="text-muted-foreground text-[13px] leading-5">
+          {solicitud === 'enviada'
+            ? `Tu solicitud ya salió. Cuando @${recipient.username} la acepte vas a poder escribirle y compartirle canciones.`
+            : `Mandale una solicitud a @${recipient.username}: cuando la acepte vas a poder escribirle y compartirle canciones.`}
+        </Text>
+      </View>
+      {error ? (
+        <View className="rounded-lg bg-muted px-4 py-3">
+          <Text className="text-destructive text-sm leading-5">{error}</Text>
+        </View>
+      ) : null}
+    </View>
+  ) : null
 
   const contactPanel = (hovered: boolean, onCollapse: () => void) => (
     <Panel className="flex-1">
@@ -470,10 +545,18 @@ export default function Compose() {
               <View className="flex-row items-center justify-between bg-card px-5 py-3.5">
                 <View>
                   <Text className="text-foreground text-[15px] font-semibold">
-                    {recipient ? `Mensaje para @${recipient.username}` : 'Nueva conversación'}
+                    {!recipient
+                      ? 'Nueva conversación'
+                      : puedeEscribir
+                        ? `Mensaje para @${recipient.username}`
+                        : `Solicitud para @${recipient.username}`}
                   </Text>
                   <Text className="text-muted-foreground text-[11px]">
-                    {recipient ? 'Escribí y compartí una canción' : 'Elegí primero un destinatario'}
+                    {!recipient
+                      ? 'Elegí primero un destinatario'
+                      : puedeEscribir
+                        ? 'Escribí y compartí una canción'
+                        : 'Cuando acepte van a poder escribirse'}
                   </Text>
                 </View>
                 <Text className="text-muted-foreground text-xs tabular-nums">
@@ -483,7 +566,7 @@ export default function Compose() {
 
               <View className="min-h-0 flex-1 gap-5 p-5">
                 {!showContactSidebar ? contactPicker : null}
-                {messageEditor}
+                {recipient && !puedeEscribir ? requestNotice : messageEditor}
               </View>
 
               <View className="p-4" style={{ paddingBottom: piso }}>
@@ -508,7 +591,13 @@ export default function Compose() {
                           canSend ? 'text-primary-foreground' : 'text-muted-foreground'
                         }`}
                       >
-                        {recipient ? `Enviar a @${recipient.username}` : 'Elegí un destinatario'}
+                        {!recipient
+                          ? 'Elegí un destinatario'
+                          : puedeEscribir
+                            ? `Enviar a @${recipient.username}`
+                            : solicitud === 'enviada'
+                              ? 'Solicitud enviada'
+                              : 'Enviar solicitud'}
                       </Text>
                     </>
                   )}

@@ -2,9 +2,12 @@ import { isSupabaseConfigured } from '../lib/supabase'
 import { logOut, subscribeToAuth, type User } from '../services/auth'
 import {
   ensureConversation,
+  listContactRequests,
   listConversations,
+  respondContactRequest,
   subscribeToInbox,
   type Contact,
+  type ContactRequest,
   type Conversation,
 } from '../services/contacts'
 import { subscribeToMessages, type Unsubscribe } from '../services/messages'
@@ -20,6 +23,8 @@ type SessionState = {
   /** Perfil propio: usuario, nombre visible y foto. Null hasta que carga. */
   profile: Profile | null
   conversations: Conversation[]
+  /** Solicitudes de contacto que llegaron y esperan respuesta. */
+  requests: ContactRequest[]
   /** Conversación seleccionada; se conserva como pairId por compatibilidad. */
   pairId: string | null
   contact: Contact | null
@@ -33,6 +38,7 @@ const store = createStore<SessionState>({
   user: undefined,
   profile: null,
   conversations: [],
+  requests: [],
   pairId: null,
   contact: null,
   messages: [],
@@ -86,11 +92,18 @@ function listenToConversation(pairId: string, contact: Contact) {
 }
 
 async function loadConversationList(): Promise<Conversation[]> {
-  const conversations = await listConversations()
+  /* Las solicitudes viajan con la bandeja: mismo refresco, mismo canal de
+     realtime. Que fallen no puede dejar sin conversaciones, así que su error
+     se traga y a lo sumo la sección no aparece. */
+  const [conversations, requests] = await Promise.all([
+    listConversations(),
+    listContactRequests().catch(() => store.get().requests),
+  ])
   const activePairId = store.get().pairId
   const active = conversations.find((conversation) => conversation.pairId === activePairId)
   store.set({
     conversations,
+    requests,
     ...(active ? { contact: active.contact } : {}),
   })
   return conversations
@@ -110,6 +123,7 @@ async function activateAccount(uid: string) {
   store.set({
     profile: null,
     conversations: [],
+    requests: [],
     pairId: null,
     contact: null,
     messages: [],
@@ -180,6 +194,17 @@ export async function refreshConversations() {
   await loadConversationList()
 }
 
+/**
+ * Responde una solicitud y deja la bandeja al día. Al aceptar, la conversación
+ * nueva queda seleccionada, lista para escribirle.
+ */
+export async function respondToRequest(from: Contact, accept: boolean): Promise<string | null> {
+  const pairId = await respondContactRequest(from.id, accept)
+  await loadConversationList()
+  if (pairId) listenToConversation(pairId, from)
+  return pairId
+}
+
 /** Arranca el ciclo de auth. Idempotente: sobrevive al fast refresh. */
 export function startSession() {
   if (unsubscribeAuth) return
@@ -198,6 +223,7 @@ export function startSession() {
       store.set({
         profile: null,
         conversations: [],
+        requests: [],
         pairId: null,
         contact: null,
         messages: [],
@@ -231,6 +257,7 @@ export function setMyProfile(profile: Profile) {
 export const useUser = () => useStore(store, (state) => state.user)
 export const useMyProfile = () => useStore(store, (state) => state.profile)
 export const useConversations = () => useStore(store, (state) => state.conversations)
+export const useContactRequests = () => useStore(store, (state) => state.requests)
 export const usePairId = () => useStore(store, (state) => state.pairId)
 export const useContact = () => useStore(store, (state) => state.contact)
 export const useMessages = () => useStore(store, (state) => state.messages)

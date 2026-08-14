@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Text, View, type ViewStyle } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import { runOnJS } from 'react-native-reanimated'
+import Animated, { runOnJS, useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 import { HAY_VIDRIO } from './Glass'
 
 /** Alto de la zona sensible: la barra es fina, pero agarrarla no debe serlo. */
@@ -45,6 +45,7 @@ export function SeekBar({
   totalMs,
   onSeek,
   compact = false,
+  posicionMs,
 }: {
   label: string
   progress: number
@@ -53,6 +54,18 @@ export function SeekBar({
   onSeek: (fraction: number) => void
   /** Sin los tiempos a los costados, para cuando el ancho no da. */
   compact?: boolean
+  /**
+   * La posición cuadro a cuadro, si quien llama la tiene.
+   *
+   * Con esto el relleno y la perilla se mueven en el hilo de UI, a la
+   * frecuencia de la pantalla. Sin esto se mueven con `progress`, que llega por
+   * props: el store avisa diez veces por segundo —lo que sobra para un reloj de
+   * segundos y no para una barra— y el avance se veía a escalones.
+   *
+   * El reloj sigue leyendo `elapsedMs`: son segundos, y refrescarlo por cuadro
+   * sería renderizar sesenta veces para cambiar un dígito una vez.
+   */
+  posicionMs?: SharedValue<number>
 }) {
   const [width, setWidth] = useState(0)
   const [dragAt, setDragAt] = useState<number | null>(null)
@@ -62,6 +75,25 @@ export function SeekBar({
     setDragAt(null)
     onSeek(fraction)
   }
+
+  /*
+   * Cuánto está lleno, entre 0 y 1.
+   *
+   * Mientras se arrastra manda el dedo, y ahí `dragAt` —estado de React, que ya
+   * cambia con cada evento del gesto— alcanza de sobra. El resto del tiempo,
+   * si quien llama pasó la posición fina, se lee del hilo de UI.
+   */
+  const avance = () => {
+    'worklet'
+    if (dragAt !== null) return dragAt
+    if (!posicionMs || totalMs <= 0) return progress
+    return Math.max(0, Math.min(1, posicionMs.value / totalMs))
+  }
+
+  const relleno = useAnimatedStyle(() => ({ transform: [{ scaleX: avance() }] }))
+  const perilla = useAnimatedStyle(() => ({
+    transform: [{ translateX: avance() * width - THUMB / 2 }],
+  }))
   // Marcada como worklet: los callbacks de gesto corren en el hilo de UI y
   // desde ahí no se puede llamar una función común.
   const at = (x: number) => {
@@ -125,23 +157,25 @@ export function SeekBar({
                 : null,
             ]}
           >
-            <View
+            <Animated.View
               className="h-full w-full rounded-full bg-foreground"
-              style={{ transformOrigin: 'left', transform: [{ scaleX: shown }] }}
+              style={[{ transformOrigin: 'left' }, relleno]}
             />
           </View>
-          <View
+          <Animated.View
             pointerEvents="none"
             className="absolute left-0 rounded-full bg-foreground"
-            style={{
-              width: THUMB,
-              height: THUMB,
-              transform: [{ translateX: shown * width - THUMB / 2 }],
-              /* La perilla se despega de la pista con sombra, como la del
-                 sistema — sobre una pista translúcida un círculo plano se
-                 fundía con el relleno. */
-              boxShadow: '0 1px 4px rgba(0,0,0,0.45)',
-            }}
+            style={[
+              {
+                width: THUMB,
+                height: THUMB,
+                /* La perilla se despega de la pista con sombra, como la del
+                   sistema — sobre una pista translúcida un círculo plano se
+                   fundía con el relleno. */
+                boxShadow: '0 1px 4px rgba(0,0,0,0.45)',
+              },
+              perilla,
+            ]}
           />
         </View>
       </GestureDetector>

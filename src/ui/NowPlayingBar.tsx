@@ -6,6 +6,7 @@ import { artworkSource } from '../lib/artwork'
 import { useTabsVisible } from '../state/shell'
 import {
   canOpenPlaylist,
+  posicionSV,
   openSoundingPlaylist,
   playNext,
   playPrevious,
@@ -443,6 +444,7 @@ export function NowPlayingBar({
             elapsedMs={positionMs}
             totalMs={durationMs}
             onSeek={seekFraction}
+            posicionMs={posicionSV}
           />
         ) : null}
       </View>
@@ -586,6 +588,7 @@ export function NowPlayingBar({
                 elapsedMs={positionMs}
                 totalMs={durationMs}
                 onSeek={seekFraction}
+                posicionMs={posicionSV}
               />
             </View>
           ) : (

@@ -406,6 +406,7 @@ export function Vitrinas({
           playing={player.currentId === v.id && player.playing}
           sonando={player.currentId === v.id}
           posicionMs={player.posicionSV}
+          transcurridoMs={player.positionMs}
           /*
            * Escuchar puede fallar —la URL del audio se firma en el momento— y
            * sin capturarlo quedaba una promesa rechazada suelta: en el teléfono

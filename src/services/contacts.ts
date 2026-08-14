@@ -40,7 +40,12 @@ export function toContact({ id, username, displayName, avatarPath }: ContactResu
 export type ContactResult = Contact & {
   /** Conversación existente con el contacto, si ya se escribieron. */
   pairId: string | null
+  /** Solicitud pendiente entre ambos, y en qué dirección. */
+  solicitud: 'enviada' | 'recibida' | null
 }
+
+/** Alguien que pidió ser contacto; `requestedAt` es cuándo lo pidió. */
+export type ContactRequest = Contact & { requestedAt: Date | null }
 
 export type Conversation = {
   pairId: string
@@ -112,6 +117,60 @@ export async function ensureConversation(contactId: string): Promise<string> {
 }
 
 /**
+ * Pide ser contacto. Devuelve cómo quedó: 'enviada', 'aceptada' (las
+ * solicitudes se cruzaron y ya son contactos) o 'contactos' (ya lo eran).
+ */
+export async function sendContactRequest(
+  contactId: string,
+): Promise<'enviada' | 'aceptada' | 'contactos'> {
+  const { data, error } = await getSupabase().rpc('enviar_solicitud', { p_to: contactId })
+  if (error) throw error
+  if (data !== 'enviada' && data !== 'aceptada' && data !== 'contactos') {
+    throw new Error('No se pudo enviar la solicitud.')
+  }
+  return data
+}
+
+/** Acepta o rechaza una solicitud. Al aceptar devuelve el pairId nuevo. */
+export async function respondContactRequest(
+  contactId: string,
+  accept: boolean,
+): Promise<string | null> {
+  const { data, error } = await getSupabase().rpc('responder_solicitud', {
+    p_from: contactId,
+    p_aceptar: accept,
+  })
+  if (error) throw error
+  return typeof data === 'string' ? data : null
+}
+
+export async function listContactRequests(): Promise<ContactRequest[]> {
+  const { data, error } = await getSupabase().rpc('listar_solicitudes')
+  if (error) throw error
+  return (data ?? []).flatMap(requestFromRow)
+}
+
+export async function blockUser(contactId: string): Promise<void> {
+  const { error } = await getSupabase().rpc('bloquear_usuario', { p_user: contactId })
+  if (error) throw error
+}
+
+export async function unblockUser(contactId: string): Promise<void> {
+  const { error } = await getSupabase().rpc('desbloquear_usuario', { p_user: contactId })
+  if (error) throw error
+}
+
+export async function listBlockedUsers(): Promise<Contact[]> {
+  const { data, error } = await getSupabase().rpc('listar_bloqueados')
+  if (error) throw error
+  return (data ?? []).flatMap((row: ContactRow) =>
+    typeof row.user_id === 'string' && typeof row.username === 'string'
+      ? [{ id: row.user_id, username: row.username, ...profileBits(row) }]
+      : [],
+  )
+}
+
+/**
  * Despierta la bandeja ante mensajes o contactos nuevos. Un único canal global
  * evita abrir una suscripción por cada conversación; RLS filtra los eventos.
  */
@@ -134,6 +193,29 @@ export function subscribeToInbox(
       },
       onChange,
     )
+    /* Las solicitudes en los dos sentidos: la que te llega (to_user) y la
+       tuya cuando la responden (from_user, un DELETE). El filtro de realtime
+       es uno solo por oído, así que son dos oídos. */
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'contact_requests',
+        filter: `to_user=eq.${uid}`,
+      },
+      onChange,
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'contact_requests',
+        filter: `from_user=eq.${uid}`,
+      },
+      onChange,
+    )
     .subscribe((status) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         onError?.(new Error('Se perdió la actualización de conversaciones.'))
@@ -146,7 +228,7 @@ export function subscribeToInbox(
   }
 }
 
-function contactFromRow(row: ContactRow): ContactResult[] {
+function contactFromRow(row: ContactRow & { solicitud?: unknown }): ContactResult[] {
   if (typeof row.user_id !== 'string' || typeof row.username !== 'string') return []
   return [
     {
@@ -154,6 +236,21 @@ function contactFromRow(row: ContactRow): ContactResult[] {
       username: row.username,
       ...profileBits(row),
       pairId: typeof row.pair_id === 'string' ? row.pair_id : null,
+      solicitud:
+        row.solicitud === 'enviada' || row.solicitud === 'recibida' ? row.solicitud : null,
+    },
+  ]
+}
+
+function requestFromRow(row: ContactRow & { from_user?: unknown; created_at?: unknown }): ContactRequest[] {
+  if (typeof row.from_user !== 'string' || typeof row.username !== 'string') return []
+  const requestedAt = typeof row.created_at === 'string' ? new Date(row.created_at) : null
+  return [
+    {
+      id: row.from_user,
+      username: row.username,
+      ...profileBits(row),
+      requestedAt: requestedAt && !Number.isNaN(requestedAt.getTime()) ? requestedAt : null,
     },
   ]
 }

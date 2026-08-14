@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { makeMutable } from 'react-native-reanimated'
 import type { PlaylistTrack } from '../services/playlists'
 import { createStore, useStore } from './store'
 import { leerAjustes } from './ajustes'
@@ -916,6 +917,45 @@ export function reportProgress(positionMs: number, durationMs: number) {
   store.set({ positionMs, durationMs })
   guardar()
 }
+
+/**
+ * La posición, cuadro a cuadro, para lo que se dibuja.
+ *
+ * `positionMs` del store avisa **diez veces por segundo** a propósito: cada
+ * aviso es un render de la app entera y un reloj que muestra segundos no
+ * necesita más. Pero la barra sí: a diez avisos por segundo el relleno avanzaba
+ * a escalones de 100 ms, y en una barra ancha eso se ve como un tic-tic en vez
+ * de un deslizamiento.
+ *
+ * Este valor lo escribe el motor en cada cuadro y lo leen los estilos animados
+ * desde el hilo de UI, sin pasar por React. Es lo mismo que ya hacía el editor
+ * de fragmento con su propia barra.
+ *
+ * Se crea con `makeMutable` y no con `useSharedValue` porque vive en el store,
+ * fuera de todo componente: no hay hook donde crearlo y tiene que sobrevivir a
+ * que se desmonte quien lo mire.
+ */
+export const posicionSV = makeMutable(0)
+
+/** La posición para dibujar, sin tocar React. Ver `posicionSV`. */
+export function reportarPosicionFina(positionMs: number) {
+  posicionSV.value = positionMs
+}
+
+/*
+ * Todo salto se copia al valor fino.
+ *
+ * El motor lo alimenta cuadro a cuadro mientras suena, pero la posición también
+ * cambia de golpe en una docena de lugares: al arrastrar la barra, al pasar de
+ * canción, al volver al principio, al reengancharse a un Jam. Suscribirse una
+ * vez cubre todos esos casos sin tener que acordarse en cada uno — y cuando el
+ * valor es el mismo que el motor acaba de escribir, escribirlo otra vez no
+ * cuesta nada.
+ */
+store.subscribe(() => {
+  const { positionMs } = store.get()
+  if (posicionSV.value !== positionMs) posicionSV.value = positionMs
+})
 
 export function reportError(message: string) {
   store.set({ error: message, wantPlay: false })
