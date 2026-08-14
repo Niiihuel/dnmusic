@@ -1,8 +1,10 @@
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import type { SharedValue } from 'react-native-reanimated'
 import type { Message } from '../models/message'
 import { artworkSource } from '../lib/artwork'
 import { formatMessageDate } from './MessageCard'
-import { SeekBar } from './SeekBar'
+import { Onda, usePicos } from './Onda'
+import { SeekBar, formatClock } from './SeekBar'
 import { ICON_COLOR, IconMusic, IconPause, IconPlay } from './icons'
 
 export function ChatBubble({
@@ -10,7 +12,9 @@ export function ChatBubble({
   mine,
   selected,
   playing,
+  sonando,
   positionMs = 0,
+  posicionSV,
   onPress,
   onPlay,
   onSeek,
@@ -19,13 +23,21 @@ export function ChatBubble({
   mine: boolean
   selected?: boolean
   playing?: boolean
+  /** Es el mensaje cargado en el reproductor, suene o esté en pausa. */
+  sonando?: boolean
   positionMs?: number
+  /** La posición para dibujar, cuadro a cuadro. Ver `Onda`. */
+  posicionSV?: SharedValue<number>
   onPress: () => void
   onPlay: () => void
   onSeek: (fraction: number) => void
 }) {
   const song = message.song
   const delivery = message.readAt ? '✓✓' : message.openedAt ? '✓✓' : '✓'
+  const picos = usePicos(
+    song?.videoId,
+    song ? { desdeMs: song.startMs, durMs: song.durationMs } : undefined,
+  )
   const progress = song
     ? Math.max(0, Math.min(1, (positionMs - song.startMs) / Math.max(song.durationMs, 1)))
     : 0
@@ -125,13 +137,42 @@ export function ChatBubble({
                   )}
                 </Pressable>
               </View>
-              <SeekBar
-                label={song.title}
-                progress={progress}
-                elapsedMs={progress * song.durationMs}
-                totalMs={song.durationMs}
-                onSeek={onSeek}
-              />
+              {/*
+                La onda del tema en vez de la barra lisa, con los tiempos a los
+                costados como los tenía la barra. Si la onda todavía no llegó
+                —o si es una canción propia, que no tiene— se dibuja la barra:
+                el mensaje nunca se queda sin forma de moverse.
+              */}
+              {picos ? (
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-muted-foreground w-8 text-[10px] tabular-nums">
+                    {formatClock(progress * song.durationMs)}
+                  </Text>
+                  <View className="flex-1">
+                    <Onda
+                      picos={picos}
+                      posicionMs={posicionSV}
+                      desdeMs={song.startMs}
+                      duracionMs={song.durationMs}
+                      activa={!!sonando}
+                      onSeek={onSeek}
+                      height={30}
+                      etiqueta={song.title}
+                    />
+                  </View>
+                  <Text className="text-muted-foreground w-8 text-right text-[10px] tabular-nums">
+                    {formatClock(song.durationMs)}
+                  </Text>
+                </View>
+              ) : (
+                <SeekBar
+                  label={song.title}
+                  progress={progress}
+                  elapsedMs={progress * song.durationMs}
+                  totalMs={song.durationMs}
+                  onSeek={onSeek}
+                />
+              )}
             </View>
           ) : null}
 

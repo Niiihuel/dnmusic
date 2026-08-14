@@ -350,6 +350,8 @@ export function Vitrinas({
           showcase={v}
           playlists={listas}
           playing={player.currentId === v.id && player.playing}
+          sonando={player.currentId === v.id}
+          posicionMs={player.posicionSV}
           /*
            * Escuchar puede fallar —la URL del audio se firma en el momento— y
            * sin capturarlo quedaba una promesa rechazada suelta: en el teléfono
@@ -358,6 +360,9 @@ export function Vitrinas({
            */
           onTogglePlay={(id, song) => {
             player.toggle(id, song).catch((e: unknown) => avisar(mensajeError(e), true))
+          }}
+          onSeek={(id, song, fraccion) => {
+            player.seek(id, song, fraccion).catch((e: unknown) => avisar(mensajeError(e), true))
           }}
           onOpenPlaylist={() => undefined}
           onRemove={

@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Image, Pressable, Text, View } from 'react-native'
 import { useVideoPlayer, VideoView } from 'expo-video'
+import type { SharedValue } from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
 import type { SongSnippet } from '../models/message'
 import type { Showcase } from '../services/showcases'
 import type { Playlist } from '../services/playlists'
 import { esVideo, ilustracionUrl } from '../services/showcases'
 import { Cava } from './Cava'
+import { Onda, usePicos } from './Onda'
 import { Glass, HAY_VIDRIO } from './Glass'
 import { PlaylistCover } from './PlaylistCover'
 import {
@@ -33,7 +35,10 @@ export function Vitrina({
   showcase,
   playlists,
   playing,
+  sonando,
+  posicionMs,
   onTogglePlay,
+  onSeek,
   onOpenPlaylist,
   onRemove,
   onSubir,
@@ -44,7 +49,18 @@ export function Vitrina({
   playlists: Playlist[] | null
   /** Esta vitrina es la que está sonando. */
   playing: boolean
+  /**
+   * Esta vitrina es la cargada en el reproductor, suene o esté en pausa.
+   *
+   * Distinto de `playing`: al pausar, la onda tiene que seguir mostrando dónde
+   * quedó. Si se vaciara, no habría forma de saberlo.
+   */
+  sonando?: boolean
+  /** Posición del reproductor de fragmentos. Ver `Onda`. */
+  posicionMs?: SharedValue<number>
   onTogglePlay: (id: string, song: SongSnippet) => void
+  /** Mover la reproducción arrastrando la onda. Sin esto, la onda no se toca. */
+  onSeek?: (id: string, song: SongSnippet, fraccion: number) => void
   onOpenPlaylist: (playlistId: string) => void
   /** Solo en el perfil propio: sacarla. Sin esto no se dibuja la cruz. */
   onRemove?: (id: string) => void
@@ -118,7 +134,10 @@ export function Vitrina({
           <VitrinaCancion
             showcase={showcase}
             playing={playing}
+            sonando={sonando ?? playing}
+            posicionMs={posicionMs}
             onTogglePlay={onTogglePlay}
+            onSeek={onSeek}
           />
         )}
       </View>
@@ -136,11 +155,17 @@ export function Vitrina({
 function VitrinaCancion({
   showcase,
   playing,
+  sonando,
+  posicionMs,
   onTogglePlay,
+  onSeek,
 }: {
   showcase: Extract<Showcase, { kind: 'cancion' | 'fragmento' }>
   playing: boolean
+  sonando: boolean
+  posicionMs?: SharedValue<number>
   onTogglePlay: (id: string, song: SongSnippet) => void
+  onSeek?: (id: string, song: SongSnippet, fraccion: number) => void
 }) {
   const c = showcase.cancion
   const tapa = artworkSource(c.artworkPath ?? undefined, c.artworkUrl, 320)
@@ -162,6 +187,10 @@ function VitrinaCancion({
         ? c.endMs - c.startMs
         : c.durationMs,
   }
+
+  /* La onda es la del tramo que suena: el recorte en un fragmento, el tema
+     entero en una canción fijada. */
+  const picos = usePicos(c.videoId, { desdeMs: song.startMs, durMs: song.durationMs })
 
   return (
     <View className="gap-3">
@@ -201,8 +230,28 @@ function VitrinaCancion({
         </Pressable>
       </View>
 
-      {/* La cava: quieta cuando no suena, latiendo cuando sí. */}
-      <Cava seed={c.videoId} playing={playing} height={40} />
+      {/*
+        La onda de verdad si la hay, y si no la cava.
+
+        La onda la calcula el servicio y llega un instante después de dibujar la
+        tarjeta; la cava, que sale del identificador, está en el primer cuadro.
+        Así el perfil nunca muestra un hueco donde va la canción, y cuando la
+        onda llega el bloque ya tiene su lugar hecho y nada salta.
+      */}
+      {picos ? (
+        <Onda
+          picos={picos}
+          posicionMs={posicionMs}
+          desdeMs={song.startMs}
+          duracionMs={song.durationMs}
+          activa={sonando}
+          onSeek={onSeek ? (f) => onSeek(showcase.id, song, f) : undefined}
+          height={40}
+          etiqueta={c.title}
+        />
+      ) : (
+        <Cava seed={c.videoId} playing={playing} height={40} />
+      )}
     </View>
   )
 }

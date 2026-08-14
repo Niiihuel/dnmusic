@@ -268,18 +268,31 @@ export type ResolvedSong = {
  * la encuentra en Storage y responde al instante.
  */
 export async function resolveSong(track: TrackResult, signal?: AbortSignal): Promise<ResolvedSong> {
+  // La carátula va en el pedido: el servicio la copia a Storage y así deja de
+  // depender del CDN de Google, que la corta con 429 cada tanto. La duración
+  // también, si se sabe: el camino cacheado la devuelve tal cual y solo mide el
+  // archivo cuando no la sabe nadie (portada: viene en cero).
+  const data = await pedirResolve(
+    { videoId: track.videoId, artworkUrl: track.artworkUrl, durationMs: track.durationMs || undefined },
+    signal,
+  )
+  return {
+    path: data.path,
+    artworkPath: data.artworkPath ?? null,
+    url: await signedUrl(data.path),
+    durationMs: data.durationMs ?? track.durationMs,
+  }
+}
+
+/** El viaje a `/resolve` pelado, que comparten resolver y recuperar. */
+async function pedirResolve(
+  body: { videoId: string; artworkUrl?: string; durationMs?: number },
+  signal?: AbortSignal,
+): Promise<{ path: string; artworkPath?: string | null; durationMs?: number }> {
   const res = await fetchMusica(`${MUSIC_API}/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    // La carátula va en el pedido: el servicio la copia a Storage y así deja
-    // de depender del CDN de Google, que la corta con 429 cada tanto. La
-    // duración también, si se sabe: el camino cacheado la devuelve tal cual y
-    // solo mide el archivo cuando no la sabe nadie (portada: viene en cero).
-    body: JSON.stringify({
-      videoId: track.videoId,
-      artworkUrl: track.artworkUrl,
-      durationMs: track.durationMs || undefined,
-    }),
+    body: JSON.stringify(body),
     signal,
   })
   const data = (await res.json()) as {
@@ -291,11 +304,38 @@ export async function resolveSong(track: TrackResult, signal?: AbortSignal): Pro
   if (!res.ok || data.error || !data.path) {
     throw new Error(data.error ?? `No se pudo preparar la canción (${res.status})`)
   }
-  return {
-    path: data.path,
-    artworkPath: data.artworkPath ?? null,
-    url: await signedUrl(data.path),
-    durationMs: data.durationMs ?? track.durationMs,
+  return { path: data.path, artworkPath: data.artworkPath ?? null, durationMs: data.durationMs }
+}
+
+/**
+ * URL para escuchar una ruta guardada, aunque la ruta haya envejecido.
+ *
+ * Una ruta de audio se guarda con su extensión —`abc123.webm`, `abc123.m4a`— y
+ * la extensión **no es parte de la identidad de la canción**: es el formato que
+ * YouTube ofreció ese día. Cuando el nombre canónico pasó a `.m4a`, todo lo que
+ * ya estaba guardado apuntando al `.webm` quedó apuntando a la nada, y Storage
+ * responde con un «Object not found» que la app mostraba tal cual: un fragmento
+ * fijado hace meses dejaba de sonar sin decir por qué.
+ *
+ * Acá se vuelve a resolver por `videoId`, que sí es identidad: el servicio
+ * devuelve la ruta que existe hoy —o la vuelve a bajar si no existe ninguna— y
+ * la canción suena. Quien llama recibe también la ruta nueva, por si la puede
+ * guardar y ahorrarse el rodeo la próxima vez.
+ *
+ * Las canciones propias no tienen a dónde volver: su audio es el archivo que
+ * alguien subió y no se puede regenerar. Ahí el error viaja tal cual.
+ */
+export async function urlDeAudio(
+  path: string,
+  videoId?: string,
+): Promise<{ url: string; path: string }> {
+  try {
+    return { url: await signedUrl(path), path }
+  } catch (e) {
+    if (!videoId || videoId.startsWith('propia:') || path.includes('/')) throw e
+    const { path: vigente } = await pedirResolve({ videoId })
+    if (vigente === path) throw e
+    return { url: await signedUrl(vigente), path: vigente }
   }
 }
 
@@ -438,14 +478,60 @@ export async function fetchWaveform(
   videoId: string,
   buckets = 160,
   signal?: AbortSignal,
+  /**
+   * Un pedazo de la canción, en vez de toda.
+   *
+   * Sin esto, dibujar un fragmento de quince segundos de un tema de seis
+   * minutos sale de dos barras estiradas: la onda es la del tema y el recorte
+   * es una franja diminuta adentro. Con el tramo, las barras son de ese pedazo.
+   */
+  tramo?: { desdeMs: number; durMs: number },
 ): Promise<Waveform> {
+  const rango = tramo ? `&desdeMs=${Math.round(tramo.desdeMs)}&durMs=${Math.round(tramo.durMs)}` : ''
   const res = await fetchMusica(
-    `${MUSIC_API}/peaks?videoId=${encodeURIComponent(videoId)}&buckets=${buckets}`,
+    `${MUSIC_API}/peaks?videoId=${encodeURIComponent(videoId)}&buckets=${buckets}${rango}`,
     { signal },
   )
   const data = (await res.json()) as Waveform & { error?: string }
   if (!res.ok || data.error) throw new Error(data.error ?? 'No se pudo leer la canción')
   return data
+}
+
+/**
+ * Ondas ya pedidas, mientras la app viva.
+ *
+ * Una misma canción se dibuja en varios lados a la vez —un perfil con dos
+ * fragmentos del mismo tema, una conversación donde volvió a aparecer— y el
+ * pedido es idéntico. Se guarda la **promesa** y no el resultado: así dos
+ * tarjetas que se montan en el mismo cuadro comparten un solo viaje.
+ */
+const ondas = new Map<string, Promise<number[]>>()
+
+/**
+ * La onda de una canción para dibujarla en una tarjeta.
+ *
+ * A diferencia de `fetchWaveform`, esta no se cancela ni falla ruidosamente: es
+ * un adorno informado, no el contenido de la pantalla. Quien la pide dibuja
+ * otra cosa mientras no esté.
+ */
+export function picosDeCancion(
+  videoId: string,
+  barras = 120,
+  tramo?: { desdeMs: number; durMs: number },
+): Promise<number[]> {
+  const clave = `${videoId}:${barras}:${tramo ? `${tramo.desdeMs}-${tramo.durMs}` : 'todo'}`
+  const yaVa = ondas.get(clave)
+  if (yaVa) return yaVa
+
+  const viaje = fetchWaveform(videoId, barras, undefined, tramo)
+    .then((w) => w.peaks)
+    .catch((e: unknown) => {
+      // Un fallo no se cachea: la canción puede no estar guardada todavía.
+      ondas.delete(clave)
+      throw e
+    })
+  ondas.set(clave, viaje)
+  return viaje
 }
 
 // ── Letra sincronizada ─────────────────────────────────────────────────────

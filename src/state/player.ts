@@ -1,13 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAudioPlayer } from 'expo-audio'
+import { useSharedValue } from 'react-native-reanimated'
 import type { SongSnippet } from '../models/message'
-import { headroomGain, signedUrl } from '../services/music'
+import { headroomGain, urlDeAudio } from '../services/music'
 import { pauseForSnippet, registerSnippetStopper } from './playback'
 import { saltar } from '../lib/seek'
 import { useAppActiva } from '../lib/appActiva'
 
 /** Mínimo entre dos saltos al mismo punto. Ver el loop de reproducción. */
 const SEEK_RETRY_MS = 600
+
+/**
+ * Cada cuánto se le avisa a React de la posición.
+ *
+ * Suficiente para el reloj —que muestra segundos— y para que la letra cambie de
+ * línea a tiempo. La onda no espera esto: se mueve por cuadro con su shared
+ * value. Ver `posicionSV`.
+ */
+const AVISO_MS = 120
 
 /**
  * Reproductor de fragmentos.
@@ -29,6 +39,18 @@ export function useSnippetPlayer() {
   const [url, setUrl] = useState<string | null>(null)
   const [playing, setPlaying] = useState(false)
   const [positionMs, setPositionMs] = useState(0)
+  /**
+   * La misma posición, pero para dibujar.
+   *
+   * El estado de React refresca cada `AVISO_MS`: alcanza de sobra para el reloj
+   * y para que la letra pase de línea, y evita re-renderizar la conversación
+   * entera sesenta veces por segundo mientras suena un fragmento. Lo que sí
+   * necesita cada cuadro es la onda, y eso se mueve por acá: en el hilo de UI,
+   * sin tocar el árbol de React.
+   */
+  const posicionSV = useSharedValue(0)
+  /** Cuándo se publicó la posición al estado por última vez. */
+  const avisadoEn = useRef(0)
   const raf = useRef<number | null>(null)
   const pendingPositionMs = useRef<number | null>(null)
   /** Cuándo se pidió el último salto, para no encimar saltos (ver el loop). */
@@ -57,6 +79,26 @@ export function useSnippetPlayer() {
    * su principio, sin que nadie hubiera tocado nada.
    */
   const pedido = useRef(false)
+
+  /**
+   * Deja la posición a la vista.
+   *
+   * `suave` es para el loop de reproducción: el dibujo se actualiza siempre, y
+   * a React se le avisa cada tanto. Ver `posicionSV`.
+   */
+  const marcarPosicion = useCallback(
+    (ms: number, suave = false) => {
+      // eslint-disable-next-line react-hooks/immutability
+      posicionSV.value = ms
+      if (suave) {
+        const ahora = performance.now()
+        if (ahora - avisadoEn.current < AVISO_MS) return
+        avisadoEn.current = ahora
+      }
+      setPositionMs(ms)
+    },
+    [posicionSV],
+  )
 
   const stop = useCallback(() => {
     player.pause()
@@ -89,7 +131,7 @@ export function useSnippetPlayer() {
           const from = inside ? positionMs : song.startMs
           seekAt.current = performance.now()
           await player.seekTo(from / 1000)
-          setPositionMs(from)
+          marcarPosicion(from)
           pauseForSnippet()
           player.play()
           setPlaying(true)
@@ -98,13 +140,13 @@ export function useSnippetPlayer() {
       }
       player.pause()
       setPlaying(false)
-      setPositionMs(song.startMs)
+      marcarPosicion(song.startMs)
       pendingPositionMs.current = null
       pedido.current = true
       setCurrent({ id, song })
-      setUrl(await signedUrl(song.path))
+      setUrl((await urlDeAudio(song.path, song.videoId)).url)
     },
-    [current, playing, player, positionMs],
+    [current, playing, player, positionMs, marcarPosicion],
   )
 
   const seek = useCallback(
@@ -128,19 +170,19 @@ export function useSnippetPlayer() {
          */
         seekAt.current = performance.now()
         await player.seekTo(targetMs / 1000)
-        setPositionMs(targetMs)
+        marcarPosicion(targetMs)
         return
       }
 
       player.pause()
       setPlaying(false)
-      setPositionMs(targetMs)
+      marcarPosicion(targetMs)
       pendingPositionMs.current = targetMs
       pedido.current = true
       setCurrent({ id, song })
-      setUrl(await signedUrl(song.path))
+      setUrl((await urlDeAudio(song.path, song.videoId)).url)
     },
-    [current, player],
+    [current, player, marcarPosicion],
   )
 
   // Arrancar cuando la URL firmada ya está cargada en el player, y solo si
@@ -189,7 +231,7 @@ export function useSnippetPlayer() {
            */
           player.pause()
           setPlaying(false)
-          setPositionMs(startMs + durationMs)
+          marcarPosicion(startMs + durationMs)
           return
         }
 
@@ -206,10 +248,10 @@ export function useSnippetPlayer() {
             seekAt.current = now
             saltar(player, startMs / 1000)
           }
-          setPositionMs(startMs)
+          marcarPosicion(startMs)
         } else {
           seekAt.current = 0
-          setPositionMs(ms)
+          marcarPosicion(ms, true)
         }
       }
       raf.current = requestAnimationFrame(tick)
@@ -218,7 +260,7 @@ export function useSnippetPlayer() {
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current)
     }
-  }, [playing, current, player, alaVista])
+  }, [playing, current, player, alaVista, marcarPosicion])
 
-  return { currentId: current?.id ?? null, playing, positionMs, toggle, seek, stop }
+  return { currentId: current?.id ?? null, playing, positionMs, posicionSV, toggle, seek, stop }
 }

@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { SongDisc } from '../../src/ui/SongDisc'
 import { Lyrics } from '../../src/ui/Lyrics'
+import { Onda, usePicos } from '../../src/ui/Onda'
 import { Popover } from '../../src/ui/Popover'
 import { isSentBy } from '../../src/models/message'
 import { markOpened, markRead } from '../../src/services/messages'
@@ -125,6 +126,10 @@ export default function MessageStory() {
 
   const message = messages.find((m) => m.id === id)
   const song = message?.song ?? null
+  const picos = usePicos(
+    song?.videoId,
+    song ? { desdeMs: song.startMs, durMs: song.durationMs } : undefined,
+  )
   const mine = message && user ? isSentBy(message, user.id) : false
 
   /*
@@ -358,6 +363,27 @@ export default function MessageStory() {
 
         {song ? (
           <View className="items-center gap-4 px-6 pb-4">
+            {/* La onda del fragmento, que además es la única forma de moverse
+                dentro de él: esta pantalla no tenía barra de posición. */}
+            {picos ? (
+              <View className="w-full max-w-xl">
+                <Onda
+                  picos={picos}
+                  posicionMs={player.posicionSV}
+                  desdeMs={song.startMs}
+                  duracionMs={song.durationMs}
+                  activa={player.currentId === message.id}
+                  onSeek={(fraccion) =>
+                    player
+                      .seek(message.id, song, fraccion)
+                      .catch((e: unknown) => avisar(mensajeError(e), true))
+                  }
+                  height={48}
+                  etiqueta={song.title}
+                />
+              </View>
+            ) : null}
+
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}

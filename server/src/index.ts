@@ -68,6 +68,58 @@ async function medirDuracionMs(
   }
 }
 
+/**
+ * La onda de una canción, guardada al lado del audio.
+ *
+ * Calcularla es caro de verdad: ffmpeg baja el tema entero y lo decodifica a
+ * PCM. Eso se banca una vez, en el editor de fragmento; no se banca cada vez
+ * que alguien abre un perfil o desliza el chat, que es donde la onda pasó a
+ * dibujarse. El resultado es un puñado de números, así que se archiva como un
+ * JSON diminuto —del orden de un kilobyte— en el mismo bucket que el audio.
+ *
+ * La clave lleva la cantidad de barras porque una onda de 160 no se puede
+ * derivar de una de 60 sin inventar detalle.
+ */
+function rutaPicos(videoId: string, buckets: number, desdeMs: number, durMs: number): string {
+  const tramo = durMs > 0 ? `-${Math.round(desdeMs)}-${Math.round(durMs)}` : ''
+  return `picos/${videoId}-${buckets}${tramo}.json`
+}
+
+/**
+ * El archivo de audio de una canción, sea cual sea su extensión.
+ *
+ * El nombre canónico es `.m4a`, pero lo guardado antes de esa decisión son
+ * `.webm`, y si YouTube no ofreciera mp4 para algún tema volvería a haberlos.
+ * Dar por sentada la extensión era la diferencia entre dibujar la onda y
+ * responder «esa canción no está guardada» de un archivo que sí está.
+ */
+async function archivoDeCancion(
+  storage: NonNullable<typeof supabase>,
+  videoId: string,
+): Promise<string | null> {
+  const { data } = await storage.storage.from(BUCKET).list('', { search: videoId })
+  const encontrados = (data ?? []).filter((f) => f.name.startsWith(`${videoId}.`))
+  if (!encontrados.length) return null
+  const canonico = encontrados.find((f) => f.name === `${videoId}.m4a`)
+  return (canonico ?? encontrados[0]).name
+}
+
+async function picosGuardados(
+  storage: NonNullable<typeof supabase>,
+  ruta: string,
+): Promise<{ peaks: number[]; durationMs: number } | null> {
+  try {
+    const { data, error } = await storage.storage.from(BUCKET).download(ruta)
+    if (error || !data) return null
+    const leido = JSON.parse(await data.text()) as { peaks?: unknown; durationMs?: unknown }
+    if (!Array.isArray(leido.peaks) || typeof leido.durationMs !== 'number') return null
+    return { peaks: leido.peaks as number[], durationMs: leido.durationMs }
+  } catch {
+    // Un JSON corrupto no vale más que no tenerlo: se vuelve a calcular.
+    return null
+  }
+}
+
 const PORT = Number(process.env.PORT ?? 8787)
 const BUCKET = process.env.AUDIO_BUCKET ?? 'songs'
 const SUPABASE_URL = process.env.SUPABASE_URL
@@ -270,13 +322,47 @@ const server = createServer(async (req, res) => {
       if (!supabase) return json(500, { error: 'Storage no configurado' })
 
       const buckets = Math.max(40, Math.min(600, Number(url.searchParams.get('buckets')) || 160))
-      const nombre = `${videoId}.m4a`
+      /*
+       * El tramo pedido, si es un fragmento.
+       *
+       * Dibujar un fragmento de quince segundos con la onda de la canción
+       * entera es dibujar otra cosa: en un tema de seis minutos, esos quince
+       * segundos son dos barras. Con el tramo, las ciento cuarenta barras de la
+       * tarjeta son ciento cuarenta barras **de ese pedazo**.
+       */
+      const desdeMs = Math.max(0, Number(url.searchParams.get('desdeMs')) || 0)
+      const durMs = Math.max(0, Number(url.searchParams.get('durMs')) || 0)
+      const ruta = rutaPicos(videoId, buckets, desdeMs, durMs)
+
+      const archivada = await picosGuardados(supabase, ruta)
+      if (archivada) return json(200, archivada)
+
+      const nombre = await archivoDeCancion(supabase, videoId)
+      if (!nombre) return json(404, { error: 'Esa canción no está guardada' })
       const { data: firmada, error: e } = await supabase.storage
         .from(BUCKET)
         .createSignedUrl(nombre, 300)
       if (e || !firmada?.signedUrl) return json(404, { error: 'Esa canción no está guardada' })
 
-      return json(200, await peaks(firmada.signedUrl, buckets))
+      const onda = await peaks(
+        firmada.signedUrl,
+        buckets,
+        durMs > 0 ? { desdeMs, durMs } : undefined,
+      )
+      /*
+       * Se archiva sin esperar y sin que importe si falla: la onda ya está
+       * calculada y quien la pidió no tiene por qué esperar a que se guarde. Si
+       * no se pudo guardar, la próxima vez se calcula de nuevo y listo.
+       */
+      void supabase.storage
+        .from(BUCKET)
+        .upload(ruta, JSON.stringify(onda), {
+          contentType: 'application/json',
+          upsert: true,
+        })
+        .catch(() => {})
+
+      return json(200, onda)
     }
 
     if (url.pathname === '/img' && req.method === 'GET') {

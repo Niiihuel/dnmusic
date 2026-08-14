@@ -12,12 +12,17 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native'
-import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated'
+import Animated, {
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+  type SharedValue,
+} from 'react-native-reanimated'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { contactInitial, formatMessageDate } from '../src/ui/MessageCard'
 import { ChatBubble } from '../src/ui/ChatBubble'
+import { Onda, usePicos } from '../src/ui/Onda'
 import { SearchField } from '../src/ui/SearchField'
 import { SkeletonList } from '../src/ui/Skeleton'
 import { ResizableRegion } from '../src/ui/ResizableRegion'
@@ -1840,11 +1845,13 @@ export default function Home() {
                           mine={isSentBy(item, myUid)}
                           selected={showDetail && selected?.id === item.id}
                           playing={player.currentId === item.id && player.playing}
+                          sonando={player.currentId === item.id}
                           positionMs={
                             player.currentId === item.id
                               ? player.positionMs
                               : (item.song?.startMs ?? 0)
                           }
+                          posicionSV={player.posicionSV}
                           onPlay={() =>
                             item.song
                               ? player
@@ -2063,7 +2070,9 @@ export default function Home() {
                         mine={selected ? isSentBy(selected, myUid) : false}
                         contactName={contactName}
                         playing={selected?.id === player.currentId && player.playing}
+                        sonando={selected?.id === player.currentId}
                         positionMs={player.positionMs}
+                        posicionSV={player.posicionSV}
                         showCollapse={vivo && hovered}
                         onCollapse={vivo ? () => setRightCollapsed(true) : () => undefined}
                         onPlay={
@@ -2074,6 +2083,12 @@ export default function Home() {
                                   .catch((e: unknown) => avisar(mensajeError(e), true))
                             : () => undefined
                         }
+                        onSeek={(fraccion) => {
+                          if (!vivo || !selected?.song) return
+                          player
+                            .seek(selected.id, selected.song, fraccion)
+                            .catch((e: unknown) => avisar(mensajeError(e), true))
+                        }}
                       />
                     </Panel>
                   )
@@ -2372,23 +2387,36 @@ function Detail({
   mine,
   contactName,
   playing,
+  sonando,
   positionMs,
+  posicionSV,
   showCollapse,
   onCollapse,
   onPlay,
+  onSeek,
 }: {
   message: Message | null
   mine: boolean
   contactName: string
   playing: boolean
+  /** Es el mensaje cargado en el reproductor, suene o esté en pausa. */
+  sonando: boolean
   positionMs: number
+  posicionSV: SharedValue<number>
   showCollapse: boolean
   onCollapse: () => void
   onPlay: () => void
+  onSeek: (fraccion: number) => void
 }) {
-  /* Lo que tapa el reproductor flotante. Va antes del `if`: los hooks no
-     pueden quedar detrás de un retorno temprano. */
+  /* Lo que tapa el reproductor flotante, y la onda del tema. Van antes del
+     `if`: los hooks no pueden quedar detrás de un retorno temprano. */
   const pisoDetalle = usePiso(32)
+  const picos = usePicos(
+    message?.song?.videoId,
+    message?.song
+      ? { desdeMs: message.song.startMs, durMs: message.song.durationMs }
+      : undefined,
+  )
   if (!message) {
     return (
       <View className="flex-1">
@@ -2504,6 +2532,21 @@ function Detail({
               )}
             </Pressable>
           </View>
+          {/* La onda, que acá además es la única forma de moverse dentro del
+              fragmento: el detalle no tenía barra de posición. */}
+          {picos ? (
+            <Onda
+              picos={picos}
+              posicionMs={posicionSV}
+              desdeMs={song.startMs}
+              duracionMs={song.durationMs}
+              activa={sonando}
+              onSeek={onSeek}
+              height={44}
+              etiqueta={song.title}
+            />
+          ) : null}
+
           {song.lyrics?.length ? (
             isSounding ? (
               <Lyrics lines={song.lyrics} atMs={positionMs} visible={3} />

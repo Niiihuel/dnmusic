@@ -271,10 +271,28 @@ export async function search(query: string, limit = 20): Promise<YtTrack[]> {
 export async function peaks(
   audioUrl: string,
   buckets: number,
+  tramo?: { desdeMs: number; durMs: number },
 ): Promise<{ peaks: number[]; durationMs: number }> {
+  /*
+   * El tramo, cuando se pide uno.
+   *
+   * `-ss` va **antes** de `-i`: así ffmpeg salta hasta ahí en el archivo en vez
+   * de decodificar todo lo anterior y tirarlo. Es la diferencia entre medir un
+   * fragmento de quince segundos y medir la canción entera para quedarse con
+   * quince segundos — que es justo lo que hace falta para dibujar la onda de un
+   * fragmento en un perfil o en el chat.
+   */
+  const recorte = tramo
+    ? ['-ss', (tramo.desdeMs / 1000).toFixed(3), '-t', (tramo.durMs / 1000).toFixed(3)]
+    : []
   const { stdout } = await run(
     'ffmpeg',
-    ['-loglevel', 'error', '-i', audioUrl, '-ac', '1', '-ar', '8000', '-f', 's16le', '-'],
+    [
+      '-loglevel', 'error',
+      ...recorte,
+      '-i', audioUrl,
+      '-ac', '1', '-ar', '8000', '-f', 's16le', '-',
+    ],
     { encoding: 'buffer', maxBuffer: 256 * 1024 * 1024 },
   )
   const muestras = new Int16Array(

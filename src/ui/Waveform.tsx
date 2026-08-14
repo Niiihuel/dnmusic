@@ -8,22 +8,29 @@ import Animated, {
   useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated'
+import {
+  BARRA,
+  HUECO,
+  ONDA_ADELANTE,
+  ONDA_PENDIENTE,
+  ONDA_SONADA,
+  remuestrear,
+  trazoDeBarras,
+} from './Onda'
 
-/** Ancho ideal de una barra más su separación. */
-const PITCH = 5
-const BAR_GAP = 2
-const MIN_BAR = 3
+/** Ancho ideal de una barra más su separación. La misma geometría que `Onda`. */
+const PITCH = BARRA + HUECO
 /** Tope de barras dibujadas: más que esto no se distinguen a simple vista. */
 const MAX_BARS = 1200
 
 /*
- * Los tres tonos de la onda, de más apagado a más brillante:
- * fuera del recorte, dentro pero todavía sin sonar, y ya reproducido. Salen de
- * la paleta de docs/DESIGN.md; el blanco puro queda para lo activo.
+ * Los tres tonos de la onda, de más apagado a más brillante: fuera del recorte,
+ * dentro pero todavía sin sonar, y ya reproducido. Son los mismos que usa la
+ * onda de las tarjetas — separados por luminancia, nunca por color.
  */
-const BAR_OUTSIDE = '#4D4D4D'
-const BAR_AHEAD = '#B3B3B3'
-const BAR_PLAYED = '#FFFFFF'
+const BAR_OUTSIDE = ONDA_PENDIENTE
+const BAR_AHEAD = ONDA_ADELANTE
+const BAR_PLAYED = ONDA_SONADA
 
 /**
  * Qué tan cerca del borde de la pintura hay que agarrar para mover la
@@ -93,31 +100,13 @@ export function Waveform({
       Math.max(visibleBars, Math.round(visibleBars * (durationMs / windowMs))),
     )
     const pitch = width / visibleBars
-    const bars = resample(peaks, totalBars)
-    const barW = Math.max(1, pitch - BAR_GAP)
+    const bars = remuestrear(peaks, totalBars)
+    const barW = Math.max(1, pitch - HUECO)
 
-    /*
-     * Toda la onda en UN solo trazo.
-     *
-     * Antes cada barra era una View propia: con el tope de 1200 barras eso son
-     * ~2400 nodos, y como el ancho del panel se anima al colapsar la columna,
-     * el layout se recalculaba entero en cada cuadro. Medido: cuadros de hasta
-     * 166 ms y tareas de 179 ms — los tirones que se veían.
-     *
-     * Cada barra es un segmento vertical del mismo trazo. El grosor lo da
-     * `strokeWidth` y las puntas redondeadas `strokeLinecap`, así que se ve
-     * igual que antes pero son cuatro nodos en total en vez de miles.
-     */
-    let d = ''
-    for (let i = 0; i < bars.length; i++) {
-      const x = i * pitch + pitch / 2
-      const full = Math.max(MIN_BAR, bars[i] * height * 0.92)
-      // La punta redonda sobresale medio grosor de cada lado: el segmento se
-      // acorta esa cantidad para que el alto final sea el pedido.
-      const inner = Math.max(0.01, full - barW)
-      const top = (height - inner) / 2
-      d += `M${x.toFixed(1)} ${top.toFixed(1)}v${inner.toFixed(1)}`
-    }
+    // El dibujo es el mismo que el de las tarjetas: un solo trazo para toda la
+    // onda, y la misma curva para que la forma de un tema se vea igual en el
+    // editor que después en el perfil o en el chat. Ver `trazoDeBarras`.
+    const d = trazoDeBarras(bars, pitch, height, barW)
 
     return { bars, pitch, barW, path: d, stripW: totalBars * pitch, pxPerMs: (totalBars * pitch) / durationMs }
   }, [peaks, width, durationMs, windowMs, height])
@@ -307,25 +296,4 @@ export function Waveform({
       </View>
     </GestureDetector>
   )
-}
-
-/**
- * Reduce (o expande) la onda a `target` barras promediando por tramo.
- *
- * Promediar y no tomar una muestra cada N: al submuestrear, un pico aislado se
- * pierde o se agranda según dónde caiga el índice, y la forma "parpadea" al
- * cambiar de zoom.
- */
-function resample(peaks: number[], target: number): number[] {
-  if (target >= peaks.length) return peaks
-  const out: number[] = new Array(target)
-  const per = peaks.length / target
-  for (let i = 0; i < target; i++) {
-    const from = Math.floor(i * per)
-    const to = Math.min(peaks.length, Math.floor((i + 1) * per))
-    let sum = 0
-    for (let j = from; j < to; j++) sum += peaks[j]
-    out[i] = to > from ? sum / (to - from) : 0
-  }
-  return out
 }
