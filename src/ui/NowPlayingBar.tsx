@@ -21,6 +21,7 @@ import {
 } from '../state/playback'
 import { salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
 import { BORDE_REFERENTE, Glass, HAY_VIDRIO } from './Glass'
+import { compartirHistoria } from './CompartirHistoria'
 import { Menu, type MenuItem } from './Menu'
 import { SeekBar, formatClock } from './SeekBar'
 import { BotonAleatorio, BotonRepetir } from './Transport'
@@ -33,6 +34,7 @@ import {
   IconPlay,
   IconPrevious,
   IconRepeat,
+  IconShare,
   IconShuffle,
   IconCola,
   IconDisc,
@@ -198,6 +200,15 @@ export function NowPlayingBar({
       disabled: last,
       icon: <IconNext size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'forward.end',
+    },
+    /* La tarjeta 1080×1920 de lo que suena: en el teléfono abre la hoja de
+       compartir (Instagram ofrece «Agregar a tu historia»); en la web se
+       descarga el PNG. Ver `CompartirHistoria`. */
+    {
+      label: 'Compartir en una historia',
+      onPress: () => compartirHistoria(current),
+      icon: <IconShare size={15} color={ICON_COLOR.muted} />,
+      sfSymbol: 'square.and.arrow.up',
     },
     /* En un Jam, «cerrar» es irse de él: cerrar solo el reproductor dejaría
        la membresía viva y la cola volvería sola con el próximo evento. */

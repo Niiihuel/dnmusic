@@ -49,6 +49,7 @@ import { SearchRow } from '../src/ui/SearchRow'
 import { Aviso } from '../src/ui/Aviso'
 import { NowPlayingBar } from '../src/ui/NowPlayingBar'
 import { MotorAudio } from '../src/ui/MotorAudio'
+import { CompartirHistoria } from '../src/ui/CompartirHistoria'
 import { FilaChat } from '../src/ui/TabBar'
 import { Cascara } from '../src/ui/Cascara'
 import '../global.css'
@@ -443,6 +444,9 @@ function Chrome() {
        * No dibuja nada; solo suena. Ver `src/ui/MotorAudio.tsx`.
        */}
       <MotorAudio />
+      {/* La tarjeta de compartir a historias: tampoco dibuja nada hasta que
+          alguien pide una. Ver `src/ui/CompartirHistoria.tsx`. */}
+      <CompartirHistoria />
 
       {/*
        * El panel lateral va **debajo** y de borde a borde; lo que se mueve es
