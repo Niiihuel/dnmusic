@@ -242,6 +242,10 @@ export function registerRelleno(fn: (() => Promise<PlaylistTrack[]>) | null) {
 export type JamBridge = {
   activo: () => boolean
   esHost: () => boolean
+  /** Si el Jam está sonando según el servidor, más allá de este aparato. */
+  suena: () => boolean
+  /** Dónde va la canción AHORA según el reloj compartido; null sin Jam. */
+  posicionObjetivoMs: () => number | null
   transporte: (
     accion: 'play' | 'pause' | 'seek' | 'siguiente' | 'anterior' | 'tocar',
     ms?: number,
@@ -483,6 +487,23 @@ export function playAt(index: number) {
 
 export function resumePlayback() {
   if (store.get().index < 0) return
+  /*
+   * Play de un invitado con el Jam ya sonando: reengancharse, no publicar.
+   *
+   * `jam_play` reescribe el arranque con la posición **guardada** — la del
+   * último cambio de tema o pausa, que puede ser el cero de `jam_tocar` — así
+   * que un invitado cuyo aparato quedó en pausa (un fragmento del chat, una
+   * interrupción) al darle play mandaba a TODO el Jam de vuelta a ese segundo
+   * viejo: la música «se reseteaba sola» para los demás. Si el Jam suena, el
+   * único que necesita moverse es este aparato: se suma en el segundo por el
+   * que va la música. El host no pasa por acá: su play sí publica, con su
+   * posición real — su reproductor es la verdad del Jam.
+   */
+  if (jam?.activo() && jam.suena() && !jam.esHost()) {
+    stopSnippets()
+    reengancharAlJam()
+    return
+  }
   if (jam?.transporte('play')) return
   stopSnippets()
   store.set({ wantPlay: true })
@@ -496,6 +517,62 @@ export function pausePlayback() {
 export function togglePlayback() {
   if (store.get().wantPlay) pausePlayback()
   else resumePlayback()
+}
+
+/* ── Pausas que no vinieron de un botón de la app ──────────────────────────
+ *
+ * Un reel en Instagram, una llamada, el pitido de un mapa: iOS le corta el
+ * audio a la app y el motor lo detecta como una pausa externa. Fuera de un Jam
+ * eso ES una pausa —lo que sonaba se calla y queda en pausa, como siempre—,
+ * pero adentro de un Jam publicarla **pausaba la música de todos**: una
+ * persona miraba un video y el Jam entero se callaba.
+ *
+ * En un Jam, la interrupción es un problema de UN aparato: se pausa solo acá,
+ * el reloj compartido sigue corriendo, y al volver —la app al frente, o el
+ * play físico de los auriculares— este aparato se reengancha en el segundo
+ * por el que va el Jam. Es lo que hace Spotify con sus Jams.
+ */
+
+/** Si la última pausa fue una interrupción dentro de un Jam, para reengancharse al volver. */
+let interrumpidoEnJam = false
+
+export function pausaExterna() {
+  if (enJam()) {
+    interrumpidoEnJam = true
+    store.set({ wantPlay: false })
+    return
+  }
+  pausePlayback()
+}
+
+export function reanudacionExterna() {
+  if (enJam()) {
+    reengancharAlJam()
+    return
+  }
+  resumePlayback()
+}
+
+/**
+ * La app volvió al frente después de una interrupción en Jam: si el Jam sigue
+ * sonando, este aparato se suma de nuevo donde va la música — no donde la
+ * dejó. Si el Jam está en pausa de verdad, no hay nada que reanudar.
+ */
+export function reanudarTrasInterrupcion() {
+  if (!interrumpidoEnJam) return
+  reengancharAlJam()
+}
+
+function reengancharAlJam() {
+  interrumpidoEnJam = false
+  if (!jam?.activo()) return
+  if (!jam.suena()) return
+  const objetivo = jam.posicionObjetivoMs()
+  if (objetivo !== null) {
+    engine?.seekTo(objetivo)
+    store.set({ positionMs: objetivo })
+  }
+  store.set({ wantPlay: true })
 }
 
 export function playNext() {

@@ -261,8 +261,14 @@ export async function resolveSong(track: TrackResult, signal?: AbortSignal): Pro
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     // La carátula va en el pedido: el servicio la copia a Storage y así deja
-    // de depender del CDN de Google, que la corta con 429 cada tanto.
-    body: JSON.stringify({ videoId: track.videoId, artworkUrl: track.artworkUrl }),
+    // de depender del CDN de Google, que la corta con 429 cada tanto. La
+    // duración también, si se sabe: el camino cacheado la devuelve tal cual y
+    // solo mide el archivo cuando no la sabe nadie (portada: viene en cero).
+    body: JSON.stringify({
+      videoId: track.videoId,
+      artworkUrl: track.artworkUrl,
+      durationMs: track.durationMs || undefined,
+    }),
     signal,
   })
   const data = (await res.json()) as {

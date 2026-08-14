@@ -36,6 +36,8 @@ import {
   registerJam,
   reportProgress,
 } from './playback'
+import { leerAjustes } from './ajustes'
+import { proximasRecomendadas, type ArtistaEscuchado } from '../services/recomendaciones'
 import { avisar } from './aviso'
 import { createStore, useStore } from './store'
 
@@ -605,6 +607,8 @@ function transporte(
 registerJam({
   activo: () => store.get().jam !== null,
   esHost: () => soyHost(store.get()),
+  suena: jamSuena,
+  posicionObjetivoMs: jamPosicionObjetivoMs,
   transporte,
   encolar: agregarCancionAlJam,
   tocarAhora: tocarAhoraEnJam,
@@ -614,6 +618,78 @@ registerJam({
     void jamSaltar(s.jam.id).catch(() => programarRefetch())
   },
 })
+
+/* ── El relleno del Jam ───────────────────────────────────────────────────── */
+
+/** Si ya hay una tanda en camino: pedir dos veces al mismo final duplica canciones. */
+let rellenandoJam = false
+
+/**
+ * Cuando al Jam se le acaba la cola, el **host** lo mantiene sonando.
+ *
+ * Fuera de un Jam, el final de la lista sigue con recomendaciones (ver
+ * `rellenarSiFalta` en playback). Adentro no había nada: `jam_saltar` sin
+ * siguiente deja el Jam mudo con la misma canción en cero — apretar
+ * «siguiente» en la última se sentía como un bug, y lo era: la app promete
+ * que la música no se corta al terminarse la cola.
+ *
+ * Lo hace el host y nadie más: es el dueño del Jam (siempre tiene permiso de
+ * agregar), su historial es el ancla natural, y un solo aparato pidiendo evita
+ * tandas duplicadas. Corre cuando **arranca la última** canción de la cola
+ * —para que la tanda llegue antes del final, como afuera— y también si el Jam
+ * ya quedó mudo en el final: ahí además lo despierta.
+ */
+export async function rellenarJamSiFalta() {
+  const s = store.get()
+  if (!s.jam || !soyHost(s) || rellenandoJam) return
+  if (!leerAjustes().autoplay) return
+  const idx = s.jam.itemActual ? s.cola.findIndex((i) => i.id === s.jam?.itemActual) : -1
+  // Solo en la última canción: si hay algo después, no falta nada.
+  if (idx === -1 || idx < s.cola.length - 1) return
+
+  rellenandoJam = true
+  try {
+    /* Las anclas de respaldo salen de la cola del Jam, igual que afuera salen
+       de la cola que suena: si el historial del host no alcanza, seguir con
+       algo parecido a lo que se estuvo escuchando. */
+    const porArtista = new Map<string, ArtistaEscuchado>()
+    for (const item of s.cola) {
+      if (!item.artistId) continue
+      const previo = porArtista.get(item.artistId)
+      if (previo) previo.ms += Math.max(1, item.durationMs)
+      else porArtista.set(item.artistId, { artist_id: item.artistId, artist: item.artist, ms: Math.max(1, item.durationMs) })
+    }
+    const tanda = await proximasRecomendadas(
+      s.cola.map((i) => i.videoId),
+      [...porArtista.values()],
+    )
+
+    const ahora = store.get()
+    if (!ahora.jam || ahora.jam.id !== s.jam.id || !tanda.length) return
+    // En serie y no en paralelo: jam_agregar ancla cada una al final de la
+    // fila, y una ráfaga concurrente las dejaría en cualquier orden.
+    for (const track of tanda) {
+      await agregarAJam(ahora.jam.id, track)
+    }
+
+    /*
+     * Si el Jam ya estaba mudo en el final —alguien apretó «siguiente» en la
+     * última—, con cola nueva se lo despierta. Solo en ese caso: una pausa
+     * pedida a mano congela la posición donde iba, y el silencio del final
+     * queda exactamente en cero (ver `jam_saltar`); despertar sobre una pausa
+     * de verdad sería pisarle el botón a alguien.
+     */
+    const tras = store.get()
+    if (tras.jam && !tras.jam.suena && tras.jam.posicionMs === 0) {
+      await jamSaltar(tras.jam.id)
+    }
+  } catch {
+    // El relleno corre solo y no puede romper el Jam: sin tanda, silencio,
+    // que es lo que ya había.
+  } finally {
+    rellenandoJam = false
+  }
+}
 
 /* ── Hooks ────────────────────────────────────────────────────────────────── */
 

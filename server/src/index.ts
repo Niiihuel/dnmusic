@@ -1,4 +1,6 @@
 import { createServer } from 'node:http'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { createClient } from '@supabase/supabase-js'
 import {
   getAlbum,
@@ -33,6 +35,37 @@ import { cacheImage } from './artwork.js'
  * más rápido para quien escucha, y las flores ya enviadas siguen sonando aunque
  * YouTube rompa esto mañana.
  */
+
+const ejecutar = promisify(execFile)
+
+/**
+ * La duración de un audio ya guardado, medida del archivo mismo.
+ *
+ * Es el último recurso del camino cacheado de /resolve: solo corre cuando ni
+ * el cliente ni la búsqueda saben la duración (las canciones de la portada
+ * vienen sin ella). ffprobe lee la cabecera del contenedor — no decodifica el
+ * audio — así que tarda lo que tarda un GET del principio del archivo.
+ */
+async function medirDuracionMs(
+  storage: NonNullable<typeof supabase>,
+  path: string,
+): Promise<number | undefined> {
+  try {
+    const { data } = await storage.storage.from(BUCKET).createSignedUrl(path, 60)
+    if (!data?.signedUrl) return undefined
+    const { stdout } = await ejecutar('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'csv=p=0',
+      data.signedUrl,
+    ])
+    const segundos = Number(String(stdout).trim())
+    return Number.isFinite(segundos) && segundos > 0 ? Math.round(segundos * 1000) : undefined
+  } catch {
+    // Sin duración medible se devuelve nada: el cliente queda como estaba.
+    return undefined
+  }
+}
 
 const PORT = Number(process.env.PORT ?? 8787)
 const BUCKET = process.env.AUDIO_BUCKET ?? 'songs'
@@ -298,7 +331,11 @@ const server = createServer(async (req, res) => {
     }
 
     if (url.pathname === '/resolve' && req.method === 'POST') {
-      const body = await readJson(req) as { videoId?: string; artworkUrl?: string }
+      const body = await readJson(req) as {
+        videoId?: string
+        artworkUrl?: string
+        durationMs?: number
+      }
       const videoId = body.videoId
       if (!videoId) return json(400, { error: 'Falta videoId' })
       if (!supabase) return json(500, { error: 'Storage no configurado' })
@@ -331,7 +368,21 @@ const server = createServer(async (req, res) => {
       // Si ya se resolvió antes, no se vuelve a tocar YouTube.
       const { data: existing } = await supabase.storage.from(BUCKET).list('', { search: path })
       if (existing?.some((f) => f.name === path)) {
-        return json(200, { path, artworkPath: await artworkP, cached: true })
+        /*
+         * La duración también en el camino cacheado.
+         *
+         * Antes no venía, y el cliente caía a la que trajera el resultado de
+         * búsqueda — que en las canciones de la portada es **cero**. Ese cero
+         * viajaba a la lista, al Jam y a la barra: «0:00» de total, la barra
+         * de posición muerta. Si el cliente ya sabe la duración se le devuelve
+         * la suya; si no la sabe nadie, se mide del archivo guardado, que para
+         * eso está.
+         */
+        const durationMs =
+          body.durationMs && body.durationMs > 0
+            ? body.durationMs
+            : await medirDuracionMs(supabase, path)
+        return json(200, { path, artworkPath: await artworkP, cached: true, durationMs })
       }
 
       const audio = await resolveAudio(videoId)

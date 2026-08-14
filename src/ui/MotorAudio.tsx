@@ -8,14 +8,15 @@ import { anotarEscucha } from '../services/plays'
 import type { PlaylistTrack } from '../services/playlists'
 import {
   advance,
-  pausePlayback,
+  pausaExterna,
+  reanudacionExterna,
+  reanudarTrasInterrupcion,
   registerEngine,
   registerRelleno,
   rellenarSiFalta,
   reportCargada,
   reportError,
   reportProgress,
-  resumePlayback,
   usePlaybackState,
 } from '../state/playback'
 import { proximasRecomendadas, type ArtistaEscuchado } from '../services/recomendaciones'
@@ -24,6 +25,7 @@ import {
   jamEsperaArranqueMs,
   jamPosicionObjetivoMs,
   jamSuena,
+  rellenarJamSiFalta,
   useJamActivo,
   useJamRevision,
   useJamSilencioso,
@@ -300,6 +302,18 @@ export function MotorAudio() {
     if (!current || nextUp || !playing) return
     rellenarSiFalta()
   }, [current, nextUp, playing])
+
+  /*
+   * El relleno del Jam, aparte del común: lo maneja el host contra el
+   * servidor (ver `rellenarJamSiFalta`), y su disparador es cada mutación del
+   * Jam — el arranque de la última canción de la cola llega como un cambio de
+   * `itemActual`, o sea una revisión nueva. La función revisa sola que
+   * corresponda: ser host, autoplay prendido, última canción, sin tanda ya en
+   * vuelo.
+   */
+  useEffect(() => {
+    if (enJam) void rellenarJamSiFalta()
+  }, [enJam, jamRev])
 
   /**
    * El salto que la cola pidió y el reproductor todavía no aplicó.
@@ -611,10 +625,18 @@ export function MotorAudio() {
        */
       if (Platform.OS !== 'ios') return
 
+      /*
+       * Por los caminos «externos» y no por pause/resume directos: en un Jam,
+       * una interrupción de audio —un reel, una llamada— pausaba por acá y el
+       * intent viajaba al servidor, callando la música DE TODOS. La pausa
+       * externa en Jam es local; al reanudarse, el aparato se reengancha en
+       * el segundo por el que va el Jam. Fuera de un Jam son la pausa y el
+       * play de siempre.
+       */
       const nowPlaying = status.timeControlStatus === 'playing'
       const paused = status.timeControlStatus === 'paused'
-      if (soundingBefore.current && paused) pausePlayback()
-      else if (!soundingBefore.current && nowPlaying) resumePlayback()
+      if (soundingBefore.current && paused) pausaExterna()
+      else if (!soundingBefore.current && nowPlaying) reanudacionExterna()
       soundingBefore.current = nowPlaying
     })
     return () => sub.remove()
@@ -758,6 +780,10 @@ export function MotorAudio() {
     if (!alaVista || !current) return
     const t = player.currentTime
     if (Number.isFinite(t)) reportProgress(t * 1000, playerTotalS(player, current) * 1000)
+    /* Si mientras estuvo atrás una interrupción pausó este aparato dentro de
+       un Jam, volver al frente es el momento de reengancharse: el Jam siguió
+       sin nosotros y hay que sumarse donde va, no donde quedamos. */
+    reanudarTrasInterrupcion()
   }, [alaVista, current, player])
 
   useEffect(() => {
