@@ -34,8 +34,10 @@ export function FilaCuenta({
   busy?: boolean
   /** Tocar la fila: abrir la conversación, o el flujo de redactar si no hay. */
   onAbrir: () => void
-  onSolicitar: () => void
-  onAceptar: () => void
+  /** Sin estos dos, la fila no dibuja botones: es una fila de **elegir** — la
+   *  usa así el redactar, donde la acción es el botón grande de abajo. */
+  onSolicitar?: () => void
+  onAceptar?: () => void
 }) {
   const nombre = contactLabel(cuenta)
   const subtitulo = cuenta.pairId
@@ -70,7 +72,7 @@ export function FilaCuenta({
         <View className="h-9 w-9 items-center justify-center">
           <ActivityIndicator color={ICON_COLOR.muted} />
         </View>
-      ) : cuenta.solicitud === 'recibida' ? (
+      ) : cuenta.solicitud === 'recibida' && onAceptar ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Aceptar la solicitud de ${nombre}`}
@@ -79,7 +81,7 @@ export function FilaCuenta({
         >
           <IconCheck size={15} color={ICON_COLOR.onPrimary} />
         </Pressable>
-      ) : !cuenta.pairId && cuenta.solicitud === null ? (
+      ) : !cuenta.pairId && cuenta.solicitud === null && onSolicitar ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Enviarle una solicitud a ${nombre}`}

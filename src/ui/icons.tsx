@@ -87,10 +87,24 @@ function make(Component: typeof Search) {
   }
 }
 
+/**
+ * Como `make`, pero con la figura **rellena**.
+ *
+ * Es para los controles de transporte: play, pausa y los saltos van sólidos en
+ * Apple Music y en Spotify — el contorno fino se lee como estado apagado, y el
+ * botón que más se toca de la app no puede parecer apagado. El resto del
+ * sistema sigue a trazo, que es lo que pide el monocromo.
+ */
+function makeFilled(Component: typeof Search) {
+  return function Icon({ size = 18, color = '#FFFFFF', strokeWidth = STROKE }: IconProps) {
+    return <Component size={size} color={color} fill={color} strokeWidth={strokeWidth} />
+  }
+}
+
 export const IconSearch = make(Search)
 export const IconClose = make(X)
-export const IconPlay = make(Play)
-export const IconPause = make(Pause)
+export const IconPlay = makeFilled(Play)
+export const IconPause = makeFilled(Pause)
 export const IconMusic = make(Music)
 export const IconCheck = make(Check)
 export const IconChevronUp = make(ChevronUp)
@@ -116,8 +130,8 @@ export const IconHome = make(House)
 export const IconInbox = make(Inbox)
 export const IconLock = make(LockKeyhole)
 export const IconSend = make(Send)
-export const IconPrevious = make(SkipBack)
-export const IconNext = make(SkipForward)
+export const IconPrevious = makeFilled(SkipBack)
+export const IconNext = makeFilled(SkipForward)
 export const IconMore = make(Ellipsis)
 export const IconImage = make(ImagePlus)
 export const IconPencil = make(Pencil)

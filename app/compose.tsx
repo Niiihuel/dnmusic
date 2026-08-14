@@ -16,13 +16,17 @@ import { useRouter } from 'expo-router'
 import { volver } from '../src/lib/volver'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../src/ui/Panel'
+import { Avatar } from '../src/ui/Avatar'
+import { FilaCuenta } from '../src/ui/FilaCuenta'
+import { Vacio } from '../src/ui/Vacio'
 import { ResizableRegion } from '../src/ui/ResizableRegion'
 import { AnimatedSidebarTitle, CollapsedSidebar } from '../src/ui/SidebarMotion'
 import { SearchField } from '../src/ui/SearchField'
 import { SkeletonList } from '../src/ui/Skeleton'
-import { contactInitial } from '../src/ui/MessageCard'
 import { sendMessage } from '../src/services/messages'
 import {
+  contactLabel,
+  contactTitle,
   searchContacts,
   sendContactRequest,
   toContact,
@@ -41,7 +45,6 @@ import { usePiso } from '../src/state/shell'
 import { artworkSource } from '../src/lib/artwork'
 import {
   ICON_COLOR,
-  IconCheck,
   IconCollapseLeft,
   IconCollapseRight,
   IconClose,
@@ -81,10 +84,6 @@ export default function Compose() {
   const router = useRouter()
 
   const recipient = draft.recipient ?? (draft.chooseRecipient ? null : activeContact)
-  const conversationPairIds = useMemo(
-    () => new Set(conversations.map((conversation) => conversation.pairId)),
-    [conversations],
-  )
   const visibleResults = useMemo(
     () => results.filter((contact) => contact.id !== recipient?.id),
     [recipient?.id, results],
@@ -201,8 +200,19 @@ export default function Compose() {
     volver(router, '/')
   }
 
+  /*
+   * El selector de destinatario, con las mismas filas que la búsqueda de
+   * Chats (`FilaCuenta`): avatar, nombre y en qué están — sin botones, porque
+   * acá tocar la fila **elige** y la acción es el botón grande de abajo. En el
+   * teléfono ocupa la pantalla entera hasta que se elige; en escritorio sigue
+   * siendo el panel de la izquierda.
+   */
   const contactPicker = (
-    <View className={`${wide ? 'w-[300px]' : 'max-h-[300px]'} min-h-0 gap-3`}>
+    <View
+      className={`${
+        wide ? 'w-[300px]' : suelto ? 'min-h-0 flex-1' : 'max-h-[300px]'
+      } min-h-0 gap-3`}
+    >
       {!showContactSidebar ? (
         <View className="gap-1">
           <Text className="text-foreground text-lg font-semibold">Destinatario</Text>
@@ -218,90 +228,71 @@ export default function Compose() {
         loading={searching}
       />
 
-      {recipient ? (
-        <View className="flex-row items-center gap-3 rounded-xl bg-muted p-3">
-          <View className="h-10 w-10 items-center justify-center rounded-full bg-card">
-            <Text className="text-foreground text-sm font-semibold uppercase">
-              {contactInitial(recipient.username)}
-            </Text>
-          </View>
-          <View className="min-w-0 flex-1 gap-0.5">
-            <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
-              @{recipient.username}
-            </Text>
-            <Text className="text-muted-foreground text-[11px]">Destinatario elegido</Text>
-          </View>
-          <View className="h-7 w-7 items-center justify-center rounded-full bg-primary">
-            <IconCheck size={14} color={ICON_COLOR.onPrimary} />
-          </View>
-        </View>
-      ) : null}
-
       <View className="min-h-0 flex-1">
         {searching ? (
           <View className="py-2">
-            <SkeletonList rows={4} />
+            <SkeletonList rows={5} />
           </View>
         ) : searchError ? (
-          <View className="items-center gap-2 px-4 py-8">
-            <IconInbox size={20} color={ICON_COLOR.muted} />
-            <Text className="text-muted-foreground text-center text-xs leading-5">
-              {searchError}
-            </Text>
-          </View>
+          <Vacio
+            compacto
+            icono={<IconInbox size={20} color={ICON_COLOR.muted} />}
+            titulo="Sin resultados"
+            detalle={searchError}
+          />
         ) : visibleResults.length === 0 ? (
-          <Text className="px-4 py-8 text-center text-muted-foreground text-xs leading-5">
-            {recipient
-              ? 'Escribí otro usuario para cambiar el destinatario.'
-              : 'No hay otros contactos disponibles.'}
-          </Text>
+          <Vacio
+            compacto
+            icono={<IconInbox size={20} color={ICON_COLOR.muted} />}
+            titulo={recipient ? 'Destinatario elegido' : 'Nadie por acá'}
+            detalle={
+              recipient
+                ? 'Escribí otro usuario para cambiar el destinatario.'
+                : 'Probá con otro usuario.'
+            }
+          />
         ) : (
           <FlatList
             data={visibleResults}
             keyExtractor={(contact) => contact.id}
             keyboardShouldPersistTaps="handled"
             contentContainerClassName="gap-1"
-            renderItem={({ item }) => {
-              const selected = recipient?.id === item.id
-              const hasConversation =
-                item.pairId !== null && conversationPairIds.has(item.pairId)
-              return (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => chooseContact(item)}
-                  className={`flex-row items-center gap-3 rounded-lg p-2.5 active:opacity-80 ${
-                    selected ? 'bg-muted' : ''
-                  }`}
-                >
-                  <View className="h-10 w-10 items-center justify-center rounded-full bg-muted">
-                    <Text className="text-foreground text-xs font-semibold uppercase">
-                      {contactInitial(item.username)}
-                    </Text>
-                  </View>
-                  <View className="min-w-0 flex-1 gap-0.5">
-                    <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
-                      @{item.username}
-                    </Text>
-                    <Text className="text-muted-foreground text-[11px]">
-                      {hasConversation
-                        ? 'Ya está en tus conversaciones'
-                        : item.solicitud === 'enviada'
-                          ? 'Solicitud enviada'
-                          : item.solicitud === 'recibida'
-                            ? 'Te envió una solicitud'
-                            : 'Enviarle una solicitud'}
-                    </Text>
-                  </View>
-                  {selected ? <IconCheck size={16} color={ICON_COLOR.foreground} /> : null}
-                </Pressable>
-              )
-            }}
+            renderItem={({ item }) => (
+              <FilaCuenta cuenta={item} onAbrir={() => chooseContact(item)} />
+            )}
           />
         )}
       </View>
     </View>
   )
+
+  /*
+   * El destinatario elegido, como tarjeta con su salida.
+   *
+   * En el teléfono reemplaza al selector: elegir pasa de pantalla, y la cruz
+   * vuelve a la búsqueda. Es el flujo de dos pasos de cualquier «nuevo
+   * mensaje» de iOS — antes convivían el buscador, su esqueleto y el editor
+   * apilados en la misma pantalla, pisándose entre sí.
+   */
+  const chipDestinatario = recipient ? (
+    <View className="flex-row items-center gap-3 rounded-xl bg-card p-3">
+      <Avatar name={contactLabel(recipient)} path={recipient.avatarPath} size={44} />
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
+          {contactTitle(recipient)}
+        </Text>
+        <Text className="text-muted-foreground text-[11px]">@{recipient.username}</Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Cambiar el destinatario"
+        onPress={() => setDraft({ recipient: null, chooseRecipient: true })}
+        className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
+      >
+        <IconClose size={15} color={ICON_COLOR.muted} />
+      </Pressable>
+    </View>
+  ) : null
 
   const messageEditor = (
     <ScrollView
@@ -541,7 +532,10 @@ export default function Compose() {
 
             <Panel className="flex-1">
               {/* Sin línea divisoria: `docs/DESIGN.md` separa por luminancia.
-                  El `bg-card` contra el fondo del panel ya marca el bloque. */}
+                  El `bg-card` contra el fondo del panel ya marca el bloque.
+                  En el teléfono, mientras se elige a quién, esta franja sobra:
+                  la pantalla ES el buscador y el título ya dice Nuevo mensaje. */}
+              {suelto && !recipient ? null : (
               <View className="flex-row items-center justify-between bg-card px-5 py-3.5">
                 <View>
                   <Text className="text-foreground text-[15px] font-semibold">
@@ -563,12 +557,21 @@ export default function Compose() {
                   {draft.text.length}/{MAX_MESSAGE_LENGTH}
                 </Text>
               </View>
+              )}
 
               <View className="min-h-0 flex-1 gap-5 p-5">
-                {!showContactSidebar ? contactPicker : null}
-                {recipient && !puedeEscribir ? requestNotice : messageEditor}
+                {/* El teléfono va en dos pasos: primero el buscador a pantalla
+                    entera, después el destinatario como tarjeta y el mensaje. */}
+                {!showContactSidebar && !(suelto && recipient) ? contactPicker : null}
+                {suelto && recipient ? chipDestinatario : null}
+                {suelto && !recipient
+                  ? null
+                  : recipient && !puedeEscribir
+                    ? requestNotice
+                    : messageEditor}
               </View>
 
+              {suelto && !recipient ? null : (
               <View className="p-4" style={{ paddingBottom: piso }}>
                 <Pressable
                   accessibilityRole="button"
@@ -603,6 +606,7 @@ export default function Compose() {
                   )}
                 </Pressable>
               </View>
+              )}
             </Panel>
 
             {showSongSidebar ? (

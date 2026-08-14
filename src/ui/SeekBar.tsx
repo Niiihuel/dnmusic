@@ -157,18 +157,34 @@ export function SeekBar({
                 : null,
             ]}
           >
+            {/* Todo por `style`: NativeWind no procesa clases en componentes
+                animados (la trampa de docs/DESIGN.md). Con `className`, en la
+                web el relleno quedaba invisible y la perilla era un cuadrado
+                metido EN EL FLUJO — que encima corría de lugar los íconos que
+                venían después en la fila. Blanco literal: token foreground. */}
             <Animated.View
-              className="h-full w-full rounded-full bg-foreground"
-              style={[{ transformOrigin: 'left' }, relleno]}
+              style={[
+                {
+                  height: '100%',
+                  width: '100%',
+                  borderRadius: 999,
+                  backgroundColor: '#FFFFFF',
+                  transformOrigin: 'left',
+                },
+                relleno,
+              ]}
             />
           </View>
           <Animated.View
             pointerEvents="none"
-            className="absolute left-0 rounded-full bg-foreground"
             style={[
               {
+                position: 'absolute',
+                left: 0,
                 width: THUMB,
                 height: THUMB,
+                borderRadius: THUMB / 2,
+                backgroundColor: '#FFFFFF',
                 /* La perilla se despega de la pista con sombra, como la del
                    sistema — sobre una pista translúcida un círculo plano se
                    fundía con el relleno. */

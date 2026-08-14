@@ -13,10 +13,12 @@ import {
   View,
 } from 'react-native'
 import Animated, {
+  runOnJS,
   useAnimatedKeyboard,
   useAnimatedStyle,
   type SharedValue,
 } from 'react-native-reanimated'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
@@ -1022,6 +1024,40 @@ export default function Home() {
     await loadPlaylists()
   }
 
+  /*
+   * Volver arrastrando desde el borde izquierdo, como en toda app de iOS.
+   *
+   * El historial del panel del medio no es del navegador —es la pila de
+   * `Vista`— así que el gesto nativo de pop no existe y había que reponerlo:
+   * navegar a un álbum y no poder volver arrastrando se siente roto en un
+   * iPhone. Es el gesto **de borde** (los primeros 28px), igual que el del
+   * sistema: empezar más adentro no lo dispara, así los carruseles y la barra
+   * de posición siguen siendo dueños de su arrastre horizontal.
+   *
+   * Adentro de un chat, volver es cerrar el hilo — la misma flecha de la
+   * cabecera, en gesto.
+   */
+  const volverPorGesto = useCallback(() => {
+    if (!music && chatAbierto) {
+      setChatAbierto(false)
+      return
+    }
+    if (at > 0) goBack()
+  }, [music, chatAbierto, at, goBack])
+
+  const gestoVolver = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(suelto)
+        .hitSlop({ left: 0, width: 28 })
+        .activeOffsetX(20)
+        .failOffsetY([-20, 20])
+        .onEnd((e) => {
+          if (e.translationX > 60 || e.velocityX > 800) runOnJS(volverPorGesto)()
+        }),
+    [suelto, volverPorGesto],
+  )
+
   const selected =
     messages.find((message) => message.id === selectedId) ?? messages[messages.length - 1] ?? null
   const visibleConversations = useMemo(() => {
@@ -1644,6 +1680,11 @@ export default function Home() {
             </ResizableRegion>
           ) : null}
 
+          {/* El gesto de volver envuelve el panel del medio, solo activo en el
+              teléfono (`enabled(suelto)`): en escritorio el borde izquierdo es
+              de la biblioteca. */}
+          <GestureDetector gesture={gestoVolver}>
+          <View className="min-h-0 flex-1">
           {!suelto && music && pistaSonando && (caraSonando === 'lyrics' || caraSonando === 'disc') ? (
             /* La letra o el disco **toman el panel del medio**, como en
                Spotify: es contenido para mirar, no una ficha, y el lugar para
@@ -2168,6 +2209,8 @@ export default function Home() {
               )}
             </Panel>
           )}
+          </View>
+          </GestureDetector>
 
           {showDetail ? (
             <ResizableRegion

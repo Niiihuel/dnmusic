@@ -633,6 +633,8 @@ function GeneroPage({
 }) {
   const [cargado, setCargado] = useState<{ params: string; items: HomeItem[] } | null>(null)
   const fresco = cargado?.params === genero.params
+  const piso = usePiso(24)
+  const techo = useTecho(24)
 
   useEffect(() => {
     if (fresco) return
@@ -644,10 +646,40 @@ function GeneroPage({
   }, [genero.params, fresco])
 
   if (!fresco) {
+    /*
+     * El esqueleto calca la página que viene: la misma cabecera —la flecha y
+     * el nombre, que ya se saben— y una grilla de cuadrados donde van a estar
+     * las tapas. Antes se prestaba el esqueleto de la portada, sin techo:
+     * quedaba pegado al reloj y con la forma de otra pantalla.
+     */
     return (
-      <View className="min-h-0 flex-1 px-6 pt-6">
-        <Loading />
-      </View>
+      <ScrollView
+        className="min-h-0 flex-1"
+        contentContainerClassName="px-6"
+        contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
+      >
+        <View className="flex-row items-center gap-3 pb-4">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Volver a la portada"
+            onPress={onBack}
+            className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
+          >
+            <IconBack size={15} color={ICON_COLOR.muted} />
+          </Pressable>
+          <Text className="text-foreground text-2xl font-bold" numberOfLines={1}>
+            {genero.name}
+          </Text>
+        </View>
+        <View className="flex-row flex-wrap gap-4">
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <View key={i} className="gap-2">
+              <Skeleton width={CARD} height={CARD} radius={8} />
+              <Skeleton width={CARD * 0.7} height={13} />
+            </View>
+          ))}
+        </View>
+      </ScrollView>
     )
   }
 
