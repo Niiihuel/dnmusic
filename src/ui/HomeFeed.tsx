@@ -24,6 +24,11 @@ import { ICON_COLOR, IconBack, IconChevronRight, IconMusic } from './icons'
 
 /** Lado de una tapa en el carrusel, y el tamaño deseable en la grilla. */
 const CARD = 168
+/** La primera sección lleva tapas más grandes: es la vidriera de la portada,
+ *  como el «Latest» de Apple Music, que agranda justo lo más nuevo. */
+const CARD_GRANDE = 214
+/** Qué secciones son un chart: llevan el puesto adelante, como Apple Music. */
+const ES_CHART = /trending|éxitos|exitos|\btop\b|charts?/i
 /** El hueco entre tapas de la grilla. Es el `gap-4` de su contenedor. */
 const GRID_GAP = 16
 /** Cuántas canciones apiladas por columna, como en Apple Music. */
@@ -178,6 +183,8 @@ export function HomeFeed({
             <Fragment key={section.title}>
               <Section
                 section={section}
+                /* La primera sección es la vidriera: tapas más grandes. */
+                destacada={i === 0}
                 onOpen={() => onOpenSection(section.title)}
                 onOpenAlbum={onOpenAlbum}
                 onOpenPlaylist={onOpenPlaylist}
@@ -201,6 +208,7 @@ export function HomeFeed({
 
 function Section({
   section,
+  destacada = false,
   onOpen,
   onOpenAlbum,
   onOpenPlaylist,
@@ -209,6 +217,8 @@ function Section({
   pendingId,
 }: {
   section: HomeSection
+  /** Con tapas más grandes: la primera sección de la portada. */
+  destacada?: boolean
   onOpen: () => void
   onOpenAlbum: (item: HomeItem) => void
   onOpenPlaylist: (item: HomeItem) => void
@@ -243,12 +253,15 @@ function Section({
             onPlay={onPlaySong}
             menuFor={menuForSong}
             pendingId={pendingId}
+            /* Un chart lleva el puesto adelante, como el Top de Apple Music. */
+            ranking={ES_CHART.test(section.title)}
           />
         ) : (
           section.items.map((item) => (
             <Card
               key={item.id}
               item={item}
+              width={destacada ? CARD_GRANDE : CARD}
               onPress={() => (item.kind === 'album' ? onOpenAlbum(item) : onOpenPlaylist(item))}
             />
           ))
@@ -318,26 +331,30 @@ function SongColumns({
   onPlay,
   menuFor,
   pendingId,
+  ranking = false,
 }: {
   items: HomeItem[]
   onPlay: (item: HomeItem) => void
   menuFor: (item: HomeItem) => MenuItem[]
   pendingId: string | null
+  /** Numerado, como el Top de Apple Music: el puesto va adelante de la tapa. */
+  ranking?: boolean
 }) {
   const columns: HomeItem[][] = []
   for (let i = 0; i < items.length; i += ROWS) columns.push(items.slice(i, i + ROWS))
 
   return (
     <>
-      {columns.map((column) => (
-        <View key={column[0].id} style={{ width: 340 }} className="gap-1">
-          {column.map((item) => (
+      {columns.map((column, c) => (
+        <View key={column[0].id} style={{ width: 360 }} className="gap-1">
+          {column.map((item, f) => (
             <SongRow
               key={item.id}
               item={item}
               onPlay={() => onPlay(item)}
               menu={menuFor(item)}
               busy={pendingId === item.id}
+              puesto={ranking ? c * ROWS + f + 1 : undefined}
             />
           ))}
         </View>
@@ -351,11 +368,14 @@ function SongRow({
   onPlay,
   menu,
   busy,
+  puesto,
 }: {
   item: HomeItem
   onPlay: () => void
   menu: MenuItem[]
   busy: boolean
+  /** El lugar en el chart; sin él, la fila no lleva número. */
+  puesto?: number
 }) {
   const [over, setOver] = useState(false)
   const current = usePlaybackTrack()
@@ -377,18 +397,24 @@ function SongRow({
         onPress={() => (isCurrent ? togglePlayback() : onPlay())}
         className="min-w-0 flex-1 flex-row items-center gap-3"
       >
-        <View className="h-11 w-11 overflow-hidden rounded bg-card">
+        {/* El puesto, apagado y tabular: el número acompaña, la tapa manda. */}
+        {puesto !== undefined ? (
+          <Text className="w-6 text-center text-muted-foreground text-[15px] font-semibold tabular-nums">
+            {puesto}
+          </Text>
+        ) : null}
+        <View className="h-14 w-14 overflow-hidden rounded-lg bg-card">
           {item.artworkUrl ? (
             <Image
-              source={{ uri: proxiedImage(artworkUrlAtSize(item.artworkUrl, 96)) }}
-              className="h-11 w-11"
+              source={{ uri: proxiedImage(artworkUrlAtSize(item.artworkUrl, 128)) }}
+              className="h-14 w-14"
             />
           ) : null}
-          <EstadoTapa busy={busy} sounding={isCurrent} playing={wantPlay} hovered={over} size={14} />
+          <EstadoTapa busy={busy} sounding={isCurrent} playing={wantPlay} hovered={over} size={15} />
         </View>
 
-        <View className="min-w-0 flex-1">
-          <Text className="text-foreground text-[13px]" numberOfLines={1}>
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text className="text-foreground text-[14px]" numberOfLines={1}>
             {item.title}
           </Text>
           {item.subtitle ? (
@@ -534,8 +560,15 @@ function GenerosPage({
   const lado = ancho > 0 ? (ancho - GRID_GAP * (columnas - 1)) / columnas : GENERO_W
 
   return (
-    <View className="min-h-0 flex-1">
-      <View className="flex-row items-center gap-3 px-6 pb-4" style={{ paddingTop: techo }}>
+    /* La cabecera adentro del scroll, como la de una sección: el contenido
+       corre hasta el borde y se apaga contra el velo en vez de cortarse. */
+    <ScrollView
+      className="min-h-0 flex-1"
+      contentContainerClassName="px-6"
+      contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
+      {...colapso}
+    >
+      <View className="flex-row items-center gap-3 pb-4">
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Volver a la portada"
@@ -549,35 +582,28 @@ function GenerosPage({
         </Text>
       </View>
 
-      <ScrollView
-        className="min-h-0 flex-1"
-        contentContainerClassName="px-6"
-        contentContainerStyle={{ paddingBottom: piso }}
-        {...colapso}
-      >
-        {generos === null ? (
-          <View className="flex-row flex-wrap gap-4">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} width={GENERO_W} height={GENERO_W * GENERO_RATIO} radius={8} />
-            ))}
-          </View>
-        ) : (
-          <View
-            className="flex-row flex-wrap gap-4"
-            onLayout={(e) => setAncho(e.nativeEvent.layout.width)}
-          >
-            {generos.map((genero) => (
-              <GeneroCard
-                key={genero.params}
-                genero={genero}
-                width={lado}
-                onPress={() => onOpen(genero)}
-              />
-            ))}
-          </View>
-        )}
-      </ScrollView>
-    </View>
+      {generos === null ? (
+        <View className="flex-row flex-wrap gap-4">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} width={GENERO_W} height={GENERO_W * GENERO_RATIO} radius={8} />
+          ))}
+        </View>
+      ) : (
+        <View
+          className="flex-row flex-wrap gap-4"
+          onLayout={(e) => setAncho(e.nativeEvent.layout.width)}
+        >
+          {generos.map((genero) => (
+            <GeneroCard
+              key={genero.params}
+              genero={genero}
+              width={lado}
+              onPress={() => onOpen(genero)}
+            />
+          ))}
+        </View>
+      )}
+    </ScrollView>
   )
 }
 
@@ -702,9 +728,25 @@ function SectionPage({
   const columnas = Math.max(2, Math.floor((ancho + GRID_GAP) / (CARD + GRID_GAP)))
   const lado = ancho > 0 ? (ancho - GRID_GAP * (columnas - 1)) / columnas : CARD
 
+  /* Un chart abierto conserva sus puestos: el número es parte de la sección. */
+  const ranking = ES_CHART.test(section.title)
+
   return (
-    <View className="min-h-0 flex-1">
-      <View className="flex-row items-center gap-3 px-6 pb-4" style={{ paddingTop: techo }}>
+    /*
+     * La cabecera va **adentro** del scroll, no fija arriba.
+     *
+     * Es la regla del encabezado flotante (`docs/DESIGN.md`): el contenido
+     * corre hasta el borde y se apaga contra el velo del reloj, como en el
+     * álbum y el artista. Con la cabecera fija afuera, las filas se cortaban
+     * en seco contra su borde — la única línea dura de la app.
+     */
+    <ScrollView
+      className="min-h-0 flex-1"
+      contentContainerClassName="px-6"
+      contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
+      {...colapso}
+    >
+      <View className="flex-row items-center gap-3 pb-4">
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Volver a la portada"
@@ -723,21 +765,16 @@ function SectionPage({
         </View>
       </View>
 
-      <ScrollView
-        className="min-h-0 flex-1"
-        contentContainerClassName="px-6"
-        contentContainerStyle={{ paddingBottom: piso }}
-        {...colapso}
-      >
-        {songs ? (
+      {songs ? (
           <View className="gap-1">
-            {section.items.map((item) => (
+            {section.items.map((item, i) => (
               <SongRow
                 key={item.id}
                 item={item}
                 onPlay={() => onPlaySong(item)}
                 menu={menuForSong(item)}
                 busy={pendingId === item.id}
+                puesto={ranking ? i + 1 : undefined}
               />
             ))}
           </View>
@@ -766,7 +803,6 @@ function SectionPage({
             ))}
           </View>
         )}
-      </ScrollView>
-    </View>
+    </ScrollView>
   )
 }
