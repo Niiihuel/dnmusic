@@ -708,6 +708,22 @@ export default function Home() {
    * guardó en ningún lado— así que se arma una al vuelo con el videoId de id.
    */
   async function resolveForPlayback(track: TrackResult): Promise<PlaylistTrack> {
+    /* Lo que ya está resuelto no se vuelve a resolver: los resultados nacidos
+       de una canción guardada traen su audio (ver `playlistTrackAsResult`). */
+    if (track.audioPath) {
+      return {
+        id: `busqueda:${track.videoId}`,
+        videoId: track.videoId,
+        title: track.title,
+        artist: track.artist,
+        artistId: track.artistId,
+        artworkUrl: track.artworkUrl,
+        artworkPath: track.artworkPath ?? null,
+        audioPath: track.audioPath,
+        durationMs: track.durationMs,
+        truePeak: undefined,
+      }
+    }
     const song = await resolveSong(track)
     return {
       id: `busqueda:${track.videoId}`,
@@ -768,6 +784,11 @@ export default function Home() {
       albumId: null,
       artworkUrl: track.artworkUrl,
       durationMs: track.durationMs,
+      /* El audio que ya está resuelto viaja con el resultado: encolar o
+         reproducir desde el menú no re-resuelve — y una canción propia
+         (`propia:…`) ni podría, ese id no existe en YouTube. */
+      audioPath: track.audioPath,
+      artworkPath: track.artworkPath,
     }
   }
 

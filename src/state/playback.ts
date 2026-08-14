@@ -459,6 +459,25 @@ export function quitarEncolada(posicion: number) {
   store.set({ upNext: upNext.filter((_, i) => i !== posicion) })
 }
 
+/**
+ * Reordena la cola manual: la canción en `desde` pasa a la posición `hacia`.
+ *
+ * Solo lo encolado a mano, igual que quitar: lo que viene de la lista tiene el
+ * orden de la lista, y en un Jam la cola compartida se reordena en el panel
+ * del Jam con sus permisos.
+ */
+export function moverEncolada(desde: number, hacia: number) {
+  const { upNext } = store.get()
+  if (desde < 0 || desde >= upNext.length) return
+  const a = Math.max(0, Math.min(upNext.length - 1, hacia))
+  if (a === desde) return
+  const cola = [...upNext]
+  const [movida] = cola.splice(desde, 1)
+  if (!movida) return
+  cola.splice(a, 0, movida)
+  store.set({ upNext: cola })
+}
+
 /** Salta a una canción de la cola actual; si ya es la que suena, pausa o sigue. */
 export function playAt(index: number) {
   const state = store.get()

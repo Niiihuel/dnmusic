@@ -57,6 +57,17 @@ export type TrackResult = {
   albumId: string | null
   artworkUrl: string
   durationMs: number
+  /**
+   * El audio ya resuelto, cuando el resultado nace de una canción guardada.
+   *
+   * Una fila de lista ya sabe dónde vive su audio; convertirla a resultado y
+   * volver a resolver por `videoId` era un viaje de más — y para las canciones
+   * propias (`propia:…`) era un viaje a ninguna parte: ese id no existe en
+   * YouTube y encolarlas o reproducirlas desde un menú fallaba. Con esto,
+   * `resolveForPlayback` usa lo que ya hay.
+   */
+  audioPath?: string
+  artworkPath?: string | null
 }
 
 /** Una canción del top de un artista: lo mismo que un resultado, con el año. */

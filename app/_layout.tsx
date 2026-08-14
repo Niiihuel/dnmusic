@@ -888,7 +888,15 @@ function SessionGate() {
             : {
                 presentation: 'formSheet',
                 sheetAllowedDetents: [0.75, 1],
-                sheetInitialDetentIndex: 0,
+                /*
+                 * Arranca **llena**, no a tres cuartos: desde iOS 26 los
+                 * detents parciales flotan con márgenes a los costados —el
+                 * look de tarjeta del rediseño— y la hoja del Jam se veía
+                 * angosta, sin ocupar el ancho. En el detent completo el
+                 * sistema la pega de borde a borde. El 0.75 sigue ahí para
+                 * quien la baje con el dedo.
+                 */
+                sheetInitialDetentIndex: 1,
                 sheetGrabberVisible: true,
                 sheetCornerRadius: 24,
               }
@@ -932,7 +940,9 @@ function SessionGate() {
             : {
                 presentation: 'formSheet',
                 sheetAllowedDetents: [0.75, 1],
-                sheetInitialDetentIndex: 0,
+                /* Llena, por lo mismo que el Jam: los detents parciales de
+                   iOS 26 flotan con márgenes y la hoja quedaba angosta. */
+                sheetInitialDetentIndex: 1,
                 sheetGrabberVisible: true,
                 sheetCornerRadius: 24,
               }

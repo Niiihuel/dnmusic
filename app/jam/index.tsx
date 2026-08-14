@@ -136,18 +136,25 @@ export default function JamSheet() {
               </Text>
             ) : null}
           </Pressable>
-          <BotonVidrio label="Invitar" onPress={() => router.push('/jam/personas')}>
-            <View className="h-9 w-9 items-center justify-center">
-              <IconPlus size={17} color={ICON_COLOR.foreground} />
-            </View>
+          {/* Tamaño explícito EN el vidrio: dimensionado por su contenido, el
+              GlassView de iOS estiraba la pieza y el círculo salía ovalado. Con
+              el cuadrado fijo, radio 999 es un círculo siempre. */}
+          <BotonVidrio
+            label="Invitar"
+            onPress={() => router.push('/jam/personas')}
+            style={{ height: 36, width: 36 }}
+          >
+            <IconPlus size={17} color={ICON_COLOR.foreground} />
           </BotonVidrio>
 
           <View className="flex-1" />
 
-          <BotonVidrio label="Opciones del Jam" onPress={() => router.push('/jam/opciones')}>
-            <View className="h-9 w-9 items-center justify-center">
-              <IconSliders size={16} color={ICON_COLOR.foreground} />
-            </View>
+          <BotonVidrio
+            label="Opciones del Jam"
+            onPress={() => router.push('/jam/opciones')}
+            style={{ height: 36, width: 36 }}
+          >
+            <IconSliders size={16} color={ICON_COLOR.foreground} />
           </BotonVidrio>
           <BotonSostener
             rotulo={soyHost ? 'Terminar' : 'Salir'}

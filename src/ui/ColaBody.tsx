@@ -1,12 +1,29 @@
-import { useState } from 'react'
+/* eslint-disable react-hooks/immutability -- Los `useSharedValue` de Reanimated
+   se mutan desde los worklets de gesto: es su contrato, no estado de React.
+   Mismo falso positivo que en ColaJam y Waveform. */
+import { useCallback, useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
+import { Gesture, GestureDetector, State } from 'react-native-gesture-handler'
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
 import type { PlaylistTrack } from '../services/playlists'
 import { useColaJam, useJamActivo, useMiembrosJam } from '../state/jam'
-import { playAt, quitarEncolada, usePlaybackState } from '../state/playback'
+import { moverEncolada, playAt, quitarEncolada, usePlaybackState } from '../state/playback'
+import { ES_WEB } from './Glass'
 import { TrackRow } from './TrackRow'
 import { formatClock } from './SeekBar'
-import { ICON_COLOR, IconClose, IconCola } from './icons'
+import { ICON_COLOR, IconClose, IconCola, IconManija } from './icons'
+
+/** Alto fijo de una fila encolada: vuelve el arrastre pura aritmética (ver ColaJam). */
+const FILA_H = 60
+/** Lo que tarda una fila en correrse para hacer lugar. */
+const CORRIDA_MS = 120
 
 /**
  * La cola — «¿qué viene después?» — con la anatomía de una lista.
@@ -36,6 +53,11 @@ export function ColaBody({
   const colaJam = useColaJam()
   const miembros = useMiembrosJam()
   const [hovered, setHovered] = useState<string | null>(null)
+  /* El arrastre de una encolada, con la física de ColaJam: la agarrada sigue
+     al puntero, las demás se corren para mostrar dónde cae. */
+  const activa = useSharedValue(-1)
+  const desplazamiento = useSharedValue(0)
+  const [arrastrando, setArrastrando] = useState(false)
 
   const actual = manual ?? (index >= 0 ? (tracks[index] ?? null) : null)
 
@@ -96,6 +118,9 @@ export function ColaBody({
   return (
     <ScrollView
       className="min-h-0 flex-1"
+      /* Una fila en el aire congela el scroll: dos gestos verticales sobre el
+         mismo puntero es uno de más. */
+      scrollEnabled={!arrastrando}
       contentContainerClassName="pt-5"
       contentContainerStyle={{ paddingBottom: piso }}
     >
@@ -133,31 +158,39 @@ export function ColaBody({
         <>
           <Encabezado texto="A continuación · lo que encolaste" />
           {upNext.map((track, i) => (
-            <TrackRow
+            <EncoladaArrastrable
               key={`encolada-${i}-${track.id}`}
-              index={i + 1}
-              title={track.title}
-              artist={artistaDe(track)}
-              artwork={artworkSource(track.artworkPath, track.artworkUrl, 96)}
-              durationMs={track.durationMs}
-              sounding={false}
-              playing={false}
-              hovered={hovered === `encolada-${i}`}
-              onHover={(on) => setHovered(on ? `encolada-${i}` : null)}
-              /* Lo encolado no se salta con un toque: suena cuando le toque.
-                 Saltearlo sería adelantar la cola entera de todos modos. */
-              onPlay={() => {}}
-              trailing={
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Quitar ${track.title} de la cola`}
-                  onPress={() => quitarEncolada(i)}
-                  className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
-                >
-                  <IconClose size={15} color={ICON_COLOR.muted} />
-                </Pressable>
-              }
-            />
+              i={i}
+              total={upNext.length}
+              activa={activa}
+              desplazamiento={desplazamiento}
+              onArrastre={setArrastrando}
+            >
+              <TrackRow
+                index={i + 1}
+                title={track.title}
+                artist={artistaDe(track)}
+                artwork={artworkSource(track.artworkPath, track.artworkUrl, 96)}
+                durationMs={track.durationMs}
+                sounding={false}
+                playing={false}
+                hovered={hovered === `encolada-${i}`}
+                onHover={(on) => setHovered(on ? `encolada-${i}` : null)}
+                /* Lo encolado no se salta con un toque: suena cuando le toque.
+                   Saltearlo sería adelantar la cola entera de todos modos. */
+                onPlay={() => {}}
+                trailing={
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Quitar ${track.title} de la cola`}
+                    onPress={() => quitarEncolada(i)}
+                    className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
+                  >
+                    <IconClose size={15} color={ICON_COLOR.muted} />
+                  </Pressable>
+                }
+              />
+            </EncoladaArrastrable>
           ))}
         </>
       ) : null}
@@ -200,5 +233,97 @@ function Encabezado({ texto }: { texto: string }) {
     <Text className="text-muted-foreground px-5 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-[1.2px]">
       {texto}
     </Text>
+  )
+}
+
+/**
+ * Una fila encolada que se reordena arrastrando su manija.
+ *
+ * Es la física de `ColaJam`, palabra por palabra: la fila agarrada sigue al
+ * puntero apenas agrandada, las demás se corren una posición para mostrar
+ * dónde va a caer, y todo es aritmética sobre el alto fijo `FILA_H`. En web
+ * el gesto arranca al primer píxel (con mouse no hay scroll que ceder); con
+ * dedo espera los 130ms de siempre para no pelearse con el ScrollView.
+ */
+function EncoladaArrastrable({
+  i,
+  total,
+  activa,
+  desplazamiento,
+  onArrastre,
+  children,
+}: {
+  i: number
+  total: number
+  activa: SharedValue<number>
+  desplazamiento: SharedValue<number>
+  onArrastre: (activo: boolean) => void
+  children: React.ReactNode
+}) {
+  const soltarAca = useCallback(() => {
+    const destino = Math.max(
+      0,
+      Math.min(total - 1, Math.round((i * FILA_H + desplazamiento.value) / FILA_H)),
+    )
+    moverEncolada(i, destino)
+    activa.value = -1
+    desplazamiento.value = 0
+    onArrastre(false)
+  }, [i, total, activa, desplazamiento, onArrastre])
+  const empezar = useCallback(() => onArrastre(true), [onArrastre])
+  const cancelar = useCallback(() => onArrastre(false), [onArrastre])
+
+  const arrastre = (ES_WEB ? Gesture.Pan() : Gesture.Pan().activateAfterLongPress(130))
+    .onStart(() => {
+      activa.value = i
+      desplazamiento.value = 0
+      runOnJS(empezar)()
+    })
+    .onUpdate((e) => {
+      desplazamiento.value = e.translationY
+    })
+    .onEnd(() => {
+      runOnJS(soltarAca)()
+    })
+    .onFinalize((e) => {
+      if (e.state !== State.END) {
+        activa.value = -1
+        desplazamiento.value = 0
+        runOnJS(cancelar)()
+      }
+    })
+
+  const estilo = useAnimatedStyle(() => {
+    if (activa.value === i) {
+      return { transform: [{ translateY: desplazamiento.value }, { scale: 1.02 }], zIndex: 10 }
+    }
+    let corre = 0
+    if (activa.value >= 0) {
+      const destino = Math.round((activa.value * FILA_H + desplazamiento.value) / FILA_H)
+      if (i > activa.value && i <= destino) corre = -FILA_H
+      if (i < activa.value && i >= destino) corre = FILA_H
+    }
+    return {
+      transform: [{ translateY: withTiming(corre, { duration: CORRIDA_MS }) }, { scale: 1 }],
+      zIndex: 0,
+    }
+  })
+
+  return (
+    <Animated.View style={[{ height: FILA_H }, estilo]}>
+      <View className="h-full flex-row items-center pr-3">
+        <View className="min-w-0 flex-1">{children}</View>
+        <GestureDetector gesture={arrastre}>
+          <View
+            accessibilityRole="adjustable"
+            accessibilityLabel="Mover en la cola"
+            className="h-10 w-10 items-center justify-center"
+            style={ES_WEB ? ({ cursor: 'grab', touchAction: 'none' } as object) : null}
+          >
+            <IconManija size={18} color={ICON_COLOR.muted} />
+          </View>
+        </GestureDetector>
+      </View>
+    </Animated.View>
   )
 }

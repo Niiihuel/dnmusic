@@ -13,6 +13,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
+import { ES_WEB } from './Glass'
 import type { JamMiembro } from '../services/jam'
 import {
   moverCancionDelJam,
@@ -207,9 +208,14 @@ function FilaProxima({
    * fila vive dentro de un ScrollView y los dos quieren el gesto vertical.
    * Los 130ms se los ceden al scroll — pasado eso, el arrastre gana y la
    * pantalla congela el suyo (ver `onArrastre`).
+   *
+   * **Solo con dedo.** Con mouse no existe ese conflicto —la rueda scrollea,
+   * el puntero no— y la espera rompía el gesto entero: mover el mouse antes
+   * de los 130ms cancela el long press, y con un mouse uno arrastra en el
+   * momento. En web el arrastre arranca al primer píxel, como en cualquier
+   * lista de escritorio.
    */
-  const arrastre = Gesture.Pan()
-    .activateAfterLongPress(130)
+  const arrastre = (ES_WEB ? Gesture.Pan() : Gesture.Pan().activateAfterLongPress(130))
     .onStart(() => {
       activa.value = i
       y.value = 0
@@ -287,6 +293,9 @@ function FilaProxima({
               accessibilityRole="adjustable"
               accessibilityLabel={`Mover ${item.title}`}
               className="h-10 w-10 items-center justify-center"
+              /* El cursor anuncia el gesto en escritorio; `touchAction` evita
+                 que el navegador se quede con el puntero a mitad de arrastre. */
+              style={ES_WEB ? ({ cursor: 'grab', touchAction: 'none' } as object) : null}
             >
               <IconManija size={18} color={ICON_COLOR.muted} />
             </View>
