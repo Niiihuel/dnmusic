@@ -42,7 +42,6 @@ import {
   usePairId,
   useSessionError,
   useUser,
-  setMyProfile,
 } from '../src/state/session'
 import { resetDraft, setDraft, useDraft } from '../src/state/draft'
 import { sendMessage } from '../src/services/messages'
@@ -106,7 +105,6 @@ import { useColapso } from '../src/ui/useColapso'
 import { BotonVidrio, Glass, HAY_VIDRIO } from '../src/ui/Glass'
 import { recordarBusqueda } from '../src/state/recientes'
 import { addShowcase } from '../src/services/showcases'
-import { saveMyProfile } from '../src/services/profile'
 import { Menu, type MenuItem } from '../src/ui/Menu'
 import {
   addTrack,
@@ -134,7 +132,6 @@ import {
   IconCollapseRight,
   IconClose,
   IconDisc,
-  IconImage,
   IconInbox,
   IconHome,
   IconLogOut,
@@ -924,39 +921,7 @@ export default function Home() {
         icon: <IconUser size={15} color={ICON_COLOR.muted} />,
         sfSymbol: 'pin',
       },
-      {
-        label: 'Usar su tapa de fondo',
-        onPress: () => void usarDeFondo(track),
-        icon: <IconImage size={15} color={ICON_COLOR.muted} />,
-        sfSymbol: 'photo',
-      },
     ]
-  }
-
-  /**
-   * Pone la tapa de esta canción como fondo del perfil.
-   *
-   * Se guarda **nuestra copia** en Storage y no la URL de YouTube: las de ellos
-   * vencen, y un perfil no puede quedarse sin fondo porque expiró un enlace. Por
-   * eso hay que resolver la canción primero, aunque acá no vaya a sonar: es el
-   * paso que deja la carátula cacheada.
-   */
-  async function usarDeFondo(track: TrackResult) {
-    setAddingTrack(track.videoId)
-    setPlaylistError(null)
-    try {
-      const song = await resolveSong(track)
-      if (!song.artworkPath) {
-        avisar('Esa canción no tiene tapa para usar de fondo.', true)
-        return
-      }
-      setMyProfile(await saveMyProfile({ bannerPath: song.artworkPath }))
-      avisar('Listo, ya es tu fondo')
-    } catch (e) {
-      avisar(`No se pudo usar de fondo: ${mensajeError(e)}`, true)
-    } finally {
-      setAddingTrack(null)
-    }
   }
 
   /**

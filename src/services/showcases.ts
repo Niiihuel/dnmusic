@@ -12,7 +12,7 @@ import { getSupabase } from '../lib/supabase'
  * tabla. La base solo garantiza el tipo y el dueño.
  */
 
-export type ShowcaseKind = 'cancion' | 'fragmento' | 'lista' | 'texto' | 'ilustracion'
+export type ShowcaseKind = 'cancion' | 'fragmento' | 'lista' | 'texto'
 
 /** Una canción fijada, o el fragmento de una. */
 export type ShowcaseCancion = {
@@ -38,13 +38,6 @@ export type Showcase =
   | { id: string; kind: 'fragmento'; cancion: ShowcaseCancion }
   | { id: string; kind: 'lista'; playlistId: string }
   | { id: string; kind: 'texto'; texto: string }
-  /**
-   * Una imagen grande, subida por quien arma el perfil.
-   *
-   * `alto` es la proporción respecto del ancho, para poder reservarle el lugar
-   * antes de que la imagen cargue: sin eso, el perfil da un salto cuando llega.
-   */
-  | { id: string; kind: 'ilustracion'; path: string; alto: number }
 
 type Row = {
   id?: unknown
@@ -68,14 +61,6 @@ function showcaseFromRow(row: Row): Showcase | null {
     return typeof p.texto === 'string' && p.texto.trim()
       ? { id: row.id, kind: 'texto', texto: p.texto }
       : null
-  }
-
-  if (row.kind === 'ilustracion') {
-    if (typeof p.path !== 'string') return null
-    const alto = typeof p.alto === 'number' && p.alto > 0 ? p.alto : 1
-    /* Se acota: una imagen de 1x20 dejaría el perfil imposible de recorrer, y
-       una muy ancha se vería como una franja. */
-    return { id: row.id, kind: 'ilustracion', path: p.path, alto: Math.min(2.2, Math.max(0.4, alto)) }
   }
 
   if (row.kind === 'lista') {
@@ -168,13 +153,20 @@ const TIPOS_VITRINA = [
 ]
 const VITRINA_MAX_BYTES = 25 * 1024 * 1024
 
-/** Si esa ruta es un clip y no una imagen. Lo mira la vitrina para dibujarla. */
+/** Si esa ruta es un clip y no una imagen. Lo mira el fondo para dibujarlo. */
 export function esVideo(path: string): boolean {
   const ext = path.split('.').pop()?.toLowerCase() ?? ''
   return ext === 'mp4' || ext === 'mov'
 }
 
-/** Sube una ilustración y devuelve su ruta. Va en la carpeta de su dueño. */
+/**
+ * Sube una imagen de fondo y devuelve su ruta. Va en la carpeta de su dueño.
+ *
+ * Se llama «ilustración» por el bucket, que es el mismo de siempre. Ya no hay
+ * vitrina de ilustración: una imagen subida es **el fondo del perfil** y nada
+ * más — tenerla además como tarjeta era la misma imagen en dos lugares, y la
+ * tarjeta ganaba siempre porque estaba en la columna del medio.
+ */
 export async function uploadIlustracion(
   ownerId: string,
   file: Blob,

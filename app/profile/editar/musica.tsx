@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Pressable, Text, useWindowDimensions, View } from 'react-native'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../../src/ui/Panel'
 import { SearchDropdown } from '../../../src/ui/SearchDropdown'
 import { SearchField } from '../../../src/ui/SearchField'
 import { ICON_COLOR, IconBack, IconMusic } from '../../../src/ui/icons'
-import { resolveSong, searchMusic, type TrackResult } from '../../../src/services/music'
-import { saveMyProfile } from '../../../src/services/profile'
-import { setMyProfile } from '../../../src/state/session'
-import { avisar } from '../../../src/state/aviso'
-import { mensajeError } from '../../../src/lib/mensajeError'
+import { searchMusic, type TrackResult } from '../../../src/services/music'
 import { useKeyboardH, usePiso } from '../../../src/state/shell'
 import {
   abrirBusqueda,
@@ -48,38 +44,6 @@ export default function BuscarParaPerfil() {
   const piso = usePiso(ALTO_BUSCADOR)
   const teclado = useKeyboardH()
   /*
-   * Dos destinos, un buscador: sin nada, tocar un resultado abre el recorte
-   * para fijarlo; con `destino=fondo`, tocar un resultado usa su tapa como
-   * fondo del perfil. Es la misma acción que «Usar su tapa de fondo» de los
-   * tres puntos — esta puerta existe para que la fila «Fondo» del editor lleve
-   * a algún lado en vez de quedarse muda.
-   */
-  const { destino } = useLocalSearchParams<{ destino?: string }>()
-  const paraFondo = destino === 'fondo'
-  const [poniendoFondo, setPoniendoFondo] = useState(false)
-
-  async function elegirFondo(track: TrackResult) {
-    if (poniendoFondo) return
-    setPoniendoFondo(true)
-    try {
-      /* Se resuelve para tener NUESTRA copia de la tapa: las URLs de YouTube
-         vencen y un perfil no puede quedarse sin fondo por un enlace muerto. */
-      const song = await resolveSong(track)
-      if (!song.artworkPath) {
-        avisar('Esa canción no tiene tapa para usar de fondo.', true)
-        return
-      }
-      setMyProfile(await saveMyProfile({ bannerPath: song.artworkPath }))
-      avisar('Fondo puesto')
-      volver(router, '/profile/editar')
-    } catch (e) {
-      avisar(`No se pudo poner el fondo: ${mensajeError(e)}`, true)
-    } finally {
-      setPoniendoFondo(false)
-    }
-  }
-
-  /*
    * Quién dibuja el campo depende del ancho, y **tiene que depender**.
    *
    * En el teléfono lo dibuja la cáscara: tener acá un `BuscadorFlotante` propio
@@ -115,13 +79,12 @@ export default function BuscarParaPerfil() {
   const [error, setError] = useState<string | null>(null)
   /* Se entra a buscar: el campo se abre al montar y se cierra al salir. */
   useEffect(() => {
-    abrirBusqueda(paraFondo ? 'Buscá la canción de tu fondo' : 'Buscá una canción para fijar')
+    abrirBusqueda('Buscá una canción para fijar')
     registerBusquedaHandler(() => setError(null))
     return () => {
       registerBusquedaHandler(null)
       cerrarBusqueda()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -171,7 +134,7 @@ export default function BuscarParaPerfil() {
             <IconBack size={19} color={ICON_COLOR.foreground} />
           </Pressable>
           <Text className="text-foreground text-[15px] font-semibold">
-            {paraFondo ? 'Elegir fondo' : 'Agregar música'}
+            Agregar música
           </Text>
         </View>
 
@@ -199,10 +162,8 @@ export default function BuscarParaPerfil() {
                   <SearchField
                     value={termino}
                     onChangeText={setTermino}
-                    placeholder={
-                      paraFondo ? 'Buscá la canción de tu fondo' : 'Buscá una canción para fijar'
-                    }
-                    loading={cargando || poniendoFondo}
+                    placeholder="Buscá una canción para fijar"
+                    loading={cargando}
                     autoFocus
                   />
                 </View>
@@ -233,10 +194,6 @@ export default function BuscarParaPerfil() {
                    * de necesitar puntería.
                    */
                   onSelect={(track) => {
-                    if (paraFondo) {
-                      void elegirFondo(track)
-                      return
-                    }
                     proponerRecorte(track)
                     router.push('/song?destino=perfil')
                   }}
@@ -248,16 +205,14 @@ export default function BuscarParaPerfil() {
                 >
                   <IconMusic size={28} color={ICON_COLOR.muted} />
                   <Text className="text-foreground text-center text-[17px] font-semibold">
-                    {paraFondo ? 'Buscá la canción de tu fondo' : 'Buscá algo para fijar'}
+                    Buscá algo para fijar
                   </Text>
                   {/* El botón de «recortar un fragmento» que estaba acá se fue
                       con el «+»: ahora tocar cualquier resultado lleva
                       exactamente ahí, así que era una segunda puerta al mismo
                       lugar puesta donde todavía no hay nada que elegir. */}
                   <Text className="text-muted-foreground text-center text-[13px] leading-5">
-                    {paraFondo
-                      ? 'Tocá un resultado y su tapa queda de fondo en tu perfil.'
-                      : 'Tocá un resultado y elegís qué parte va en tu perfil.'}
+                    Tocá un resultado y elegís qué parte va en tu perfil.
                   </Text>
                 </View>
               )}

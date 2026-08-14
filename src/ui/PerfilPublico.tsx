@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Image, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
-import { artworkSource } from '../lib/artwork'
+import { useVideoPlayer, VideoView } from 'expo-video'
 import {
+  esVideo,
   ilustracionUrl,
   listShowcases,
   removeShowcase,
@@ -19,42 +20,44 @@ import { Glass, HAY_VIDRIO } from './Glass'
 import { Vitrina } from './Vitrina'
 
 /**
- * El fondo del perfil, a sangre.
+ * El fondo del perfil: la imagen entera, detrás de todo.
  *
- * Es lo que Steam pone detrás de todo, y acá cumple una función extra: es la
- * **única pantalla de la app donde el vidrio tiene una foto que difuminar**. En
- * el resto lo que pasa por detrás son listas sobre gris; acá hay una imagen, y
- * el material recién ahí se ve como lo que es.
+ * Es el fondo de Steam. No una banda arriba con el contenido abajo sobre negro,
+ * sino la imagen ocupando la pantalla completa y las vitrinas apoyadas encima,
+ * dejándola pasar. De ahí sale la segunda función, que es la que lo justifica
+ * técnicamente: **es la única pantalla de la app donde el vidrio tiene una foto
+ * que difuminar**. En el resto lo que pasa por detrás son listas sobre gris.
  *
- * La imagen sale de una carátula, no de un selector de color. `docs/DESIGN.md`
- * reserva el color para las tapas y deja la interfaz en grises: personalizás con
- * la música que mostrás.
+ * Se queda quieto mientras el contenido se desplaza: está fuera del `ScrollView`
+ * a propósito. Un fondo que acompaña al scroll es un encabezado largo; uno que
+ * se queda es un fondo.
  *
- * El velo va en dos tramos y **no llega a opaco arriba**: si tapara del todo,
- * las vitrinas de vidrio quedarían difuminando un gris plano —el mismo error que
- * cometimos con el degradado detrás de las pestañas— y el fondo dejaría de
- * servir para lo único que lo justifica.
+ * Acepta lo que se pueda subir: una imagen, un GIF —que `Image` anima solo en
+ * iOS y en web— o un clip, que va mudo y en repetición. Nunca una tapa de
+ * canción: eso era un cuadrado de 640px estirado a pantalla, que sin desenfocar
+ * se pixelaba y desenfocado no era una elección de nadie.
  */
 export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
   /*
-   * Dos clases de fondo, distinguidas por la forma de la ruta.
-   *
-   * Las tapas viven en el bucket `artwork`, planas (`<videoId>.jpg`); las
-   * ilustraciones subidas viven en `showcases`, bajo la carpeta de su dueño
-   * (`<uid>/<ts>.png`) — la barra dice cuál es. Y se dibujan distinto a
-   * propósito: la tapa va desenfocada porque es un cuadrado chico estirado a
-   * banda —nítida se pixela—; la ilustración va **nítida**, que es el punto de
-   * haberla subido: es el fondo de Steam, elegido pixel por pixel.
+   * Solo cuentan las rutas con carpeta (`<uid>/<ts>.gif`), que son las imágenes
+   * subidas. Las planas (`<videoId>.jpg`) son tapas de canción de cuando el
+   * fondo se elegía así; se ignoran en vez de dibujarse mal.
    */
-  const esIlustracion = bannerPath?.includes('/') ?? false
-  const tapa = bannerPath
-    ? esIlustracion
-      ? ilustracionUrl(bannerPath)
-      : artworkSource(bannerPath, '', 640)
-    : null
+  const ruta = bannerPath?.includes('/') ? bannerPath : null
+  const uri = ruta ? ilustracionUrl(ruta) : null
+  const clip = ruta ? esVideo(ruta) : false
+
+  /* El reproductor se crea igual aunque el fondo sea una imagen: los hooks no
+     se pueden llamar condicionalmente, y sin fuente no hace nada. Mudo y en
+     repetición — es un fondo, no algo que se mire. */
+  const video = useVideoPlayer(clip && uri ? uri : null, (p) => {
+    p.loop = true
+    p.muted = true
+    p.play()
+  })
 
   /*
-   * Sin tapa, la banda se dibuja igual.
+   * Sin imagen, la banda se dibuja igual.
    *
    * Antes esto devolvía `null`, y el resultado era que un perfil recién hecho
    * —que es justo el que nadie eligió todavía cómo se ve— no tenía encabezado en
@@ -62,11 +65,9 @@ export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
    * escritorio eso deja la mitad de arriba de la pantalla muerta.
    *
    * El reemplazo es un escalón de luminancia, no un color: `muted` bajando a
-   * `background`, que es la misma separación que usa el resto de la app. Da la
-   * banda que ordena el encabezado sin inventar un tono que `docs/DESIGN.md`
-   * reserva para las tapas.
+   * `background`, que es la misma separación que usa el resto de la app.
    */
-  if (!tapa) {
+  if (!uri) {
     return (
       <View pointerEvents="none" className="absolute inset-x-0 top-0 h-[300px]">
         <LinearGradient
@@ -80,23 +81,35 @@ export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
   }
 
   return (
-    <View pointerEvents="none" className="absolute inset-x-0 top-0 h-[420px]">
-      <Image
-        source={{ uri: tapa }}
-        className="h-full w-full"
-        resizeMode="cover"
-        blurRadius={esIlustracion ? 0 : 18}
-      />
+    <View pointerEvents="none" className="absolute inset-0">
+      {clip ? (
+        <VideoView
+          player={video}
+          style={{ width: '100%', height: '100%' }}
+          contentFit="cover"
+          nativeControls={false}
+        />
+      ) : (
+        <Image source={{ uri }} className="h-full w-full" resizeMode="cover" />
+      )}
+
       {/*
-       * Dos capas: una pareja que baja el brillo general para que el texto se
-       * lea sobre cualquier tapa, y un degradado que funde el borde de abajo
-       * con el fondo de la app para que no se vea dónde termina la foto.
+       * El velo: un paño parejo que baja el brillo general —el texto tiene que
+       * leerse sobre cualquier imagen, incluida una blanca— y dos degradados que
+       * cierran arriba y abajo contra el fondo de la app.
+       *
+       * Ninguna de las tres capas llega a opaca. Si tapara del todo, las
+       * vitrinas de vidrio quedarían difuminando un gris plano y el fondo
+       * dejaría de servir para lo único que lo justifica.
        */}
-      <View className="absolute inset-0" style={{ backgroundColor: 'rgba(18,18,18,0.45)' }} />
+      <View className="absolute inset-0" style={{ backgroundColor: 'rgba(18,18,18,0.62)' }} />
       <LinearGradient
-        colors={['rgba(18,18,18,0.25)', 'rgba(18,18,18,0.8)', 'rgb(18,18,18)']}
-        locations={[0, 0.55, 1]}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 260 }}
+        colors={['rgba(18,18,18,0.65)', 'rgba(18,18,18,0)']}
+        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 200 }}
+      />
+      <LinearGradient
+        colors={['rgba(18,18,18,0)', 'rgba(18,18,18,0.75)']}
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 220 }}
       />
     </View>
   )

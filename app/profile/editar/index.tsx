@@ -18,7 +18,7 @@ import {
 } from '../../../src/ui/icons'
 import { removeAvatar, saveMyProfile, uploadAvatar } from '../../../src/services/profile'
 import { pickImage } from '../../../src/lib/pickImage'
-import { addShowcase, uploadIlustracion } from '../../../src/services/showcases'
+import { uploadIlustracion } from '../../../src/services/showcases'
 import { setMyProfile, useMyProfile, useUser } from '../../../src/state/session'
 import { usePiso } from '../../../src/state/shell'
 import { avisar } from '../../../src/state/aviso'
@@ -49,55 +49,24 @@ export default function EditarPerfil() {
   const [error, setError] = useState<string | null>(null)
   /* Cambia al sacar o mover una vitrina, para que la grilla relea. */
   const [recarga, setRecarga] = useState(0)
-  const [subiendo, setSubiendo] = useState(false)
-
-  /**
-   * Sube una imagen y la fija como vitrina.
-   *
-   * Se guarda la **proporción** junto a la ruta para poder reservarle el lugar
-   * antes de que cargue; si no se puede medir se asume cuadrada, que es el peor
-   * caso menos malo — una imagen que no entra se recorta, una que sobra deja un
-   * hueco que se nota más.
-   */
-  async function subirIlustracion() {
-    if (!user || subiendo) return
-    setSubiendo(true)
-    setError(null)
-    try {
-      /* Sin recorte cuadrado: la forma de la ilustración es el contenido. */
-      const elegida = await pickImage({ cuadrada: false, conVideo: true })
-      if (!elegida) return
-      const ruta = await uploadIlustracion(user.id, elegida.blob, elegida.fileName, elegida.mime)
-      /* Si no se pudo medir se asume cuadrada: es el peor caso menos malo — una
-         imagen que no entra se recorta y se nota poco; una que sobra deja un
-         hueco vacío que se nota mucho. */
-      await addShowcase(user.id, 'ilustracion', { path: ruta, alto: elegida.alto ?? 1 })
-      setRecarga((n) => n + 1)
-      avisar('Ilustración agregada')
-    } catch (e) {
-      setError((e as Error).message)
-      avisar('No se pudo subir la ilustración', true)
-    } finally {
-      setSubiendo(false)
-    }
-  }
 
   const [subiendoFondo, setSubiendoFondo] = useState(false)
 
   /**
-   * Sube una imagen propia y la deja **de fondo**, no de vitrina.
+   * Sube una imagen propia y la deja de fondo del perfil.
    *
-   * Va al mismo bucket que las ilustraciones (el cliente puede escribir ahí) y
-   * `banner_path` guarda su ruta; `FondoPerfil` sabe distinguirla de una tapa
-   * por la barra de la carpeta. Sin video: el fondo es un `Image`, y un mp4
-   * ahí sería un cuadro negro.
+   * Es la **única** puerta para poner un fondo: antes había dos —esta y elegir
+   * la tapa de una canción— y la de la tapa producía siempre lo mismo, un
+   * cuadrado de 640px estirado a pantalla completa. Acá entra lo que elijas,
+   * incluido un GIF o un clip, y se dibuja tal cual.
    */
   async function subirFondo() {
     if (!user || subiendoFondo) return
     setSubiendoFondo(true)
     setError(null)
     try {
-      const elegida = await pickImage({ cuadrada: false })
+      /* Con video: el fondo sabe dibujar un clip, en repetición y mudo. */
+      const elegida = await pickImage({ cuadrada: false, conVideo: true })
       if (!elegida) return
       const ruta = await uploadIlustracion(user.id, elegida.blob, elegida.fileName, elegida.mime)
       setMyProfile(await saveMyProfile({ bannerPath: ruta }))
@@ -242,17 +211,21 @@ export default function EditarPerfil() {
                  * hacer desde el otro lado.
                  */}
                 <GrupoAjustes titulo="Tu fondo">
+                  {/*
+                   * Una fila y una sola cosa que hace: vacía sube una imagen,
+                   * puesta la saca. Antes eran dos —«elegilo desde una canción»
+                   * y «subir una ilustración»— y la primera no era una elección
+                   * sino un accidente: la tapa del tema que estabas escuchando,
+                   * estirada y desenfocada para que no se le vieran los píxeles.
+                   */}
                   <FilaAjuste
                     rotulo="Fondo"
                     valor={profile.bannerPath ? 'Puesto' : null}
-                    vacio="Elegilo desde una canción"
-                    icono={<IconMusic size={17} color={ICON_COLOR.muted} />}
+                    vacio={subiendoFondo ? 'Subiendo…' : 'Una imagen, un GIF o un clip'}
+                    icono={<IconImage size={17} color={ICON_COLOR.muted} />}
                     onPress={() => {
-                      /* Vacía, la fila LLEVA a elegir: antes no hacía nada y se
-                         leía como rota — una fila con chevron promete un lugar
-                         a donde ir. Con fondo puesto, tocarla lo quita. */
                       if (!profile.bannerPath) {
-                        router.push('/profile/editar/musica?destino=fondo')
+                        void subirFondo()
                         return
                       }
                       void saveMyProfile({ bannerPath: '' }).then((p) => {
@@ -260,16 +233,6 @@ export default function EditarPerfil() {
                         avisar('Fondo quitado')
                       })
                     }}
-                  />
-                  {/* La otra puerta al fondo: una imagen propia, a pantalla y
-                      nítida — el fondo de Steam. Va al bucket de ilustraciones
-                      y `FondoPerfil` la distingue por la forma de la ruta. */}
-                  <FilaAjuste
-                    rotulo="Subir una ilustración"
-                    valor={null}
-                    vacio={subiendoFondo ? 'Subiendo…' : 'Una imagen tuya, de fondo'}
-                    icono={<IconImage size={17} color={ICON_COLOR.muted} />}
-                    onPress={() => void subirFondo()}
                     ultima
                   />
                 </GrupoAjustes>
@@ -305,20 +268,6 @@ export default function EditarPerfil() {
                     vacio="Buscá una canción para fijar"
                     icono={<IconMusic size={17} color={ICON_COLOR.muted} />}
                     onPress={() => router.push('/profile/editar/musica')}
-                  />
-                  {/*
-                   * Subir una ilustración es lo único que se agrega **desde
-                   * acá**. Todo lo demás —canciones, fragmentos, listas— se fija
-                   * desde donde ya está: es más corto y no obliga a buscar dos
-                   * veces la misma cosa. Una imagen del teléfono no está en
-                   * ningún lado de la app, así que su puerta tiene que estar acá.
-                   */}
-                  <FilaAjuste
-                    rotulo="Ilustración"
-                    valor={subiendo ? 'Subiendo…' : null}
-                    vacio="Una imagen, un GIF o un clip"
-                    icono={<IconImage size={17} color={ICON_COLOR.muted} />}
-                    onPress={() => void subirIlustracion()}
                     ultima
                   />
                 </GrupoAjustes>

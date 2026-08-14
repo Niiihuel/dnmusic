@@ -1,16 +1,13 @@
-import { useState } from 'react'
 import { Image, Pressable, Text, View } from 'react-native'
-import { useVideoPlayer, VideoView } from 'expo-video'
 import type { SharedValue } from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
 import type { SongSnippet } from '../models/message'
 import type { Showcase } from '../services/showcases'
 import type { Playlist } from '../services/playlists'
-import { esVideo, ilustracionUrl } from '../services/showcases'
-import { Cava } from './Cava'
-import { Onda, usePicos } from './Onda'
+import { Onda, ONDA_PENDIENTE, usePicos } from './Onda'
 import { Glass, HAY_VIDRIO } from './Glass'
 import { PlaylistCover } from './PlaylistCover'
+import { formatClock } from './SeekBar'
 import {
   ICON_COLOR,
   IconChevronDown,
@@ -122,8 +119,6 @@ export function Vitrina({
 
         {showcase.kind === 'texto' ? (
           <Text className="text-foreground text-[15px] leading-6">{showcase.texto}</Text>
-        ) : showcase.kind === 'ilustracion' ? (
-          <VitrinaIlustracion path={showcase.path} alto={showcase.alto} />
         ) : showcase.kind === 'lista' ? (
           <VitrinaLista
             playlistId={showcase.playlistId}
@@ -198,17 +193,17 @@ function VitrinaCancion({
         {esFragmento ? 'Un fragmento' : 'En repeat'}
       </Text>
 
-      <View className="flex-row items-center gap-3">
+      <View className="flex-row items-center gap-3.5">
         {tapa ? (
-          <Image source={{ uri: tapa }} className="h-16 w-16 rounded-lg bg-muted" />
+          <Image source={{ uri: tapa }} className="h-[68px] w-[68px] rounded-xl bg-muted" />
         ) : (
-          <View className="h-16 w-16 items-center justify-center rounded-lg bg-muted">
-            <IconMusic size={20} color={ICON_COLOR.muted} />
+          <View className="h-[68px] w-[68px] items-center justify-center rounded-xl bg-muted">
+            <IconMusic size={22} color={ICON_COLOR.muted} />
           </View>
         )}
 
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Text className="text-foreground text-[16px] font-semibold" numberOfLines={1}>
+        <View className="min-w-0 flex-1 gap-1">
+          <Text className="text-foreground text-[17px] font-semibold" numberOfLines={1}>
             {c.title}
           </Text>
           <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
@@ -216,27 +211,54 @@ function VitrinaCancion({
           </Text>
         </View>
 
+        {/*
+          El play es de vidrio y no un círculo blanco pintado.
+
+          Sobre el fondo a sangre, un disco blanco opaco es la mancha más fuerte
+          de la pantalla y se come la imagen que elegiste. El vidrio deja pasar
+          lo que tiene detrás y sigue siendo lo más claro de la tarjeta, que es
+          lo que un botón principal necesita. Sin vidrio queda el blanco de
+          siempre, que es el respaldo correcto.
+        */}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={playing ? 'Pausar' : `Escuchar ${c.title}`}
           onPress={() => onTogglePlay(showcase.id, song)}
-          className="h-11 w-11 items-center justify-center rounded-full bg-primary active:opacity-80"
+          className="active:opacity-80"
         >
-          {playing ? (
-            <IconPause size={16} color={ICON_COLOR.onPrimary} />
+          {HAY_VIDRIO ? (
+            <Glass radius={999} style={{ width: 48, height: 48 }}>
+              <View className="h-full w-full items-center justify-center">
+                {playing ? (
+                  <IconPause size={17} color={ICON_COLOR.foreground} />
+                ) : (
+                  <IconPlay size={17} color={ICON_COLOR.foreground} />
+                )}
+              </View>
+            </Glass>
           ) : (
-            <IconPlay size={16} color={ICON_COLOR.onPrimary} />
+            <View className="h-12 w-12 items-center justify-center rounded-full bg-primary">
+              {playing ? (
+                <IconPause size={17} color={ICON_COLOR.onPrimary} />
+              ) : (
+                <IconPlay size={17} color={ICON_COLOR.onPrimary} />
+              )}
+            </View>
           )}
         </Pressable>
       </View>
 
       {/*
-        La onda de verdad si la hay, y si no la cava.
+        Mientras la onda no llegó, un riel y nada más.
 
-        La onda la calcula el servicio y llega un instante después de dibujar la
-        tarjeta; la cava, que sale del identificador, está en el primer cuadro.
-        Así el perfil nunca muestra un hueco donde va la canción, y cuando la
-        onda llega el bloque ya tiene su lugar hecho y nada salta.
+        Antes acá se dibujaba la «cava»: unas barras gordas sacadas del
+        identificador de la canción, que no tenían nada que ver con el audio.
+        Duraban lo que tardaba el servicio en calcular la onda y después se
+        cambiaban de golpe por la de verdad — dos dibujos distintos en el mismo
+        lugar, que es exactamente lo que se ve como un error.
+
+        El riel ocupa el mismo alto, así que nada salta cuando la onda entra, y
+        no finge ser una forma que no conoce.
       */}
       {picos ? (
         <Onda
@@ -250,8 +272,22 @@ function VitrinaCancion({
           etiqueta={c.title}
         />
       ) : (
-        <Cava seed={c.videoId} playing={playing} height={40} />
+        <View className="justify-center" style={{ height: 40 }}>
+          <View className="h-[3px] w-full rounded-full" style={{ backgroundColor: ONDA_PENDIENTE }} />
+        </View>
       )}
+
+      {/*
+        De dónde sale el recorte, debajo de la onda.
+        `1:04 – 1:19` es la mitad de la información de un fragmento y no estaba
+        en ningún lado. Va acá y no arriba junto al rótulo porque arriba, en el
+        editor, viven las flechas y la cruz de ordenar: se pisaban.
+      */}
+      <Text className="text-muted-foreground -mt-1 text-right text-[11px] tabular-nums">
+        {esFragmento
+          ? `${formatClock(song.startMs)} – ${formatClock(song.startMs + song.durationMs)}`
+          : formatClock(song.durationMs)}
+      </Text>
     </View>
   )
 }
@@ -301,59 +337,5 @@ function VitrinaLista({
         </View>
       </View>
     </Pressable>
-  )
-}
-
-/**
- * Una ilustración: la pieza grande del perfil.
- *
- * Es la vitrina de Steam que ocupa el centro. No lleva rótulo ni marco interno
- * —la imagen habla sola— y por eso se dibuja al ras del borde de la tarjeta.
- *
- * La proporción viene guardada, así que el hueco se reserva **antes** de que la
- * imagen llegue: sin eso, el perfil entero pega un salto cuando termina de
- * cargar y lo que estabas mirando se te va de la pantalla.
- */
-function VitrinaIlustracion({ path, alto }: { path: string; alto: number }) {
-  const [ancho, setAncho] = useState(0)
-  const uri = ilustracionUrl(path)
-  const clip = esVideo(path)
-
-  /*
-   * El clip **se repite solo y va mudo**.
-   *
-   * Una vitrina es una imagen que se mueve, no un video que uno mira: no lleva
-   * controles ni sonido. Y sobre todo mudo, porque esto vive en un perfil de una
-   * app de música — que un clip pise la canción que está sonando es lo último
-   * que uno quiere al entrar a mirar a alguien.
-   *
-   * El reproductor se crea igual aunque la vitrina sea una imagen: los hooks no
-   * se pueden llamar condicionalmente, y sin fuente no hace nada.
-   */
-  const player = useVideoPlayer(clip ? uri : null, (p) => {
-    p.loop = true
-    p.muted = true
-    p.play()
-  })
-
-  return (
-    <View
-      onLayout={(e) => setAncho(e.nativeEvent.layout.width)}
-      className="overflow-hidden rounded-lg bg-muted"
-      style={{ height: ancho ? ancho * alto : undefined, aspectRatio: ancho ? undefined : 1 / alto }}
-    >
-      {clip ? (
-        <VideoView
-          player={player}
-          style={{ width: '100%', height: '100%' }}
-          contentFit="cover"
-          nativeControls={false}
-        />
-      ) : (
-        /* Un GIF lo anima el propio `Image` en iOS y en web; no hace falta
-           nada más. */
-        <Image source={{ uri }} className="h-full w-full" resizeMode="cover" />
-      )}
-    </View>
   )
 }
