@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, Vi
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
+import { BotonVidrio } from '../../src/ui/Glass'
 import { FondoPerfil, Identidad, Vitrinas } from '../../src/ui/PerfilPublico'
 import { ICON_COLOR, IconBack, IconUser } from '../../src/ui/icons'
 import { fetchProfile, type Profile } from '../../src/services/profile'
@@ -69,26 +70,47 @@ export default function PerfilAjeno() {
       edges={ancho ? ['top', 'bottom'] : ['top']}
     >
       <View className={`flex-1 ${ancho ? 'gap-2 p-2' : ''}`}>
-        <View className="flex-row items-center gap-3 px-3 py-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver"
-            onPress={() => volver(router, '/')}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconBack size={19} color={ICON_COLOR.foreground} />
-          </Pressable>
-          <Text className="text-foreground text-[15px] font-semibold">
-            {perfil ? `@${perfil.username}` : 'Perfil'}
-          </Text>
-        </View>
+        {/* En el teléfono la cabecera se queda: se llegó acá tocando a alguien
+            y hace falta la salida, y el @usuario dice de quién es el perfil que
+            estás mirando. En escritorio la franja negra cortaba la imagen a
+            sangre, así que la salida flota sobre ella. */}
+        {ancho ? null : (
+          <View className="flex-row items-center gap-3 px-3 py-1">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Volver"
+              onPress={() => volver(router, '/')}
+              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+            >
+              <IconBack size={19} color={ICON_COLOR.foreground} />
+            </Pressable>
+            <Text className="text-foreground text-[15px] font-semibold">
+              {perfil ? `@${perfil.username}` : 'Perfil'}
+            </Text>
+          </View>
+        )}
 
         <Panel className="flex-1">
           <FondoPerfil bannerPath={perfil?.bannerPath ?? null} />
 
+          {ancho ? (
+            <View className="absolute left-4 top-4 z-10">
+              <BotonVidrio
+                onPress={() => volver(router, '/')}
+                label="Volver"
+                radius={22}
+                style={{ height: 44, width: 44 }}
+              >
+                <IconBack size={19} color={ICON_COLOR.foreground} />
+              </BotonVidrio>
+            </View>
+          ) : null}
+
           <ScrollView
-            contentContainerClassName="items-center px-4 pt-6"
-            contentContainerStyle={{ paddingBottom: piso }}
+            contentContainerClassName="items-center px-4"
+            /* Mismo motivo que en el perfil propio: en escritorio el contenido
+               empieza debajo del redondel de volver, que flota sobre la imagen. */
+            contentContainerStyle={{ paddingTop: ancho ? 72 : 24, paddingBottom: piso }}
           >
             {perfil === undefined ? (
               <ActivityIndicator color="#FFFFFF" />

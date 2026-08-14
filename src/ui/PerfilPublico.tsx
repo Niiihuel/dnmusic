@@ -16,7 +16,6 @@ import { avisar } from '../state/aviso'
 import { mensajeError } from '../lib/mensajeError'
 import { fetchStats, type EstadisticasPerfil } from '../services/plays'
 import { Avatar } from './Avatar'
-import { Glass, HAY_VIDRIO } from './Glass'
 import { Vitrina } from './Vitrina'
 
 /**
@@ -193,14 +192,15 @@ export function Identidad({
 /**
  * El resumen: los números del perfil.
  *
- * Es la columna derecha de Steam. Hoy lleva **solo lo que podemos afirmar**:
- * cuántas listas, cuántas canciones guardadas, cuántas vitrinas y desde cuándo
- * existe la cuenta. Nada de minutos escuchados ni de artista favorito — para eso
- * hace falta un historial de reproducciones que todavía no llevamos, y un número
- * inventado en un perfil es peor que un número ausente.
+ * Es la columna derecha de Steam, y como la de Steam **no es una tarjeta**: son
+ * bloques sueltos apoyados sobre el fondo, separados por aire. Encerrarlos en un
+ * rectángulo gris los volvía un ladrillo compacto contra la imagen, y la imagen
+ * dejaba de tener algo encima para pasar por detrás.
  *
- * La forma sí está pensada para lo que viene: cada dato es una fila de rótulo y
- * valor, así que sumar «minutos escuchados» el día que exista es agregar una.
+ * Lleva solo lo que podemos afirmar: los minutos y el artista más escuchado
+ * salen del historial de reproducciones; el resto se cuenta de la biblioteca. Un
+ * número inventado en un perfil es peor que un número ausente, así que lo que no
+ * se sabe todavía va con una raya.
  */
 export function Resumen({
   ownerId,
@@ -230,44 +230,85 @@ export function Resumen({
   }, [ownerId])
 
   return (
-    <Glass radius={16} style={HAY_VIDRIO ? {} : { backgroundColor: 'rgb(24,24,24)' }}>
-      <View className="gap-3 p-4">
-        <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-          Resumen
-        </Text>
-        {/*
-         * Los minutos van primero: es el número que más dice de alguien en una
-         * app de música. Recién debajo lo que tiene guardado.
-         *
-         * Mientras no haya nada escuchado se muestra igual, en cero — y eso es
-         * honesto: cero minutos es un dato, no un dato faltante. La raya queda
-         * para cuando de verdad no sabemos.
-         */}
-        <Dato rotulo="Minutos escuchados" valor={stats?.minutos ?? null} />
-        {stats?.artistaTop ? (
-          <Dato
-            rotulo="Más escuchado"
-            valor={`${stats.artistaTop} · ${stats.minutosArtistaTop} min`}
-          />
-        ) : null}
-        <Dato rotulo="Listas" valor={listas} />
-        <Dato rotulo="Canciones guardadas" valor={canciones} />
-        <Dato rotulo="Vitrinas" valor={vitrinas} />
-        <Dato rotulo="Acá desde" valor={desde ? mesYAno(desde) : null} />
-      </View>
-    </Glass>
+    <View className="gap-7">
+      {/*
+       * Los minutos van primero: es el número que más dice de alguien en una
+       * app de música. Recién debajo lo que tiene guardado.
+       *
+       * Mientras no haya nada escuchado se muestra igual, en cero — y eso es
+       * honesto: cero minutos es un dato, no un dato faltante. La raya queda
+       * para cuando de verdad no sabemos.
+       */}
+      <Dato rotulo="Minutos escuchados" valor={stats?.minutos ?? null} destacado />
+      {stats?.artistaTop ? (
+        <Dato
+          rotulo="Más escuchado"
+          valor={stats.artistaTop}
+          detalle={`${stats.minutosArtistaTop} min`}
+        />
+      ) : null}
+      <Dato rotulo="Listas" valor={listas} />
+      <Dato rotulo="Canciones guardadas" valor={canciones} />
+      <Dato rotulo="Vitrinas" valor={vitrinas} />
+      <Dato rotulo="Acá desde" valor={desde ? mesYAno(desde) : null} />
+    </View>
   )
 }
 
-function Dato({ rotulo, valor }: { rotulo: string; valor: number | string | null }) {
+/**
+ * Un número del resumen: el rótulo arriba, el valor grande abajo.
+ *
+ * **Sin tarjeta.** Estos datos se apoyan directamente sobre el fondo del perfil,
+ * que es lo que hace Steam en su columna derecha: encerrarlos en un rectángulo
+ * gris los volvía un bloque compacto pegado contra la imagen, y la imagen dejaba
+ * de tener algo encima para pasar por detrás. Lo que los separa es el aire entre
+ * uno y otro, no un borde — la misma regla de docs/DESIGN.md.
+ *
+ * De ahí sale la sombra del texto: sin caja detrás, la legibilidad depende de la
+ * imagen que haya puesto cada uno, y una foto clara se come un texto blanco. La
+ * sombra no se ve como sombra; se ve como que el texto siempre se lee.
+ */
+function Dato({
+  rotulo,
+  valor,
+  detalle,
+  destacado = false,
+}: {
+  rotulo: string
+  valor: number | string | null
+  /** Un segundo dato al costado del valor, más chico. */
+  detalle?: string
+  /** El primero va más grande: es la cabeza de la columna. */
+  destacado?: boolean
+}) {
+  const sombra = { textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 8 } as const
+
   return (
-    <View className="flex-row items-baseline justify-between gap-3">
-      <Text className="text-muted-foreground text-[14px]">{rotulo}</Text>
-      {/* Mientras no se sabe va una raya y no un cero: cero es un dato, «no lo
-          sé todavía» es otra cosa. */}
-      <Text className="text-foreground text-[17px] font-semibold tabular-nums">
-        {valor === null ? '—' : valor}
+    <View className="gap-1">
+      <Text
+        className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]"
+        style={sombra}
+      >
+        {rotulo}
       </Text>
+      <View className="flex-row items-baseline gap-2">
+        {/* Mientras no se sabe va una raya y no un cero: cero es un dato, «no lo
+            sé todavía» es otra cosa. */}
+        <Text
+          className={`text-foreground font-semibold tabular-nums ${
+            destacado ? 'text-[34px] leading-[38px]' : 'text-[22px] leading-[26px]'
+          }`}
+          numberOfLines={1}
+          style={sombra}
+        >
+          {valor === null ? '—' : valor}
+        </Text>
+        {detalle ? (
+          <Text className="text-muted-foreground text-[13px] tabular-nums" style={sombra}>
+            {detalle}
+          </Text>
+        ) : null}
+      </View>
     </View>
   )
 }

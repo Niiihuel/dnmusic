@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   Text,
   useWindowDimensions,
@@ -138,34 +137,36 @@ export default function ProfileScreen() {
       edges={ancho ? ['top', 'bottom'] : []}
     >
       <View className={`flex-1 ${ancho ? 'gap-2 p-2' : ''}`}>
-        {/*
-         * La fila de «Volver | Tu perfil», **solo en escritorio**.
-         *
-         * En el teléfono el perfil es una pestaña, y una pestaña no tiene
-         * volver: se sale tocando otra pestaña, como en Inicio o en Chats.
-         * Era la única con botón de atrás y cabecera propia, y por eso se
-         * sentía con «otro layout». Además el nombre y el avatar están a un
-         * centímetro, en el contenido: el título repetía lo que ya se ve.
-         * En escritorio no hay pestañas y la fila sigue siendo la salida.
-         */}
-        {ancho ? (
-          <View className="flex-row items-center gap-3 px-3 py-1">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Volver"
-              onPress={() => volver(router, '/')}
-              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-            >
-              <IconBack size={19} color={ICON_COLOR.foreground} />
-            </Pressable>
-            <Text className="text-foreground text-[15px] font-semibold">Tu perfil</Text>
-          </View>
-        ) : null}
-
         <Panel className="flex-1">
           {/* El fondo va detrás de todo: además de ser lo de Steam, es la única
               pantalla donde el vidrio tiene una foto que difuminar. */}
           <FondoPerfil bannerPath={profile?.bannerPath ?? null} />
+
+          {/*
+           * La salida, en escritorio: un redondel de vidrio sobre la imagen.
+           *
+           * Antes era una franja negra con «← Tu perfil» **encima** del panel,
+           * fuera del fondo. Con la imagen a sangre esa franja quedaba como un
+           * techo opaco cortando justo lo que se eligió para que se vea, y el
+           * título repetía el nombre que está dos centímetros más abajo, en
+           * grande. El botón flota sobre la imagen igual que «Editar perfil» del
+           * otro extremo, así la banda de arriba es una sola cosa.
+           *
+           * En el teléfono no va: el perfil es una pestaña, y una pestaña no
+           * tiene volver — se sale tocando otra.
+           */}
+          {ancho ? (
+            <View className="absolute left-4 top-4 z-10">
+              <BotonVidrio
+                onPress={() => volver(router, '/')}
+                label="Volver"
+                radius={22}
+                style={{ height: 44, width: 44 }}
+              >
+                <IconBack size={19} color={ICON_COLOR.foreground} />
+              </BotonVidrio>
+            </View>
+          ) : null}
 
           {/*
            * Bajando, la cáscara se pliega; subiendo, vuelve.
@@ -182,7 +183,12 @@ export default function ProfileScreen() {
                pantalla ya no reserva esa franja— con el respiro que ya tenía
                (`pt-6`). El estilo pisa a la clase, así que va todo acá. */
             contentContainerStyle={{
-              paddingTop: (ancho ? 0 : arriba.top) + 24,
+              /* En escritorio el contenido arranca **debajo del redondel de
+                 volver**, que ahora flota sobre la imagen: con el respiro de
+                 antes, el avatar quedaba justo abajo del botón en una ventana
+                 angosta. Es más o menos lo que ocupaba la franja negra, así que
+                 el ritmo vertical queda igual y la imagen gana esa altura. */
+              paddingTop: ancho ? 72 : arriba.top + 24,
               paddingBottom: piso,
             }}
             {...colapso}
