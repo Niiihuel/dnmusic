@@ -92,6 +92,8 @@ export const HAY_MENU_NATIVO = nativo !== null
  * fila, que tiene alto fijo para poder ubicar el menú antes de dibujarlo. */
 const MENU_W = 288
 const ROW_H = 42
+/** El divisor del grupo destructivo: 1px de línea + 4px de margen por lado. */
+const DIVISOR_H = 9
 /** Aire interno del panel, arriba y abajo de las filas. */
 const PAD = 6
 const GAP = 6
@@ -315,8 +317,17 @@ export function Menu({
   const window = useWindowDimensions()
 
   const usable = items.filter((item) => !item.disabled)
-  /* El respiro de arriba y abajo del panel, como los menús de macOS. */
-  const idealH = usable.length * ROW_H + PAD * 2
+  /*
+   * El alto ideal cuenta TODO lo que se dibuja: filas, respiro, y también los
+   * divisores antes del grupo destructivo. Sin contarlos, el contenido medía
+   * unos píxeles más que el panel y la última fila quedaba recortada — antes
+   * lo disimulaba la barra de scroll (que aparecía por esos mismos píxeles),
+   * y sin barra se veía a «Salir del Jam» comido por el borde.
+   */
+  const cortes = usable.filter(
+    (item, i) => i > 0 && item.destructive && !usable[i - 1]?.destructive,
+  ).length
+  const idealH = usable.length * ROW_H + cortes * DIVISOR_H + PAD * 2
 
   /*
    * En iOS, el menú del sistema.

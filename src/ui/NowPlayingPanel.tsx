@@ -11,6 +11,7 @@ import {
 import { useJam } from '../state/jam'
 import { usePiso } from '../state/shell'
 import { ArtistCard } from './ArtistCard'
+import { ColaBody } from './ColaBody'
 import { JamBody } from './JamPanel'
 import { Panel } from './Panel'
 import { AnimatedSidebarTitle } from './SidebarMotion'
@@ -81,7 +82,13 @@ export function NowPlayingPanel({
           <View className="min-w-0 flex-row items-center gap-2">
             <View className="min-w-0 gap-0.5">
               <Text className="text-foreground text-lg font-bold" numberOfLines={1}>
-                {view === 'jam' ? 'Jam' : track ? track.title : 'Sonando'}
+                {view === 'jam'
+                  ? 'Jam'
+                  : view === 'cola'
+                    ? 'Lo que viene'
+                    : track
+                      ? track.title
+                      : 'Sonando'}
               </Text>
               <Text className="text-muted-foreground text-xs" numberOfLines={1}>
                 {view === 'jam'
@@ -90,14 +97,16 @@ export function NowPlayingPanel({
                     jam
                       ? `Código ${jam.code}`
                       : 'Escucha compartida'
-                  : !track
-                    ? 'Nada por ahora'
-                    : fromQueue
-                      ? 'En la cola'
-                      : /* Sin lista detrás —una canción suelta de la
-                           búsqueda, o una lista que se borró mientras
-                           sonaba— decir «Tu lista» sería inventar una. */
-                        listName || 'Sonando'}
+                  : view === 'cola'
+                    ? 'La cola, en su orden real'
+                    : !track
+                      ? 'Nada por ahora'
+                      : fromQueue
+                        ? 'En la cola'
+                        : /* Sin lista detrás —una canción suelta de la
+                             búsqueda, o una lista que se borró mientras
+                             sonaba— decir «Tu lista» sería inventar una. */
+                          listName || 'Sonando'}
               </Text>
             </View>
           </View>
@@ -105,9 +114,13 @@ export function NowPlayingPanel({
       </View>
 
       {/* El Jam va antes que el vacío: existe aunque no suene nada — una cola
-          compartida recién creada es exactamente eso. */}
+          compartida recién creada es exactamente eso. La cola también: su
+          vacío lo explica ella misma, con el camino para llenarla. */}
       {view === 'jam' ? (
         <JamBody />
+      ) : view === 'cola' ? (
+        /* El título grande lo pone la cabecera del panel; adentro solo filas. */
+        <ColaBody piso={piso} conTitulo={false} />
       ) : !track ? (
         /* El cartel se centra en **lo que se ve**, descontando lo que tapa el
            reproductor: centrado a secas cae detrás de la barra. */

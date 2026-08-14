@@ -100,14 +100,14 @@ type PlaybackState = {
  * Las caras del panel de la derecha.
  *
  * `info` es la de siempre —carátula, tema, artista—; `disc` es el vinilo
- * girando, `lyrics` la letra sincronizada y `jam` la escucha compartida:
- * quiénes están, la cola con quién puso cada tema y las perillas del host. En
- * el teléfono el Jam sigue siendo su pantalla modal; esta vista es la forma
- * de escritorio, al lado de la lista, como el panel de Spotify. Vive acá y no
- * en la pantalla porque quien las alterna es la barra de abajo, que está en
- * el layout.
+ * girando, `lyrics` la letra sincronizada, `jam` la escucha compartida y
+ * `cola` lo que viene después. En el teléfono el Jam y la cola siguen siendo
+ * sus pantallas modales; estas vistas son la forma de escritorio, al lado de
+ * la lista, como el panel de Spotify — un drawer es un gesto de teléfono, no
+ * de una ventana grande. Vive acá y no en la pantalla porque quien las
+ * alterna es la barra de abajo, que está en el layout.
  */
-export type NowPlayingView = 'info' | 'disc' | 'lyrics' | 'jam'
+export type NowPlayingView = 'info' | 'disc' | 'lyrics' | 'jam' | 'cola'
 
 const EMPTY: PlaybackState = {
   tracks: [],

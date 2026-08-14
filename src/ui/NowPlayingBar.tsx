@@ -162,7 +162,12 @@ export function NowPlayingBar({
     },
     {
       label: 'Ver la cola',
-      onPress: () => router.push('/cola'),
+      /* Como el Jam: con panel al lado, la cola se abre ahí — un drawer es un
+         gesto de teléfono, no de una ventana grande. Sin panel, su pantalla. */
+      onPress: () => {
+        if (width >= PANEL_PX) toggleView('cola')
+        else router.push('/cola')
+      },
       icon: <IconCola size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'list.bullet',
     },
