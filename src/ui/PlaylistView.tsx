@@ -39,6 +39,7 @@ import {
   IconPause,
   IconPencil,
   IconPlay,
+  IconPlus,
   IconShuffle,
   IconSearch,
   IconTrash,
@@ -72,6 +73,7 @@ export function PlaylistView({
   onDelete,
   onClose,
   onSearch,
+  onSubirArchivo,
   menuFor,
   onAddSugerencia,
   onPlaySugerencia,
@@ -98,6 +100,11 @@ export function PlaylistView({
    * eligiera entre dos formas de hacer lo mismo.
    */
   onSearch?: () => void
+  /**
+   * Subir un archivo de audio de la compu a esta lista. Solo viene en la web
+   * de escritorio: sin esto, la fila del menú no existe.
+   */
+  onSubirArchivo?: () => void
   /**
    * Las opciones de una canción: ir al artista, encolarla, sumarla a otra lista.
    *
@@ -305,6 +312,18 @@ export function PlaylistView({
       icon: <IconPencil size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'pencil',
     },
+    /* Solo llega en la web de escritorio, donde hay archivos que elegir: en el
+       teléfono la fila no aparece. Ver `subirArchivoALista` en la pantalla. */
+    ...(onSubirArchivo
+      ? [
+          {
+            label: 'Agregar un archivo de audio',
+            onPress: onSubirArchivo,
+            icon: <IconPlus size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'square.and.arrow.down' as const,
+          },
+        ]
+      : []),
     {
       label: 'Cerrar la lista',
       onPress: onClose,

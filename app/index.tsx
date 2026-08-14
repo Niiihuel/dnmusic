@@ -4,6 +4,7 @@ import {
   AppState,
   FlatList,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -55,12 +56,14 @@ import { artworkSource } from '../src/lib/artwork'
 import {
   resolveSong,
   searchMusic,
+  subirCancionPropia,
   type AlbumTrack,
   type ArtistResult,
   type ArtistSong,
   type HomeItem,
   type TrackResult,
 } from '../src/services/music'
+import { elegirArchivoAudio } from '../src/lib/archivoAudio'
 import { pickImage } from '../src/lib/pickImage'
 import { useSnippetPlayer } from '../src/state/player'
 import {
@@ -652,6 +655,46 @@ export default function Home() {
       /* También por aviso: el cartel de arriba vive en el panel izquierdo, y
          desde el pie de sugerencias de una lista no se ve nunca. */
       avisar(`No se pudo agregar: ${(e as Error).message}`, true)
+    } finally {
+      setAddingTrack(null)
+    }
+  }
+
+  /**
+   * Sube un archivo de audio de la compu a la lista abierta.
+   *
+   * La primera música de la app que no sale de YouTube: el servidor la valida
+   * con ffprobe, le lee etiquetas y tapa embebida, y la guarda tal cual. El
+   * `videoId` se inventa con el prefijo `propia:` — es el id de fila que las
+   * listas exigen único, no un video de nadie.
+   */
+  async function subirArchivoALista(playlist: Playlist) {
+    const archivo = await elegirArchivoAudio()
+    if (!archivo) return
+    setAddingTrack(`propia:${archivo.name}`)
+    avisar(`Subiendo «${archivo.name}»…`)
+    try {
+      const subida = await subirCancionPropia(archivo, archivo.name)
+      const titulo = subida.title ?? archivo.name.replace(/\.[^.]+$/, '')
+      const ok = await addTrack(playlist.id, {
+        videoId: `propia:${subida.path.split('/').pop()?.split('.')[0] ?? archivo.name}`,
+        title: titulo,
+        artist: subida.artist ?? '',
+        artistId: null,
+        artworkUrl: '',
+        artworkPath: subida.artworkPath,
+        audioPath: subida.path,
+        durationMs: subida.durationMs,
+        truePeak: undefined,
+      })
+      if (!ok) avisar(`«${titulo}» ya está en ${playlist.name}.`)
+      else {
+        avisar(`«${titulo}» agregada a ${playlist.name}.`)
+        setReloadToken((n) => n + 1)
+        void loadPlaylists()
+      }
+    } catch (e) {
+      avisar(`No se pudo subir: ${(e as Error).message}`, true)
     } finally {
       setAddingTrack(null)
     }
@@ -1487,6 +1530,13 @@ export default function Home() {
               onDelete={() => void removePlaylist(openPlaylist)}
               onClose={goBack}
               onSearch={() => searchRef.current?.focus()}
+              /* Elegir un archivo pide un sistema de archivos a mano: la fila
+                 solo existe en la web. */
+              onSubirArchivo={
+                Platform.OS === 'web'
+                  ? () => void subirArchivoALista(openPlaylist)
+                  : undefined
+              }
               menuFor={(track) =>
                 menuForTrack(playlistTrackAsResult(track), openPlaylist.id)
               }

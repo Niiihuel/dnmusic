@@ -14,6 +14,7 @@ import {
 } from './youtube.js'
 import { isLang, translate } from './translate.js'
 import { cacheImage } from './artwork.js'
+import { subirPropia } from './propia.js'
 
 /**
  * Servicio de resolución de música.
@@ -407,6 +408,26 @@ const server = createServer(async (req, res) => {
       })
     }
 
+    /*
+     * POST /propia?nombre=cancion.mp3 — el cuerpo es el archivo crudo.
+     *
+     * Una canción del disco de quien escucha, a Storage. La primera música de
+     * la app que no viene de YouTube: se valida con ffprobe, se leen etiquetas
+     * y tapa embebida, y se guarda tal cual (ver `propia.ts`).
+     */
+    if (url.pathname === '/propia' && req.method === 'POST') {
+      if (!supabase) return json(500, { error: 'Storage no configurado' })
+      const nombre = url.searchParams.get('nombre') ?? 'audio'
+      let bytes: Buffer
+      try {
+        bytes = await readRaw(req, PROPIA_MAX_BYTES)
+      } catch {
+        return json(413, { error: 'El archivo es demasiado grande (80 MB como mucho).' })
+      }
+      if (!bytes.length) return json(400, { error: 'No llegó ningún archivo.' })
+      return json(200, await subirPropia(supabase, BUCKET, bytes, nombre))
+    }
+
     return json(404, { error: 'No existe' })
   } catch (e) {
     // El detalle va al log del servidor; al cliente solo lo necesario.
@@ -423,6 +444,28 @@ const server = createServer(async (req, res) => {
  * (host.docker.internal en local) que el navegador no puede resolver. El
  * cliente firma la URL con su propia sesión, que además respeta las policies.
  */
+
+/** Tope de una canción propia: un FLAC largo entra; un disco entero, no. */
+const PROPIA_MAX_BYTES = 80 * 1024 * 1024
+
+/** El cuerpo crudo, con tope: pasado el límite se corta el pedido y se avisa. */
+function readRaw(req: import('node:http').IncomingMessage, max: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let total = 0
+    req.on('data', (c: Buffer) => {
+      total += c.length
+      if (total > max) {
+        req.destroy()
+        reject(new Error('Demasiado grande'))
+        return
+      }
+      chunks.push(c)
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks)))
+    req.on('error', reject)
+  })
+}
 
 function readJson(req: import('node:http').IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {

@@ -11,7 +11,9 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.nihuel.dnmusic",
-      "associatedDomains": ["applinks:dnmusic-app.vercel.app"],
+      "associatedDomains": [
+        "applinks:dnmusic-app.vercel.app"
+      ],
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
@@ -58,7 +60,8 @@
           "cameraPermission": false
         }
       ],
-      "expo-video"
+      "expo-video",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

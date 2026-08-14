@@ -288,6 +288,38 @@ export async function resolveSong(track: TrackResult, signal?: AbortSignal): Pro
   }
 }
 
+export type PropiaSubida = {
+  path: string
+  durationMs: number
+  title: string | null
+  artist: string | null
+  artworkPath: string | null
+}
+
+/**
+ * Sube un archivo de audio propio y devuelve lo que el servidor le leyó:
+ * duración, etiquetas y tapa embebida. La primera música de la app que no
+ * sale de YouTube Music — sale de la compu de quien escucha.
+ */
+export async function subirCancionPropia(archivo: Blob, nombre: string): Promise<PropiaSubida> {
+  const res = await fetchMusica(`${MUSIC_API}/propia?nombre=${encodeURIComponent(nombre)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: archivo,
+  })
+  const data = (await res.json()) as Partial<PropiaSubida> & { error?: string }
+  if (!res.ok || data.error || !data.path) {
+    throw new Error(data.error ?? `No se pudo subir (${res.status})`)
+  }
+  return {
+    path: data.path,
+    durationMs: data.durationMs ?? 0,
+    title: data.title ?? null,
+    artist: data.artist ?? null,
+    artworkPath: data.artworkPath ?? null,
+  }
+}
+
 /**
  * Se asegura de que la carátula esté copiada, y devuelve su ruta.
  *
