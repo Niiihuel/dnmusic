@@ -3,6 +3,7 @@ import { Image, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { artworkSource } from '../lib/artwork'
 import {
+  ilustracionUrl,
   listShowcases,
   removeShowcase,
   reorderShowcases,
@@ -35,7 +36,22 @@ import { Vitrina } from './Vitrina'
  * servir para lo único que lo justifica.
  */
 export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
-  const tapa = bannerPath ? artworkSource(bannerPath, '', 640) : null
+  /*
+   * Dos clases de fondo, distinguidas por la forma de la ruta.
+   *
+   * Las tapas viven en el bucket `artwork`, planas (`<videoId>.jpg`); las
+   * ilustraciones subidas viven en `showcases`, bajo la carpeta de su dueño
+   * (`<uid>/<ts>.png`) — la barra dice cuál es. Y se dibujan distinto a
+   * propósito: la tapa va desenfocada porque es un cuadrado chico estirado a
+   * banda —nítida se pixela—; la ilustración va **nítida**, que es el punto de
+   * haberla subido: es el fondo de Steam, elegido pixel por pixel.
+   */
+  const esIlustracion = bannerPath?.includes('/') ?? false
+  const tapa = bannerPath
+    ? esIlustracion
+      ? ilustracionUrl(bannerPath)
+      : artworkSource(bannerPath, '', 640)
+    : null
 
   /*
    * Sin tapa, la banda se dibuja igual.
@@ -65,7 +81,12 @@ export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
 
   return (
     <View pointerEvents="none" className="absolute inset-x-0 top-0 h-[420px]">
-      <Image source={{ uri: tapa }} className="h-full w-full" blurRadius={18} />
+      <Image
+        source={{ uri: tapa }}
+        className="h-full w-full"
+        resizeMode="cover"
+        blurRadius={esIlustracion ? 0 : 18}
+      />
       {/*
        * Dos capas: una pareja que baja el brillo general para que el texto se
        * lea sobre cualquier tapa, y un degradado que funde el borde de abajo

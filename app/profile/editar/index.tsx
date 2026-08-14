@@ -82,6 +82,34 @@ export default function EditarPerfil() {
     }
   }
 
+  const [subiendoFondo, setSubiendoFondo] = useState(false)
+
+  /**
+   * Sube una imagen propia y la deja **de fondo**, no de vitrina.
+   *
+   * Va al mismo bucket que las ilustraciones (el cliente puede escribir ahí) y
+   * `banner_path` guarda su ruta; `FondoPerfil` sabe distinguirla de una tapa
+   * por la barra de la carpeta. Sin video: el fondo es un `Image`, y un mp4
+   * ahí sería un cuadro negro.
+   */
+  async function subirFondo() {
+    if (!user || subiendoFondo) return
+    setSubiendoFondo(true)
+    setError(null)
+    try {
+      const elegida = await pickImage({ cuadrada: false })
+      if (!elegida) return
+      const ruta = await uploadIlustracion(user.id, elegida.blob, elegida.fileName, elegida.mime)
+      setMyProfile(await saveMyProfile({ bannerPath: ruta }))
+      avisar('Fondo puesto')
+    } catch (e) {
+      setError((e as Error).message)
+      avisar('No se pudo subir el fondo', true)
+    } finally {
+      setSubiendoFondo(false)
+    }
+  }
+
   const avatarPath = profile?.avatarPath ?? null
   const nombre = profile?.displayName?.trim() || profile?.username || '?'
 
@@ -218,7 +246,7 @@ export default function EditarPerfil() {
                     rotulo="Fondo"
                     valor={profile.bannerPath ? 'Puesto' : null}
                     vacio="Elegilo desde una canción"
-                    icono={<IconImage size={17} color={ICON_COLOR.muted} />}
+                    icono={<IconMusic size={17} color={ICON_COLOR.muted} />}
                     onPress={() => {
                       /* Vacía, la fila LLEVA a elegir: antes no hacía nada y se
                          leía como rota — una fila con chevron promete un lugar
@@ -232,6 +260,16 @@ export default function EditarPerfil() {
                         avisar('Fondo quitado')
                       })
                     }}
+                  />
+                  {/* La otra puerta al fondo: una imagen propia, a pantalla y
+                      nítida — el fondo de Steam. Va al bucket de ilustraciones
+                      y `FondoPerfil` la distingue por la forma de la ruta. */}
+                  <FilaAjuste
+                    rotulo="Subir una ilustración"
+                    valor={null}
+                    vacio={subiendoFondo ? 'Subiendo…' : 'Una imagen tuya, de fondo'}
+                    icono={<IconImage size={17} color={ICON_COLOR.muted} />}
+                    onPress={() => void subirFondo()}
                     ultima
                   />
                 </GrupoAjustes>
