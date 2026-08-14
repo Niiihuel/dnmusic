@@ -20,7 +20,7 @@ import {
   useHaySiguiente,
   usePlaybackState,
 } from '../state/playback'
-import { salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
+import { crearJamActual, salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
 import { BORDE_REFERENTE, Glass, HAY_VIDRIO } from './Glass'
 import { compartirHistoria } from './CompartirHistoria'
 import { Menu, type MenuItem } from './Menu'
@@ -138,18 +138,28 @@ export function NowPlayingBar({
      * abrir nada.
      */
     {
-      label: enJam
-        ? `Jam · ${cuantosJam} ${cuantosJam === 1 ? 'persona' : 'personas'}`
-        : 'Ver el Jam',
       /*
-       * Con panel, el Jam se abre ahí al lado; sin panel, en su pantalla. Y
-       * **ya no crea ninguno**: abrir algo compartido no puede ser el efecto
-       * secundario de mirar qué es — el botón de crear está adentro, y dice
-       * lo que hace.
+       * La fila dice lo que va a pasar: sin Jam **lo crea** —«Ver el Jam»
+       * ofrecía mirar algo que no existía— y con uno abierto lo muestra, con
+       * cuántos son. Es el mismo par de estados de la píldora del reproductor
+       * del teléfono.
        */
+      label: enJam
+        ? `Ver el Jam · ${cuantosJam} ${cuantosJam === 1 ? 'persona' : 'personas'}`
+        : 'Crear un Jam',
+      /* Con panel, el Jam se abre ahí al lado; sin panel, en su pantalla. */
       onPress: () => {
-        if (width >= PANEL_PX) toggleView('jam')
-        else router.push('/jam')
+        const abrir = () => {
+          if (width >= PANEL_PX) toggleView('jam')
+          else router.push('/jam')
+        }
+        if (enJam) {
+          abrir()
+          return
+        }
+        void crearJamActual().then((ok) => {
+          if (ok) abrir()
+        })
       },
       icon: <IconUsers size={15} color={enJam ? ICON_COLOR.foreground : ICON_COLOR.muted} />,
       sfSymbol: 'person.2',
