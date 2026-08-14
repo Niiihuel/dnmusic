@@ -14,7 +14,18 @@ import * as ImagePicker from 'expo-image-picker'
  * avisar. Permisos no pide — ver el comentario dentro de `pickImage`.
  */
 export type PickedImage = {
-  blob: Blob
+  /**
+   * Los bytes de la imagen: un File en la web, un **ArrayBuffer** en el
+   * teléfono.
+   *
+   * No es un capricho: storage-js mete un Blob adentro de un FormData y ahí
+   * **ignora el `contentType`** que se le pasa — viaja el tipo del Blob, que
+   * en React Native sale del `fetch` sobre `file://` como `text/plain`. El
+   * bucket lo rechazaba con «mime type text/plain is not supported» por más
+   * correcto que fuera nuestro `mime`. Con un ArrayBuffer no hay FormData: el
+   * `contentType` de la subida se manda tal cual.
+   */
+  blob: Blob | ArrayBuffer
   fileName: string
   /**
    * El tipo de la imagen, deducido si hace falta.
@@ -127,13 +138,17 @@ export async function pickImage({
    * El selector devuelve una URI local, y Storage necesita bytes. `fetch` sobre
    * un `file://` funciona en React Native y es la forma más corta de leerlos sin
    * sumar expo-file-system solo para esto.
+   *
+   * Se leen como **ArrayBuffer**, no como Blob: el Blob de React Native viene
+   * con `text/plain` de tipo y storage-js se lo cree — ver el comentario de
+   * `PickedImage.blob`. El tipo real va aparte, en `mime`.
    */
-  const blob = await fetch(asset.uri).then((r) => r.blob())
+  const blob = await fetch(asset.uri).then((r) => r.arrayBuffer())
   const fileName = asset.fileName || asset.uri.split('/').pop() || 'foto.jpg'
   return {
     blob,
     fileName,
-    mime: mimeDe(fileName, blob.type),
+    mime: mimeDe(fileName, asset.mimeType ?? ''),
     /* El selector ya las midió: no hay que volver a abrir la imagen. */
     alto: asset.width > 0 && asset.height > 0 ? asset.height / asset.width : undefined,
   }

@@ -134,6 +134,32 @@ export function abrirLista(id: string) {
 }
 
 /*
+ * Abrir una conversación por pairId, desde afuera de la pantalla principal.
+ *
+ * Lo usa el toque de una notificación push. Es el mismo puente que
+ * `registerAbrirLista`, con una diferencia: la app puede estar **naciendo** de
+ * ese toque, y entonces la pantalla principal todavía no registró nada. El
+ * pedido queda guardado y se entrega en cuanto el handler aparece — sin esto,
+ * el toque en frío te dejaba en la portada como si nada.
+ */
+let onAbrirChat: ((pairId: string) => void) | null = null
+let chatPendiente: string | null = null
+
+export function registerAbrirChat(handler: ((pairId: string) => void) | null) {
+  onAbrirChat = handler
+  if (handler && chatPendiente) {
+    const pendiente = chatPendiente
+    chatPendiente = null
+    handler(pendiente)
+  }
+}
+
+export function abrirChat(pairId: string) {
+  if (onAbrirChat) onAbrirChat(pairId)
+  else chatPendiente = pairId
+}
+
+/*
  * Qué hacer cuando alguien toca una pestaña.
  *
  * Lo registra la pantalla principal, que es la única que sabe qué significa

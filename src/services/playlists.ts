@@ -180,22 +180,26 @@ const COVER_MAX_BYTES = 5 * 1024 * 1024
 export async function uploadCover(
   userId: string,
   playlistId: string,
-  file: Blob,
+  /* ArrayBuffer en el teléfono, File en la web. Ver `PickedImage.blob`: con un
+     Blob, storage-js ignora el contentType y viajaba `text/plain`. */
+  file: Blob | ArrayBuffer,
   fileName: string,
+  /* El tipo según el selector, que es quien lo sabe de verdad en el teléfono. */
+  mime?: string,
 ): Promise<string> {
   const ext = fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
   /*
-   * El tipo se deduce de la extensión cuando el Blob no lo trae.
-   *
-   * En web el File siempre lo tiene; el selector nativo devuelve una URI local
-   * y el Blob que sale de leerla puede venir sin tipo o como octet-stream. Sin
-   * este respaldo, una foto perfectamente válida del teléfono se rechazaba.
+   * El tipo: primero el que diga el selector, después el del File de la web, y
+   * como respaldo la extensión. El Blob del teléfono mentía (`text/plain`) y
+   * por eso el selector lo manda aparte.
    */
-  const contentType = COVER_TYPES.includes(file.type) ? file.type : typeFromExtension(ext)
+  const declarado = mime || (file instanceof Blob ? file.type : '')
+  const contentType = COVER_TYPES.includes(declarado) ? declarado : typeFromExtension(ext)
   if (!contentType) {
     throw new Error('La portada tiene que ser JPG, PNG o WebP.')
   }
-  if (file.size > COVER_MAX_BYTES) {
+  const peso = file instanceof Blob ? file.size : file.byteLength
+  if (peso > COVER_MAX_BYTES) {
     throw new Error('La portada no puede pesar más de 5 MB.')
   }
 

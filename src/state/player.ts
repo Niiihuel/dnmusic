@@ -56,7 +56,11 @@ export function useSnippetPlayer() {
   /** Cuándo se pidió el último salto, para no encimar saltos (ver el loop). */
   const seekAt = useRef(0)
 
-  const player = useAudioPlayer(url ? { uri: url } : null)
+  /* `keepAudioSessionActive`: un fragmento que pausa o termina no puede
+     desactivar la sesión de audio compartida — eso le tiraba la ficha de la
+     pantalla bloqueada a la cola. Es literalmente el caso que documenta la
+     opción: efectos de sonido que no deben interferir con otro audio. */
+  const player = useAudioPlayer(url ? { uri: url } : null, { keepAudioSessionActive: true })
 
   /*
    * Se atenúa lo justo para que el códec no distorsione al recortar contra el

@@ -239,7 +239,17 @@ export function MotorAudio() {
   /** El último aviso al store, para no inundarlo. Ver `AVISO_CADA_MS`. */
   const ultimoAviso = useRef(0)
 
-  const player = useAudioPlayer(url ? { uri: url } : null)
+  /*
+   * `keepAudioSessionActive`: que pausar o terminar **no desactive la sesión**.
+   *
+   * Por defecto expo-audio la desactiva cuando el reproductor pausa o termina,
+   * y este reproductor además se recrea por canción — cada liberación del
+   * viejo era una desactivación más. Con la sesión caída, iOS retira la ficha
+   * de la pantalla bloqueada: la música seguía, pero el reproductor del
+   * teléfono bloqueado desaparecía. Apple Music y Spotify mantienen la ficha
+   * incluso en pausa, y esto es lo que lo hace posible.
+   */
+  const player = useAudioPlayer(url ? { uri: url } : null, { keepAudioSessionActive: true })
   const playing = wantPlay && url !== null
 
   /*

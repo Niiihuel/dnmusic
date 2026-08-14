@@ -38,6 +38,8 @@ import {
 } from '../src/state/playback'
 import { crearJamActual, useCuantosJam, useJamActivo } from '../src/state/jam'
 import { LyricsView } from '../src/ui/LyricsView'
+import { Vacio } from '../src/ui/Vacio'
+import { compartirHistoria } from '../src/ui/CompartirHistoria'
 import { BotonAleatorio, BotonRepetir } from '../src/ui/Transport'
 import { SeekBar } from '../src/ui/SeekBar'
 import { SongDisc } from '../src/ui/SongDisc'
@@ -52,6 +54,7 @@ import {
   IconPause,
   IconPlay,
   IconPrevious,
+  IconShare,
   IconUsers,
 } from '../src/ui/icons'
 
@@ -230,16 +233,13 @@ export default function Playing() {
    */
   if (!track) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center gap-4 bg-canvas">
-        <IconMusic size={26} color={ICON_COLOR.muted} />
-        <Text className="text-muted-foreground text-[13px]">No hay nada sonando.</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => volver(router, '/')}
-          className="rounded-full bg-muted px-5 py-2.5 active:opacity-80"
-        >
-          <Text className="text-foreground text-[13px] font-semibold">Volver</Text>
-        </Pressable>
+      <SafeAreaView className="flex-1 justify-center bg-canvas">
+        <Vacio
+          icono={<IconMusic size={24} color={ICON_COLOR.muted} />}
+          titulo="No hay nada sonando"
+          detalle="Poné una canción y esta pantalla se vuelve su tapa gigante."
+          accion={{ rotulo: 'Volver', onPress: () => volver(router, '/') }}
+        />
       </SafeAreaView>
     )
   }
@@ -356,6 +356,17 @@ export default function Playing() {
               {manual ? 'En la cola' : listName || 'Sonando'}
             </Text>
           </View>
+          {/* Compartir la canción como historia: el mismo camino que el menú
+              de la barra, pero a la vista — es la pantalla donde uno está
+              mirando la canción que quiere mostrar. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Compartir en una historia"
+            onPress={() => compartirHistoria(track)}
+            className="h-10 w-10 items-center justify-center rounded-full active:bg-muted"
+          >
+            <IconShare size={18} color={ICON_COLOR.foreground} />
+          </Pressable>
           {/* La cola, arriba a la derecha — donde la pone Spotify. De paso hace
               de contrapeso de la flecha, que es lo que había acá antes. */}
           <Pressable

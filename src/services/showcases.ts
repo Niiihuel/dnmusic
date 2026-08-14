@@ -169,17 +169,20 @@ export function esVideo(path: string): boolean {
  */
 export async function uploadIlustracion(
   ownerId: string,
-  file: Blob,
+  /* ArrayBuffer en el teléfono, File en la web. Ver `PickedImage.blob`: con un
+     Blob, storage-js ignora el contentType y viajaba `text/plain`. */
+  file: Blob | ArrayBuffer,
   fileName: string,
   /* Igual que el avatar: el tipo lo trae el selector, no el Blob. */
-  mime = file.type,
+  mime = file instanceof Blob ? file.type : '',
 ): Promise<string> {
   /* Espejo de lo que acepta el bucket: rechazar acá evita mandar veinte megas
      para que el servidor diga que no. */
   if (!TIPOS_VITRINA.includes(mime)) {
     throw new Error('Tiene que ser una imagen (JPG, PNG, WebP, GIF) o un video MP4.')
   }
-  if (file.size > VITRINA_MAX_BYTES) {
+  const peso = file instanceof Blob ? file.size : file.byteLength
+  if (peso > VITRINA_MAX_BYTES) {
     throw new Error('No puede pesar más de 25 MB.')
   }
 

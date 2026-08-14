@@ -4,6 +4,7 @@ import {
   ArrowRight,
   AtSign,
   AudioWaveform,
+  Ban,
   Check,
   CircleCheck,
   ChevronDown,
@@ -50,6 +51,7 @@ import {
   Volume2,
   VolumeX,
   Wifi,
+  WifiOff,
   SkipBack,
   SkipForward,
   UserRound,
@@ -132,10 +134,13 @@ export const IconDownload = make(Download)
 export const IconDownloaded = make(CircleCheck)
 export const IconDisk = make(HardDrive)
 export const IconWifi = make(Wifi)
+/** Sin conexión: el vacío que no es culpa de nadie. Ver `Vacio`. */
+export const IconWifiOff = make(WifiOff)
 export const IconQueue = make(ListPlus)
 export const IconCola = make(ListMusic)
 export const IconVolume = make(Volume2)
 export const IconVolumeOff = make(VolumeX)
+export const IconBan = make(Ban)
 export const IconUser = make(UserRound)
 export const IconUsers = make(UsersRound)
 export const IconShare = make(Share2)

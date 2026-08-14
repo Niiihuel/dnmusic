@@ -5,6 +5,8 @@ import { createClient } from '@supabase/supabase-js'
 import {
   getAlbum,
   getArtist,
+  getGenero,
+  getGeneros,
   getHome,
   getPlaylistInfo,
   resolveAudio,
@@ -13,6 +15,7 @@ import {
   searchArtists,
 } from './youtube.js'
 import { isLang, translate } from './translate.js'
+import { notificarMensaje } from './push.js'
 import { cacheImage } from './artwork.js'
 import { subirPropia } from './propia.js'
 
@@ -271,6 +274,23 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/health') return json(200, { ok: true })
 
     /*
+     * El aviso de push, que **no viene de una persona**: lo manda el trigger
+     * de la base por pg_net, sin sesión. Su credencial es un secreto
+     * compartido entre la base (`private.push_relay`) y este proceso
+     * (`PUSH_SECRET`) — dos lugares del lado del servidor, nunca el bundle.
+     */
+    if (url.pathname === '/push' && req.method === 'POST') {
+      const secreto = process.env.PUSH_SECRET
+      if (!secreto || req.headers['x-push-secret'] !== secreto) {
+        return json(401, { error: 'No autorizado' })
+      }
+      if (!supabase) return json(503, { error: 'Sin Supabase configurado' })
+      const body = (await readJson(req)) as { messageId?: unknown }
+      if (typeof body.messageId !== 'string') return json(400, { error: 'Falta messageId' })
+      return json(200, await notificarMensaje(supabase, body.messageId))
+    }
+
+    /*
      * Todo lo demás pide sesión, con **dos excepciones**.
      *
      * `/health` queda abierto porque es lo que mira Railway para saber si el
@@ -373,6 +393,16 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/home' && req.method === 'GET') {
       return json(200, { sections: await getHome() })
+    }
+
+    if (url.pathname === '/generos' && req.method === 'GET') {
+      return json(200, { generos: await getGeneros() })
+    }
+
+    if (url.pathname === '/genero' && req.method === 'GET') {
+      const params = url.searchParams.get('params')?.trim()
+      if (!params) return json(400, { error: 'Falta el parámetro params' })
+      return json(200, await getGenero(params))
     }
 
     if ((url.pathname === '/album' || url.pathname === '/playlist') && req.method === 'GET') {

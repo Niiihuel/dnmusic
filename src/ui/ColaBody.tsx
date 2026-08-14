@@ -17,6 +17,7 @@ import { useColaJam, useJamActivo, useMiembrosJam } from '../state/jam'
 import { moverEncolada, playAt, quitarEncolada, usePlaybackState } from '../state/playback'
 import { ES_WEB } from './Glass'
 import { TrackRow } from './TrackRow'
+import { Vacio } from './Vacio'
 import { formatClock } from './SeekBar'
 import { ICON_COLOR, IconClose, IconCola, IconManija } from './icons'
 
@@ -104,13 +105,12 @@ export function ColaBody({
   if (cuantas === 0) {
     /* El vacío se dice con palabras y con el camino para llenarlo. */
     return (
-      <View className="flex-1 items-center justify-center gap-3 px-8" style={{ paddingBottom: piso }}>
-        <IconCola size={26} color={ICON_COLOR.muted} />
-        <Text className="text-foreground text-[15px] font-semibold">No hay nada en cola</Text>
-        <Text className="text-muted-foreground text-center text-[13px] leading-5">
-          Poné una lista a sonar, o sumá canciones con «Agregar a la cola» desde cualquier
-          lista o búsqueda.
-        </Text>
+      <View className="flex-1 justify-center" style={{ paddingBottom: piso }}>
+        <Vacio
+          icono={<IconCola size={22} color={ICON_COLOR.muted} />}
+          titulo="No hay nada en cola"
+          detalle="Poné una lista a sonar, o sumá canciones con «Agregar a la cola» desde cualquier lista o búsqueda."
+        />
       </View>
     )
   }
@@ -217,11 +217,12 @@ export function ColaBody({
           ))}
         </>
       ) : actual ? (
-        <View className="items-center px-8 py-10">
-          <Text className="text-muted-foreground text-center text-[13px] leading-5">
-            No hay nada después. Sumá canciones con «Agregar a la cola».
-          </Text>
-        </View>
+        <Vacio
+          compacto
+          icono={<IconCola size={20} color={ICON_COLOR.muted} />}
+          titulo="No hay nada después"
+          detalle="Sumá canciones con «Agregar a la cola» y van a aparecer acá."
+        />
       ) : null}
     </ScrollView>
   )

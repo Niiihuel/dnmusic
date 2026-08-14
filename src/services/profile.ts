@@ -127,16 +127,19 @@ export function avatarUrl(path: string | null | undefined): string | null {
  */
 export async function uploadAvatar(
   userId: string,
-  file: Blob,
+  /* ArrayBuffer en el teléfono, File en la web. Ver `PickedImage.blob`: con un
+     Blob, storage-js ignora el contentType y viajaba `text/plain`. */
+  file: Blob | ArrayBuffer,
   fileName: string,
   /* El tipo lo trae quien eligió la imagen: `file.type` viene vacío en el
      teléfono y rechazaba todo. Ver `pickImage`. */
-  mime = file.type,
+  mime = file instanceof Blob ? file.type : '',
 ): Promise<string> {
   if (!AVATAR_TYPES.includes(mime)) {
     throw new Error('La foto tiene que ser JPG, PNG, WebP o GIF.')
   }
-  if (file.size > AVATAR_MAX_BYTES) {
+  const peso = file instanceof Blob ? file.size : file.byteLength
+  if (peso > AVATAR_MAX_BYTES) {
     throw new Error('La foto no puede pesar más de 8 MB.')
   }
 

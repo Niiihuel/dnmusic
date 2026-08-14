@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { usePlaybackTrack } from '../state/playback'
+import { usePendientesChats } from '../state/session'
 import { listPlaylists, type Playlist } from '../services/playlists'
 import { Avatar } from './Avatar'
 import {
@@ -63,6 +64,8 @@ export function AppDrawer({
 }) {
   const insets = useSafeAreaInsets()
   const sonando = usePlaybackTrack()
+  /* Lo que espera en Chats: el mismo número del globito de la pestaña. */
+  const pendientes = usePendientesChats()
 
   /*
    * Las listas se piden acá, y se piden cada vez que se abre.
@@ -117,6 +120,7 @@ export function AppDrawer({
           <Fila
             icon={<IconInbox size={20} color={ICON_COLOR.foreground} />}
             label="Conversaciones"
+            badge={pendientes}
             onPress={onChats}
           />
           {/* Una sola línea, sin el título de la canción de subtítulo: las
@@ -228,21 +232,35 @@ export function AppDrawer({
 function Fila({
   icon,
   label,
+  badge = 0,
   onPress,
 }: {
   icon: React.ReactNode
   label: string
+  /** Cuánto espera adentro: con más de cero, el globito contra el borde. */
+  badge?: number
   onPress: () => void
 }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={badge > 0 ? `${label}, ${badge} sin ver` : label}
       onPress={onPress}
       className="flex-row items-center gap-4 rounded-xl px-3 py-3.5 active:bg-muted"
     >
       <View className="w-6 items-center">{icon}</View>
-      <Text className="text-foreground text-[17px] font-medium">{label}</Text>
+      <Text className="min-w-0 flex-1 text-foreground text-[17px] font-medium" numberOfLines={1}>
+        {label}
+      </Text>
+      {/* El mismo globito de la pestaña y de una conversación sin leer:
+          blanco —el acento— con el número oscuro. */}
+      {badge > 0 ? (
+        <View className="min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5">
+          <Text className="text-primary-foreground text-[10px] font-semibold">
+            {Math.min(badge, 99)}
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   )
 }

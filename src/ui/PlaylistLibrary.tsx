@@ -8,6 +8,7 @@ import { PlaylistCover } from './PlaylistCover'
 import { SkeletonList } from './Skeleton'
 import { AnimatedSidebarTitle } from './SidebarMotion'
 import { BotonVidrio } from './Glass'
+import { Vacio } from './Vacio'
 import { ICON_COLOR, IconCollapseRight, IconMusic, IconPlus } from './icons'
 
 /**
@@ -123,12 +124,12 @@ export function PlaylistLibrary({
           contentContainerStyle={{ paddingBottom: piso }}
           {...colapso}
           ListEmptyComponent={
-            <View className="items-center gap-3 px-6 py-12">
-              <IconMusic size={22} color={ICON_COLOR.muted} />
-              <Text className="text-muted-foreground text-center text-[13px] leading-5">
-                Todavía no tenés listas. Creá una con el «+» y sumale lo que quieras.
-              </Text>
-            </View>
+            <Vacio
+              icono={<IconMusic size={22} color={ICON_COLOR.muted} />}
+              titulo="Todavía no tenés listas"
+              detalle="Creá la primera y sumale lo que quieras."
+              accion={{ rotulo: 'Nueva lista', onPress: () => void onCreate() }}
+            />
           }
           renderItem={({ item }) => {
             const open = item.id === openId

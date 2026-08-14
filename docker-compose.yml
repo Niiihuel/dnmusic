@@ -18,6 +18,8 @@ services:
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       AUDIO_BUCKET: songs
       ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://localhost:8081}
+      # El secreto que valida los avisos del trigger de push (private.push_relay).
+      PUSH_SECRET: ${PUSH_SECRET:-dev-push-secret}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     restart: unless-stopped

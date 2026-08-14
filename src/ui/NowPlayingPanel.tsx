@@ -14,6 +14,7 @@ import { ArtistCard } from './ArtistCard'
 import { ColaBody } from './ColaBody'
 import { JamBody } from './JamPanel'
 import { Panel } from './Panel'
+import { Vacio } from './Vacio'
 import { AnimatedSidebarTitle } from './SidebarMotion'
 import { ICON_COLOR, IconCollapseRight, IconMusic } from './icons'
 
@@ -124,19 +125,12 @@ export function NowPlayingPanel({
       ) : !track ? (
         /* El cartel se centra en **lo que se ve**, descontando lo que tapa el
            reproductor: centrado a secas cae detrás de la barra. */
-        <View
-          className="flex-1 items-center justify-center gap-3 px-8"
-          style={{ paddingBottom: piso }}
-        >
-          <View className="h-14 w-14 items-center justify-center rounded-full bg-muted">
-            <IconMusic size={22} color={ICON_COLOR.muted} />
-          </View>
-          <Text className="text-foreground text-center text-[15px] font-semibold">
-            Nada sonando
-          </Text>
-          <Text className="text-muted-foreground text-center text-[13px] leading-5">
-            Poné una canción y acá vas a ver la carátula y de quién es.
-          </Text>
+        <View className="flex-1 justify-center" style={{ paddingBottom: piso }}>
+          <Vacio
+            icono={<IconMusic size={22} color={ICON_COLOR.muted} />}
+            titulo="Nada sonando"
+            detalle="Poné una canción y acá vas a ver la carátula y de quién es."
+          />
         </View>
       ) : (
         /* La ficha, siempre: el disco y la letra ya no son caras de este

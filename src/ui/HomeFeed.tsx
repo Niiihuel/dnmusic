@@ -1,13 +1,23 @@
-import { useEffect, useState } from 'react'
-import { Image, Pressable, ScrollView, Text, View } from 'react-native'
+import { Fragment, useEffect, useState } from 'react'
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import { artworkUrlAtSize } from '../lib/artwork'
-import { fetchHome, proxiedImage, type HomeItem, type HomeSection } from '../services/music'
+import {
+  fetchGenero,
+  fetchGeneros,
+  fetchHome,
+  proxiedImage,
+  type Genero,
+  type HomeItem,
+  type HomeSection,
+} from '../services/music'
 import { FadingRow } from './FadingScroll'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { usePiso, useTecho } from '../state/shell'
 import { useColapso } from './useColapso'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
+import { VacioError } from './Vacio'
 import { EstadoTapa } from './CoverState'
 import { Skeleton } from './Skeleton'
 import { ICON_COLOR, IconBack, IconChevronRight, IconMusic } from './icons'
@@ -32,7 +42,11 @@ const ROWS = 4
  */
 export function HomeFeed({
   section: openSection,
+  genero = null,
+  generosAbiertos = false,
   onOpenSection,
+  onOpenGenero,
+  onOpenGeneros,
   onOpenAlbum,
   onOpenPlaylist,
   onPlaySong,
@@ -41,7 +55,13 @@ export function HomeFeed({
 }: {
   /** Sección abierta a pantalla completa; null es la portada con carruseles. */
   section: string | null
+  /** Un género abierto: su página, con las listas y álbumes de la categoría. */
+  genero?: { params: string; name: string } | null
+  /** La grilla con todos los géneros, a pantalla completa. */
+  generosAbiertos?: boolean
   onOpenSection: (title: string | null) => void
+  onOpenGenero?: (genero: Genero) => void
+  onOpenGeneros?: () => void
   onOpenAlbum: (item: HomeItem) => void
   onOpenPlaylist: (item: HomeItem) => void
   onPlaySong: (item: HomeItem) => void
@@ -49,6 +69,9 @@ export function HomeFeed({
   pendingId: string | null
 }) {
   const [sections, setSections] = useState<HomeSection[] | null>(null)
+  /* Los géneros, aparte de las secciones: salen de otra ruta y llegan después
+     — la primera vez el servidor arma las tapas y tarda unos segundos. */
+  const [generos, setGeneros] = useState<Genero[] | null>(null)
   /* Lo que ocupan el reproductor y las pestañas, más el respiro de siempre. */
   const piso = usePiso(24)
   /* Y lo que flota arriba —reloj y encabezado—, con el respiro que ya tenía
@@ -63,6 +86,48 @@ export function HomeFeed({
     fetchHome(controller.signal).then(setSections)
     return () => controller.abort()
   }, [sections])
+
+  useEffect(() => {
+    if (generos !== null) return
+    const controller = new AbortController()
+    /* Un pedido abortado —el efecto se rehízo por otro render— devuelve `[]`,
+       y grabarlo dejaría la fila escondida para siempre: solo cuenta la
+       respuesta que llegó entera. Con `generos` todavía en null, el próximo
+       render lo vuelve a pedir. */
+    fetchGeneros(controller.signal).then((g) => {
+      if (!controller.signal.aborted) setGeneros(g)
+    })
+    return () => controller.abort()
+  }, [generos])
+
+  /* La página de un género, encima de todo: es una parada del historial. */
+  if (genero) {
+    return (
+      <Panel className="flex-1">
+        <GeneroPage
+          genero={genero}
+          onBack={() => onOpenSection(null)}
+          onOpenAlbum={onOpenAlbum}
+          onOpenPlaylist={onOpenPlaylist}
+          onPlaySong={onPlaySong}
+          menuForSong={menuForSong}
+          pendingId={pendingId}
+        />
+      </Panel>
+    )
+  }
+
+  if (generosAbiertos && onOpenGenero) {
+    return (
+      <Panel className="flex-1">
+        <GenerosPage
+          generos={generos}
+          onBack={() => onOpenSection(null)}
+          onOpen={onOpenGenero}
+        />
+      </Panel>
+    )
+  }
 
   const abierta = sections?.find((s) => s.title === openSection) ?? null
 
@@ -100,24 +165,33 @@ export function HomeFeed({
         {sections === null ? (
           <Loading />
         ) : sections.length === 0 ? (
-          <View className="items-center gap-3 px-8 py-16">
-            <IconMusic size={24} color={ICON_COLOR.muted} />
-            <Text className="text-muted-foreground text-center text-sm leading-5">
-              No pude traer las novedades. Tus listas están a la izquierda.
-            </Text>
-          </View>
+          /* Sin conexión lo dice como tal, con reintento; cualquier otra falla
+             también tiene salida. Volver a null dispara el efecto de nuevo. */
+          <VacioError
+            icono={<IconMusic size={22} color={ICON_COLOR.muted} />}
+            titulo="La portada no llegó"
+            detalle="No pude traer las novedades. Tus listas siguen donde siempre."
+            onReintentar={() => setSections(null)}
+          />
         ) : (
-          sections.map((section) => (
-            <Section
-              key={section.title}
-              section={section}
-              onOpen={() => onOpenSection(section.title)}
-              onOpenAlbum={onOpenAlbum}
-              onOpenPlaylist={onOpenPlaylist}
-              onPlaySong={onPlaySong}
-              menuForSong={menuForSong}
-              pendingId={pendingId}
-            />
+          sections.map((section, i) => (
+            <Fragment key={section.title}>
+              <Section
+                section={section}
+                onOpen={() => onOpenSection(section.title)}
+                onOpenAlbum={onOpenAlbum}
+                onOpenPlaylist={onOpenPlaylist}
+                onPlaySong={onPlaySong}
+                menuForSong={menuForSong}
+                pendingId={pendingId}
+              />
+              {/* Los géneros van después del primer carrusel, como el
+                  «Explorar por género» de Apple Music: arriba lo nuevo, y
+                  enseguida el mapa para el que no busca nada puntual. */}
+              {i === 0 && generos?.length && onOpenGenero && onOpenGeneros ? (
+                <GenerosRow generos={generos} onOpen={onOpenGenero} onVerTodo={onOpenGeneros} />
+              ) : null}
+            </Fragment>
           ))
         )}
       </ScrollView>
@@ -338,6 +412,235 @@ function SongRow({
         <Menu items={menu} label={`Opciones de ${item.title}`} size={14} />
       </View>
     </View>
+  )
+}
+
+/* ── Géneros ──────────────────────────────────────────────────────────────── */
+
+/** Medida deseable de una tarjeta de género; la grilla la recalcula. */
+const GENERO_W = 260
+/** Proporción apaisada, como las tarjetas de género de Apple Music. */
+const GENERO_RATIO = 0.58
+
+/**
+ * La tarjeta de un género: la foto ocupa todo, el nombre abajo a la izquierda.
+ *
+ * Es la tarjeta de Apple Music traducida a este sistema: allá el color lo pone
+ * la marca de cada género; acá la UI es acromática y **el color lo trae la
+ * imagen** —la tapa de la primera lista del género—, con un degradado oscuro
+ * abajo para que el nombre se lea sobre cualquier foto. Sin líneas ni bordes:
+ * la tarjeta se separa del fondo por la foto misma.
+ */
+function GeneroCard({
+  genero,
+  onPress,
+  width = GENERO_W,
+}: {
+  genero: Genero
+  onPress: () => void
+  width?: number
+}) {
+  const [over, setOver] = useState(false)
+  const alto = Math.round(width * GENERO_RATIO)
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={genero.name}
+      onPress={onPress}
+      onPointerEnter={() => setOver(true)}
+      onPointerLeave={() => setOver(false)}
+      style={{ width }}
+      className="active:opacity-80"
+    >
+      <View className="overflow-hidden rounded-lg bg-card" style={{ width, height: alto }}>
+        {genero.artworkUrl ? (
+          <Image
+            source={{ uri: proxiedImage(artworkUrlAtSize(genero.artworkUrl, 400)) }}
+            resizeMode="cover"
+            style={{ width, height: alto, opacity: over ? 0.75 : 1 }}
+          />
+        ) : (
+          <View className="flex-1 items-center justify-center">
+            <IconMusic size={22} color={ICON_COLOR.muted} />
+          </View>
+        )}
+        {/* El velo de abajo: lo único que garantiza que el nombre se lea
+            sobre una tapa clara. Tres paradas para que no se vea la línea. */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.28)', 'rgba(0,0,0,0.78)']}
+          locations={[0.35, 0.62, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <Text
+          numberOfLines={1}
+          className="absolute bottom-2.5 left-3 right-3 text-foreground text-[15px] font-bold"
+          style={{ textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 6 }}
+        >
+          {genero.name}
+        </Text>
+      </View>
+    </Pressable>
+  )
+}
+
+/** La fila de géneros de la portada, con su «ver todo» en el título. */
+function GenerosRow({
+  generos,
+  onOpen,
+  onVerTodo,
+}: {
+  generos: Genero[]
+  onOpen: (genero: Genero) => void
+  onVerTodo: () => void
+}) {
+  return (
+    <View className="gap-3">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Ver todos los géneros"
+        onPress={onVerTodo}
+        className="flex-row items-center gap-1.5 self-start px-6 active:opacity-70"
+      >
+        <Text className="text-foreground text-[19px] font-bold">Géneros y momentos</Text>
+        <IconChevronRight size={17} color={ICON_COLOR.muted} />
+      </Pressable>
+      <FadingRow gap={16} padding={24}>
+        {generos.map((genero) => (
+          <GeneroCard key={genero.params} genero={genero} onPress={() => onOpen(genero)} />
+        ))}
+      </FadingRow>
+    </View>
+  )
+}
+
+/** Todos los géneros, en grilla a pantalla completa. */
+function GenerosPage({
+  generos,
+  onBack,
+  onOpen,
+}: {
+  generos: Genero[] | null
+  onBack: () => void
+  onOpen: (genero: Genero) => void
+}) {
+  const piso = usePiso(24)
+  const techo = useTecho(24)
+  const colapso = useColapso()
+  /* El mismo reparto que la grilla de una sección: cuántas entran del ancho
+     deseable, nunca menos de dos, y el sobrante repartido entre ellas. */
+  const [ancho, setAncho] = useState(0)
+  const columnas = Math.max(2, Math.floor((ancho + GRID_GAP) / (GENERO_W + GRID_GAP)))
+  const lado = ancho > 0 ? (ancho - GRID_GAP * (columnas - 1)) / columnas : GENERO_W
+
+  return (
+    <View className="min-h-0 flex-1">
+      <View className="flex-row items-center gap-3 px-6 pb-4" style={{ paddingTop: techo }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Volver a la portada"
+          onPress={onBack}
+          className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
+        >
+          <IconBack size={15} color={ICON_COLOR.muted} />
+        </Pressable>
+        <Text className="text-foreground text-2xl font-bold" numberOfLines={1}>
+          Géneros y momentos
+        </Text>
+      </View>
+
+      <ScrollView
+        className="min-h-0 flex-1"
+        contentContainerClassName="px-6"
+        contentContainerStyle={{ paddingBottom: piso }}
+        {...colapso}
+      >
+        {generos === null ? (
+          <View className="flex-row flex-wrap gap-4">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} width={GENERO_W} height={GENERO_W * GENERO_RATIO} radius={8} />
+            ))}
+          </View>
+        ) : (
+          <View
+            className="flex-row flex-wrap gap-4"
+            onLayout={(e) => setAncho(e.nativeEvent.layout.width)}
+          >
+            {generos.map((genero) => (
+              <GeneroCard
+                key={genero.params}
+                genero={genero}
+                width={lado}
+                onPress={() => onOpen(genero)}
+              />
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  )
+}
+
+/**
+ * La página de un género: sus listas y álbumes, en la grilla de una sección.
+ *
+ * Lo que llega se guarda junto a la categoría que se pidió — «cargando» es
+ * «lo que tengo no es de este género», el mismo criterio del álbum y el
+ * artista — y se dibuja con `SectionPage`, que ya sabe armar la grilla.
+ */
+function GeneroPage({
+  genero,
+  onBack,
+  onOpenAlbum,
+  onOpenPlaylist,
+  onPlaySong,
+  menuForSong,
+  pendingId,
+}: {
+  genero: { params: string; name: string }
+  onBack: () => void
+  onOpenAlbum: (item: HomeItem) => void
+  onOpenPlaylist: (item: HomeItem) => void
+  onPlaySong: (item: HomeItem) => void
+  menuForSong: (item: HomeItem) => MenuItem[]
+  pendingId: string | null
+}) {
+  const [cargado, setCargado] = useState<{ params: string; items: HomeItem[] } | null>(null)
+  const fresco = cargado?.params === genero.params
+
+  useEffect(() => {
+    if (fresco) return
+    const controller = new AbortController()
+    fetchGenero(genero.params, controller.signal).then((items) =>
+      setCargado({ params: genero.params, items }),
+    )
+    return () => controller.abort()
+  }, [genero.params, fresco])
+
+  if (!fresco) {
+    return (
+      <View className="min-h-0 flex-1 px-6 pt-6">
+        <Loading />
+      </View>
+    )
+  }
+
+  /* Solo lo abrible como colección: las canciones y artistas sueltos que
+     alguna categoría mezcla no tienen lugar en esta grilla de tapas. */
+  const items = cargado.items.filter(
+    (item) => item.kind === 'album' || item.kind === 'playlist',
+  )
+
+  return (
+    <SectionPage
+      section={{ title: genero.name, items }}
+      onBack={onBack}
+      onOpenAlbum={onOpenAlbum}
+      onOpenPlaylist={onOpenPlaylist}
+      onPlaySong={onPlaySong}
+      menuForSong={menuForSong}
+      pendingId={pendingId}
+    />
   )
 }
 

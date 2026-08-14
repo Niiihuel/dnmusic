@@ -1,6 +1,7 @@
 import { isSupabaseConfigured } from '../lib/supabase'
 import { logOut, subscribeToAuth, type User } from '../services/auth'
 import {
+  contactLabel,
   ensureConversation,
   listContactRequests,
   listConversations,
@@ -13,6 +14,7 @@ import {
 import { subscribeToMessages, type Unsubscribe } from '../services/messages'
 import { fetchMyProfile, type Profile } from '../services/profile'
 import type { Message } from '../models/message'
+import { avisar } from './aviso'
 import { desconectarJam } from './jam'
 import { stopPlayback } from './playback'
 import { createStore, useStore } from './store'
@@ -91,6 +93,17 @@ function listenToConversation(pairId: string, contact: Contact) {
   )
 }
 
+/**
+ * Las solicitudes que ya se vieron pasar, para avisar solo de las nuevas.
+ *
+ * `null` es «todavía no cargó la primera tanda»: lo que llega ahí no es nuevo
+ * —estaba esperando desde antes de abrir la app— y avisarlo cada vez que
+ * arranca sería un cartel repetido sobre algo que ya está a la vista en Chats.
+ * Después de eso, cualquier id que no estuviera es alguien que acaba de pedir,
+ * y el canal de realtime es quien dispara la recarga que lo trae.
+ */
+let solicitudesVistas: Set<string> | null = null
+
 async function loadConversationList(): Promise<Conversation[]> {
   /* Las solicitudes viajan con la bandeja: mismo refresco, mismo canal de
      realtime. Que fallen no puede dejar sin conversaciones, así que su error
@@ -99,6 +112,16 @@ async function loadConversationList(): Promise<Conversation[]> {
     listConversations(),
     listContactRequests().catch(() => store.get().requests),
   ])
+  /* El aviso de solicitud nueva, con la app abierta: la campanita mínima.
+     Con la app cerrada esto no existe — eso sería push, otra conversación. */
+  if (solicitudesVistas !== null) {
+    for (const solicitud of requests) {
+      if (!solicitudesVistas.has(solicitud.id)) {
+        avisar(`${contactLabel(solicitud)} quiere ser tu contacto`)
+      }
+    }
+  }
+  solicitudesVistas = new Set(requests.map((solicitud) => solicitud.id))
   const activePairId = store.get().pairId
   const active = conversations.find((conversation) => conversation.pairId === activePairId)
   store.set({
@@ -120,6 +143,8 @@ function scheduleConversationRefresh() {
 async function activateAccount(uid: string) {
   const version = ++accountVersion
   stopAccountListeners()
+  // Cuenta nueva, memoria nueva: las solicitudes de la anterior no cuentan.
+  solicitudesVistas = null
   store.set({
     profile: null,
     conversations: [],
@@ -258,6 +283,18 @@ export const useUser = () => useStore(store, (state) => state.user)
 export const useMyProfile = () => useStore(store, (state) => state.profile)
 export const useConversations = () => useStore(store, (state) => state.conversations)
 export const useContactRequests = () => useStore(store, (state) => state.requests)
+/**
+ * Cuánto espera atención en Chats: solicitudes pendientes más mensajes sin
+ * leer. Es el número del globito — la pestaña del teléfono, la fila del
+ * drawer y el redondel de conversaciones del escritorio muestran el mismo.
+ */
+export const usePendientesChats = () =>
+  useStore(
+    store,
+    (state) =>
+      state.requests.length +
+      state.conversations.reduce((total, c) => total + c.unreadCount, 0),
+  )
 export const usePairId = () => useStore(store, (state) => state.pairId)
 export const useContact = () => useStore(store, (state) => state.contact)
 export const useMessages = () => useStore(store, (state) => state.messages)

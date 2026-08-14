@@ -5,9 +5,14 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { BotonVidrio } from '../../src/ui/Glass'
 import { FondoPerfil, Identidad, Vitrinas } from '../../src/ui/PerfilPublico'
-import { ICON_COLOR, IconBack, IconUser } from '../../src/ui/icons'
+import { FilaSostener } from '../../src/ui/Mantener'
+import { Vacio } from '../../src/ui/Vacio'
+import { ICON_COLOR, IconBack, IconBan, IconUser } from '../../src/ui/icons'
 import { fetchProfile, type Profile } from '../../src/services/profile'
-import { useMyProfile } from '../../src/state/session'
+import { blockUser } from '../../src/services/contacts'
+import { refreshConversations, useMyProfile } from '../../src/state/session'
+import { avisar } from '../../src/state/aviso'
+import { mensajeError } from '../../src/lib/mensajeError'
 import { usePiso } from '../../src/state/shell'
 import { volver } from '../../src/lib/volver'
 
@@ -63,6 +68,20 @@ export default function PerfilAjeno() {
   /* Mirándote a vos mismo desde acá, la pantalla sigue siendo la de otro: es
      justamente la forma de ver cómo te ven. */
   const soyYo = !!perfil && perfil.userId === yo?.userId
+
+  async function bloquear() {
+    if (!perfil) return
+    try {
+      await blockUser(perfil.userId)
+      /* La conversación con esta cuenta sale de la bandeja; refrescarla acá
+         evita que quede a la vista hasta el próximo mensaje de cualquiera. */
+      await refreshConversations().catch(() => {})
+      avisar(`Bloqueaste a @${perfil.username}`)
+      volver(router, '/')
+    } catch (e) {
+      avisar(mensajeError(e), true)
+    }
+  }
 
   return (
     <SafeAreaView
@@ -123,15 +142,12 @@ export default function PerfilAjeno() {
                * alguien que decidió no mostrarse. Acá no se puede distinguir, y
                * está bien que así sea.
                */
-              <View className="items-center gap-3 px-8 py-16">
-                <IconUser size={28} color={ICON_COLOR.muted} />
-                <Text className="text-foreground text-[17px] font-semibold">
-                  No hay nada para ver
-                </Text>
-                <Text className="text-muted-foreground text-center text-[13px] leading-5">
-                  Puede que esa cuenta no exista o que su perfil esté en privado.
-                </Text>
-              </View>
+              <Vacio
+                icono={<IconUser size={24} color={ICON_COLOR.muted} />}
+                titulo="No hay nada para ver"
+                detalle="Puede que esa cuenta no exista o que su perfil esté en privado."
+                accion={{ rotulo: 'Volver', onPress: () => volver(router, '/') }}
+              />
             ) : (
               <View className="w-full gap-7" style={{ maxWidth: ancho ? 720 : MAX_W }}>
                 {/* Misma banda que en el perfil propio: acostada en escritorio,
@@ -161,6 +177,22 @@ export default function PerfilAjeno() {
                     </View>
                   }
                 />
+
+                {/* Bloquear vive al fondo del perfil: es la pantalla de esa
+                    persona, y es una decisión sobre esa persona. Se sostiene,
+                    como todo lo que saca algo de tu vista. Se deshace desde
+                    Ajustes → Bloqueados. */}
+                {soyYo ? null : (
+                  <View className="overflow-hidden rounded-2xl bg-card">
+                    <FilaSostener
+                      rotulo={`Bloquear a @${perfil.username}`}
+                      detalle="No van a poder escribirse ni encontrarse en la búsqueda."
+                      icono={<IconBan size={17} color={ICON_COLOR.muted} />}
+                      onCompletar={() => void bloquear()}
+                      ultima
+                    />
+                  </View>
+                )}
               </View>
             )}
           </ScrollView>

@@ -26,6 +26,7 @@ import { cargarAjustes } from '../src/state/ajustes'
 import { cargarDescargas } from '../src/state/descargas'
 import { reconectarJam } from '../src/state/jam'
 import { startSession, useMyProfile, useUser } from '../src/state/session'
+import { usePush } from '../src/state/push'
 import { emailToUsername } from '../src/services/auth'
 import { AppDrawer } from '../src/ui/AppDrawer'
 import {
@@ -47,6 +48,7 @@ import { useBuscando } from '../src/state/busqueda'
 import { ES_WEB, HAY_VIDRIO } from '../src/ui/Glass'
 import { SearchRow } from '../src/ui/SearchRow'
 import { Aviso } from '../src/ui/Aviso'
+import { AvisoCaptura } from '../src/ui/AvisoCaptura'
 import { NowPlayingBar } from '../src/ui/NowPlayingBar'
 import { MotorAudio } from '../src/ui/MotorAudio'
 import { CompartirHistoria } from '../src/ui/CompartirHistoria'
@@ -328,6 +330,10 @@ function Chrome() {
    * —el composer, el editor— queda el reproductor solo, sin nada que plegar.
    */
   const usuario = useUser()
+  /* El token de push de este aparato y el toque de una notificación. Vive en
+     el layout porque necesita al usuario y tiene que sobrevivir a cualquier
+     pantalla. Ver `state/push`. */
+  usePush(usuario?.id ?? null)
   const conPestanas = flotante && enRaiz && !!usuario && !enEditor && !buscando && !enChat
   const [altoVisible, setAltoVisible] = useState(0)
   useEffect(() => {
@@ -728,6 +734,9 @@ function Chrome() {
           sobre lo que haya, y no tiene que moverse con el teclado ni plegarse
           con la barra. */}
       <Aviso />
+      {/* La oferta de compartir tras una captura de pantalla: mismo lugar en
+          la pila que el aviso, por la misma razón. Ver `AvisoCaptura`. */}
+      <AvisoCaptura />
 
       {/* El velo y, encima, la zona que cierra: con el panel abierto, tocar la
           app lo cierra en vez de accionar lo que haya debajo del dedo. */}
@@ -842,6 +851,7 @@ function SessionGate() {
       <Stack.Screen name="perfil/[usuario]" />
       <Stack.Screen name="ajustes/index" />
       <Stack.Screen name="ajustes/descargas" />
+      <Stack.Screen name="ajustes/bloqueados" />
       {/*
        * Sin animación: el perfil propio es una **pestaña**, aunque viva como
        * ruta. Las otras cuatro pestañas intercambian el contenido en el lugar,

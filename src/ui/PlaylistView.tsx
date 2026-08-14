@@ -25,6 +25,7 @@ import { FormError } from './Button'
 import { CollectionHeader, CollectionTitle, useCoverSize } from './CollectionHeader'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
+import { Vacio } from './Vacio'
 import { PlaylistCover } from './PlaylistCover'
 import { formatLength } from './SeekBar'
 import { SkeletonList } from './Skeleton'
@@ -41,7 +42,6 @@ import {
   IconPlay,
   IconPlus,
   IconShuffle,
-  IconSearch,
   IconTrash,
   IconUser,
 } from './icons'
@@ -418,25 +418,13 @@ export function PlaylistView({
                * agregar y sin manera de saber cuál usar. Este botón pone el
                * cursor en el de arriba, que ya sabe a qué lista sumar.
                */
-              <View className="items-center gap-4 px-8 py-12">
-                <IconMusic size={22} color={ICON_COLOR.muted} />
-                <Text className="text-muted-foreground text-center text-[13px] leading-5">
-                  Todavía no hay nada en «{playlist.name}».
-                </Text>
-                {onSearch ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Buscar una canción para sumar"
-                    onPress={onSearch}
-                    className="h-10 flex-row items-center gap-2 rounded-full bg-muted px-4 active:opacity-70"
-                  >
-                    <IconSearch size={15} color={ICON_COLOR.foreground} />
-                    <Text className="text-foreground text-[13px] font-semibold">
-                      Buscá una canción
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
+              <Vacio
+                compacto
+                icono={<IconMusic size={20} color={ICON_COLOR.muted} />}
+                titulo="La lista está vacía"
+                detalle={`Todavía no hay nada en «${playlist.name}». Buscá una canción y sumala.`}
+                accion={onSearch ? { rotulo: 'Buscá una canción', onPress: onSearch } : undefined}
+              />
             )
           }
           renderItem={({ item, index }) => (

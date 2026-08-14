@@ -269,6 +269,28 @@ function enJam(): boolean {
   return jam?.activo() ?? false
 }
 
+/**
+ * Lo que sonaba justo antes de cada canción manual, en orden, para poder volver.
+ *
+ * Una canción manual —encolada a mano o venida del relleno de recomendaciones—
+ * no vive en `tracks`, así que `anteriorIndice` no la ve: al terminarse la
+ * lista y arrancar las recomendadas, «anterior» no tenía a dónde ir y solo
+ * reiniciaba la que sonaba. Acá se apila lo que estaba sonando cada vez que
+ * entra una manual; retroceder desapila, y la que estaba sonando vuelve al
+ * frente de `upNext` para que «siguiente» la retome — la ida y la vuelta
+ * recorren el mismo camino.
+ *
+ * Se vacía al arrancar una cola nueva o al pararla: es historia de ESTA cola.
+ */
+let historial: PlaylistTrack[] = []
+const HISTORIAL_MAX = 100
+
+function recordarEnHistorial(track: PlaylistTrack | null) {
+  if (!track) return
+  historial.push(track)
+  if (historial.length > HISTORIAL_MAX) historial.shift()
+}
+
 /** Si ya hay una tanda en camino, para no pedir dos veces al mismo final. */
 let pidiendo = false
 /**
@@ -416,6 +438,8 @@ export function playQueue(
     return
   }
   stopSnippets()
+  // Cola nueva, historia nueva: lo que sonó en la anterior ya no es «anterior».
+  historial = []
   store.set({
     tracks,
     upNext: [],
@@ -621,6 +645,7 @@ export function playNext() {
   const [encolada, ...resto] = state.upNext
   if (encolada) {
     stopSnippets()
+    recordarEnHistorial(currentOf(state))
     store.set({
       manual: encolada,
       upNext: resto,
@@ -676,15 +701,50 @@ export function playPrevious() {
     else jam.transporte('anterior')
     return
   }
-  /*
-   * «La de antes» respeta el aleatorio —con la baraja puesta, la anterior es
-   * la anterior **del orden barajado**, no la fila de arriba en la lista— y
-   * una encolada a mano no tiene anterior: lo único razonable es reiniciarla.
-   */
-  const previo = state.manual ? null : anteriorIndice(state)
-  if (state.positionMs > RESTART_MS || previo === null) {
+  const reiniciar = () => {
     engine?.seekTo(0)
     store.set({ positionMs: 0 })
+  }
+  if (state.positionMs > RESTART_MS) {
+    reiniciar()
+    return
+  }
+  /*
+   * Con una manual sonando —encolada a mano o recomendada—, «anterior» es lo
+   * que sonaba antes de ella, que vive en `historial`: la lista no la conoce.
+   * La que sonaba no se descarta, vuelve al frente de la cola manual para que
+   * «siguiente» la retome. Si lo desapilado es una fila de la lista, se vuelve
+   * a la lista por índice; si no, era otra manual y suena como tal.
+   */
+  if (state.manual) {
+    const previa = historial.pop()
+    if (!previa) {
+      // Sin historia, una manual no tiene anterior: se reinicia.
+      reiniciar()
+      return
+    }
+    stopSnippets()
+    const upNext = [state.manual, ...state.upNext]
+    const enLista = state.tracks.findIndex((t) => t.id === previa.id)
+    store.set({
+      manual: enLista >= 0 ? null : previa,
+      ...(enLista >= 0 ? { index: enLista } : {}),
+      upNext,
+      wantPlay: true,
+      positionMs: 0,
+      durationMs: previa.durationMs,
+      error: null,
+    })
+    guardar(true)
+    return
+  }
+  /*
+   * «La de antes» respeta el aleatorio: con la baraja puesta, la anterior es
+   * la anterior **del orden barajado**, no la fila de arriba en la lista.
+   */
+  const previo = anteriorIndice(state)
+  if (previo === null) {
+    reiniciar()
     return
   }
   playAt(previo)
@@ -860,6 +920,7 @@ export function advance() {
   // Lo encolado a mano va primero: es lo que alguien pidió expresamente.
   const [encolada, ...resto] = state.upNext
   if (encolada) {
+    recordarEnHistorial(currentOf(state))
     store.set({ manual: encolada, upNext: resto, positionMs: 0, durationMs: encolada.durationMs })
     return
   }
@@ -965,6 +1026,7 @@ export function stopPlayback() {
   // El volumen y la vista elegida sobreviven: son preferencias de quien
   // escucha, no estado de la canción que se cerró.
   const { volume, view } = store.get()
+  historial = []
   store.set({ ...EMPTY, volume, view })
 }
 
@@ -1017,6 +1079,8 @@ export function jamAplicar(a: {
 }) {
   const track = a.tracks[a.index] ?? null
   if (a.wantPlay && track) stopSnippets()
+  // La cola pasó a ser la del Jam: la historia local ya no describe nada.
+  historial = []
   store.set({
     tracks: a.tracks,
     upNext: [],

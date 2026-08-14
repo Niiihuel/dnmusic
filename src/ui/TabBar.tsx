@@ -3,6 +3,7 @@ import { useRouter, useSegments } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { setTab, type Tab } from '../state/shell'
+import { usePendientesChats } from '../state/session'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BotonVidrio, Glass, HAY_VIDRIO } from './Glass'
 import { ICON_COLOR, IconHome, IconInbox, IconMusic, IconSearch, IconUser } from './icons'
@@ -104,6 +105,9 @@ const ICONO: Record<Tab, (props: { size?: number; color?: string }) => React.Rea
  */
 export function TabPildora({ active }: { active: Tab }) {
   const ir = useIrATab()
+  /* El globito de Chats: solicitudes que esperan más mensajes sin leer. Sin
+     esto, una solicitud solo se descubría entrando a la pestaña de casualidad. */
+  const pendientes = usePendientesChats()
   /*
    * El redondel de buscar es tan alto como la píldora, y el alto de la píldora
    * lo decide su contenido —el cuerpo de la tipografía del sistema, que la
@@ -214,6 +218,7 @@ export function TabPildora({ active }: { active: Tab }) {
               active={active}
               onPress={ir}
               icon={ICONO[tab]}
+              badge={tab === 'chats' ? pendientes : 0}
               onMedida={(sitio) => setSitios((s) => (
                 s[tab]?.x === sitio.x && s[tab]?.w === sitio.w ? s : { ...s, [tab]: sitio }
               ))}
@@ -256,6 +261,7 @@ function Item({
   active,
   onPress,
   icon: Icon,
+  badge = 0,
   onMedida,
 }: {
   tab: Tab
@@ -263,6 +269,8 @@ function Item({
   active: Tab
   onPress: (tab: Tab) => void
   icon: (props: { size?: number; color?: string }) => React.ReactElement
+  /** Cuánto espera adentro: con más de cero, el globito sobre el ícono. */
+  badge?: number
   /** Dónde quedó dentro de la píldora, para que el indicador sepa a dónde ir. */
   onMedida?: (sitio: { x: number; w: number }) => void
 }) {
@@ -274,11 +282,23 @@ function Item({
       onLayout={(e) => onMedida?.({ x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width })}
       accessibilityRole="button"
       accessibilityState={{ selected: on }}
-      accessibilityLabel={label}
+      accessibilityLabel={badge > 0 ? `${label}, ${badge} sin ver` : label}
       onPress={() => onPress(tab)}
       className="flex-1 items-center gap-0.5 rounded-lg py-1 active:opacity-60"
     >
-      <Icon size={21} color={color} />
+      <View>
+        <Icon size={21} color={color} />
+        {/* El mismo globito que la fila de una conversación sin leer: blanco
+            —el acento— con el número oscuro adentro. Sobre la esquina del
+            ícono, como en toda barra de pestañas del sistema. */}
+        {badge > 0 ? (
+          <View className="absolute -right-3 -top-1.5 min-w-4 items-center justify-center rounded-full bg-primary px-1 py-px">
+            <Text className="text-primary-foreground text-[9px] font-semibold">
+              {Math.min(badge, 99)}
+            </Text>
+          </View>
+        ) : null}
+      </View>
       <Text
         className={`text-[10px] ${on ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}
       >

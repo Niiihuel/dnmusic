@@ -183,6 +183,41 @@ export async function fetchHome(signal?: AbortSignal): Promise<HomeSection[]> {
   }
 }
 
+/** Una categoría de «géneros y momentos» de YouTube Music. */
+export type Genero = {
+  /** El parámetro opaco con el que se pide su página. */
+  params: string
+  name: string
+  /** Una tapa representativa, para la tarjeta de la grilla. */
+  artworkUrl: string
+}
+
+export async function fetchGeneros(signal?: AbortSignal): Promise<Genero[]> {
+  try {
+    const res = await fetchMusica(`${MUSIC_API}/generos`, { signal })
+    if (!res.ok) return []
+    const data = (await res.json()) as { generos?: Genero[] }
+    return data.generos ?? []
+  } catch {
+    return []
+  }
+}
+
+/** Lo que hay adentro de un género: listas y álbumes, como ítems de portada. */
+export async function fetchGenero(params: string, signal?: AbortSignal): Promise<HomeItem[]> {
+  try {
+    const res = await fetchMusica(
+      `${MUSIC_API}/genero?params=${encodeURIComponent(params)}`,
+      { signal },
+    )
+    if (!res.ok) return []
+    const data = (await res.json()) as { items?: HomeItem[] }
+    return data.items ?? []
+  } catch {
+    return []
+  }
+}
+
 export type AlbumTrack = {
   videoId: string
   title: string

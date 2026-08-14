@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
     "bgutils-js": "^4.0.3",
+    "expo-notifications": "~57.0.11",
     "jsdom": "^28.0.0",
     "youtubei.js": "^17.2.0"
   },

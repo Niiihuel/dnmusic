@@ -7,6 +7,7 @@ import { FilaSostener } from '../../src/ui/Mantener'
 import {
   ICON_COLOR,
   IconBack,
+  IconBan,
   IconClock,
   IconDisc,
   IconDisk,
@@ -203,6 +204,16 @@ export default function Ajustes() {
                * Sostenida, porque volver a entrar pide la contraseña.
                */}
               <GrupoAjustes titulo="Tu cuenta">
+                {/* La puerta de salida del bloqueo vive acá: el perfil de un
+                    bloqueado ya no se puede abrir, así que se deshace desde
+                    esta lista. */}
+                <FilaAjuste
+                  rotulo="Bloqueados"
+                  valor=""
+                  vacio=""
+                  icono={<IconBan size={17} color={ICON_COLOR.muted} />}
+                  onPress={() => router.push('/ajustes/bloqueados')}
+                />
                 <FilaSostener
                   rotulo="Cerrar sesión"
                   detalle="Vas a volver a la pantalla de entrada."

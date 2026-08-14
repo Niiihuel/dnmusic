@@ -46,15 +46,6 @@ export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
   const uri = ruta ? ilustracionUrl(ruta) : null
   const clip = ruta ? esVideo(ruta) : false
 
-  /* El reproductor se crea igual aunque el fondo sea una imagen: los hooks no
-     se pueden llamar condicionalmente, y sin fuente no hace nada. Mudo y en
-     repetición — es un fondo, no algo que se mire. */
-  const video = useVideoPlayer(clip && uri ? uri : null, (p) => {
-    p.loop = true
-    p.muted = true
-    p.play()
-  })
-
   /*
    * Sin imagen, la banda se dibuja igual.
    *
@@ -82,12 +73,7 @@ export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
   return (
     <View pointerEvents="none" className="absolute inset-0">
       {clip ? (
-        <VideoView
-          player={video}
-          style={{ width: '100%', height: '100%' }}
-          contentFit="cover"
-          nativeControls={false}
-        />
+        <FondoClip uri={uri} />
       ) : (
         <Image source={{ uri }} className="h-full w-full" resizeMode="cover" />
       )}
@@ -111,6 +97,38 @@ export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 220 }}
       />
     </View>
+  )
+}
+
+/**
+ * El clip de fondo, en su propio componente **para que el reproductor exista
+ * solo cuando hay un clip**.
+ *
+ * Antes `FondoPerfil` creaba el `VideoPlayer` siempre —los hooks no pueden ser
+ * condicionales— aunque el fondo fuera una imagen o no hubiera ninguno. En iOS
+ * crear el primer reproductor nativo configura la sesión de audio del sistema,
+ * y eso le pegaba un tirón de un segundo a la música al entrar al perfil por
+ * primera vez. Acá el hook vive en un componente que solo se monta con clip.
+ *
+ * `mixWithOthers` es la otra mitad: el modo por defecto (`auto`) negocia la
+ * sesión contra lo que ya suena, y un fondo mudo no tiene por qué tocarle el
+ * audio a nadie.
+ */
+function FondoClip({ uri }: { uri: string }) {
+  const video = useVideoPlayer(uri, (p) => {
+    p.loop = true
+    p.muted = true
+    p.audioMixingMode = 'mixWithOthers'
+    p.play()
+  })
+
+  return (
+    <VideoView
+      player={video}
+      style={{ width: '100%', height: '100%' }}
+      contentFit="cover"
+      nativeControls={false}
+    />
   )
 }
 

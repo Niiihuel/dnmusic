@@ -33,6 +33,7 @@ import { Avatar } from '../src/ui/Avatar'
 import { isSentBy, type Message } from '../src/models/message'
 import {
   endSession,
+  openContactConversation,
   refreshConversations,
   respondToRequest,
   selectConversation,
@@ -42,6 +43,7 @@ import {
   useMessages,
   useMyProfile,
   usePairId,
+  usePendientesChats,
   useSessionError,
   useUser,
 } from '../src/state/session'
@@ -52,11 +54,14 @@ import {
   contactLabel,
   contactTitle,
   searchContacts,
+  sendContactRequest,
   toContact,
   type ContactRequest,
   type ContactResult,
   type Conversation,
 } from '../src/services/contacts'
+import { FilaCuenta } from '../src/ui/FilaCuenta'
+import { Vacio } from '../src/ui/Vacio'
 import { mensajeError } from '../src/lib/mensajeError'
 import { avisar } from '../src/state/aviso'
 import { artworkSource } from '../src/lib/artwork'
@@ -74,6 +79,7 @@ import { elegirArchivoAudio } from '../src/lib/archivoAudio'
 import { pickImage } from '../src/lib/pickImage'
 import { useSnippetPlayer } from '../src/state/player'
 import {
+  registerAbrirChat,
   registerAbrirLista,
   registerNewPlaylist,
   registerTabHandler,
@@ -130,6 +136,7 @@ import { NowPlayingPanel } from '../src/ui/NowPlayingPanel'
 import {
   ICON_COLOR,
   IconBack,
+  IconCheck,
   IconForward,
   IconCollapseLeft,
   IconCollapseRight,
@@ -176,10 +183,16 @@ type Vista =
   | { kind: 'playlist'; id: string }
   | { kind: 'collection'; collection: Coleccion }
   | { kind: 'artist'; id: string; name: string }
+  /** La grilla con todos los géneros, y la página de uno. Ver `HomeFeed`. */
+  | { kind: 'generos' }
+  | { kind: 'genero'; params: string; name: string }
 
 export default function Home() {
   const messages = useMessages()
   const conversations = useConversations()
+  const requests = useContactRequests()
+  /* El globito del botón de conversaciones: solicitudes más no leídos. */
+  const pendientesChats = usePendientesChats()
   const activePairId = usePairId()
   const user = useUser()
   const contact = useContact()
@@ -208,6 +221,8 @@ export default function Home() {
   const searchRef = useRef<TextInput>(null)
   const [searchResults, setSearchResults] = useState<ContactResult[]>([])
   const [searchingContacts, setSearchingContacts] = useState(false)
+  /** Cuenta cuya solicitud está saliendo, para mostrar la espera en su fila. */
+  const [solicitando, setSolicitando] = useState<string | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [leftWidth, setLeftWidth] = useState(340)
@@ -488,6 +503,35 @@ export default function Home() {
   })
 
   /*
+   * Abrir una conversación desde una notificación push.
+   *
+   * `setTab('chats')` primero: su handler resetea `chatAbierto`, así que el
+   * abrir viene después y gana. Si la bandeja todavía no cargó —la app nació
+   * del toque—, el pairId queda anotado y el efecto de abajo lo abre cuando
+   * las conversaciones llegan.
+   */
+  const chatPorAbrir = useRef<string | null>(null)
+  useEffect(() => {
+    registerAbrirChat((pairId) => {
+      chatPorAbrir.current = pairId
+      setTab('chats')
+      changeConversation(pairId)
+      setChatAbierto(true)
+      if (conversations.some((c) => c.pairId === pairId)) chatPorAbrir.current = null
+    })
+    return () => registerAbrirChat(null)
+  })
+
+  useEffect(() => {
+    const pendiente = chatPorAbrir.current
+    if (!pendiente) return
+    if (!conversations.some((c) => c.pairId === pendiente)) return
+    chatPorAbrir.current = null
+    changeConversation(pendiente)
+    setChatAbierto(true)
+  }, [conversations])
+
+  /*
    * El buscador de arriba busca lo que corresponde al modo.
    *
    * En música, canciones para sumar a la lista abierta —es la única forma de
@@ -618,7 +662,7 @@ export default function Home() {
       // del teléfono; acá da lo mismo de dónde salió la imagen.
       const picked = await pickImage()
       if (!picked) return
-      await uploadCover(user.id, playlist.id, picked.blob, picked.fileName)
+      await uploadCover(user.id, playlist.id, picked.blob, picked.fileName, picked.mime)
       await loadPlaylists()
     } catch (e) {
       setPlaylistError((e as Error).message)
@@ -991,6 +1035,18 @@ export default function Home() {
     )
   }, [conversationQuery, conversations])
 
+  /*
+   * Las cuentas del buscador que **no** están ya arriba como conversación.
+   *
+   * En el teléfono las dos listas se ven juntas —las conversaciones filtradas
+   * y, debajo, «Más gente»— y una cuenta con la que ya te escribís aparecería
+   * dos veces. En escritorio el desplegable va solo y no descuenta nada.
+   */
+  const cuentasNuevas = useMemo(() => {
+    const pares = new Set(visibleConversations.map((c) => c.pairId))
+    return searchResults.filter((r) => !(r.pairId && pares.has(r.pairId)))
+  }, [searchResults, visibleConversations])
+
   function openMessage(id: string) {
     // El panel de detalle sigue mostrando lo elegido, pero tocar un mensaje
     // abre la vista completa: es donde la pieza se ve como tal.
@@ -1015,6 +1071,72 @@ export default function Home() {
     resetDraft()
     setComposerError(null)
     selectConversation(pairId)
+  }
+
+  async function responderSolicitud(solicitud: ContactRequest, aceptar: boolean) {
+    try {
+      const pairId = await respondToRequest(solicitud, aceptar)
+      if (pairId) {
+        avisar(`Ahora vos y ${contactLabel(solicitud)} son contactos`)
+        // En el teléfono aceptar abre el hilo, listo para el primer mensaje.
+        setChatAbierto(true)
+      }
+    } catch (cause) {
+      avisar(mensajeError(cause), true)
+    }
+  }
+
+  /**
+   * El «+» de una cuenta en los resultados: la solicitud sale ahí mismo.
+   *
+   * Antes el único camino era pasar por «Nuevo mensaje» solo para apretar
+   * «Enviar solicitud»: la búsqueda ya sabía el estado (`solicitud`) pero no
+   * ofrecía la acción. Si las solicitudes se cruzaron —o ya eran contactos—,
+   * la base los junta en el mismo gesto y se abre la conversación directa.
+   */
+  async function solicitarContacto(cuenta: ContactResult) {
+    setSolicitando(cuenta.id)
+    try {
+      const estado = await sendContactRequest(cuenta.id)
+      if (estado === 'enviada') {
+        avisar(`Solicitud enviada a @${cuenta.username}`)
+        // La fila pasa a decirlo sin esperar otra búsqueda.
+        setSearchResults((resultados) =>
+          resultados.map((r) => (r.id === cuenta.id ? { ...r, solicitud: 'enviada' } : r)),
+        )
+        await refreshConversations()
+        return
+      }
+      /* 'aceptada' o 'contactos': ya son contactos — directo a escribirle. */
+      avisar(`Ahora vos y ${contactLabel(cuenta)} son contactos`)
+      const pairId = await openContactConversation(toContact(cuenta))
+      await refreshConversations()
+      changeGlobalSearch('')
+      changeConversation(pairId)
+      setChatAbierto(true)
+    } catch (cause) {
+      avisar(mensajeError(cause), true)
+    } finally {
+      setSolicitando(null)
+    }
+  }
+
+  /** El tilde de una cuenta que ya te había pedido: aceptar desde la búsqueda. */
+  async function aceptarDeBusqueda(cuenta: ContactResult) {
+    setSolicitando(cuenta.id)
+    try {
+      const pairId = await respondToRequest(toContact(cuenta), true)
+      if (pairId) {
+        avisar(`Ahora vos y ${contactLabel(cuenta)} son contactos`)
+        changeGlobalSearch('')
+        changeConversation(pairId)
+        setChatAbierto(true)
+      }
+    } catch (cause) {
+      avisar(mensajeError(cause), true)
+    } finally {
+      setSolicitando(null)
+    }
   }
 
   async function sendChatMessage() {
@@ -1330,6 +1452,9 @@ export default function Home() {
                     results={searchResults}
                     error={searchError}
                     onSelect={chooseGlobalResult}
+                    solicitando={solicitando}
+                    onSolicitar={(cuenta) => void solicitarContacto(cuenta)}
+                    onAceptar={(cuenta) => void aceptarDeBusqueda(cuenta)}
                   />
                 )
               ) : null}
@@ -1433,7 +1558,19 @@ export default function Home() {
                 {/* El ícono dice a dónde te lleva, no dónde estás: con la música
                     de fondo permanente, marcar el modo activo no aporta nada. */}
                 {music ? (
-                  <IconInbox size={17} color={ICON_COLOR.muted} />
+                  <View>
+                    <IconInbox size={17} color={ICON_COLOR.muted} />
+                    {/* El globito de la pestaña Chats del teléfono, acá: sin
+                        él, en escritorio una solicitud no se veía desde el
+                        modo música. Mismo blanco de acento, número oscuro. */}
+                    {pendientesChats > 0 ? (
+                      <View className="absolute -right-3 -top-2 min-w-4 items-center justify-center rounded-full bg-primary px-1 py-px">
+                        <Text className="text-primary-foreground text-[9px] font-semibold">
+                          {Math.min(pendientesChats, 99)}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
                 ) : (
                   <IconMusic size={17} color={ICON_COLOR.muted} />
                 )}
@@ -1480,6 +1617,8 @@ export default function Home() {
                   ) : (
                     <ConversationSidebar
                       conversations={visibleConversations}
+                      requests={requests}
+                      onRespond={(solicitud, aceptar) => void responderSolicitud(solicitud, aceptar)}
                       filtered={conversationQuery.trim().length > 0}
                       activePairId={activePairId}
                       hovered={vivo && hovered}
@@ -1505,11 +1644,14 @@ export default function Home() {
             </ResizableRegion>
           ) : null}
 
-          {music && pistaSonando && (caraSonando === 'lyrics' || caraSonando === 'disc') ? (
+          {!suelto && music && pistaSonando && (caraSonando === 'lyrics' || caraSonando === 'disc') ? (
             /* La letra o el disco **toman el panel del medio**, como en
                Spotify: es contenido para mirar, no una ficha, y el lugar para
                mirar es el grande. El panel derecho vuelve a la ficha del
-               artista mientras tanto. Se sale con el mismo botón de la barra. */
+               artista mientras tanto. Se sale con el mismo botón de la barra.
+               Solo en escritorio: en el teléfono estas caras viven en la
+               pantalla del reproductor (`app/playing.tsx`), y tomar el medio
+               acá dejaba la letra pegada en cualquier pestaña al bajarla. */
             <CentroSonando cara={caraSonando} pista={pistaSonando} sonando={sonandoAhora} />
           ) : openPlaylist ? (
             <PlaylistView
@@ -1686,6 +1828,12 @@ export default function Home() {
                está sonando afuera, en vez de un cartel pidiendo que elijas. */
             <HomeFeed
               section={homeSection}
+              /* Los géneros son paradas del historial, como una sección: la
+                 grilla entera y la página de cada uno. */
+              genero={view.kind === 'genero' ? { params: view.params, name: view.name } : null}
+              generosAbiertos={view.kind === 'generos'}
+              onOpenGenero={(g) => go({ kind: 'genero', params: g.params, name: g.name })}
+              onOpenGeneros={() => go({ kind: 'generos' })}
               /* Cerrar la sección es volver, no apilar otra portada: si no,
                  la flecha de atrás terminaría repitiendo la misma pantalla. */
               onOpenSection={(section) => (section ? go({ kind: 'home', section }) : goBack())}
@@ -1721,6 +1869,8 @@ export default function Home() {
             <View className="min-h-0 flex-1">
               <ConversationSidebar
                 conversations={visibleConversations}
+                requests={requests}
+                onRespond={(solicitud, aceptar) => void responderSolicitud(solicitud, aceptar)}
                 filtered={conversationQuery.trim().length > 0}
                 activePairId={activePairId}
                 hovered={false}
@@ -1730,6 +1880,14 @@ export default function Home() {
                   setChatAbierto(true)
                 }}
                 onNew={() => openComposer(false)}
+                /* En el teléfono no hay desplegable: las cuentas que coinciden
+                   se muestran acá abajo, con su acción en la fila. */
+                cuentas={cuentasNuevas}
+                buscandoCuentas={searchingContacts}
+                solicitando={solicitando}
+                onAbrirCuenta={chooseGlobalResult}
+                onSolicitar={(cuenta) => void solicitarContacto(cuenta)}
+                onAceptarCuenta={(cuenta) => void aceptarDeBusqueda(cuenta)}
               />
             </View>
           ) : (
@@ -2179,21 +2337,46 @@ function HeaderButton({
 
 function ConversationSidebar({
   conversations,
+  requests,
   filtered,
   activePairId,
   hovered,
   onCollapse,
   onSelect,
+  onRespond,
   onNew,
+  cuentas = [],
+  buscandoCuentas = false,
+  solicitando = null,
+  onAbrirCuenta,
+  onSolicitar,
+  onAceptarCuenta,
 }: {
   conversations: Conversation[]
+  /** Solicitudes que esperan respuesta; con alguna, la sección va arriba. */
+  requests: ContactRequest[]
   /** Hay una búsqueda escrita: cambia qué decir cuando la lista está vacía. */
   filtered: boolean
   activePairId: string | null
   hovered: boolean
   onCollapse: () => void
   onSelect: (pairId: string) => void
+  onRespond: (solicitud: ContactRequest, aceptar: boolean) => void
   onNew: () => void
+  /**
+   * Las cuentas que coinciden con la búsqueda, debajo de las conversaciones.
+   *
+   * Solo el teléfono las manda: en escritorio los resultados cuelgan del campo
+   * del encabezado. Sin esto, buscar en «Chats» filtraba lo que ya tenías y la
+   * gente nueva no aparecía por ningún lado — el endpoint estaba, el visual no.
+   */
+  cuentas?: ContactResult[]
+  buscandoCuentas?: boolean
+  /** Cuenta cuya solicitud está saliendo, para la espera en su fila. */
+  solicitando?: string | null
+  onAbrirCuenta?: (cuenta: ContactResult) => void
+  onSolicitar?: (cuenta: ContactResult) => void
+  onAceptarCuenta?: (cuenta: ContactResult) => void
 }) {
   /* En el teléfono esto es la pestaña «Chats» y llega hasta el borde. */
   const piso = usePiso(8)
@@ -2240,17 +2423,94 @@ function ConversationSidebar({
         contentContainerClassName="gap-1 p-2"
         contentContainerStyle={{ paddingBottom: piso }}
         {...colapso}
+        /* Las solicitudes van arriba de las conversaciones y dentro de la
+           misma lista: son lo que pide atención primero, pero desplazan con
+           el resto en vez de comerse el alto de la bandeja. */
+        ListHeaderComponent={
+          requests.length ? (
+            <View className="gap-1 pb-2">
+              <Text className="px-2.5 pt-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                Solicitudes
+              </Text>
+              {requests.map((solicitud) => (
+                <View key={solicitud.id} className="flex-row items-center gap-3 rounded-lg p-2.5">
+                  <Avatar
+                    name={contactLabel(solicitud)}
+                    path={solicitud.avatarPath}
+                    size={44}
+                  />
+                  <View className="min-w-0 flex-1 gap-0.5">
+                    <Text
+                      className="text-foreground text-[14px] font-semibold"
+                      numberOfLines={1}
+                    >
+                      {contactTitle(solicitud)}
+                    </Text>
+                    <Text className="text-muted-foreground text-xs">Quiere ser tu contacto</Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Aceptar la solicitud de ${contactLabel(solicitud)}`}
+                    onPress={() => onRespond(solicitud, true)}
+                    className="h-9 w-9 items-center justify-center rounded-full bg-primary active:opacity-80"
+                  >
+                    <IconCheck size={15} color={ICON_COLOR.onPrimary} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Rechazar la solicitud de ${contactLabel(solicitud)}`}
+                    onPress={() => onRespond(solicitud, false)}
+                    className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-80"
+                  >
+                    <IconClose size={14} color={ICON_COLOR.muted} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
-          <View className="items-center gap-3 px-5 py-16">
-            <IconInbox size={24} color={ICON_COLOR.muted} />
-            {/* Una cuenta recién creada no tiene conversaciones, y decirle que
-                "no coinciden" da a entender que filtró algo que no filtró. */}
-            <Text className="text-muted-foreground text-center text-sm leading-5">
-              {filtered
-                ? 'No hay conversaciones que coincidan.'
-                : 'Todavía no tenés conversaciones. Buscá una cuenta para empezar.'}
-            </Text>
-          </View>
+          /* Buscando, si abajo va a haber cuentas el cartel grande sobra: la
+             sección «Más gente» ya es la respuesta a lo que se escribió. */
+          /* Una cuenta recién creada no tiene conversaciones, y decirle que
+             "no coinciden" da a entender que filtró algo que no filtró. */
+          filtered && (cuentas.length || buscandoCuentas) ? null : (
+            <Vacio
+              icono={<IconInbox size={22} color={ICON_COLOR.muted} />}
+              titulo={filtered ? 'Sin resultados' : 'Todavía no hay conversaciones'}
+              detalle={
+                filtered
+                  ? 'Ninguna conversación coincide con lo que escribiste.'
+                  : 'Buscá una cuenta y mandale un mensaje o una canción.'
+              }
+              accion={filtered ? undefined : { rotulo: 'Buscar contacto', onPress: onNew }}
+            />
+          )
+        }
+        /* Las cuentas que coinciden, después de tus conversaciones: dentro de
+           la misma lista —como las solicitudes— para desplazar con el resto. */
+        ListFooterComponent={
+          filtered && onAbrirCuenta && (cuentas.length || buscandoCuentas) ? (
+            <View className="gap-1 pt-2">
+              <Text className="px-2.5 pb-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                Más gente
+              </Text>
+              {buscandoCuentas && !cuentas.length ? (
+                <SkeletonList rows={3} />
+              ) : (
+                cuentas.map((cuenta) => (
+                  <FilaCuenta
+                    key={cuenta.id}
+                    cuenta={cuenta}
+                    busy={solicitando === cuenta.id}
+                    onAbrir={() => onAbrirCuenta(cuenta)}
+                    onSolicitar={() => onSolicitar?.(cuenta)}
+                    onAceptar={() => onAceptarCuenta?.(cuenta)}
+                  />
+                ))
+              )}
+            </View>
+          ) : null
         }
         renderItem={({ item }) => (
           <Pressable
@@ -2301,11 +2561,18 @@ function GlobalSearchResults({
   results,
   error,
   onSelect,
+  solicitando,
+  onSolicitar,
+  onAceptar,
 }: {
   loading: boolean
   results: ContactResult[]
   error: string | null
   onSelect: (result: ContactResult) => void
+  /** Cuenta cuya solicitud está saliendo, para la espera en su fila. */
+  solicitando: string | null
+  onSolicitar: (result: ContactResult) => void
+  onAceptar: (result: ContactResult) => void
 }) {
   /* Igual que los resultados de canciones: la lista termina antes del teclado
      en vez de seguir por debajo, donde no se llega. */
@@ -2325,24 +2592,18 @@ function GlobalSearchResults({
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: teclado }}
         >
+          {/* La misma fila que usa el teléfono en «Más gente»: una cuenta con
+              su acción a la vista — mandar la solicitud o aceptarla, sin pasar
+              por la pantalla de redactar solo para eso. */}
           {results.map((result) => (
-            <Pressable
+            <FilaCuenta
               key={result.id}
-              accessibilityRole="button"
-              onPress={() => onSelect(result)}
-              className="flex-row items-center gap-3 rounded-lg p-2.5 active:bg-muted"
-            >
-              <Avatar name={contactLabel(result)} path={result.avatarPath} size={40} />
-              <View className="min-w-0 flex-1 gap-0.5">
-                <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
-                  {contactTitle(result)}
-                </Text>
-                <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-                  {result.displayName?.trim() ? `@${result.username} · ` : ''}
-                  {result.pairId ? 'Abrir conversación' : 'Iniciar conversación'}
-                </Text>
-              </View>
-            </Pressable>
+              cuenta={result}
+              busy={solicitando === result.id}
+              onAbrir={() => onSelect(result)}
+              onSolicitar={() => onSolicitar(result)}
+              onAceptar={() => onAceptar(result)}
+            />
           ))}
         </ScrollView>
       )}
@@ -2402,17 +2663,13 @@ function Detail({
         </View>
         {/* Centrado en lo que se ve, descontando lo que tapa el reproductor:
             a secas, el cartel cae justo detrás de la barra. */}
-        <View
-          className="flex-1 items-center justify-center gap-3 p-8"
-          style={{ paddingBottom: pisoDetalle }}
-        >
-          <View className="h-12 w-12 items-center justify-center rounded-full bg-muted">
-            <IconMusic size={22} color={ICON_COLOR.muted} />
-          </View>
-          <Text className="text-foreground text-base font-semibold">Detalle musical</Text>
-          <Text className="text-muted-foreground text-center text-sm leading-5">
-            Elegí un mensaje para ver su contenido y escuchar su canción.
-          </Text>
+        <View className="flex-1 justify-center" style={{ paddingBottom: pisoDetalle }}>
+          <Vacio
+            compacto
+            icono={<IconMusic size={20} color={ICON_COLOR.muted} />}
+            titulo="Detalle musical"
+            detalle="Elegí un mensaje para ver su contenido y escuchar su canción."
+          />
         </View>
       </View>
     )
@@ -2537,40 +2794,25 @@ function Detail({
 
 function EmptyThread({ contactName }: { contactName: string }) {
   return (
-    <View className="items-center justify-center gap-3 px-6 py-24">
-      <View className="h-14 w-14 items-center justify-center rounded-full bg-card">
-        <IconInbox size={24} color={ICON_COLOR.muted} />
-      </View>
-      <Text className="text-foreground text-lg font-semibold">Conversación nueva</Text>
-      <Text className="max-w-xs text-center text-muted-foreground text-sm leading-5">
-        Escribile el primer mensaje a {contactName}.
-      </Text>
+    <View className="justify-center py-8">
+      <Vacio
+        icono={<IconInbox size={22} color={ICON_COLOR.muted} />}
+        titulo="Conversación nueva"
+        detalle={`Escribile el primer mensaje a ${contactName}.`}
+      />
     </View>
   )
 }
 
 function NoConversation({ onNew }: { onNew: () => void }) {
   return (
-    <View className="flex-1 items-center justify-center gap-4 p-8">
-      <View className="h-16 w-16 items-center justify-center rounded-full bg-card">
-        <IconInbox size={27} color={ICON_COLOR.muted} />
-      </View>
-      <View className="items-center gap-1.5">
-        <Text className="text-foreground text-lg font-semibold">Empezá una conversación</Text>
-        <Text className="max-w-sm text-center text-muted-foreground text-sm leading-5">
-          Buscá una cuenta y mandale un mensaje o una canción.
-        </Text>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        onPress={onNew}
-        className="flex-row items-center gap-2 rounded-full bg-primary px-6 py-3 active:opacity-80"
-      >
-        <IconPlus size={16} color={ICON_COLOR.onPrimary} />
-        <Text className="text-primary-foreground text-xs font-semibold uppercase tracking-[1.2px]">
-          Buscar contacto
-        </Text>
-      </Pressable>
+    <View className="flex-1 justify-center">
+      <Vacio
+        icono={<IconInbox size={24} color={ICON_COLOR.muted} />}
+        titulo="Empezá una conversación"
+        detalle="Buscá una cuenta y mandale un mensaje o una canción."
+        accion={{ rotulo: 'Buscar contacto', onPress: onNew }}
+      />
     </View>
   )
 }

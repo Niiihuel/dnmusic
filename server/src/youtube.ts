@@ -1,4 +1,4 @@
-import { ClientType, Innertube, Platform, UniversalCache } from 'youtubei.js'
+import { ClientType, Innertube, Platform, UniversalCache, YTNodes } from 'youtubei.js'
 import { runInNewContext } from 'node:vm'
 import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -998,4 +998,102 @@ function mapHomeItem(raw: unknown): YtHomeItem[] {
       year: year ? Number(year[0]) : null,
     },
   ]
+}
+
+/* ── Géneros y momentos ─────────────────────────────────────────────────────
+ *
+ * La página «Moods & genres» de YouTube Music (`FEmusic_moods_and_genres`):
+ * una lista de categorías —géneros y estados de ánimo— y, adentro de cada
+ * una, sus listas y álbumes. Es la materia prima de la grilla de géneros de
+ * la portada, al modo de Apple Music.
+ */
+
+export type YtGenero = {
+  /** El parámetro opaco con el que YouTube abre la página de la categoría. */
+  params: string
+  name: string
+  /** Una tapa representativa: la primera lista de la categoría. */
+  artworkUrl: string
+}
+
+/**
+ * Los géneros cambian una vez cada tanto y armarlos cuesta una llamada por
+ * categoría (la tapa representativa): un día entero de caché en memoria.
+ */
+const GENEROS_TTL_MS = 24 * 60 * 60 * 1000
+let generosCache: { at: number; generos: YtGenero[] } | null = null
+
+export async function getGeneros(): Promise<YtGenero[]> {
+  if (generosCache && Date.now() - generosCache.at < GENEROS_TTL_MS) {
+    return generosCache.generos
+  }
+
+  const yt = await getClient()
+  const page = await yt.actions.execute('/browse', {
+    browse_id: 'FEmusic_moods_and_genres',
+    client: 'YTMUSIC',
+    parse: true,
+  })
+  const botones = page.contents_memo?.getType(YTNodes.MusicNavigationButton) ?? []
+
+  /* La misma categoría puede aparecer dos veces (arriba en «moods», abajo en
+     «genres»): se queda la primera. */
+  const vistos = new Set<string>()
+  const crudos: { params: string; name: string }[] = []
+  for (const boton of botones) {
+    const payload = boton.endpoint?.payload as
+      | { browseId?: string; params?: string }
+      | undefined
+    if (payload?.browseId !== 'FEmusic_moods_and_genres_category') continue
+    if (!payload.params || !boton.button_text || vistos.has(payload.params)) continue
+    vistos.add(payload.params)
+    crudos.push({ params: payload.params, name: boton.button_text })
+  }
+
+  /*
+   * La tapa de cada categoría es la de su primera lista: los botones de
+   * YouTube no traen imagen —son chips de color— y una grilla al modo de
+   * Apple Music vive de las fotos. Se piden de a seis para no clavarle
+   * veinte llamadas juntas a YouTube; con el caché de un día, este costo se
+   * paga una vez por proceso.
+   */
+  const generos: YtGenero[] = []
+  const LOTE = 6
+  for (let i = 0; i < crudos.length; i += LOTE) {
+    const tanda = await Promise.all(
+      crudos.slice(i, i + LOTE).map(async (g) => {
+        const artworkUrl = await getGenero(g.params)
+          .then((cat) => cat.items[0]?.artworkUrl ?? '')
+          .catch(() => '')
+        return { ...g, artworkUrl }
+      }),
+    )
+    generos.push(...tanda)
+  }
+
+  generosCache = { at: Date.now(), generos }
+  return generos
+}
+
+/** Una categoría: sus listas y álbumes, en la forma de la portada. */
+export async function getGenero(params: string): Promise<{ items: YtHomeItem[] }> {
+  const yt = await getClient()
+  const page = await yt.actions.execute('/browse', {
+    browse_id: 'FEmusic_moods_and_genres_category',
+    params,
+    client: 'YTMUSIC',
+    parse: true,
+  })
+  const nodos =
+    page.contents_memo?.getType(YTNodes.MusicTwoRowItem, YTNodes.MusicResponsiveListItem) ?? []
+
+  /* `mapHomeItem` ya sabe leer estos nodos: son los mismos de la portada. Un
+     ítem repetido entre secciones de la categoría se muestra una sola vez. */
+  const unicos = new Map<string, YtHomeItem>()
+  for (const nodo of nodos) {
+    for (const item of mapHomeItem(nodo)) {
+      if (!unicos.has(item.id)) unicos.set(item.id, item)
+    }
+  }
+  return { items: [...unicos.values()] }
 }
