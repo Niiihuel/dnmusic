@@ -95,17 +95,30 @@ export function Glass({
   radius = 24,
   style,
   tint,
+  dataSet,
   children,
 }: PropsWithChildren<{
   radius?: number
   style?: ViewStyle | ViewStyle[]
   /** Un tinte propio. Sin esto, el vidrio toma lo que tenga detrás. */
   tint?: string
+  /**
+   * Atributos `data-*` para la web, donde react-native-web los vuelca al DOM.
+   * Es la manija que usa el menú para engancharle animaciones CSS al vidrio
+   * mismo — la animación tiene que vivir en esta capa, no en un envoltorio
+   * (un ancestro con opacidad animada apaga el backdrop-filter). En nativo no
+   * hay DOM y se ignora.
+   */
+  dataSet?: Record<string, string>
 }>) {
   const forma: ViewStyle = { borderRadius: radius, overflow: 'hidden' }
 
   if (ES_WEB) {
-    return <View style={[forma, vidrioCss(tint), style]}>{children}</View>
+    return (
+      <View {...({ dataSet } as object)} style={[forma, vidrioCss(tint), style]}>
+        {children}
+      </View>
+    )
   }
 
   if (!HAY_VIDRIO) {

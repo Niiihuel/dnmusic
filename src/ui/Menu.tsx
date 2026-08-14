@@ -11,9 +11,10 @@ import {
   useWindowDimensions,
   View,
   type View as RNView,
+  type ViewStyle,
 } from 'react-native'
 import type { SFSymbol } from 'sf-symbols-typescript'
-import { BORDE_REFERENTE, Glass } from './Glass'
+import { BORDE_REFERENTE, ES_WEB, Glass } from './Glass'
 import { ICON_COLOR, IconChevronRight, IconMore } from './icons'
 
 export type MenuItem = {
@@ -97,6 +98,136 @@ const GAP = 6
 /** Aire mínimo contra cualquier borde de la pantalla. */
 const MARGIN = 8
 
+/*
+ * La animación del menú en web, con las curvas de la librería de referencia
+ * (Jakubantalik/Libraries, `PlusMenu.tsx`): la apertura es su preset «Bouncy»
+ * —un resorte que se pasa apenas y vuelve— y el cierre su «Snappy», corto y
+ * seco. Las filas entran **escalonadas**, cada una un pelo después de la
+ * anterior, que es lo que hace que el panel se sienta vivo y no una foto.
+ */
+const RESORTE = 'cubic-bezier(0.34, 1.56, 0.64, 1)'
+const SECO = 'cubic-bezier(0.22, 1, 0.36, 1)'
+const ABRE_MS = 420
+const CIERRA_MS = 150
+/** Cuánto espera cada fila respecto de la anterior. */
+const ESCALON_MS = 22
+
+/*
+ * La animación va en **CSS de verdad**, inyectado una sola vez.
+ *
+ * react-native-web deja pasar `animation-duration` o `animation-delay` como
+ * estilos sueltos, pero no registra keyframes desde un estilo en línea: el
+ * panel quedaba con `animation-name: none` y nada se movía. Los keyframes
+ * viven en una hoja global y cada pieza elige el suyo con un atributo
+ * `data-anim` — el mismo truco de cualquier librería CSS, sin pelearse con el
+ * compilador de estilos de RNW.
+ *
+ * El blur que «aparecía después y se veía disparejo» era un problema de capas:
+ * el Modal entraba con fade, y en CSS un ancestro con `opacity` en transición
+ * **anula el `backdrop-filter`** de sus descendientes hasta llegar a 1 — el
+ * menú se dibujaba sin vidrio y el blur caía de golpe al final. La regla que
+ * sale de ahí: la opacidad de un ancestro del vidrio no se anima nunca. El
+ * propio panel anima su desenfoque (0 → 18px) y su fondo; el material no
+ * rebota aunque la forma sí — un blur con resorte se ve como un foco que no
+ * encuentra el plano.
+ */
+if (ES_WEB && typeof document !== 'undefined') {
+  const hoja = document.createElement('style')
+  hoja.textContent = `
+@keyframes dn-menu-sube { from { transform: scale(.9) translateY(8px) } }
+@keyframes dn-menu-baja { from { transform: scale(.9) translateY(-8px) } }
+@keyframes dn-menu-va-arriba { to { transform: scale(.96) translateY(4px) } }
+@keyframes dn-menu-va-abajo { to { transform: scale(.96) translateY(-4px) } }
+@keyframes dn-menu-material { from {
+  backdrop-filter: blur(0px) saturate(100%);
+  -webkit-backdrop-filter: blur(0px) saturate(100%);
+  background-color: rgba(28,28,28,0);
+} }
+@keyframes dn-menu-material-va { to {
+  backdrop-filter: blur(0px) saturate(100%);
+  -webkit-backdrop-filter: blur(0px) saturate(100%);
+  background-color: rgba(28,28,28,0);
+} }
+@keyframes dn-menu-fila-sube { from { opacity: 0; transform: translateY(6px) } }
+@keyframes dn-menu-fila-baja { from { opacity: 0; transform: translateY(-6px) } }
+@keyframes dn-menu-fila-va { to { opacity: 0 } }
+
+[data-anim="menu-abre-arriba"] {
+  transform-origin: bottom right;
+  animation: dn-menu-sube ${ABRE_MS}ms ${RESORTE} both, dn-menu-material 200ms ease-out both;
+}
+[data-anim="menu-abre-abajo"] {
+  transform-origin: top right;
+  animation: dn-menu-baja ${ABRE_MS}ms ${RESORTE} both, dn-menu-material 200ms ease-out both;
+}
+[data-anim="menu-cierra-arriba"] {
+  transform-origin: bottom right;
+  animation: dn-menu-va-arriba ${CIERRA_MS}ms ${SECO} both, dn-menu-material-va ${CIERRA_MS}ms ${SECO} both;
+}
+[data-anim="menu-cierra-abajo"] {
+  transform-origin: top right;
+  animation: dn-menu-va-abajo ${CIERRA_MS}ms ${SECO} both, dn-menu-material-va ${CIERRA_MS}ms ${SECO} both;
+}
+[data-anim="fila-abre-arriba"] { animation: dn-menu-fila-sube 240ms ${SECO} both; }
+[data-anim="fila-abre-abajo"] { animation: dn-menu-fila-baja 240ms ${SECO} both; }
+[data-anim="fila-cierra"] { animation: dn-menu-fila-va ${CIERRA_MS}ms ${SECO} both; }
+`
+  document.head.appendChild(hoja)
+}
+
+/** El `data-anim` del panel, según hacia dónde abre y si se está yendo. */
+function animPanel(cerrando: boolean, above: boolean): Record<string, string> | undefined {
+  if (!ES_WEB) return undefined
+  if (cerrando) return { anim: above ? 'menu-cierra-arriba' : 'menu-cierra-abajo' }
+  return { anim: above ? 'menu-abre-arriba' : 'menu-abre-abajo' }
+}
+
+/**
+ * Las filas del panel, **sin barra de scroll en la compu**.
+ *
+ * El ScrollView de antes dibujaba su ranura contra el borde derecho aunque
+ * nada desbordara — la línea gris de la captura que motivó este arreglo. En
+ * web las filas van en un View común: si algún día un menú no entrara en la
+ * ventana, la rueda sigue desplazando (`overflowY: auto`) pero la barra no se
+ * dibuja nunca. En Android el ScrollView queda: ahí no hay ranura fantasma.
+ */
+function Filas({ alto, children }: { alto: number; children: ReactNode }) {
+  if (ES_WEB) {
+    return (
+      <View
+        style={
+          {
+            maxHeight: alto,
+            paddingVertical: PAD,
+            overflowY: 'auto',
+            scrollbarWidth: 'none',
+          } as unknown as ViewStyle
+        }
+      >
+        {children}
+      </View>
+    )
+  }
+  return (
+    <ScrollView bounces={false} contentContainerStyle={{ paddingVertical: PAD }}>
+      {children}
+    </ScrollView>
+  )
+}
+
+/** El `data-anim` de una fila: entra escalonada, se va pareja. */
+function animFila(cerrando: boolean, above: boolean): Record<string, string> | undefined {
+  if (!ES_WEB) return undefined
+  if (cerrando) return { anim: 'fila-cierra' }
+  return { anim: above ? 'fila-abre-arriba' : 'fila-abre-abajo' }
+}
+
+/** El escalón de cada fila. En línea porque el índice no entra en una hoja fija. */
+function demoraFila(indice: number, cerrando: boolean): ViewStyle {
+  if (!ES_WEB || cerrando) return {}
+  return { animationDelay: `${50 + indice * ESCALON_MS}ms` } as unknown as ViewStyle
+}
+
 /**
  * Menú de acciones colgado de un botón de tres puntos.
  *
@@ -144,17 +275,20 @@ export function Menu({
 }) {
   const [open, setOpen] = useState(false)
   /*
-   * La entrada del panel, con la curva del referente.
-   *
-   * Es el `cubic-bezier(0.22, 1, 0.36, 1)` a 200ms de la librería de
-   * referencia: el menú **nace desde su ancla** —se desliza apenas, escala de
-   * 0.95 a 1 y aparece— en vez de estar de golpe. Solo web y Android: en iOS
-   * el menú lo dibuja el sistema con su propia animación.
+   * El panel saliendo, para animar la ida antes de desmontar. Solo web: el
+   * menú se despide con el mismo material con el que llegó — desaparecer de
+   * golpe era la mitad de lo que lo hacía sentir pegado.
    */
-  const [entrada] = useState(() => new Animated.Value(0))
-  const [entradaSub] = useState(() => new Animated.Value(0))
+  const [cerrando, setCerrando] = useState(false)
+  /*
+   * La entrada del panel en **Android**, con Animated: ahí no hay CSS. En web
+   * la animación vive en los estilos (`vidrioAnimado`, `filaAnimada`): correr
+   * también esta opacidad anularía el backdrop-filter — ver `vidrioAnimado`.
+   */
+  const [entrada] = useState(() => new Animated.Value(ES_WEB ? 1 : 0))
+  const [entradaSub] = useState(() => new Animated.Value(ES_WEB ? 1 : 0))
   useEffect(() => {
-    if (!open) return
+    if (!open || ES_WEB) return
     entrada.setValue(0)
     Animated.timing(entrada, {
       toValue: 1,
@@ -166,9 +300,9 @@ export function Menu({
   const [anchor, setAnchor] = useState({ x: 0, y: 0, w: 0, h: 0 })
   /** Índice de la fila cuyo submenú está abierto; null sin ninguno. */
   const [sub, setSub] = useState<number | null>(null)
-  /* El submenú entra con la misma curva, desde su fila. */
+  /* El submenú entra con la misma curva, desde su fila. Android; web va por CSS. */
   useEffect(() => {
-    if (sub == null) return
+    if (sub == null || ES_WEB) return
     entradaSub.setValue(0)
     Animated.timing(entradaSub, {
       toValue: 1,
@@ -354,6 +488,21 @@ export function Menu({
   )
 
   const cerrar = () => {
+    /*
+     * En web el desmontaje espera a la despedida: `cerrando` pone a todo el
+     * panel los keyframes de salida y recién al terminar se cierra el Modal.
+     * La acción elegida ya corrió — el menú se va mientras la app responde.
+     */
+    if (ES_WEB) {
+      if (cerrando) return
+      setCerrando(true)
+      setTimeout(() => {
+        setOpen(false)
+        setSub(null)
+        setCerrando(false)
+      }, CIERRA_MS)
+      return
+    }
     setOpen(false)
     setSub(null)
   }
@@ -376,7 +525,16 @@ export function Menu({
         {trigger ?? <IconMore size={size} color={ICON_COLOR.muted} />}
       </Pressable>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={cerrar}>
+      {/* Sin fade en web: ese fundido es una opacidad animada sobre TODO el
+          modal, y con un ancestro fundiéndose el backdrop-filter del vidrio
+          no dibuja nada — el blur caía de golpe al final, disparejo. La
+          entrada la hace el panel solo (ver `vidrioAnimado`). */}
+      <Modal
+        visible={open}
+        transparent
+        animationType={ES_WEB ? 'none' : 'fade'}
+        onRequestClose={cerrar}
+      >
         {/* El fondo que cierra va como hermano del menú: envolviéndolo, cada
             opción quedaría dentro de un Pressable y en web eso genera un
             <button> dentro de otro <button>. */}
@@ -402,36 +560,51 @@ export function Menu({
               top,
               left,
               width: MENU_W,
-              opacity: entrada,
-              transformOrigin: above ? 'bottom' : 'top',
-              transform: [
-                {
-                  translateY: entrada.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [above ? 6 : -6, 0],
+              /* En web este envoltorio queda quieto: cualquier opacidad o
+                 escala acá arriba le apagaría el vidrio al panel. La entrada
+                 y la salida viven en el Glass (ver `vidrioAnimado`). */
+              ...(ES_WEB
+                ? null
+                : {
+                    opacity: entrada,
+                    transformOrigin: above ? 'bottom' : 'top',
+                    transform: [
+                      {
+                        translateY: entrada.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [above ? 6 : -6, 0],
+                        }),
+                      },
+                      {
+                        scale: entrada.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.95, 1],
+                        }),
+                      },
+                    ],
                   }),
-                },
-                { scale: entrada.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) },
-              ],
             }}
           >
           <Glass
             radius={13}
+            dataSet={animPanel(cerrando, above)}
             style={{
               maxHeight: menuH,
               boxShadow: `0 12px 32px rgba(0,0,0,0.55), ${BORDE_REFERENTE}`,
             }}
           >
-            {/* Con más opciones de las que entran, se desplazan adentro en vez
-                de desbordarse fuera de la pantalla. */}
-            <ScrollView bounces={false} contentContainerStyle={{ paddingVertical: PAD }}>
+            <Filas alto={menuH}>
             {usable.map((item, i) => (
               <Fragment key={item.label}>
               {/* El corte antes del grupo destructivo, como los menús del
                   sistema: un divisor propio e inset, no un borde pegado a la
                   fila — así no corta el panel de lado a lado. */}
               {i > 0 && item.destructive && !usable[i - 1]?.destructive ? (
-                <View className="mx-3 my-1 h-px bg-white/10" />
+                <View
+                  {...({ dataSet: animFila(cerrando, above) } as object)}
+                  className="mx-3 my-1 h-px bg-white/10"
+                  style={demoraFila(i, cerrando)}
+                />
               ) : null}
               <Pressable
                 accessibilityRole="button"
@@ -446,7 +619,8 @@ export function Menu({
                   cerrar()
                   item.onPress?.()
                 }}
-                style={{ height: ROW_H }}
+                {...({ dataSet: animFila(cerrando, above) } as object)}
+                style={{ height: ROW_H, ...demoraFila(i, cerrando) }}
                 className={`mx-1.5 flex-row items-center gap-3 rounded-lg px-3 hover:bg-white/10 active:bg-white/15 ${
                   sub === i ? 'bg-white/10' : ''
                 }`}
@@ -467,7 +641,7 @@ export function Menu({
               </Pressable>
               </Fragment>
             ))}
-            </ScrollView>
+            </Filas>
           </Glass>
           </Animated.View>
 
@@ -480,29 +654,39 @@ export function Menu({
                 top: subTop,
                 left: subLeft,
                 width: MENU_W,
-                opacity: entradaSub,
-                transform: [
-                  {
-                    translateX: entradaSub.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [subLeft < left ? 6 : -6, 0],
+                /* Quieto en web, igual que el panel principal: el vidrio se
+                   anima solo (ver `vidrioAnimado`). */
+                ...(ES_WEB
+                  ? null
+                  : {
+                      opacity: entradaSub,
+                      transform: [
+                        {
+                          translateX: entradaSub.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [subLeft < left ? 6 : -6, 0],
+                          }),
+                        },
+                        {
+                          scale: entradaSub.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.95, 1],
+                          }),
+                        },
+                      ],
                     }),
-                  },
-                  {
-                    scale: entradaSub.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }),
-                  },
-                ],
               }}
             >
             <Glass
               radius={13}
+              dataSet={animPanel(cerrando, false)}
               style={{
                 maxHeight: subMaxH,
                 boxShadow: `0 12px 32px rgba(0,0,0,0.55), ${BORDE_REFERENTE}`,
               }}
             >
-              <ScrollView bounces={false} contentContainerStyle={{ paddingVertical: PAD }}>
-                {subItems.map((item) => (
+              <Filas alto={subMaxH}>
+                {subItems.map((item, i) => (
                   <Pressable
                     key={item.label}
                     accessibilityRole="button"
@@ -510,7 +694,8 @@ export function Menu({
                       cerrar()
                       item.onPress?.()
                     }}
-                    style={{ height: ROW_H }}
+                    {...({ dataSet: animFila(cerrando, false) } as object)}
+                    style={{ height: ROW_H, ...demoraFila(i, cerrando) }}
                     className="mx-1.5 flex-row items-center gap-3 rounded-lg px-3 hover:bg-white/10 active:bg-white/15"
                   >
                     {item.icon}
@@ -524,7 +709,7 @@ export function Menu({
                     </Text>
                   </Pressable>
                 ))}
-              </ScrollView>
+              </Filas>
             </Glass>
             </Animated.View>
           ) : null}
