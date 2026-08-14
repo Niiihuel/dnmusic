@@ -21,6 +21,7 @@ import { SearchField } from '../src/ui/SearchField'
 import { BuscadorFlotante } from '../src/ui/FloatingSearch'
 import { addShowcase } from '../src/services/showcases'
 import { leerRecorte, limpiarRecorte } from '../src/state/recorte'
+import { useVolume } from '../src/state/playback'
 import { avisar } from '../src/state/aviso'
 import { getSupabase } from '../src/lib/supabase'
 import { useKeyboardH, usePiso } from '../src/state/shell'
@@ -463,11 +464,15 @@ function SnippetEditor({
    * Va en su propio efecto y no junto al `play()` porque el player se vuelve a
    * crear cuando cambia la URL, y un volumen puesto una sola vez se perdería.
    */
+  /* Y por el volumen del slider: el editor obedece la misma perilla que la
+     cola y los fragmentos — pasar de escuchar música a recortar un fragmento
+     no puede pegar un salto de volumen. */
+  const volumenElegido = useVolume()
   useEffect(() => {
     // expo-audio expone el volumen como una propiedad mutable del reproductor.
     // eslint-disable-next-line react-hooks/immutability
-    player.volume = headroomGain(truePeak)
-  }, [player, truePeak])
+    player.volume = headroomGain(truePeak) * volumenElegido
+  }, [player, truePeak, volumenElegido])
 
   /*
    * La posición viaja por shared value, no por estado de React.

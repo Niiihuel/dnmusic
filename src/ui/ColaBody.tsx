@@ -96,6 +96,20 @@ export function ColaBody({
     return puso ? `${track.artist} · la puso ${puso}` : track.artist
   }
 
+  /*
+   * La cola manual son dos cosas distintas y se muestran como tales: **lo que
+   * encolaste** vos y **las recomendadas** que trajo el autoplay (id
+   * `radio:`). Antes iban juntas bajo «lo que encolaste», y la pantalla te
+   * atribuía canciones que puso la máquina. Los índices se conservan
+   * absolutos: quitar y reordenar hablan con la cola real.
+   */
+  const tuyas = upNext
+    .map((track, i) => ({ track, i }))
+    .filter(({ track }) => !track.id.startsWith('radio:'))
+  const recomendadas = upNext
+    .map((track, i) => ({ track, i }))
+    .filter(({ track }) => track.id.startsWith('radio:'))
+
   const cuantas = (actual ? 1 : 0) + upNext.length + porVenir.length
   const totalMs =
     (actual?.durationMs ?? 0) +
@@ -154,20 +168,20 @@ export function ColaBody({
         </>
       ) : null}
 
-      {upNext.length > 0 ? (
+      {tuyas.length > 0 ? (
         <>
           <Encabezado texto="A continuación · lo que encolaste" />
-          {upNext.map((track, i) => (
+          {tuyas.map(({ track, i }, orden) => (
             <EncoladaArrastrable
               key={`encolada-${i}-${track.id}`}
               i={i}
-              total={upNext.length}
+              total={tuyas.length}
               activa={activa}
               desplazamiento={desplazamiento}
               onArrastre={setArrastrando}
             >
               <TrackRow
-                index={i + 1}
+                index={orden + 1}
                 title={track.title}
                 artist={artistaDe(track)}
                 artwork={artworkSource(track.artworkPath, track.artworkUrl, 96)}
@@ -191,6 +205,40 @@ export function ColaBody({
                 }
               />
             </EncoladaArrastrable>
+          ))}
+        </>
+      ) : null}
+
+      {recomendadas.length > 0 ? (
+        <>
+          {/* Sin manija de arrastrar: el orden de la radio lo trae el motor y
+              se respeta tal cual — reordenar recomendaciones es curarlas, y
+              para eso está quitarlas. La cruz sigue estando. */}
+          <Encabezado texto="Recomendadas para vos · según lo que escuchás" />
+          {recomendadas.map(({ track, i }, orden) => (
+            <TrackRow
+              key={`radio-${i}-${track.id}`}
+              index={orden + 1}
+              title={track.title}
+              artist={artistaDe(track)}
+              artwork={artworkSource(track.artworkPath, track.artworkUrl, 96)}
+              durationMs={track.durationMs}
+              sounding={false}
+              playing={false}
+              hovered={hovered === `radio-${i}`}
+              onHover={(on) => setHovered(on ? `radio-${i}` : null)}
+              onPlay={() => {}}
+              trailing={
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Quitar ${track.title} de la cola`}
+                  onPress={() => quitarEncolada(i)}
+                  className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
+                >
+                  <IconClose size={15} color={ICON_COLOR.muted} />
+                </Pressable>
+              }
+            />
           ))}
         </>
       ) : null}

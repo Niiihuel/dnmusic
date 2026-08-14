@@ -454,7 +454,7 @@ export function playQueue(
   guardar(true)
 }
 
-/** Suma al final de la cola manual: suena cuando termine lo de ahora. */
+/** Suma a la cola manual: suena cuando termine lo de ahora. */
 export function enqueue(track: PlaylistTrack) {
   // En un Jam, encolar es agregarle al Jam: la cola compartida es LA cola.
   if (enJam()) {
@@ -467,7 +467,26 @@ export function enqueue(track: PlaylistTrack) {
     playQueue([track], 0, null)
     return
   }
-  store.set({ upNext: [...state.upNext, track] })
+  /*
+   * Lo tuyo va **antes** que las recomendadas.
+   *
+   * Las tandas del autoplay viven en la misma cola (con id `radio:`), y
+   * sumarse al final significaba que lo que encolaste a propósito esperara
+   * detrás de lo que sugirió la máquina. Es la regla de Spotify: la cola del
+   * usuario primero, la radio después. De paso deja el orden estable —lo tuyo
+   * adelante, las recomendadas atrás— que es lo que la pantalla de la cola
+   * dibuja como dos secciones.
+   */
+  const primeraRadio = state.upNext.findIndex((t) => t.id.startsWith('radio:'))
+  const upNext =
+    primeraRadio === -1
+      ? [...state.upNext, track]
+      : [
+          ...state.upNext.slice(0, primeraRadio),
+          track,
+          ...state.upNext.slice(primeraRadio),
+        ]
+  store.set({ upNext })
 }
 
 /**
@@ -482,6 +501,18 @@ export function quitarEncolada(posicion: number) {
   const { upNext } = store.get()
   if (posicion < 0 || posicion >= upNext.length) return
   store.set({ upNext: upNext.filter((_, i) => i !== posicion) })
+  /*
+   * Si lo quitado era lo último que había para después, la próxima tanda se
+   * pide **ya**. Antes se pedía recién cuando la canción llegaba a su final
+   * —el camino de `rellenarSiFalta`—, y sacar las recomendadas de la cola
+   * dejaba un hueco de varios segundos mientras se resolvía la tanda nueva:
+   * se sentía como que «tardan en cargar».
+   */
+  const state = store.get()
+  if (enJam()) return
+  if (!leerAjustes().autoplay || state.repetir !== 'no' || !state.wantPlay) return
+  if (state.upNext.length || siguienteIndice(state) !== null) return
+  pedirRelleno()
 }
 
 /**

@@ -3,7 +3,7 @@ import { useAudioPlayer } from 'expo-audio'
 import { useSharedValue } from 'react-native-reanimated'
 import type { SongSnippet } from '../models/message'
 import { headroomGain, urlDeAudio } from '../services/music'
-import { pauseForSnippet, registerSnippetStopper } from './playback'
+import { pauseForSnippet, registerSnippetStopper, useVolume } from './playback'
 import { saltar } from '../lib/seek'
 import { useAppActiva } from '../lib/appActiva'
 
@@ -66,12 +66,17 @@ export function useSnippetPlayer() {
    * Se atenúa lo justo para que el códec no distorsione al recortar contra el
    * fondo de escala. Los fragmentos viejos no traen su pico medido; para esos
    * `headroomGain` aplica un margen fijo que cubre lo observado.
+   *
+   * Y **por el volumen elegido**: el fragmento obedece el mismo slider que la
+   * cola. Sin el factor, pasar de la música al fragmento pegaba un salto de
+   * volumen — dos reproductores, una sola perilla.
   */
+  const volumen = useVolume()
   useEffect(() => {
     // expo-audio expone el volumen como una propiedad mutable del reproductor.
     // eslint-disable-next-line react-hooks/immutability
-    player.volume = headroomGain(current?.song.truePeak)
-  }, [player, current])
+    player.volume = headroomGain(current?.song.truePeak) * volumen
+  }, [player, current, volumen])
 
   /*
    * Que alguien pidió escuchar el fragmento.
