@@ -17,7 +17,7 @@ import {
 import { isLang, translate } from './translate.js'
 import { leerCanciones, leerLista } from './spotify.js'
 import { emparejarLote } from './emparejar.js'
-import { notificarMensaje } from './push.js'
+import { notificarMensaje, notificarSolicitud } from './push.js'
 import { cacheImage } from './artwork.js'
 import { subirPropia } from './propia.js'
 
@@ -290,9 +290,21 @@ const server = createServer(async (req, res) => {
         return json(401, { error: 'No autorizado' })
       }
       if (!supabase) return json(503, { error: 'Sin Supabase configurado' })
-      const body = (await readJson(req)) as { messageId?: unknown }
-      if (typeof body.messageId !== 'string') return json(400, { error: 'Falta messageId' })
-      return json(200, await notificarMensaje(supabase, body.messageId))
+      /* Dos avisos por la misma puerta: un mensaje nuevo o una solicitud de
+         contacto. Los distingue qué campo viene, que es lo que puso el trigger
+         correspondiente (ver las migraciones de push). */
+      const body = (await readJson(req)) as {
+        messageId?: unknown
+        solicitudDe?: unknown
+        solicitudPara?: unknown
+      }
+      if (typeof body.messageId === 'string') {
+        return json(200, await notificarMensaje(supabase, body.messageId))
+      }
+      if (typeof body.solicitudDe === 'string' && typeof body.solicitudPara === 'string') {
+        return json(200, await notificarSolicitud(supabase, body.solicitudDe, body.solicitudPara))
+      }
+      return json(400, { error: 'Falta messageId o el par de la solicitud' })
     }
 
     /*

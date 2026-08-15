@@ -77,6 +77,68 @@ export async function notificarMensaje(
     ...(song?.artworkUrl ? { richContent: { image: song.artworkUrl } } : {}),
   }))
 
+  return mandar(supabase, notificaciones)
+}
+
+type DatosSolicitud = {
+  quien?: string
+  username?: string
+  tokens?: string[]
+}
+
+/**
+ * «Fulano te quiere agregar», con la app cerrada.
+ *
+ * Hasta acá una solicitud solo existía adentro de la app: un cartelito al
+ * refrescar la bandeja, que si no estabas mirando no te enterabas hasta la
+ * próxima vez que entraras.
+ *
+ * Va **sin cuerpo largo y sin foto**: no hay nada que previsualizar, y la
+ * decisión —aceptar o no— se toma mirando el perfil, no la notificación.
+ */
+export async function notificarSolicitud(
+  supabase: SupabaseClient,
+  de: string,
+  para: string,
+): Promise<ResultadoPush> {
+  const { data, error } = await supabase.rpc('datos_push_solicitud', {
+    p_from: de,
+    p_to: para,
+  })
+  if (error) return { ok: false, enviados: 0 }
+  const datos = (data ?? null) as DatosSolicitud | null
+  const tokens = datos?.tokens ?? []
+  if (!tokens.length) return { ok: true, enviados: 0 }
+
+  const quien = datos?.quien ?? 'Alguien'
+  return mandar(
+    supabase,
+    tokens.map((token) => ({
+      to: token,
+      title: quien,
+      body: 'Quiere ser tu contacto',
+      sound: 'default',
+      /* Sin `pairId`: todavía no hay conversación que abrir. La app la lleva a
+         la bandeja, que es donde está el botón de aceptar. */
+      data: { solicitudDe: datos?.username ?? null },
+    })),
+  )
+}
+
+type NotificacionExpo = { to: string; [clave: string]: unknown }
+
+/**
+ * El envío en sí: por lotes, y limpiando los tokens que Expo da por muertos.
+ *
+ * Lo comparten los dos avisos porque el trato con Expo es idéntico —lo único
+ * distinto entre un mensaje y una solicitud es qué dice la notificación— y
+ * tener dos copias de este bucle era la forma segura de que una aprendiera a
+ * limpiar tokens y la otra no.
+ */
+async function mandar(
+  supabase: SupabaseClient,
+  notificaciones: NotificacionExpo[],
+): Promise<ResultadoPush> {
   let enviados = 0
   const muertos: string[] = []
   for (let i = 0; i < notificaciones.length; i += LOTE) {
@@ -99,7 +161,7 @@ export async function notificarMensaje(
         }
       })
     } catch {
-      // Expo no contestó: el mensaje ya está entregado en la app, no se reintenta.
+      // Expo no contestó: lo que se avisa ya está en la app, no se reintenta.
     }
   }
 

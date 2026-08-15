@@ -78,11 +78,26 @@ type ConversationRow = ContactRow & {
   unread_count?: unknown
 }
 
+/**
+ * Cuántas letras hacen falta para que buscar devuelva algo.
+ *
+ * Es el mismo número que aplica `search_contacts` en la base, y ahí es donde
+ * manda: acá está para poder decirlo con palabras antes de salir a la red, no
+ * para decidirlo. Si algún día cambia, cambia allá y esto lo acompaña.
+ *
+ * Tres es el largo mínimo de un usuario en la app (`is_valid_username`), así
+ * que no deja a nadie sin poder ser encontrado: es exactamente el punto donde
+ * buscar deja de poder usarse para pasear por las cuentas.
+ */
+export const MINIMO_BUSQUEDA = 3
+
 export async function searchContacts(
   query: string,
   signal?: AbortSignal,
 ): Promise<ContactResult[]> {
   if (signal?.aborted) throw abortError()
+  /* Con menos de tres la base ya no devuelve nada: el viaje sobra. */
+  if (query.trim().length < MINIMO_BUSQUEDA) return []
 
   const request = getSupabase().rpc('search_contacts', {
     p_query: query.trim(),

@@ -125,13 +125,29 @@ async function loadConversationList(): Promise<Conversation[]> {
     listConversations(),
     listContactRequests().catch(() => store.get().requests),
   ])
-  /* El aviso de solicitud nueva, con la app abierta: la campanita mínima.
-     Con la app cerrada esto no existe — eso sería push, otra conversación. */
+  /*
+   * El aviso de solicitud nueva, por los dos lados.
+   *
+   * Adentro de la app, el cartelito de siempre. En el escritorio, además, una
+   * notificación del sistema —que solo hace algo si la ventana no está
+   * adelante, ver `lib/notificarEscritorio`—: con la app minimizada detrás del
+   * navegador, el cartelito aparecía y se iba sin que nadie lo viera.
+   *
+   * En iOS esto no corre: ahí avisa el push, que además funciona con la app
+   * cerrada (trigger sobre `contact_requests`, ver la migración
+   * `buscar_y_avisar_solicitudes`).
+   */
   if (solicitudesVistas !== null) {
     for (const solicitud of requests) {
-      if (!solicitudesVistas.has(solicitud.id)) {
-        avisar(`${contactLabel(solicitud)} quiere ser tu contacto`)
-      }
+      if (solicitudesVistas.has(solicitud.id)) continue
+      const quien = contactLabel(solicitud)
+      avisar(`${quien} quiere ser tu contacto`)
+      notificar({
+        titulo: quien,
+        cuerpo: 'Quiere ser tu contacto',
+        /* Por persona: si insiste, se reemplaza el aviso en vez de apilarlo. */
+        tag: `solicitud:${solicitud.id}`,
+      })
     }
   }
   solicitudesVistas = new Set(requests.map((solicitud) => solicitud.id))

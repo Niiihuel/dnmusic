@@ -27,6 +27,7 @@ import { sendMessage } from '../src/services/messages'
 import {
   contactLabel,
   contactTitle,
+  MINIMO_BUSQUEDA,
   searchContacts,
   sendContactRequest,
   toContact,
@@ -108,7 +109,17 @@ export default function Compose() {
       searchContacts(query, controller.signal)
         .then((contacts) => {
           setResults(contacts)
-          setSearchError(contacts.length ? null : 'No encontré ninguna cuenta.')
+          /* Tres mensajes distintos para tres situaciones distintas: no
+             escribiste lo suficiente, no hay nadie así, o encontré. Antes
+             «no encontré» aparecía también con el campo vacío, que era
+             contestar una pregunta que nadie hizo. */
+          setSearchError(
+            contacts.length
+              ? null
+              : query.trim().length < MINIMO_BUSQUEDA
+                ? `Escribí al menos ${MINIMO_BUSQUEDA} letras del usuario o del nombre.`
+                : 'No encontré ninguna cuenta.',
+          )
           setSearching(false)
         })
         .catch((cause: unknown) => {
