@@ -258,6 +258,8 @@ export type JamBridge = {
   encolar: (track: PlaylistTrack) => void
   /** Tocar esta canción YA, para todos: se intercala después de la actual. */
   tocarAhora: (track: PlaylistTrack) => void
+  /** Poner una lista entera YA: se intercala desde `desde` y el Jam salta ahí. */
+  tocarCola: (tracks: PlaylistTrack[], desde: number) => void
   /** Al host se le terminó la canción: que el servidor pase a la siguiente. */
   publicarAvance: () => void
 }
@@ -495,15 +497,20 @@ export function playQueue(
   const track = tracks[index]
   if (!track) return
   /*
-   * En un Jam, tocar una canción la hace sonar **ya y para todos**: se
-   * intercala después de la actual y el Jam salta ahí — es lo que hace
-   * Spotify, y lo que uno espera de un toque sobre una canción. La cola de
-   * todos no se pisa: lo que venía después sigue viniendo después. Encolar
-   * sin cambiar lo que suena queda como la opción explícita del menú
+   * En un Jam, tocar una canción la hace sonar **ya y para todos** — es lo
+   * que hace Spotify, y lo que uno espera de un toque sobre una canción. La
+   * cola de todos no se pisa: lo que venía después sigue viniendo después.
+   * Encolar sin cambiar lo que suena queda como la opción explícita del menú
    * («Agregar a la cola» → `enqueue`).
+   *
+   * Si el toque vino de una **lista**, va la lista desde ahí, no una canción
+   * suelta: poner una playlist en un Jam tiene que hacer sonar la playlist —
+   * con una sola, la fila quedaba en «No viene nada después» y la música se
+   * moría al terminar el tema.
    */
   if (enJam()) {
-    jam?.tocarAhora(track)
+    if (tracks.length > 1) jam?.tocarCola(tracks, index)
+    else jam?.tocarAhora(track)
     return
   }
   // Con la música sonando en otro dispositivo de la cuenta, elegir una cola

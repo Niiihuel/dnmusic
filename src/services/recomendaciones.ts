@@ -70,6 +70,40 @@ export type ArtistaEscuchado = { artist_id: string; artist: string; ms: number }
 const MS_POR_GUSTO = 10 * 60_000
 
 /**
+ * Mezcla las anclas de siempre con los artistas de la cola que está sonando.
+ *
+ * La cola dejó de ser un respaldo para cuentas sin historial: es **la mitad
+ * del sorteo**. Si acabás de escuchar una playlist de Cigarettes After Sex,
+ * los adicionales tienen que sonar a eso — no al promedio de todo lo que
+ * escuchaste en tu vida, que era lo que pasaba cuando el historial mandaba
+ * solo. Y la otra mitad sigue siendo tuya (historial + corazones) para que la
+ * radio no se olvide de quién sos a la tercera tanda.
+ *
+ * La cola se **normaliza** al peso total de la historia antes de sumar: sus
+ * milisegundos son minutos (lo que dura la lista) contra las horas del
+ * historial, y sin escalar quedaría ahogada — el «respaldo» de antes, con
+ * otro nombre.
+ */
+function mezclarConLaCola(
+  historicos: ArtistaEscuchado[],
+  delaCola: ArtistaEscuchado[],
+): ArtistaEscuchado[] {
+  if (!historicos.length) return delaCola
+  if (!delaCola.length) return historicos
+  const totalHist = historicos.reduce((s, a) => s + Math.max(1, a.ms), 0)
+  const totalCola = delaCola.reduce((s, a) => s + Math.max(1, a.ms), 0)
+  const factor = totalHist / totalCola
+  const porId = new Map(historicos.map((a) => [a.artist_id, { ...a }]))
+  for (const a of delaCola) {
+    const peso = Math.max(1, Math.round(Math.max(1, a.ms) * factor))
+    const previo = porId.get(a.artist_id)
+    if (previo) previo.ms += peso
+    else porId.set(a.artist_id, { artist_id: a.artist_id, artist: a.artist, ms: peso })
+  }
+  return [...porId.values()]
+}
+
+/**
  * Suma los corazones a las anclas del historial, en la moneda común.
  *
  * No toca el orden de nadie: devuelve la lista lista para `elegirPesado`, que
@@ -274,13 +308,14 @@ function elegirPesado(artistas: ArtistaEscuchado[]): ArtistaEscuchado | null {
 export async function proximasRecomendadas(
   yaEnCola: string[] = [],
   /**
-   * Los artistas de la cola que está sonando, como ancla de **respaldo**.
+   * Los artistas de la cola que está sonando: **la mitad del sorteo**.
    *
-   * El historial puede no alcanzar: una cuenta nueva, o escuchas anotadas sin
-   * el id del artista —las de la portada venían así—. `artistas_mas_escuchados`
-   * devuelve vacío en los dos casos, y el autoplay se quedaba mudo justo cuando
-   * más obvio era con qué seguir: con algo parecido a la lista que acaba de
-   * terminar. Si el historial no dice nada, manda la cola.
+   * Antes eran solo el respaldo para cuentas sin historial, y los adicionales
+   * de una playlist de cumbia podían salir del rock de tu historial general.
+   * Ahora la cola entra normalizada al peso de la historia (ver
+   * `mezclarConLaCola`): la tanda suena a lo que acabás de escuchar sin dejar
+   * de sonar a vos. Si el historial no dice nada, manda la cola sola, que es
+   * lo que ya pasaba.
    */
   delaCola: ArtistaEscuchado[] = [],
 ): Promise<PlaylistTrack[]> {
@@ -305,7 +340,8 @@ export async function proximasRecomendadas(
       else porGusto.set(g.artist_id, { artist_id: g.artist_id, artist: g.artist, cuantos: 1 })
     }
     const reforzados = reforzarConGustos(escuchados, [...porGusto.values()])
-    const candidatos = reforzados.length ? reforzados : delaCola
+    /* Mitad lo que estás escuchando, mitad lo que sos. Ver `mezclarConLaCola`. */
+    const candidatos = mezclarConLaCola(reforzados, delaCola)
     if (!candidatos.length) return []
 
     /* Lo que no se puede volver a ofrecer: lo de esta semana y lo que ya está

@@ -275,6 +275,11 @@ export async function jamTocarAhora(jamId: string, track: PlaylistTrack): Promis
   await rpc('jam_tocar_ahora', { p_jam_id: jamId, p_cancion: cancionAJson(track) })
 }
 
+/** Mete una lista entera después de la que suena y salta a su primera. */
+export async function jamTocarCola(jamId: string, tracks: PlaylistTrack[]): Promise<void> {
+  await rpc('jam_tocar_cola', { p_jam_id: jamId, p_canciones: tracks.map(cancionAJson) })
+}
+
 export async function jamSaltar(jamId: string): Promise<void> {
   await rpc('jam_saltar', { p_jam_id: jamId })
 }

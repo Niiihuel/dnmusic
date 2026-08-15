@@ -16,6 +16,7 @@ import {
   jamMover,
   jamTocar,
   jamTocarAhora,
+  jamTocarCola,
   miJam,
   quitarDeJam,
   salirJam,
@@ -471,6 +472,32 @@ export function tocarAhoraEnJam(track: PlaylistTrack) {
   })
 }
 
+/**
+ * Poner una **playlist** con el Jam andando: la lista suena desde la canción
+ * elegida, en su orden, para todos. El bloque se intercala después de la que
+ * suena —lo que otros encolaron sigue viniendo, después de la lista— y el Jam
+ * salta a la primera. Es el mismo gesto que `tocarAhoraEnJam`, a escala de
+ * lista: sin esto, tocar una fila de una playlist metía UNA canción y la fila
+ * quedaba en «No viene nada después».
+ */
+export function tocarColaEnJam(tracks: PlaylistTrack[], desde: number) {
+  const s = store.get()
+  if (!s.jam) return
+  if (!puedo('saltar')) {
+    avisar('El host no dejó cambiar de canción. Podés agregarlas a la cola.')
+    return
+  }
+  /* Desde la elegida hasta el final, como afuera del Jam sin aleatorio. El
+     tope cuida el viaje y el límite de 500 del servidor; una lista real acá
+     no se le acerca. */
+  const canciones = tracks.slice(Math.max(0, desde)).slice(0, 300)
+  if (!canciones.length) return
+  void jamTocarCola(s.jam.id, canciones).catch((e) => {
+    avisar(`No se pudo poner la lista: ${mensajeError(e)}`, true)
+    programarRefetch()
+  })
+}
+
 export function quitarCancionDelJam(itemId: string) {
   const s = store.get()
   if (!s.jam) return
@@ -619,6 +646,7 @@ registerJam({
   transporte,
   encolar: agregarCancionAlJam,
   tocarAhora: tocarAhoraEnJam,
+  tocarCola: tocarColaEnJam,
   publicarAvance: () => {
     const s = store.get()
     if (!s.jam) return
