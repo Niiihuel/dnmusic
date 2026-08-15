@@ -55,9 +55,17 @@ export function PlaylistCover({
       className={`flex-row flex-wrap overflow-hidden bg-muted ${rounded}`}
       style={{ width: size, height: size }}
     >
-      {covers.slice(0, covers.length < 4 ? 1 : 4).map((c) => (
+      {covers.slice(0, covers.length < 4 ? 1 : 4).map((c, i) => (
         <Image
-          key={c}
+          /*
+           * La posición, y no la carátula.
+           *
+           * Cuatro canciones del mismo disco tienen la **misma** tapa, y con la
+           * URL de llave React avisaba por consola que había hijos repetidos —y
+           * podía omitir cuadros del mosaico. Pasa siempre que se importa un
+           * álbum entero; el orden acá es fijo, así que el índice alcanza.
+           */
+          key={i}
           /* Llegan como ruta de Storage o como URL suelta, según de dónde haya
              salido la carátula; se resuelven igual que en cualquier otro lado:
              nuestra copia primero. */
