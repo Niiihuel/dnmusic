@@ -31,6 +31,27 @@ export type Playlist = {
   /** Cuánto dura la lista entera. */
   totalMs: number
   visibilidad: Visibilidad
+  /**
+   * La escribe más gente que su dueño.
+   *
+   * Es **ortogonal a `visibilidad`**: colaborativa dice quién la edita, pública
+   * dice quién la lee. Lo normal es una colaborativa privada — la escriben tres
+   * personas y no la ve nadie más.
+   */
+  colaborativa: boolean
+  /** Sos el dueño. En las colaborativas ajenas es false y cambia lo que se puede. */
+  mia: boolean
+  /** Cuánta gente colabora, sin contar al dueño. */
+  colaboradores: number
+}
+
+/** Alguien que escribe una lista colaborativa. El dueño va primero y marcado. */
+export type Colaborador = {
+  id: string
+  username: string
+  displayName: string | null
+  avatarPath: string | null
+  esDueño: boolean
 }
 
 /** Una lista de otra persona: la lista, más de quién es. */
@@ -44,6 +65,14 @@ export type ListaAjena = {
   }
   /** Es tuya: se llegó por el link a una propia. */
   mia: boolean
+  /**
+   * Podés escribirla: sos el dueño **o** ya colaborás.
+   *
+   * Va aparte de `mia` porque son dos preguntas distintas y la pantalla usa las
+   * dos: `mia` decide si mostrar «guardar una copia», `puedoEditar` decide si
+   * mostrar el buscador para sumar canciones.
+   */
+  puedoEditar: boolean
 }
 
 export type PlaylistTrack = {
@@ -70,6 +99,9 @@ type PlaylistRow = {
   cover_path?: unknown
   total_ms?: unknown
   visibilidad?: unknown
+  colaborativa?: unknown
+  mia?: unknown
+  colaboradores?: unknown
 }
 
 function playlistFromRow(row: PlaylistRow): Playlist[] {
@@ -88,6 +120,15 @@ function playlistFromRow(row: PlaylistRow): Playlist[] {
       totalMs: Number(row.total_ms ?? 0),
       // Ante cualquier cosa rara, privada: el default seguro es no publicar.
       visibilidad: row.visibilidad === 'publica' ? 'publica' : 'privada',
+      colaborativa: row.colaborativa === true,
+      /*
+       * `mia` solo viaja en la biblioteca propia y en la lista por link. Donde
+       * no viene —las públicas de un perfil ajeno— la comparación estricta da
+       * false, que es la respuesta correcta: sin el dato, no es tuya. Es el
+       * mismo criterio conservador que `visibilidad`.
+       */
+      mia: row.mia === true,
+      colaboradores: Number(row.colaboradores ?? 0),
     },
   ]
 }
@@ -98,13 +139,16 @@ export async function listPlaylists(): Promise<Playlist[]> {
   return (data ?? []).flatMap(playlistFromRow)
 }
 
-export async function createPlaylist(name: string): Promise<Playlist> {
+export async function createPlaylist(
+  name: string,
+  { colaborativa = false }: { colaborativa?: boolean } = {},
+): Promise<Playlist> {
   const clean = name.trim()
   if (!clean) throw new Error('Poné un nombre para la lista.')
 
   const { data, error } = await getSupabase()
     .from('playlists')
-    .insert({ name: clean })
+    .insert({ name: clean, colaborativa })
     .select('id, name, updated_at')
     .single()
   if (error) throw error
@@ -117,7 +161,12 @@ export async function createPlaylist(name: string): Promise<Playlist> {
     covers: [],
     coverPath: null,
     totalMs: 0,
+    // Nace privada aunque sea colaborativa: que la escriban tres personas no
+    // quiere decir que la lea todo el mundo. Son dos permisos distintos.
     visibilidad: 'privada',
+    colaborativa,
+    mia: true,
+    colaboradores: 0,
   }
 }
 
@@ -156,6 +205,7 @@ export async function fetchPublicPlaylist(id: string): Promise<ListaAjena | null
         display_name?: unknown
         avatar_path?: unknown
         mia?: unknown
+        puedo_editar?: unknown
       })
     | undefined
   if (!row) return null
@@ -171,6 +221,7 @@ export async function fetchPublicPlaylist(id: string): Promise<ListaAjena | null
       avatarPath: typeof row.avatar_path === 'string' ? row.avatar_path : null,
     },
     mia: row.mia === true,
+    puedoEditar: row.puedo_editar === true,
   }
 }
 
@@ -333,4 +384,77 @@ export async function setCover(playlistId: string, path: string | null): Promise
 export function coverUrl(path: string | null | undefined): string | null {
   if (!path) return null
   return getSupabase().storage.from(COVER_BUCKET).getPublicUrl(path).data.publicUrl
+}
+
+/* ── Listas colaborativas ─────────────────────────────────────────────────── */
+
+/**
+ * Entrar a una lista colaborativa por su link, y devolver su nombre.
+ *
+ * Solo camina sobre listas marcadas como colaborativas: el link de una lista
+ * común no suma a nadie, y esa regla vive en la base (`join_playlist`) y no
+ * acá, para que valga igual desde donde sea que se llame.
+ *
+ * Es idempotente. Abrir el link que ya usaste no duplica nada ni falla — solo
+ * te devuelve a la lista, que es lo que esperás cuando volvés a tocarlo.
+ */
+export async function joinPlaylist(id: string): Promise<string> {
+  const { data, error } = await getSupabase().rpc('join_playlist', { p_playlist: id })
+  if (error) throw error
+  return typeof data === 'string' ? data : ''
+}
+
+/** La gente de una lista colaborativa: el dueño primero, después los demás. */
+export async function listCollaborators(id: string): Promise<Colaborador[]> {
+  const { data, error } = await getSupabase().rpc('list_playlist_collaborators', {
+    p_playlist: id,
+  })
+  if (error) throw error
+  return (data ?? []).flatMap((row: Record<string, unknown>) => {
+    if (typeof row.user_id !== 'string') return []
+    return [
+      {
+        id: row.user_id,
+        username: typeof row.username === 'string' ? row.username : '',
+        displayName: typeof row.display_name === 'string' ? row.display_name : null,
+        avatarPath: typeof row.avatar_path === 'string' ? row.avatar_path : null,
+        esDueño: row.es_dueño === true,
+      },
+    ]
+  })
+}
+
+/** Sumar a alguien a mano. Solo el dueño; la base lo rechaza si no. */
+export async function addCollaborator(playlistId: string, userId: string): Promise<void> {
+  const { error } = await getSupabase().rpc('add_playlist_collaborator', {
+    p_playlist: playlistId,
+    p_user: userId,
+  })
+  if (error) throw error
+}
+
+/**
+ * Sacar a alguien, o irse.
+ *
+ * Una sola función para las dos cosas porque borra la misma fila: el dueño saca
+ * a cualquiera y cualquiera se saca a sí mismo. Ver `salirDeLista`, que es esto
+ * mismo con el nombre que se usa desde la pantalla.
+ */
+export async function removeCollaborator(playlistId: string, userId: string): Promise<void> {
+  const { error } = await getSupabase().rpc('remove_playlist_collaborator', {
+    p_playlist: playlistId,
+    p_user: userId,
+  })
+  if (error) throw error
+}
+
+/**
+ * Irse de una lista donde colaborás.
+ *
+ * Lo que agregaste se queda: irse no es deshacer. Sacar tus canciones al salir
+ * dejaría a la lista de los demás distinta de como la vieron la última vez, y
+ * por una decisión que es solo tuya.
+ */
+export async function leavePlaylist(playlistId: string, myId: string): Promise<void> {
+  await removeCollaborator(playlistId, myId)
 }

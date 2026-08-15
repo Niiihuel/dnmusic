@@ -12,6 +12,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { volver } from '../lib/volver'
 import { ES_WEB } from './Glass'
 
+/**
+ * Hasta dónde crece el contenido adentro de una hoja, en una ventana ancha.
+ *
+ * La hoja ocupa todo el ancho a propósito —es una superficie, no una tarjeta—
+ * pero lo que va adentro no puede seguirla: en 1280px una fila de ícono y texto
+ * se estira de borde a borde y se lee como dos cosas sueltas, y el subrayado de
+ * un campo de texto se vuelve una línea de un metro. En el teléfono este tope
+ * no hace nada, que es como tiene que ser.
+ *
+ * Lo usan las hojas que son un formulario o una lista corta de opciones. Las
+ * que muestran una lista larga —la cola— se quedan anchas, porque ahí el ancho
+ * es contenido.
+ */
+export const ANCHO_HOJA = 520
+
 /** Lo que tarda en subir y en volver a bajar. Los mismos de «Sonando». */
 const SUBE_MS = 380
 const BAJA_MS = 280

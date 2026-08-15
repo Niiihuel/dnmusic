@@ -602,6 +602,11 @@ export default function Home() {
       setTab('listas')
       setStack([{ kind: 'library' }, { kind: 'playlist', id }])
       setAt(1)
+      /* Se relee la biblioteca porque este puente es justo el momento en que
+         puede estar vieja: la lista que se pide abrir puede acabar de nacer en
+         la hoja de crear, o de aparecer al entrar por un link de colaborar. Sin
+         esto, la de atrás no la muestra hasta el próximo refresco. */
+      void loadPlaylists()
     })
     return () => registerAbrirLista(null)
   })
@@ -764,29 +769,33 @@ export default function Home() {
     return () => registerPlaylistOpener(null)
   }, [playlists, go])
 
-  /**
-   * Crea una lista y la abre, sin preguntar nada.
-   *
-   * Es lo que hace Spotify: el «+» no abre un formulario, crea «Mi lista #N» y
-   * te deja adentro con el buscador listo. El nombre se cambia después, cuando
-   * ya sabés qué terminó siendo — que es cuando uno realmente sabe cómo
-   * llamarla.
-   */
-  async function createAndOpen() {
+  /** El primer «Mi lista #N» que no choque con uno que ya tengas. */
+  function nombreSugerido() {
     const used = new Set((playlists ?? []).map((p) => p.name))
     let n = (playlists?.length ?? 0) + 1
     while (used.has(`Mi lista #${n}`)) n++
+    return `Mi lista #${n}`
+  }
 
-    const made = await createPlaylist(`Mi lista #${n}`).catch((e: unknown) => {
-      setPlaylistError((e as Error).message)
-      return null
-    })
-    if (!made) return
-    // Se suma a mano antes de releer: la lista abierta se busca en la
-    // biblioteca por id, y sin esto el medio parpadearía en la portada.
-    setPlaylists((mine) => [made, ...(mine ?? [])])
-    go({ kind: 'playlist', id: made.id })
-    await loadPlaylists()
+  /**
+   * El «+» abre la hoja de crear, no crea nada.
+   *
+   * Antes creaba «Mi lista #N» y te dejaba adentro, sin preguntar — era lo que
+   * hacía Spotify entonces y tenía su razón: el nombre se sabe después, cuando
+   * ya viste en qué terminó. Eso vale mientras haya una sola clase de lista.
+   *
+   * Con las colaborativas hay una decisión que no es el nombre —a quién dejás
+   * entrar— y que no se arregla igual de fácil después. Así que el «+» pregunta,
+   * y de paso la lista **nace con el nombre puesto**: antes, arrepentirse a
+   * mitad de camino dejaba una «Mi lista #4» vacía en la biblioteca para
+   * siempre, porque la fila ya estaba creada antes de que decidieras nada.
+   *
+   * El nombre sugerido se calcula acá y viaja en la ruta: la biblioteca ya está
+   * en memoria, y pedirla de nuevo desde la hoja sería un viaje a la red para
+   * escribir un número.
+   */
+  async function createAndOpen() {
+    router.push({ pathname: '/lista/nueva', params: { sugerido: nombreSugerido() } })
   }
 
   async function pickCover(playlist: Playlist) {
@@ -1984,6 +1993,12 @@ export default function Home() {
                 )
               }}
               onDelete={() => void removePlaylist(openPlaylist)}
+              onVerGente={() =>
+                router.push({
+                  pathname: '/lista/personas',
+                  params: { id: openPlaylist.id, nombre: openPlaylist.name },
+                })
+              }
               onClose={goBack}
               onSearch={() => searchRef.current?.focus()}
               /* Elegir un archivo pide un sistema de archivos a mano: la fila

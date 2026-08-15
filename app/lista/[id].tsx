@@ -16,13 +16,14 @@ import { volver } from '../../src/lib/volver'
 import {
   copyPlaylist,
   fetchPublicPlaylist,
+  joinPlaylist,
   listTracks,
   type ListaAjena,
   type PlaylistTrack,
 } from '../../src/services/playlists'
 import { avisar } from '../../src/state/aviso'
 import { playQueue, togglePlayback, usePlaybackTrack, useWantPlay } from '../../src/state/playback'
-import { usePiso } from '../../src/state/shell'
+import { abrirLista, usePiso } from '../../src/state/shell'
 import { Avatar } from '../../src/ui/Avatar'
 import { CollectionHeader, CollectionTitle, Insignia } from '../../src/ui/CollectionHeader'
 import { BotonVidrio } from '../../src/ui/Glass'
@@ -41,6 +42,7 @@ import {
   IconPlay,
   IconPlus,
   IconShare,
+  IconUsers,
 } from '../../src/ui/icons'
 
 /** Desde acá la pantalla se comporta como el escritorio: panel y salida flotante. */
@@ -64,7 +66,7 @@ const MAX_W = 900
  * quitar canciones, ni renombrar. Se puede escuchar y se puede guardar.
  */
 export default function ListaPublica() {
-  const { id } = useLocalSearchParams<{ id?: string }>()
+  const { id, colaborar } = useLocalSearchParams<{ id?: string; colaborar?: string }>()
   const router = useRouter()
   const piso = usePiso(24)
   const ancho = useWindowDimensions().width >= ANCHO_PX
@@ -92,18 +94,34 @@ export default function ListaPublica() {
   useEffect(() => {
     if (!id || fresco) return
     let vivo = true
-    fetchPublicPlaylist(id)
-      .then(async (l) => {
-        /* Las canciones se piden solo si la lista existe y se puede ver: si no,
-           sería un viaje que la base va a contestar vacío igual. */
-        const t = l ? await listTracks(id).catch(() => []) : []
-        if (vivo) setCargado({ id, lista: l, tracks: t })
-      })
-      .catch(() => vivo && setCargado({ id, lista: null, tracks: [] }))
+
+    const cargar = async () => {
+      /*
+       * Sumarse va **antes** de leer, no después.
+       *
+       * Una lista colaborativa suele ser privada, y a quien todavía no colabora
+       * `get_public_playlist` no le devuelve nada. Al revés, el link de invitar
+       * le mostraría «esta lista no está disponible» justo a la persona que fue
+       * invitada a escribirla.
+       */
+      if (colaborar === '1') {
+        await joinPlaylist(id).catch(() => {
+          /* No acepta colaboradores, o ya no existe. Se sigue igual: la carga
+             de abajo es la que sabe con qué cartel contestar. */
+        })
+      }
+      const l = await fetchPublicPlaylist(id)
+      /* Las canciones se piden solo si la lista existe y se puede ver: si no,
+         sería un viaje que la base va a contestar vacío igual. */
+      const t = l ? await listTracks(id).catch(() => []) : []
+      if (vivo) setCargado({ id, lista: l, tracks: t })
+    }
+
+    cargar().catch(() => vivo && setCargado({ id, lista: null, tracks: [] }))
     return () => {
       vivo = false
     }
-  }, [id, fresco])
+  }, [id, fresco, colaborar])
 
   /*
    * De quién es la fila que suena.
@@ -207,9 +225,18 @@ export default function ListaPublica() {
                 <CollectionHeader
                   kind="Lista"
                   insignia={
-                    <Insignia icono={<IconGlobe size={10} color={ICON_COLOR.muted} />}>
-                      Pública
-                    </Insignia>
+                    /* Colaborativa gana sobre pública cuando es las dos: lo que
+                       cambia lo que podés hacer acá es que la escribís, no que
+                       se lea. */
+                    lista.playlist.colaborativa ? (
+                      <Insignia icono={<IconUsers size={10} color={ICON_COLOR.muted} />}>
+                        Colaborativa
+                      </Insignia>
+                    ) : (
+                      <Insignia icono={<IconGlobe size={10} color={ICON_COLOR.muted} />}>
+                        Pública
+                      </Insignia>
+                    )
                   }
                   title={<CollectionTitle>{lista.playlist.name}</CollectionTitle>}
                   meta={`${total} ${total === 1 ? 'canción' : 'canciones'}${
@@ -251,12 +278,40 @@ export default function ListaPublica() {
                       </Pressable>
 
                       {/*
+                       * Si la podés escribir —sos el dueño o ya colaborás—, lo
+                       * que corresponde no es guardarte una copia sino ir a la
+                       * de verdad: una copia de una lista que estás editando
+                       * entre varios se queda vieja en el momento en que
+                       * alguien suma algo, y sería dos listas parecidas en la
+                       * biblioteca sin forma de saber cuál es cuál.
+                       *
+                       * Es también el aterrizaje del link de colaborar: entrás,
+                       * la base te sumó, y este botón te deja adentro.
+                       */}
+                      {lista.puedoEditar ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Abrir en mis listas"
+                          onPress={() => {
+                            abrirLista(lista.playlist.id)
+                            volver(router, '/')
+                          }}
+                          className="h-11 flex-row items-center gap-2 rounded-full bg-muted px-4 active:opacity-80"
+                        >
+                          <IconMusic size={16} color={ICON_COLOR.foreground} />
+                          <Text className="text-foreground text-[13px] font-semibold">
+                            Abrir en mis listas
+                          </Text>
+                        </Pressable>
+                      ) : null}
+
+                      {/*
                        * Guardar es el botón de esta pantalla, así que va al lado
                        * del play y con palabras, no escondido detrás de tres
                        * puntos. En la tuya propia no aparece: duplicarte una
                        * lista que ya tenés no es nada que alguien quiera.
                        */}
-                      {lista.mia ? null : (
+                      {lista.mia || lista.puedoEditar ? null : (
                         <Pressable
                           accessibilityRole="button"
                           accessibilityLabel="Guardar en mis listas"
@@ -312,7 +367,15 @@ export default function ListaPublica() {
                       compacto
                       icono={<IconMusic size={20} color={ICON_COLOR.muted} />}
                       titulo="La lista está vacía"
-                      detalle="Quien la armó todavía no le puso nada."
+                      /* Si la podés escribir, «quien la armó no le puso nada»
+                         te deja esperando a otro para algo que depende de vos.
+                         El buscador para sumar vive en la lista de verdad, no
+                         en esta pantalla, así que el texto manda para allá. */
+                      detalle={
+                        lista.puedoEditar
+                          ? 'Abrila en tus listas y poné la primera.'
+                          : 'Quien la armó todavía no le puso nada.'
+                      }
                     />
                   </View>
                 ) : (

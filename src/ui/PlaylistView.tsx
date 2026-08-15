@@ -55,6 +55,8 @@ import {
   IconShuffle,
   IconTrash,
   IconUser,
+  IconUsers,
+  IconLogOut,
 } from './icons'
 import {
   descargar,
@@ -83,6 +85,7 @@ export function PlaylistView({
   onRename,
   onPublicar,
   onDelete,
+  onVerGente,
   onClose,
   onSearch,
   onSubirArchivo,
@@ -111,6 +114,15 @@ export function PlaylistView({
    */
   onPublicar: (visibilidad: Visibilidad) => Promise<void>
   onDelete: () => void
+  /**
+   * Abrir la hoja de la gente de una lista colaborativa.
+   *
+   * Es también por donde se sale de una ajena: la hoja tiene la fila de cada
+   * persona con su cruz, y la tuya propia es la de irte. Un «salir» que se
+   * ejecutara directo desde el menú te sacaría de un toque, sin ver de qué te
+   * estás yendo ni quiénes se quedan.
+   */
+  onVerGente?: () => void
   onClose: () => void
   /**
    * Mandar el cursor al buscador de arriba.
@@ -328,19 +340,45 @@ export function PlaylistView({
   const techo = useTecho()
   const colapso = useColapso()
   const publica = playlist.visibilidad === 'publica'
+  /*
+   * Qué se puede hacer con esta lista, según de quién sea.
+   *
+   * En una colaborativa ajena, la base ya rechaza renombrar, publicar y borrar
+   * —son policies de dueño— pero un `update` filtrado por RLS **no falla**:
+   * afecta cero filas y vuelve sin error. Ofrecer esas filas sería un menú
+   * donde tocar «Cambiar el nombre» no hace nada y tampoco avisa. Se esconden
+   * acá, que es donde se sabe.
+   */
+  const mia = playlist.mia
   const menu: MenuItem[] = [
-    {
-      label: 'Cambiar la portada',
-      onPress: onPickCover,
-      icon: <IconImage size={15} color={ICON_COLOR.muted} />,
-      sfSymbol: 'photo',
-    },
-    {
-      label: 'Cambiar el nombre',
-      onPress: () => setRenaming(playlist.id),
-      icon: <IconPencil size={15} color={ICON_COLOR.muted} />,
-      sfSymbol: 'pencil',
-    },
+    ...(mia
+      ? [
+          {
+            label: 'Cambiar la portada',
+            onPress: onPickCover,
+            icon: <IconImage size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'photo' as const,
+          },
+          {
+            label: 'Cambiar el nombre',
+            onPress: () => setRenaming(playlist.id),
+            icon: <IconPencil size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'pencil' as const,
+          },
+        ]
+      : []),
+    /* La gente, solo si es colaborativa. En una lista común no hay a quién
+       mostrar, y la fila sería una promesa vacía. */
+    ...(playlist.colaborativa
+      ? [
+          {
+            label: mia ? 'Gente de la lista' : 'Quiénes la escriben',
+            onPress: () => onVerGente?.(),
+            icon: <IconUsers size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'person.2' as const,
+          },
+        ]
+      : []),
     /*
      * Publicar y compartir, en ese orden y juntas.
      *
@@ -352,16 +390,20 @@ export function PlaylistView({
      * que nadie más puede abrir es un link roto, y ofrecerlo antes empujaría a
      * mandarlo sin haber publicado.
      */
-    {
-      label: publica ? 'Hacer privada' : 'Hacer pública',
-      onPress: () => void onPublicar(publica ? 'privada' : 'publica'),
-      icon: publica ? (
-        <IconLock size={15} color={ICON_COLOR.muted} />
-      ) : (
-        <IconGlobe size={15} color={ICON_COLOR.muted} />
-      ),
-      sfSymbol: publica ? 'lock' : 'globe',
-    },
+    ...(mia
+      ? [
+          {
+            label: publica ? 'Hacer privada' : 'Hacer pública',
+            onPress: () => void onPublicar(publica ? 'privada' : 'publica'),
+            icon: publica ? (
+              <IconLock size={15} color={ICON_COLOR.muted} />
+            ) : (
+              <IconGlobe size={15} color={ICON_COLOR.muted} />
+            ),
+            sfSymbol: (publica ? 'lock' : 'globe') as 'lock' | 'globe',
+          },
+        ]
+      : []),
     ...(publica
       ? [
           {
@@ -390,19 +432,34 @@ export function PlaylistView({
       icon: <IconClose size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'xmark',
     },
-    {
-      label: 'Fijar en mi perfil',
-      onPress: () => void fijarLista(),
-      icon: <IconUser size={15} color={ICON_COLOR.muted} />,
-      sfSymbol: 'pin',
-    },
-    {
-      label: 'Borrar la lista',
-      onPress: onDelete,
-      destructive: true,
-      icon: <IconTrash size={15} color={ICON_COLOR.muted} />,
-      sfSymbol: 'trash',
-    },
+    ...(mia
+      ? [
+          {
+            label: 'Fijar en mi perfil',
+            onPress: () => void fijarLista(),
+            icon: <IconUser size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'pin' as const,
+          },
+          {
+            label: 'Borrar la lista',
+            onPress: onDelete,
+            destructive: true,
+            icon: <IconTrash size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'trash' as const,
+          },
+        ]
+      : [
+          /* En una lista ajena lo destructivo no es borrarla —no podés— sino
+             irte. Va en el mismo lugar y con la misma marca, porque es la
+             misma clase de decisión: la lista te desaparece de la biblioteca. */
+          {
+            label: 'Salir de la lista',
+            onPress: () => onVerGente?.(),
+            destructive: true,
+            icon: <IconLogOut size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'rectangle.portrait.and.arrow.right' as const,
+          },
+        ]),
   ]
 
   return (
@@ -571,7 +628,16 @@ function Header({
         /* Publicada se dice arriba, al lado del rótulo: es qué clase de lista
            es, no un dato más de la lista. */
         insignia={
-          playlist.visibilidad === 'publica' ? (
+          /* Colaborativa gana sobre pública cuando es las dos: acá lo que
+             cambia lo que ves —el menú, quién puede sacar canciones— es que la
+             escriben entre varios, no que se pueda leer de afuera. */
+          playlist.colaborativa ? (
+            <Insignia icono={<IconUsers size={10} color={ICON_COLOR.muted} />}>
+              {playlist.colaboradores > 0
+                ? `Colaborativa · ${playlist.colaboradores + 1}`
+                : 'Colaborativa'}
+            </Insignia>
+          ) : playlist.visibilidad === 'publica' ? (
             <Insignia icono={<IconGlobe size={10} color={ICON_COLOR.muted} />}>Pública</Insignia>
           ) : undefined
         }
