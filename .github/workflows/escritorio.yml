@@ -83,7 +83,19 @@ jobs:
           [ -n "$MUSICA" ] || faltan="$faltan EXPO_PUBLIC_MUSIC_API"
           [ -n "$TOKEN" ]  || faltan="$faltan RELEASES_TOKEN"
           if [ -n "$faltan" ]; then
-            echo "✗ Faltan secrets:$faltan"
+            echo "✗ Sin valor:$faltan"
+            echo
+            # Que un secret exista no quiere decir que tenga algo adentro:
+            # `gh secret set` sin una terminal de verdad —por ejemplo detrás de
+            # un `!` en un agente— no muestra el prompt, lee una entrada vacía y
+            # guarda el string vacío sin avisar. Aparece en `gh secret list`
+            # igual que los buenos. Se distingue mirando el bloque `env:` de
+            # arriba: los que tienen valor salen como ***, los vacíos salen en
+            # blanco.
+            echo "  Ojo: un secret vacío también aparece en 'gh secret list'."
+            echo "  En el bloque env: de arriba, los que tienen valor salen ***."
+            echo "  Cargalo de nuevo desde una terminal interactiva:"
+            echo "    gh secret set NOMBRE --repo ${{ github.repository }}"
             exit 1
           fi
 

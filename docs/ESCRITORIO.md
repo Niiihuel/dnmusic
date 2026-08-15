@@ -77,6 +77,24 @@ Una sola vez, para dejarlo andando:
    `RELEASES_TOKEN`, `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`
    y `EXPO_PUBLIC_MUSIC_API`.
 
+Dos trampas de esa lista, las dos vistas al publicar la 1.0.0:
+
+**Los `EXPO_PUBLIC_*` llevan los valores de producción, no los de
+`.env.local`.** En el `.env.local` viven el Supabase de Docker y una IP de la
+red de casa. Un instalador construido con eso **compila igual** y sale a la
+calle sin buscador, sin portada y sin poder iniciar sesión, sin un solo error
+que lo explique. Los buenos son los del bundle que sirve Vercel.
+
+**`gh secret set` puede guardar vacío sin avisar.** Sin una terminal
+interactiva no muestra el prompt, lee una entrada vacía y la guarda igual; el
+secret después aparece en `gh secret list` como cualquier otro. Se distingue en
+el bloque `env:` del paso de chequeo: los que tienen valor salen `***`, los
+vacíos salen en blanco. La forma que no falla es desde un archivo:
+
+```bash
+gh secret set RELEASES_TOKEN --repo Niiihuel/dnmusic < /tmp/tok && shred -u /tmp/tok
+```
+
 Después, cada versión es un tag:
 
 ```bash
