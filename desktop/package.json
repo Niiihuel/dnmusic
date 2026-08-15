@@ -1,0 +1,27 @@
+{
+  "name": "dnmusic-desktop",
+  "version": "1.0.0",
+  "description": "dnmusic para Windows y Linux",
+  "author": "Nihuel",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "dist/main.js",
+  "desktopName": "dnmusic.desktop",
+  "scripts": {
+    "build": "tsc",
+    "traer-web": "node scripts/traer-web.mjs",
+    "dev": "npm run build && electron .",
+    "empaquetar": "npm run build && npm run traer-web && electron-builder --publish never",
+    "publicar": "npm run build && npm run traer-web && electron-builder --publish always",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.9.0"
+  }
+}

@@ -34,3 +34,10 @@ jobs:
       - name: Music service — types
         working-directory: server
         run: npm ci && npx tsc --noEmit
+
+      # `--ignore-scripts` saltea el postinstall de Electron, que baja ~100 MB
+      # de binario. Los tipos vienen en el paquete de npm, así que para chequear
+      # no hace falta: el binario recién importa al empaquetar.
+      - name: Escritorio — types
+        working-directory: desktop
+        run: npm ci --ignore-scripts && npx tsc --noEmit

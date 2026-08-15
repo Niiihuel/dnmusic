@@ -9,5 +9,12 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
     "nativewind-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    // El escritorio tiene su propio tsconfig: apunta a Node y a CommonJS, y
+    // sus tipos de Electron no existen desde acá. Chequearlo con la config de
+    // Expo daría errores que no significan nada.
+    "desktop"
   ]
 }

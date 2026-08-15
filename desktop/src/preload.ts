@@ -1,0 +1,35 @@
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { EstadoActualizacion } from './actualizador'
+
+/**
+ * Lo único que el bundle web puede ver del escritorio.
+ *
+ * Corre con el sandbox prendido y sin integración de Node, así que esta lista
+ * es literalmente toda la superficie: la app no puede leer archivos, abrir
+ * procesos ni tocar el actualizador de otra forma que no sea por acá.
+ *
+ * El tipo se importa con `import type` a propósito — así se borra al compilar
+ * y el preload no termina requiriendo electron-updater, que en un contexto
+ * sandboxeado no cargaría.
+ */
+const puente = {
+  version: (): Promise<string> => ipcRenderer.invoke('app:version'),
+
+  actualizacion: {
+    estado: (): Promise<EstadoActualizacion> => ipcRenderer.invoke('actualizacion:estado'),
+    buscar: (): void => ipcRenderer.send('actualizacion:buscar'),
+    /** Solo hace algo cuando el estado es `lista`; si no, se ignora. */
+    instalar: (): void => ipcRenderer.send('actualizacion:instalar'),
+
+    /** Devuelve la función para dejar de escuchar: es un efecto de React. */
+    alCambiar: (escuchar: (estado: EstadoActualizacion) => void): (() => void) => {
+      const oyente = (_: IpcRendererEvent, estado: EstadoActualizacion) => escuchar(estado)
+      ipcRenderer.on('actualizacion:estado', oyente)
+      return () => ipcRenderer.removeListener('actualizacion:estado', oyente)
+    },
+  },
+}
+
+export type PuenteEscritorio = typeof puente
+
+contextBridge.exposeInMainWorld('dnmusicEscritorio', puente)

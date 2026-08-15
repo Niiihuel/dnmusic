@@ -63,3 +63,11 @@ npm-debug.*
 # de Vercel dejó `.env*` a secas, que también lo tapaba.
 .env*
 !.env.example
+
+# ── Escritorio (Electron) ──
+# El compilado y node_modules ya los tapan `dist/` y `node_modules/` de arriba,
+# y `build/` viene de la sección de Xcode. Falta lo que copia y produce
+# electron-builder: la web empaquetada y los instaladores, que pesan ~100 MB
+# cada uno y viven en el repo de releases, no acá.
+desktop/web/
+desktop/release/

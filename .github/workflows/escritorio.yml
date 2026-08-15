@@ -1,0 +1,120 @@
+name: Escritorio — publicar
+
+# Compila dnmusic para Windows y Linux y sube los instaladores al repo público
+# de releases, que es de donde los baja electron-updater.
+#
+# Se dispara con un tag `escritorio-v1.2.0`. La versión sale de ahí y se escribe
+# en desktop/package.json antes de empaquetar: si viviera también en el archivo
+# habría dos fuentes para el mismo número, y olvidarse de subir una de las dos
+# es el error clásico de todo esto —el release queda publicado con la versión
+# vieja y ninguna app se entera de que hay algo nuevo.
+#
+#   git tag escritorio-v1.2.0 && git push origin escritorio-v1.2.0
+
+on:
+  push:
+    tags: ['escritorio-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión a publicar (ej. 1.2.0)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publicar:
+    name: ${{ matrix.nombre }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      # De a uno: los dos trabajos publican en el mismo release, y arrancando
+      # juntos los dos intentan crearlo y uno pierde.
+      max-parallel: 1
+      matrix:
+        include:
+          - nombre: Linux (AppImage)
+            os: ubuntu-latest
+            plataforma: --linux
+          - nombre: Windows (NSIS)
+            os: windows-latest
+            plataforma: --win
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Versión
+        id: version
+        shell: bash
+        env:
+          ENTRADA: ${{ inputs.version }}
+        run: |
+          version="${ENTRADA:-${GITHUB_REF_NAME#escritorio-v}}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "✗ '$version' no es una versión. El tag va como escritorio-v1.2.0."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Las EXPO_PUBLIC_* quedan horneadas en el bundle: sin ellas la app
+      # compila igual y arranca mostrando «Supabase no está configurado», que
+      # es un release inútil que además pisa al anterior. Mejor no llegar ahí.
+      - name: Chequear los secrets
+        shell: bash
+        env:
+          URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          ANON: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          MUSICA: ${{ secrets.EXPO_PUBLIC_MUSIC_API }}
+          TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          faltan=''
+          [ -n "$URL" ]    || faltan="$faltan EXPO_PUBLIC_SUPABASE_URL"
+          [ -n "$ANON" ]   || faltan="$faltan EXPO_PUBLIC_SUPABASE_ANON_KEY"
+          [ -n "$MUSICA" ] || faltan="$faltan EXPO_PUBLIC_MUSIC_API"
+          [ -n "$TOKEN" ]  || faltan="$faltan RELEASES_TOKEN"
+          if [ -n "$faltan" ]; then
+            echo "✗ Faltan secrets:$faltan"
+            exit 1
+          fi
+
+      - name: Dependencias de la app
+        run: npm ci
+
+      - name: Export web
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_MUSIC_API: ${{ secrets.EXPO_PUBLIC_MUSIC_API }}
+        run: npm run build:web
+
+      - name: Dependencias del escritorio
+        working-directory: desktop
+        run: npm ci
+
+      - name: Fijar la versión
+        working-directory: desktop
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Compilar el proceso principal
+        working-directory: desktop
+        run: npm run build
+
+      - name: Traer la web y el ícono
+        working-directory: desktop
+        run: npm run traer-web
+
+      - name: Empaquetar y publicar
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: npx electron-builder ${{ matrix.plataforma }} --publish always

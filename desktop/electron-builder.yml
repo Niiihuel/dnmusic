@@ -1,0 +1,70 @@
+# Cómo se empaqueta y dónde se publica el escritorio.
+#
+# La versión no se toca acá: sale de desktop/package.json, y en el CI la
+# escribe el tag (ver .github/workflows/escritorio.yml). Es la misma versión
+# que electron-updater compara contra el latest.yml del release.
+
+appId: com.nihuel.dnmusic
+productName: dnmusic
+copyright: © Nihuel
+
+directories:
+  output: release
+  buildResources: build
+
+# El proceso principal compilado. El bundle web NO va acá: va por
+# extraResources, afuera del .asar, que es de donde lo lee protocolo.ts.
+files:
+  - dist/**/*
+  - package.json
+
+extraResources:
+  - from: web
+    to: app
+
+publish:
+  provider: github
+  owner: Niiihuel
+  repo: dnmusic-releases
+  # Sin esto electron-builder publica el release como borrador, y un borrador
+  # es invisible para electron-updater: la app no encontraría nunca la
+  # actualización y no habría ningún error que lo explicara.
+  releaseType: release
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: dnmusic-${version}-instalador.${ext}
+
+nsis:
+  # Instalador con pasos, no de un solo clic: deja elegir la carpeta y no
+  # sorprende con una app que aparece instalada sin haber preguntado nada.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: dnmusic
+  # Junto al instalador se publica un .blockmap; con él, la actualización baja
+  # solo los bloques que cambiaron en vez de los ~100 MB enteros.
+
+linux:
+  # Solo AppImage, y no es una preferencia estética: es el único formato que
+  # electron-updater sabe reemplazar solo. Un .deb quedaría clavado en la
+  # versión con la que se instaló, sin avisarle nada a nadie.
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: AudioVideo
+  synopsis: Escuchá tu música, armá tus listas y ponete en Jam
+  artifactName: dnmusic-${version}-${arch}.${ext}
+  # Los tres nombres de Linux tienen que ser el mismo, o el escritorio no
+  # relaciona la ventana abierta con el lanzador y la barra de tareas muestra un
+  # ícono genérico al lado del de la app:
+  #
+  #   executableName   el binario. Por defecto sale del `name` del package.json
+  #                    —`dnmusic-desktop`—, que no es como se llama la app.
+  #   desktopName      de package.json; de ahí saca Electron el app_id/WM_CLASS.
+  #   syncDesktopName  hace que el archivo .desktop se llame igual que ese.
+  executableName: dnmusic
+  syncDesktopName: true

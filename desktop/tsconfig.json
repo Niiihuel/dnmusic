@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // CommonJS y no ESM como el servicio de música: en Electron el preload
+    // solo carga como CommonJS cuando el sandbox está prendido, y el sandbox
+    // es lo que evita que el bundle web —que trae código de terceros— vea Node.
+    // Mezclar los dos sistemas en un paquete tan chico no compra nada.
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "lib": ["ES2023", "DOM"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts"]
+}
