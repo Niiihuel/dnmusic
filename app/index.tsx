@@ -66,6 +66,7 @@ import { FilaCuenta } from '../src/ui/FilaCuenta'
 import { Vacio } from '../src/ui/Vacio'
 import { mensajeError } from '../src/lib/mensajeError'
 import { TECLADO_FISICO } from '../src/lib/teclado'
+import { alternarMeGusta, useMeGusta } from '../src/state/gustos'
 import { avisar } from '../src/state/aviso'
 import { artworkSource } from '../src/lib/artwork'
 import {
@@ -104,6 +105,7 @@ import {
 import {
   detachOrigin,
   enqueue,
+  getPlaybackState,
   playQueue,
   registerPlaylistOpener,
   toggleView,
@@ -112,6 +114,7 @@ import {
   usePlaybackTrack,
   useWantPlay,
 } from '../src/state/playback'
+import { hayJam } from '../src/state/jam'
 import { SearchDropdown } from '../src/ui/SearchDropdown'
 import { SearchRecents } from '../src/ui/SearchRecents'
 import { useColapso } from '../src/ui/useColapso'
@@ -125,6 +128,7 @@ import {
   deletePlaylist,
   listPlaylists,
   renamePlaylist,
+  setPlaylistVisibility,
   uploadCover,
   type Playlist,
   type PlaylistTrack,
@@ -148,6 +152,8 @@ import {
   IconClose,
   IconDisc,
   IconInbox,
+  IconHeart,
+  IconHeartFilled,
   IconHome,
   IconLogOut,
   IconMusic,
@@ -266,6 +272,10 @@ export default function Home() {
   const rightCollapsed = rightPlegado && caraSonando !== 'jam' && caraSonando !== 'cola'
   const pistaSonando = usePlaybackTrack()
   const sonandoAhora = useWantPlay()
+  /* Los corazones, para que el menú de una canción diga si ya está marcada.
+     Se lee acá arriba y no fila por fila: es una sola suscripción para toda la
+     pantalla, y la lista solo cambia cuando alguien marca algo. */
+  const gustos = useMeGusta()
   /*
    * La letra o el disco **tomando el panel del medio**.
    *
@@ -404,6 +414,20 @@ export default function Home() {
   const sobreTeclado = useAnimatedStyle(() => ({
     transform: [{ translateY: -Math.max(0, tecladoVivo.height.value - cascara) }],
   }))
+  /*
+   * Con teclado de verdad, el envoltorio que sigue al teclado **no va**.
+   *
+   * No es una micro-optimización: sin teclado en pantalla no hay nada que
+   * seguir, y react-native-web le escribe `transform: matrix(1,0,0,1,0,0)` a
+   * un `Animated.View` aunque esté quieto. Un ancestro con transform forma un
+   * *backdrop root*, y eso dejaba al botón de enviar —que es de vidrio— sin
+   * nada que difuminar: en la compu se veía gris plano. Ver `GlassAnimado`.
+   *
+   * Se decide con una constante que no cambia en toda la sesión, así que el
+   * nodo nunca se remonta.
+   */
+  const Movible = TECLADO_FISICO ? View : Animated.View
+  const seguirTeclado = TECLADO_FISICO ? null : sobreTeclado
 
   /*
    * Al abrir una conversación, el hilo arranca en el último mensaje.
@@ -709,6 +733,21 @@ export default function Home() {
         go({ kind: 'gustos' })
         return
       }
+      /* Un álbum o lista ajena puesto como cola: el origen lleva el tipo y el
+         id de navegación; el nombre vive en el origin de la cola que suena. */
+      if (id.startsWith('coleccion:')) {
+        const [, tipo, ...resto] = id.split(':')
+        go({
+          kind: 'collection',
+          collection: {
+            kind: tipo === 'playlist' ? 'playlist' : 'album',
+            id: resto.join(':'),
+            name: getPlaybackState().origin?.name ?? '',
+            artistId: null,
+          },
+        })
+        return
+      }
       const mine = playlists ?? (await listPlaylists().catch(() => []))
       setPlaylists(mine)
       if (mine.some((p) => p.id === id)) go({ kind: 'playlist', id })
@@ -952,6 +991,47 @@ export default function Home() {
     }
   }
 
+  /**
+   * Poner un álbum (o una lista ajena) como **cola completa**, desde la fila
+   * elegida.
+   *
+   * Antes «reproducir el álbum» resolvía la primera canción y la mandaba
+   * suelta: sonaba una y después venía la radio — el disco nunca seguía. Ahora
+   * el álbum entero entra a la cola con el audio en blanco, y el motor lo
+   * resuelve canción por canción (la que suena y la que sigue), igual que las
+   * candidatas de la radio. El orden y el aleatorio son los de cualquier cola.
+   *
+   * En un Jam se cae al gesto de siempre —resolver la elegida y tocarla para
+   * todos—: la cola compartida exige el audio resuelto y resolver un disco
+   * entero antes de poder tocarlo sería esperar minutos.
+   */
+  function playAlbum(tracks: AlbumTrack[], artwork: string, at: number) {
+    if (!collection) return
+    const elegida = tracks[at]
+    if (!elegida) return
+    if (hayJam()) {
+      void playSearchResult(albumTrackAsResult(elegida, artwork))
+      return
+    }
+    const cola: PlaylistTrack[] = tracks.map((t) => ({
+      id: `coleccion:${t.videoId}`,
+      videoId: t.videoId,
+      title: t.title,
+      artist: t.artist,
+      artistId: collection.artistId ?? null,
+      artworkUrl: artwork,
+      artworkPath: null,
+      /* Sin audio a propósito: se resuelve al sonar, como la radio. */
+      audioPath: '',
+      durationMs: t.durationMs,
+      truePeak: undefined,
+    }))
+    playQueue(cola, at, {
+      id: `coleccion:${collection.kind}:${collection.id}`,
+      name: collection.name,
+    })
+  }
+
   /** Una canción de la portada, en la forma que entiende el resto de la app. */
   function homeItemAsResult(item: HomeItem): TrackResult {
     return {
@@ -1013,7 +1093,30 @@ export default function Home() {
           sfSymbol: 'music.note.list',
         })),
     ]
+    const gustada = gustos.some((g) => g.videoId === track.videoId)
     return [
+      /*
+       * El corazón, primero de todo.
+       *
+       * Estaba solo en los dos reproductores —la píldora de escritorio y la
+       * pantalla «Sonando»—, así que marcar algo obligaba a ponerlo a sonar
+       * antes. Acá alcanza con verlo en una lista, en el buscador o en el top
+       * de un artista, que es donde uno se encuentra las canciones. Va arriba
+       * porque es lo más liviano y lo más frecuente del menú.
+       *
+       * La fila dice a qué estado te lleva, como el resto del menú, y el ícono
+       * repite el mismo lenguaje que el botón: relleno es marcado.
+       */
+      {
+        label: gustada ? 'Quitar de tus me gusta' : 'Me gusta',
+        onPress: () => void alternarGusto(track, gustada),
+        icon: gustada ? (
+          <IconHeartFilled size={15} color={ICON_COLOR.foreground} />
+        ) : (
+          <IconHeart size={15} color={ICON_COLOR.muted} />
+        ),
+        sfSymbol: gustada ? 'heart.fill' : 'heart',
+      },
       {
         label: 'Ir al artista',
         onPress: () =>
@@ -1061,6 +1164,56 @@ export default function Home() {
         sfSymbol: 'pin',
       },
     ]
+  }
+
+  /**
+   * El corazón desde el menú de una canción cualquiera.
+   *
+   * Marcar **necesita el audio resuelto**: «Tus me gusta» tiene que poder sonar
+   * sin volver a preguntarle nada a YouTube, así que la fila guarda el camino
+   * del archivo igual que una canción de lista. Un resultado del buscador
+   * todavía no lo tiene, y por eso acá se resuelve antes — es el mismo viaje
+   * que hacen agregar a una lista y fijar en el perfil, así que la segunda vez
+   * es inmediato.
+   *
+   * Quitar no resuelve nada: para borrar alcanza con el `videoId`, y hacerle
+   * dar ese viaje a alguien que solo quiere sacar un corazón sería cobrarle
+   * una espera por arrepentirse.
+   */
+  async function alternarGusto(track: TrackResult, gustada: boolean) {
+    if (gustada) {
+      alternarMeGusta(playlistTrackDeResultado(track))
+      return
+    }
+    setAddingTrack(track.videoId)
+    try {
+      alternarMeGusta(await resolveForPlayback(track))
+    } catch (e) {
+      avisar(`No se pudo marcar: ${mensajeError(e)}`, true)
+    } finally {
+      setAddingTrack(null)
+    }
+  }
+
+  /**
+   * Un resultado en la forma que espera el store de me gusta, **sin resolver**.
+   *
+   * Sirve solo para desmarcar, que mira el `videoId` y nada más. El `audioPath`
+   * vacío nunca llega a la base: quitar borra por id.
+   */
+  function playlistTrackDeResultado(track: TrackResult): PlaylistTrack {
+    return {
+      id: `gusto:${track.videoId}`,
+      videoId: track.videoId,
+      title: track.title,
+      artist: track.artist,
+      artistId: track.artistId,
+      artworkUrl: track.artworkUrl,
+      artworkPath: null,
+      audioPath: track.audioPath ?? '',
+      durationMs: track.durationMs,
+      truePeak: undefined,
+    }
   }
 
   /**
@@ -1811,6 +1964,15 @@ export default function Home() {
                 await renamePlaylist(openPlaylist.id, name)
                 await loadPlaylists()
               }}
+              onPublicar={async (visibilidad) => {
+                await setPlaylistVisibility(openPlaylist.id, visibilidad)
+                await loadPlaylists()
+                avisar(
+                  visibilidad === 'publica'
+                    ? 'Lista pública. Ya podés compartir el link.'
+                    : 'Lista privada de nuevo. El link dejó de andar.',
+                )
+              }}
               onDelete={() => void removePlaylist(openPlaylist)}
               onClose={goBack}
               onSearch={() => searchRef.current?.focus()}
@@ -1935,13 +2097,10 @@ export default function Home() {
                   kind={collection.kind}
                   onBack={goBack}
                   menuFor={(track, artwork) => menuForTrack(albumTrackAsResult(track, artwork))}
-                  onPlayAll={(tracks, artwork) => {
-                    const primera = tracks[0]
-                    if (primera) void playSearchResult(albumTrackAsResult(primera, artwork))
-                  }}
-                  onPlay={(track, artwork) =>
-                    void playSearchResult(albumTrackAsResult(track, artwork))
-                  }
+                  /* El disco entero como cola, no la primera suelta: es la
+                     misma promesa que una playlist. Ver `playAlbum`. */
+                  onPlayAll={(tracks, artwork) => playAlbum(tracks, artwork, 0)}
+                  onPlay={(track, artwork, tracks, at) => playAlbum(tracks, artwork, at)}
                   onAdd={(track, artwork) => {
                     const asResult = albumTrackAsResult(track, artwork)
                     if (openPlaylist) void addToPlaylist(openPlaylist, asResult)
@@ -2101,7 +2260,7 @@ export default function Home() {
                       <Text className="text-destructive text-sm leading-5">{error}</Text>
                     </View>
                   ) : (
-                    <Animated.View style={[{ flex: 1, minHeight: 0 }, sobreTeclado]}>
+                    <Movible style={[{ flex: 1, minHeight: 0 }, seguirTeclado]}>
                     <FlatList
                       ref={hilo}
                       data={messages}
@@ -2153,7 +2312,7 @@ export default function Home() {
                         />
                       )}
                     />
-                    </Animated.View>
+                    </Movible>
                   )}
 
                   <LinearGradient
@@ -2207,7 +2366,7 @@ export default function Home() {
                    * `docs/DESIGN.md`— y el campo quedaría suelto arriba a la
                    * izquierda.
                    */}
-                  <Animated.View
+                  <Movible
                     style={[
                       {
                         position: 'absolute',
@@ -2217,7 +2376,7 @@ export default function Home() {
                         gap: 8,
                         bottom: cascara + 4,
                       },
-                      sobreTeclado,
+                      seguirTeclado,
                     ]}
                   >
                     {draft.song ? (
@@ -2345,7 +2504,7 @@ export default function Home() {
                         )}
                       </BotonVidrio>
                     </View>
-                  </Animated.View>
+                  </Movible>
                 </View>
               ) : (
                 <NoConversation onNew={() => openComposer(false)} />

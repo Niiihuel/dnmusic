@@ -9,6 +9,15 @@ import { getSupabase } from '../lib/supabase'
  * origen — el mismo buscador y el mismo audio en Storage.
  */
 
+/**
+ * Quién puede verla.
+ *
+ * `publica` es «cualquiera con una cuenta», no «cualquiera en Internet»: el
+ * link abre la app y sin sesión pasa primero por entrar. Ver la migración
+ * `listas_publicas`.
+ */
+export type Visibilidad = 'privada' | 'publica'
+
 export type Playlist = {
   id: string
   name: string
@@ -21,6 +30,20 @@ export type Playlist = {
   coverPath: string | null
   /** Cuánto dura la lista entera. */
   totalMs: number
+  visibilidad: Visibilidad
+}
+
+/** Una lista de otra persona: la lista, más de quién es. */
+export type ListaAjena = {
+  playlist: Playlist
+  dueño: {
+    id: string
+    username: string
+    displayName: string | null
+    avatarPath: string | null
+  }
+  /** Es tuya: se llegó por el link a una propia. */
+  mia: boolean
 }
 
 export type PlaylistTrack = {
@@ -46,6 +69,7 @@ type PlaylistRow = {
   covers?: unknown
   cover_path?: unknown
   total_ms?: unknown
+  visibilidad?: unknown
 }
 
 function playlistFromRow(row: PlaylistRow): Playlist[] {
@@ -62,6 +86,8 @@ function playlistFromRow(row: PlaylistRow): Playlist[] {
         : [],
       coverPath: typeof row.cover_path === 'string' ? row.cover_path : null,
       totalMs: Number(row.total_ms ?? 0),
+      // Ante cualquier cosa rara, privada: el default seguro es no publicar.
+      visibilidad: row.visibilidad === 'publica' ? 'publica' : 'privada',
     },
   ]
 }
@@ -91,7 +117,75 @@ export async function createPlaylist(name: string): Promise<Playlist> {
     covers: [],
     coverPath: null,
     totalMs: 0,
+    visibilidad: 'privada',
   }
+}
+
+/**
+ * Publica una lista o la vuelve a guardar.
+ *
+ * No toca `updated_at`: publicar no es editar la lista, y moverla al principio
+ * de la biblioteca por haberla compartido reordenaría lo que estás mirando sin
+ * que hayas cambiado una canción.
+ */
+export async function setPlaylistVisibility(id: string, visibilidad: Visibilidad): Promise<void> {
+  const { error } = await getSupabase().from('playlists').update({ visibilidad }).eq('id', id)
+  if (error) throw error
+}
+
+/** Las listas que esta persona publicó. Vacío si no publicó ninguna. */
+export async function listPublicPlaylists(ownerId: string): Promise<Playlist[]> {
+  const { data, error } = await getSupabase().rpc('list_public_playlists', { p_owner: ownerId })
+  if (error) throw error
+  return (data ?? []).flatMap(playlistFromRow)
+}
+
+/**
+ * Una lista por su id, para el link compartido.
+ *
+ * Devuelve `null` cuando no existe **y** cuando existe pero es privada: son la
+ * misma respuesta a propósito, así nadie averigua qué ids existen probando.
+ */
+export async function fetchPublicPlaylist(id: string): Promise<ListaAjena | null> {
+  const { data, error } = await getSupabase().rpc('get_public_playlist', { p_id: id })
+  if (error) throw error
+  const row = (data ?? [])[0] as
+    | (PlaylistRow & {
+        owner_id?: unknown
+        username?: unknown
+        display_name?: unknown
+        avatar_path?: unknown
+        mia?: unknown
+      })
+    | undefined
+  if (!row) return null
+  const playlist = playlistFromRow(row)[0]
+  if (!playlist || typeof row.owner_id !== 'string') return null
+
+  return {
+    playlist,
+    dueño: {
+      id: row.owner_id,
+      username: typeof row.username === 'string' ? row.username : '',
+      displayName: typeof row.display_name === 'string' ? row.display_name : null,
+      avatarPath: typeof row.avatar_path === 'string' ? row.avatar_path : null,
+    },
+    mia: row.mia === true,
+  }
+}
+
+/**
+ * Se guarda la lista de otro como una lista tuya, y devuelve el id de la copia.
+ *
+ * Es una copia del contenido de este momento, no un seguimiento: desde acá son
+ * dos listas distintas. Ver `copy_playlist` en la migración, que es donde vive
+ * la regla de qué se puede copiar.
+ */
+export async function copyPlaylist(sourceId: string): Promise<string> {
+  const { data, error } = await getSupabase().rpc('copy_playlist', { p_source: sourceId })
+  if (error) throw error
+  if (typeof data !== 'string' || !data) throw new Error('No se pudo guardar la lista.')
+  return data
 }
 
 export async function renamePlaylist(id: string, name: string): Promise<void> {

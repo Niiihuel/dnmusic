@@ -15,6 +15,7 @@ import {
   usePresentesJam,
   useSoyHostJam,
 } from '../state/jam'
+import { usePiso } from '../state/shell'
 import { Avatar } from './Avatar'
 import { GrupoAjustes, FilaInterruptor } from './Ajustes'
 import { BotonSostener } from './BotonSostener'
@@ -58,11 +59,19 @@ export function JamBody() {
   /* El arrastre de una fila congela el scroll del panel: dos gestos
      verticales sobre el mismo puntero es uno de más. */
   const [arrastrando, setArrastrando] = useState(false)
+  /* Arriba de todo, antes del `return` temprano: los hooks no se llaman a
+     medias. */
+  const piso = usePiso(20)
 
   /* Sin Jam, el panel explica y ofrece — no crea solo por haberse abierto. */
   if (!jam) {
     return (
-      <View className="flex-1 items-center justify-center gap-3 px-8">
+      /* Centrado en **lo que se ve**, descontando lo que tapa el reproductor:
+         centrado a secas deja el botón medio metido debajo de la píldora. */
+      <View
+        className="flex-1 items-center justify-center gap-3 px-8"
+        style={{ paddingBottom: piso }}
+      >
         <View className="h-14 w-14 items-center justify-center rounded-full bg-muted">
           <IconUsers size={22} color={ICON_COLOR.muted} />
         </View>
@@ -100,7 +109,18 @@ export function JamBody() {
     <ScrollView
       className="min-h-0 flex-1"
       scrollEnabled={!arrastrando}
-      contentContainerClassName="gap-5 px-4 pb-6"
+      contentContainerClassName="gap-5 px-4"
+      /*
+       * El hueco del reproductor se reserva **adentro** de la lista, como en
+       * todo el resto (regla 2 de `docs/DESIGN.md`): la barra flota sobre el
+       * contenido y hay que poder llegar hasta la última fila igual.
+       *
+       * Acá había un `pb-6` a mano, de cuando la barra se apilaba al pie en
+       * escritorio. Desde que también flota ahí, la píldora se comía el final
+       * del panel — «Salir del Jam» quedaba abajo del reproductor y no había
+       * forma de tocarlo.
+       */
+      contentContainerStyle={{ paddingBottom: piso }}
     >
       {/* Quiénes. El puntito es presencia: sin puntito está en el Jam pero
           con la app cerrada o sin señal. */}

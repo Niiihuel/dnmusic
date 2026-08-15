@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Text, View } from 'react-native'
-import Animated, {
+import {
   Easing,
   runOnJS,
   useAnimatedStyle,
@@ -10,7 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import { limpiarAviso, useAviso } from '../state/aviso'
-import { Glass, HAY_VIDRIO } from './Glass'
+import { GlassAnimado, HAY_VIDRIO } from './Glass'
 import { usePiso } from '../state/shell'
 
 /** Cuánto se queda. Un error da más tiempo de lectura que un «Guardado». */
@@ -68,20 +68,29 @@ export function Aviso() {
   if (!texto) return null
 
   return (
-    <Animated.View
+    /*
+     * El envoltorio **no se anima**: solo ubica.
+     *
+     * La entrada y la salida viven en la pieza de vidrio, un nivel más abajo.
+     * Animarlas acá le apagaba el desenfoque al aviso —un ancestro con
+     * transform u opacidad forma un *backdrop root* y deja al
+     * `backdrop-filter` sin nada que difuminar—, así que el aviso se veía como
+     * un rectángulo gris translúcido en vez de una lente. Ver `GlassAnimado`.
+     */
+    <View
       pointerEvents="none"
-      style={[
-        {
-          position: 'absolute',
-          left: 16,
-          right: 16,
-          bottom: piso,
-          alignItems: 'center',
-        },
-        animado,
-      ]}
+      style={{
+        position: 'absolute',
+        left: 16,
+        right: 16,
+        bottom: piso,
+        alignItems: 'center',
+      }}
     >
-      <Glass radius={22} style={HAY_VIDRIO ? {} : { backgroundColor: 'rgb(31,31,31)' }}>
+      <GlassAnimado
+        radius={22}
+        style={[HAY_VIDRIO ? null : { backgroundColor: 'rgb(31,31,31)' }, animado]}
+      >
         <View className="px-4 py-3">
           {/* Los errores no se distinguen por color —la paleta es toda gris a
               propósito, ver `docs/DESIGN.md`— sino por el peso del texto y por
@@ -94,7 +103,7 @@ export function Aviso() {
             {texto}
           </Text>
         </View>
-      </Glass>
-    </Animated.View>
+      </GlassAnimado>
+    </View>
   )
 }

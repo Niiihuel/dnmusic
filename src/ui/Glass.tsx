@@ -1,5 +1,6 @@
 import type { PropsWithChildren, ReactNode } from 'react'
 import { Platform, Pressable, View, type ViewStyle } from 'react-native'
+import Animated from 'react-native-reanimated'
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect'
 
 /**
@@ -136,6 +137,58 @@ export function Glass({
     >
       {children}
     </GlassView>
+  )
+}
+
+/**
+ * El mismo vidrio, pero **movible**.
+ *
+ * Existe por una trampa del navegador que costó dos síntomas distintos: en CSS,
+ * un ancestro con `transform`, `filter` o `opacity` distinta de 1 forma un
+ * *backdrop root*, y el `backdrop-filter` de lo que tenga adentro pasa a
+ * difuminar solo lo que se pinte **dentro de ese grupo** — o sea, nada. La
+ * pieza queda como un panel translúcido plano, sin lente.
+ *
+ * Y no hace falta que el ancestro se esté moviendo: react-native-web le escribe
+ * `transform: matrix(1,0,0,1,0,0)` a cualquier `Animated.View`, así que un
+ * envoltorio quieto rompe el vidrio igual. Así se perdían el desenfoque del
+ * aviso de abajo —que se anima con opacidad y traslación— y el del botón de
+ * enviar del chat, que cuelga del envoltorio que sigue al teclado.
+ *
+ * La salida es que **la pieza que se anima sea la de vidrio**, no un padre: el
+ * `transform` propio no rompe el `backdrop-filter` propio. En nativo el
+ * problema no existe —el material lo dibuja el módulo del sistema— y ahí la
+ * animación vuelve a un envoltorio, que es lo que `GlassView` espera.
+ */
+export function GlassAnimado({
+  radius = 24,
+  style,
+  tint,
+  pointerEvents,
+  children,
+}: PropsWithChildren<{
+  radius?: number
+  /** Acepta lo mismo que un `Animated.View`: estilos comunes y animados. */
+  style?: React.ComponentProps<typeof Animated.View>['style']
+  tint?: string
+  pointerEvents?: 'auto' | 'none' | 'box-none' | 'box-only'
+}>) {
+  const forma: ViewStyle = { borderRadius: radius, overflow: 'hidden' }
+
+  if (ES_WEB) {
+    return (
+      <Animated.View pointerEvents={pointerEvents} style={[forma, vidrioCss(tint), style]}>
+        {children}
+      </Animated.View>
+    )
+  }
+
+  return (
+    <Animated.View pointerEvents={pointerEvents} style={style}>
+      <Glass radius={radius} tint={tint}>
+        {children}
+      </Glass>
+    </Animated.View>
   )
 }
 

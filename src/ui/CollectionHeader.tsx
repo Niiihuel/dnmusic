@@ -33,6 +33,7 @@ export function CollectionHeader({
   kind,
   title,
   meta,
+  insignia,
   actions,
 }: {
   /** La tapa o la foto, ya con su forma y su tamaño resueltos. */
@@ -42,6 +43,15 @@ export function CollectionHeader({
   /** El título. Es un nodo porque en una lista propia se puede editar. */
   title: ReactNode
   meta?: string
+  /**
+   * Una marca al lado del rótulo: «Pública», «De @juansi».
+   *
+   * Va arriba y no abajo con el resto de los datos porque no es un dato de la
+   * colección sino **qué clase de colección es** — la misma pregunta que
+   * contesta el rótulo. Enterarte de que una lista es pública recién después
+   * del título llega tarde.
+   */
+  insignia?: ReactNode
   /** El botón redondo y los tres puntos. */
   actions?: ReactNode
 }) {
@@ -51,9 +61,12 @@ export function CollectionHeader({
     return (
       <View className="items-center gap-3 px-6 pb-5 pt-4">
         {image}
-        <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.4px]">
-          {kind}
-        </Text>
+        <View className="flex-row items-center gap-2">
+          <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.4px]">
+            {kind}
+          </Text>
+          {insignia}
+        </View>
         <View className="w-full items-center">{title}</View>
         {meta ? (
           <Text className="text-muted-foreground text-center text-[13px]" numberOfLines={2}>
@@ -70,9 +83,12 @@ export function CollectionHeader({
       <View className="flex-row items-end gap-5 px-6 pb-5 pt-6">
         {image}
         <View className="min-w-0 flex-1 gap-2 pb-1">
-          <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.4px]">
-            {kind}
-          </Text>
+          <View className="flex-row items-center gap-2">
+            <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.4px]">
+              {kind}
+            </Text>
+            {insignia}
+          </View>
           {title}
           {meta ? (
             <Text className="text-muted-foreground text-[13px]" numberOfLines={2}>
@@ -84,6 +100,25 @@ export function CollectionHeader({
       {actions ? (
         <View className="flex-row items-center gap-3 px-6 pb-5">{actions}</View>
       ) : null}
+    </View>
+  )
+}
+
+/**
+ * La marca de al lado del rótulo: un ícono chico y una palabra.
+ *
+ * Píldora en `muted`, que es el escalón de luminancia de las superficies
+ * interactivas y alcanza para despegarla del fondo sin dibujar un borde
+ * (`docs/DESIGN.md`). No lleva el blanco del acento: es información, no una
+ * acción ni un estado activo, y repartir el blanco le saca la fuerza.
+ */
+export function Insignia({ icono, children }: { icono?: ReactNode; children: string }) {
+  return (
+    <View className="flex-row items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+      {icono}
+      <Text className="text-muted-foreground text-[10px] uppercase tracking-[1.2px]">
+        {children}
+      </Text>
     </View>
   )
 }

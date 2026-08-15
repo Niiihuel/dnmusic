@@ -10,7 +10,7 @@ import {
   reorderShowcases,
   type Showcase,
 } from '../services/showcases'
-import { listPlaylists, type Playlist } from '../services/playlists'
+import { listPlaylists, listPublicPlaylists, type Playlist } from '../services/playlists'
 import { useSnippetPlayer } from '../state/player'
 import { avisar } from '../state/aviso'
 import { mensajeError } from '../lib/mensajeError'
@@ -373,19 +373,28 @@ export function Vitrinas({
     }
   }, [ownerId, recarga])
 
-  /* Las listas se piden solo si alguna vitrina las necesita: la mayoría de los
-     perfiles no va a tener una y sería una consulta al pedo. */
+  /*
+   * Las listas se piden solo si alguna vitrina las necesita: la mayoría de los
+   * perfiles no va a tener una y sería una consulta al pedo.
+   *
+   * **De quién se piden depende de a quién se está mirando.** Antes esto leía
+   * siempre `listPlaylists()` —tu biblioteca— y resolvía la vitrina de otro
+   * contra tus listas: en el perfil ajeno el id nunca aparecía y la tarjeta
+   * decía «esta lista ya no existe» sobre una lista que existía perfectamente.
+   * En un perfil ajeno se piden las públicas de esa persona, que es lo único
+   * que hay derecho a ver; si fijó una privada, la tarjeta sigue diciendo que
+   * no está, y esta vez es verdad.
+   */
   const necesitaListas = (vitrinas ?? []).some((v) => v.kind === 'lista')
   useEffect(() => {
     if (!necesitaListas || listas !== null) return
     let vivo = true
-    listPlaylists()
-      .then((l) => vivo && setListas(l))
-      .catch(() => vivo && setListas([]))
+    const pedido = propio ? listPlaylists() : listPublicPlaylists(ownerId)
+    pedido.then((l) => vivo && setListas(l)).catch(() => vivo && setListas([]))
     return () => {
       vivo = false
     }
-  }, [necesitaListas, listas])
+  }, [necesitaListas, listas, propio, ownerId])
 
   if (vitrinas === null) return null
   if (!vitrinas.length) return <>{vacio}</>

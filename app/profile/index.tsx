@@ -17,6 +17,7 @@ import {
   useCuantasVitrinas,
   Vitrinas,
 } from '../../src/ui/PerfilPublico'
+import { ListasPerfil } from '../../src/ui/ListasPerfil'
 import { ICON_COLOR, IconBack, IconPencil } from '../../src/ui/icons'
 import { listPlaylists, type Playlist } from '../../src/services/playlists'
 import { useMyProfile } from '../../src/state/session'
@@ -215,13 +216,23 @@ export default function ProfileScreen() {
                     />
 
                     <View className="flex-row items-start gap-6">
-                      <View className="min-w-0 flex-1">
+                      <View className="min-w-0 flex-1 gap-8">
                         <Vitrinas
                           ownerId={profile.userId}
                           recarga={recarga}
                           onCambio={() => setRecarga((n) => n + 1)}
                           propio={false}
                           vacio={vacio}
+                        />
+                        {/* El estante de listas publicadas, debajo de lo
+                            destacado y en la misma columna: el resumen de la
+                            derecha son números tuyos, esto es lo que ve
+                            cualquiera. */}
+                        <ListasPerfil
+                          ownerId={profile.userId}
+                          nombre={nombre}
+                          propio
+                          onAbrir={(lista) => router.push(`/lista/${lista.id}`)}
                         />
                       </View>
                       <View className="w-[320px] shrink-0">{resumen}</View>
@@ -245,6 +256,13 @@ export default function ProfileScreen() {
                       onCambio={() => setRecarga((n) => n + 1)}
                       propio={false}
                       vacio={vacio}
+                    />
+
+                    <ListasPerfil
+                      ownerId={profile.userId}
+                      nombre={nombre}
+                      propio
+                      onAbrir={(lista) => router.push(`/lista/${lista.id}`)}
                     />
 
                     {resumen}

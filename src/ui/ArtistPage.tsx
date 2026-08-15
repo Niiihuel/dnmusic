@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import { artworkSource, artworkUrlAtSize } from '../lib/artwork'
 import {
   fetchArtist,
@@ -19,13 +20,33 @@ import { ICON_COLOR, IconClose, IconMusic, IconPause, IconPlay, IconUser } from 
 const TWO_COLUMNS_AT = 720
 
 /**
+ * A partir de esta proporción, la foto del artista **es un banner**.
+ *
+ * YouTube Music no tiene un avatar cuadrado del artista: lo que da es la
+ * portada del canal, que suele venir a 2880×1200 (2,4:1). Con menos que esto,
+ * la foto es lo bastante cuadrada como para que el redondel del referente
+ * funcione.
+ */
+const BANNER_DESDE = 1.4
+/** Hasta acá crece el banner: más alto y el nombre se va de la primera pantalla. */
+const BANNER_MAX = 280
+
+/**
  * La página de un artista.
  *
  * Es la tercera pantalla del panel del medio, hermana de la lista propia y del
  * álbum: misma cabecera —imagen grande, tipo en versalitas, título enorme,
  * botón redondo— para que moverse entre las tres no se sienta como cambiar de
- * app. Lo único distinto es la forma de la imagen: los artistas son redondos en
- * todos lados, y acá también.
+ * app.
+ *
+ * **La foto es la excepción, y por lo que da la fuente.** El redondel de la
+ * lista y del álbum sale de una imagen cuadrada; lo que YouTube Music entrega
+ * de un artista es la portada del canal, apaisada 2,4:1. Meterla en un círculo
+ * recorta el cuadrado del centro, y cuando esa portada es un primer plano el
+ * resultado es una cara ampliada y cortada al ras — la queja textual fue «tiene
+ * mucho zoom». Así que una foto apaisada se muestra apaisada, de borde a borde
+ * y con el nombre encima, que además es como la muestra YouTube Music. La que
+ * viene cuadrada sigue redonda, en la cabecera compartida de siempre.
  *
  * Debajo va lo que uno viene a buscar, en el orden en que lo busca: lo más
  * escuchado primero, la discografía después.
@@ -86,7 +107,11 @@ export function ArtistPage({
     )
   }
 
-  const photo = artworkSource(artist.photoPath, artist.photoUrl, 320)
+  /* Se pide grande —no 320— porque de borde a borde en un panel de escritorio
+     eso se veía blando. La copia de Storage ya viene con la proporción real
+     (ver `atStoreSize` en el servicio), así que no hay nada que corregir acá. */
+  const photo = artworkSource(artist.photoPath, artist.photoUrl, 1024)
+  const apaisada = (artist.photoAspect ?? 1) >= BANNER_DESDE
   const top = artist.topSongs
   const ids = new Set(top.map((s) => s.videoId))
   const mine = sounding !== null && ids.has(sounding.videoId)
@@ -110,12 +135,49 @@ export function ArtistPage({
   const columns = width >= TWO_COLUMNS_AT ? 2 : 1
   const perColumn = Math.ceil(top.length / columns)
 
+  const meta = artist.subscribers ? `${artist.subscribers} de oyentes` : undefined
+  const acciones = (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={
+          mine && soundingPlay ? 'Pausar' : `Reproducir lo más escuchado de ${artist.name}`
+        }
+        onPress={() => {
+          if (mine) togglePlayback()
+          else if (top[0]) onPlaySong(top[0])
+        }}
+        disabled={top.length === 0}
+        className={`h-14 w-14 items-center justify-center rounded-full ${
+          top.length === 0 ? 'bg-muted' : 'bg-primary active:opacity-80'
+        }`}
+      >
+        {mine && soundingPlay ? (
+          <IconPause size={20} color={top.length === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary} />
+        ) : (
+          <IconPlay size={20} color={top.length === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary} />
+        )}
+      </Pressable>
+
+      {menu.length ? <Menu items={menu} label={`Opciones de ${artist.name}`} size={17} /> : null}
+    </>
+  )
+
   return (
     <View className="pb-6" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      {photo && apaisada ? (
+        <Banner
+          photo={photo}
+          aspect={artist.photoAspect ?? 16 / 9}
+          nombre={artist.name}
+          meta={meta}
+          acciones={acciones}
+        />
+      ) : (
       <CollectionHeader
         kind="Artista"
         title={<CollectionTitle>{artist.name}</CollectionTitle>}
-        meta={artist.subscribers ? `${artist.subscribers} de oyentes` : undefined}
+        meta={meta}
         image={
           photo ? (
             <Image
@@ -132,41 +194,9 @@ export function ArtistPage({
             </View>
           )
         }
-        actions={
-          <>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                mine && soundingPlay ? 'Pausar' : `Reproducir lo más escuchado de ${artist.name}`
-              }
-              onPress={() => {
-                if (mine) togglePlayback()
-                else if (top[0]) onPlaySong(top[0])
-              }}
-              disabled={top.length === 0}
-              className={`h-14 w-14 items-center justify-center rounded-full ${
-                top.length === 0 ? 'bg-muted' : 'bg-primary active:opacity-80'
-              }`}
-            >
-              {mine && soundingPlay ? (
-                <IconPause
-                  size={20}
-                  color={top.length === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
-                />
-              ) : (
-                <IconPlay
-                  size={20}
-                  color={top.length === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
-                />
-              )}
-            </Pressable>
-
-            {menu.length ? (
-              <Menu items={menu} label={`Opciones de ${artist.name}`} size={17} />
-            ) : null}
-          </>
-        }
+        actions={acciones}
       />
+      )}
 
       {top.length ? (
         <View className="gap-2 pb-2">
@@ -215,6 +245,82 @@ export function ArtistPage({
 
       <Releases title="Álbumes" items={artist.albums} onOpen={onOpenAlbum} />
       <Releases title="Simples" items={artist.singles} onOpen={onOpenAlbum} />
+    </View>
+  )
+}
+
+/**
+ * La cabecera cuando la foto es apaisada: la portada del canal, de borde a
+ * borde, con el nombre apoyado encima.
+ *
+ * Es la forma que ya tiene la ficha del panel derecho (`ArtistCard`) llevada a
+ * la pantalla grande, y la misma que usa YouTube Music. La alternativa era
+ * recortarle un cuadrado al banner para meterlo en el redondel del álbum, que
+ * es de donde salía el zoom.
+ *
+ * **La imagen se disuelve contra el panel** en vez de cortarse contra una
+ * línea: el degradado termina exactamente en `background`, así que no hay
+ * borde, que es la regla de `docs/DESIGN.md` — separar por luminancia, nunca
+ * por línea. Y de paso ese mismo velo es lo que vuelve legible el nombre
+ * encima, sin importar qué foto haya puesto el artista.
+ *
+ * El alto sale del ancho real del panel y de la proporción de la foto, topado:
+ * un 2,4:1 en una ventana de 1400px serían 580px de banner antes de la primera
+ * canción. Con el tope, `cover` recorta arriba y abajo — que es exactamente
+ * para lo que está pensada una portada de canal.
+ */
+function Banner({
+  photo,
+  aspect,
+  nombre,
+  meta,
+  acciones,
+}: {
+  photo: string
+  aspect: number
+  nombre: string
+  meta?: string
+  acciones: React.ReactNode
+}) {
+  const [ancho, setAncho] = useState(0)
+  // Mientras no se midió, un alto razonable: sin esto el banner nace en 0 y
+  // salta a su medida en el primer cuadro, que se lee como un parpadeo.
+  const alto = ancho ? Math.min(BANNER_MAX, Math.round(ancho / aspect)) : 220
+
+  return (
+    <View>
+      <View
+        onLayout={(e) => setAncho(e.nativeEvent.layout.width)}
+        style={{ height: alto }}
+        className="justify-end overflow-hidden bg-card"
+      >
+        <Image
+          source={{ uri: photo }}
+          resizeMode="cover"
+          accessibilityLabel={`Foto de ${nombre}`}
+          style={StyleSheet.absoluteFill}
+        />
+        {/* Del aire al fondo del panel. Los colores van literales porque
+            LinearGradient no lee variables CSS: #121212 es `background`. */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(18,18,18,0)', 'rgba(18,18,18,0.72)', '#121212']}
+          locations={[0, 0.55, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View className="gap-1 px-6 pb-4">
+          <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.4px]">
+            Artista
+          </Text>
+          <CollectionTitle>{nombre}</CollectionTitle>
+          {meta ? (
+            <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+              {meta}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      <View className="flex-row items-center gap-3 px-6 pb-5 pt-4">{acciones}</View>
     </View>
   )
 }

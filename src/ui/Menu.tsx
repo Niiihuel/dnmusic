@@ -100,19 +100,22 @@ const GAP = 6
 /** Aire mínimo contra cualquier borde de la pantalla. */
 const MARGIN = 8
 
-/*
- * La animación del menú en web, con las curvas de la librería de referencia
- * (Jakubantalik/Libraries, `PlusMenu.tsx`): la apertura es su preset «Bouncy»
- * —un resorte que se pasa apenas y vuelve— y el cierre su «Snappy», corto y
- * seco. Las filas entran **escalonadas**, cada una un pelo después de la
- * anterior, que es lo que hace que el panel se sienta vivo y no una foto.
+/**
+ * La curva de todo el menú: salida firme, sin rebote.
+ *
+ * Antes la apertura usaba un resorte con sobrepaso (`0.34, 1.56, 0.64, 1`) de
+ * 420 ms, y encima cada fila entraba escalonada 22 ms detrás de la anterior:
+ * con ocho opciones, la última terminaba de aparecer a casi medio segundo del
+ * clic. Sobre un menú eso no se lee como carácter sino como lentitud, y el
+ * rebote de una superficie con desenfoque se ve como un foco que no encuentra
+ * el plano — el material no rebota.
+ *
+ * Un menú del sistema aparece **de una**: escala corta, sin sobrepaso, y el
+ * contenido ya está ahí. Eso es lo que hacen estos números.
  */
-const RESORTE = 'cubic-bezier(0.34, 1.56, 0.64, 1)'
 const SECO = 'cubic-bezier(0.22, 1, 0.36, 1)'
-const ABRE_MS = 420
-const CIERRA_MS = 150
-/** Cuánto espera cada fila respecto de la anterior. */
-const ESCALON_MS = 22
+const ABRE_MS = 180
+const CIERRA_MS = 120
 
 /*
  * La animación va en **CSS de verdad**, inyectado una sola vez.
@@ -136,10 +139,10 @@ const ESCALON_MS = 22
 if (ES_WEB && typeof document !== 'undefined') {
   const hoja = document.createElement('style')
   hoja.textContent = `
-@keyframes dn-menu-sube { from { transform: scale(.9) translateY(8px) } }
-@keyframes dn-menu-baja { from { transform: scale(.9) translateY(-8px) } }
-@keyframes dn-menu-va-arriba { to { transform: scale(.96) translateY(4px) } }
-@keyframes dn-menu-va-abajo { to { transform: scale(.96) translateY(-4px) } }
+@keyframes dn-menu-sube { from { transform: scale(.96) translateY(4px) } }
+@keyframes dn-menu-baja { from { transform: scale(.96) translateY(-4px) } }
+@keyframes dn-menu-va-arriba { to { transform: scale(.97) translateY(2px) } }
+@keyframes dn-menu-va-abajo { to { transform: scale(.97) translateY(-2px) } }
 @keyframes dn-menu-material { from {
   backdrop-filter: blur(0px) saturate(100%);
   -webkit-backdrop-filter: blur(0px) saturate(100%);
@@ -150,17 +153,16 @@ if (ES_WEB && typeof document !== 'undefined') {
   -webkit-backdrop-filter: blur(0px) saturate(100%);
   background-color: rgba(28,28,28,0);
 } }
-@keyframes dn-menu-fila-sube { from { opacity: 0; transform: translateY(6px) } }
-@keyframes dn-menu-fila-baja { from { opacity: 0; transform: translateY(-6px) } }
-@keyframes dn-menu-fila-va { to { opacity: 0 } }
+@keyframes dn-menu-contenido { from { opacity: 0 } }
+@keyframes dn-menu-contenido-va { to { opacity: 0 } }
 
 [data-anim="menu-abre-arriba"] {
   transform-origin: bottom right;
-  animation: dn-menu-sube ${ABRE_MS}ms ${RESORTE} both, dn-menu-material 200ms ease-out both;
+  animation: dn-menu-sube ${ABRE_MS}ms ${SECO} both, dn-menu-material ${ABRE_MS}ms ease-out both;
 }
 [data-anim="menu-abre-abajo"] {
   transform-origin: top right;
-  animation: dn-menu-baja ${ABRE_MS}ms ${RESORTE} both, dn-menu-material 200ms ease-out both;
+  animation: dn-menu-baja ${ABRE_MS}ms ${SECO} both, dn-menu-material ${ABRE_MS}ms ease-out both;
 }
 [data-anim="menu-cierra-arriba"] {
   transform-origin: bottom right;
@@ -170,9 +172,16 @@ if (ES_WEB && typeof document !== 'undefined') {
   transform-origin: top right;
   animation: dn-menu-va-abajo ${CIERRA_MS}ms ${SECO} both, dn-menu-material-va ${CIERRA_MS}ms ${SECO} both;
 }
-[data-anim="fila-abre-arriba"] { animation: dn-menu-fila-sube 240ms ${SECO} both; }
-[data-anim="fila-abre-abajo"] { animation: dn-menu-fila-baja 240ms ${SECO} both; }
-[data-anim="fila-cierra"] { animation: dn-menu-fila-va ${CIERRA_MS}ms ${SECO} both; }
+/*
+ * El contenido entra **entero y de una**, no fila por fila.
+ *
+ * El escalonado era la mitad de lo que hacía lento al menú: cada opción
+ * esperaba a la anterior y el panel terminaba de armarse mucho después de
+ * haber llegado. Un fade corto del bloque alcanza para que el texto no
+ * aparezca de golpe sobre un panel que todavía está escalando.
+ */
+[data-anim="contenido-abre"] { animation: dn-menu-contenido ${ABRE_MS}ms ease-out both; }
+[data-anim="contenido-cierra"] { animation: dn-menu-contenido-va ${CIERRA_MS}ms ${SECO} both; }
 `
   document.head.appendChild(hoja)
 }
@@ -193,10 +202,19 @@ function animPanel(cerrando: boolean, above: boolean): Record<string, string> | 
  * ventana, la rueda sigue desplazando (`overflowY: auto`) pero la barra no se
  * dibuja nunca. En Android el ScrollView queda: ahí no hay ranura fantasma.
  */
-function Filas({ alto, children }: { alto: number; children: ReactNode }) {
+function Filas({
+  alto,
+  cerrando,
+  children,
+}: {
+  alto: number
+  cerrando: boolean
+  children: ReactNode
+}) {
   if (ES_WEB) {
     return (
       <View
+        {...({ dataSet: animContenido(cerrando) } as object)}
         style={
           {
             maxHeight: alto,
@@ -217,17 +235,10 @@ function Filas({ alto, children }: { alto: number; children: ReactNode }) {
   )
 }
 
-/** El `data-anim` de una fila: entra escalonada, se va pareja. */
-function animFila(cerrando: boolean, above: boolean): Record<string, string> | undefined {
+/** El `data-anim` del bloque de filas: entra y se va como una sola pieza. */
+function animContenido(cerrando: boolean): Record<string, string> | undefined {
   if (!ES_WEB) return undefined
-  if (cerrando) return { anim: 'fila-cierra' }
-  return { anim: above ? 'fila-abre-arriba' : 'fila-abre-abajo' }
-}
-
-/** El escalón de cada fila. En línea porque el índice no entra en una hoja fija. */
-function demoraFila(indice: number, cerrando: boolean): ViewStyle {
-  if (!ES_WEB || cerrando) return {}
-  return { animationDelay: `${50 + indice * ESCALON_MS}ms` } as unknown as ViewStyle
+  return { anim: cerrando ? 'contenido-cierra' : 'contenido-abre' }
 }
 
 /**
@@ -604,7 +615,7 @@ export function Menu({
               boxShadow: `0 12px 32px rgba(0,0,0,0.55), ${BORDE_REFERENTE}`,
             }}
           >
-            <Filas alto={menuH}>
+            <Filas alto={menuH} cerrando={cerrando}>
             {usable.map((item, i) => (
               <Fragment key={item.label}>
               {/* El corte antes del grupo destructivo, como los menús del
@@ -612,9 +623,7 @@ export function Menu({
                   fila — así no corta el panel de lado a lado. */}
               {i > 0 && item.destructive && !usable[i - 1]?.destructive ? (
                 <View
-                  {...({ dataSet: animFila(cerrando, above) } as object)}
                   className="mx-3 my-1 h-px bg-white/10"
-                  style={demoraFila(i, cerrando)}
                 />
               ) : null}
               <Pressable
@@ -630,8 +639,7 @@ export function Menu({
                   cerrar()
                   item.onPress?.()
                 }}
-                {...({ dataSet: animFila(cerrando, above) } as object)}
-                style={{ height: ROW_H, ...demoraFila(i, cerrando) }}
+                style={{ height: ROW_H }}
                 className={`mx-1.5 flex-row items-center gap-3 rounded-lg px-3 hover:bg-white/10 active:bg-white/15 ${
                   sub === i ? 'bg-white/10' : ''
                 }`}
@@ -696,7 +704,7 @@ export function Menu({
                 boxShadow: `0 12px 32px rgba(0,0,0,0.55), ${BORDE_REFERENTE}`,
               }}
             >
-              <Filas alto={subMaxH}>
+              <Filas alto={subMaxH} cerrando={cerrando}>
                 {subItems.map((item, i) => (
                   <Pressable
                     key={item.label}
@@ -705,8 +713,7 @@ export function Menu({
                       cerrar()
                       item.onPress?.()
                     }}
-                    {...({ dataSet: animFila(cerrando, false) } as object)}
-                    style={{ height: ROW_H, ...demoraFila(i, cerrando) }}
+                    style={{ height: ROW_H }}
                     className="mx-1.5 flex-row items-center gap-3 rounded-lg px-3 hover:bg-white/10 active:bg-white/15"
                   >
                     {item.icon}

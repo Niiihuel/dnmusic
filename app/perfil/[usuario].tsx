@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { BotonVidrio } from '../../src/ui/Glass'
 import { FondoPerfil, Identidad, Vitrinas } from '../../src/ui/PerfilPublico'
+import { ListasPerfil } from '../../src/ui/ListasPerfil'
 import { FilaSostener } from '../../src/ui/Mantener'
 import { Vacio } from '../../src/ui/Vacio'
 import { ICON_COLOR, IconBack, IconBan, IconUser } from '../../src/ui/icons'
@@ -176,6 +177,15 @@ export default function PerfilAjeno() {
                       </Text>
                     </View>
                   }
+                />
+
+                {/* El estante, debajo de lo destacado: las vitrinas eligen qué
+                    mostrar arriba de todo, y esto es todo lo que publicó. */}
+                <ListasPerfil
+                  ownerId={perfil.userId}
+                  nombre={nombre}
+                  propio={soyYo}
+                  onAbrir={(lista) => router.push(`/lista/${lista.id}`)}
                 />
 
                 {/* Bloquear vive al fondo del perfil: es la pantalla de esa

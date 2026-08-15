@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Stack, useRouter, useSegments } from 'expo-router'
+import { useEffect, useRef, useState } from 'react'
+import { Stack, usePathname, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -775,7 +775,10 @@ function Chrome() {
 function SessionGate() {
   const user = useUser()
   const segments = useSegments()
+  const pathname = usePathname()
   const router = useRouter()
+  /** Lo que se quiso abrir sin sesión, para llevarte ahí después de entrar. */
+  const destino = useRef<string | null>(null)
 
   useEffect(() => {
     startSession()
@@ -790,9 +793,31 @@ function SessionGate() {
     // Login y registro son las dos puertas de entrada: sin sesión se puede
     // estar en cualquiera de las dos, y con sesión en ninguna.
     const onGate = segments[0] === 'sign-in' || segments[0] === 'sign-up'
-    if (!user && !onGate) router.replace('/sign-in')
-    if (user && onGate) router.replace('/')
-  }, [user, segments, router])
+    if (!user && !onGate) {
+      /*
+       * Adónde querías ir, guardado antes de mandarte a entrar.
+       *
+       * Los links que se comparten —una lista pública, la invitación a un
+       * Jam— casi siempre le llegan a alguien que no tiene la sesión abierta
+       * en ese aparato. Sin esto, entrar te dejaba en la portada y el link
+       * quedaba en la nada: quien lo mandó había compartido algo puntual y
+       * del otro lado no llegaba nada.
+       *
+       * Se guarda el **pathname** y no los segmentos: `useSegments` da el
+       * patrón de la ruta (`lista/[id]`), no el id que hay que abrir.
+       */
+      destino.current = pathname && pathname !== '/' ? pathname : null
+      router.replace('/sign-in')
+    }
+    if (user && onGate) {
+      const guardado = destino.current
+      destino.current = null
+      /* El tipo de `href` de expo-router enumera las rutas estáticas y no
+         acepta un string armado en tiempo de ejecución; el destino salió de
+         `usePathname`, así que es una ruta de esta misma app. */
+      router.replace((guardado ?? '/') as '/')
+    }
+  }, [user, segments, pathname, router])
 
   /*
    * Todo lo que es «de quien escucha» espera a que haya alguien escuchando.
@@ -863,6 +888,10 @@ function SessionGate() {
       {/* El perfil es una carpeta: la vista y su editor son pantallas
           distintas, apiladas. Ver `app/profile/`. */}
       <Stack.Screen name="perfil/[usuario]" />
+      {/* La lista pública de alguien: se llega por el link compartido o desde
+          su perfil. Pantalla común, como la puerta de un Jam — llega de afuera
+          y no tiene panel del medio detrás sobre el que flotar. */}
+      <Stack.Screen name="lista/[id]" />
       <Stack.Screen name="ajustes/index" />
       <Stack.Screen name="ajustes/descargas" />
       <Stack.Screen name="ajustes/bloqueados" />

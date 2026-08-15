@@ -10,7 +10,14 @@ import { SkeletonList } from './Skeleton'
 import { AnimatedSidebarTitle } from './SidebarMotion'
 import { BotonVidrio } from './Glass'
 import { Vacio } from './Vacio'
-import { ICON_COLOR, IconCollapseRight, IconHeartFilled, IconMusic, IconPlus } from './icons'
+import {
+  ICON_COLOR,
+  IconCollapseRight,
+  IconGlobe,
+  IconHeartFilled,
+  IconMusic,
+  IconPlus,
+} from './icons'
 
 /**
  * Tus listas, en el panel de la derecha.
@@ -200,12 +207,23 @@ export function PlaylistLibrary({
                   >
                     {item.name}
                   </Text>
-                  <Text
-                    className={`text-muted-foreground ${suelto ? 'text-[13px]' : 'text-[12px]'}`}
-                    numberOfLines={1}
-                  >
-                    Lista · {item.tracks} {item.tracks === 1 ? 'canción' : 'canciones'}
-                  </Text>
+                  <View className="flex-row items-center gap-1.5">
+                    {/* El mundito antes del texto: publicada es una condición
+                        de la lista, y saberlo de un vistazo en la biblioteca
+                        evita tener que abrirlas una por una para acordarse de
+                        cuál compartiste. */}
+                    {item.visibilidad === 'publica' ? (
+                      <IconGlobe size={11} color={ICON_COLOR.muted} />
+                    ) : null}
+                    <Text
+                      className={`text-muted-foreground min-w-0 shrink ${
+                        suelto ? 'text-[13px]' : 'text-[12px]'
+                      }`}
+                      numberOfLines={1}
+                    >
+                      Lista · {item.tracks} {item.tracks === 1 ? 'canción' : 'canciones'}
+                    </Text>
+                  </View>
                 </View>
                 {item.id === soundingId ? (
                   <View className="h-1.5 w-1.5 rounded-full bg-foreground" />

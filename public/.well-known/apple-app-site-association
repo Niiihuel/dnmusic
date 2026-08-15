@@ -2,11 +2,17 @@
   "applinks": {
     "details": [
       {
-        "appIDs": ["2K2U374CJC.com.nihuel.dnmusic"],
+        "appIDs": [
+          "2K2U374CJC.com.nihuel.dnmusic"
+        ],
         "components": [
           {
             "/": "/jam/*",
             "comment": "Invitaciones a un Jam: abre la app directo en la puerta del código"
+          },
+          {
+            "/": "/lista/*",
+            "comment": "Listas públicas compartidas: abre la app en esa lista"
           }
         ]
       }

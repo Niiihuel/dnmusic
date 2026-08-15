@@ -20,6 +20,7 @@ import {
   Eye,
   EyeOff,
   ExternalLink,
+  Globe,
   House,
   Inbox,
   Languages,
@@ -133,6 +134,7 @@ export const IconEye = make(Eye)
 export const IconEyeOff = make(EyeOff)
 export const IconHome = make(House)
 export const IconInbox = make(Inbox)
+export const IconGlobe = make(Globe)
 export const IconLock = make(LockKeyhole)
 export const IconSend = make(Send)
 export const IconPrevious = makeFilled(SkipBack)

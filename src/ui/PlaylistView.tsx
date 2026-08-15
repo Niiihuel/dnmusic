@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FlatList, Pressable, Text, TextInput, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
-import { listTracks, removeTrack, type Playlist, type PlaylistTrack } from '../services/playlists'
+import {
+  listTracks,
+  removeTrack,
+  type Playlist,
+  type PlaylistTrack,
+  type Visibilidad,
+} from '../services/playlists'
 import type { TrackResult } from '../services/music'
 import { Sugerencias } from './Sugerencias'
 import {
@@ -22,8 +28,9 @@ import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { useColapso } from './useColapso'
 import { FormError } from './Button'
-import { CollectionHeader, CollectionTitle, useAngosto, useCoverSize } from './CollectionHeader'
+import { CollectionHeader, CollectionTitle, Insignia, useAngosto, useCoverSize } from './CollectionHeader'
 import { TECLADO_FISICO } from '../lib/teclado'
+import { compartirLista } from '../lib/compartirLista'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
 import { Vacio } from './Vacio'
@@ -36,12 +43,15 @@ import {
   IconClose,
   IconDownload,
   IconDownloaded,
+  IconGlobe,
   IconImage,
   IconMusic,
   IconPause,
+  IconLock,
   IconPencil,
   IconPlay,
   IconPlus,
+  IconShare,
   IconShuffle,
   IconTrash,
   IconUser,
@@ -71,6 +81,7 @@ export function PlaylistView({
   onChanged,
   onPickCover,
   onRename,
+  onPublicar,
   onDelete,
   onClose,
   onSearch,
@@ -91,6 +102,14 @@ export function PlaylistView({
   onChanged: () => void
   onPickCover: () => void
   onRename: (name: string) => Promise<void>
+  /**
+   * Publicar la lista o volver a guardarla.
+   *
+   * Lo hace la pantalla y no esta pieza porque después hay que releer la
+   * biblioteca: la marca de «pública» viaja en el objeto `playlist`, y sin
+   * recargar el menú seguiría ofreciendo lo que ya se hizo.
+   */
+  onPublicar: (visibilidad: Visibilidad) => Promise<void>
   onDelete: () => void
   onClose: () => void
   /**
@@ -308,6 +327,7 @@ export function PlaylistView({
      y pasa por detrás del velo al desplazar. En escritorio vale 0. */
   const techo = useTecho()
   const colapso = useColapso()
+  const publica = playlist.visibilidad === 'publica'
   const menu: MenuItem[] = [
     {
       label: 'Cambiar la portada',
@@ -321,6 +341,37 @@ export function PlaylistView({
       icon: <IconPencil size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'pencil',
     },
+    /*
+     * Publicar y compartir, en ese orden y juntas.
+     *
+     * La fila dice a qué estado te lleva —«Hacer pública» cuando es privada—,
+     * no en cuál estás: es el mismo criterio que el resto del menú, donde cada
+     * fila nombra lo que va a pasar al tocarla.
+     *
+     * «Compartir el link» aparece **solo si ya es pública**. Un link a algo
+     * que nadie más puede abrir es un link roto, y ofrecerlo antes empujaría a
+     * mandarlo sin haber publicado.
+     */
+    {
+      label: publica ? 'Hacer privada' : 'Hacer pública',
+      onPress: () => void onPublicar(publica ? 'privada' : 'publica'),
+      icon: publica ? (
+        <IconLock size={15} color={ICON_COLOR.muted} />
+      ) : (
+        <IconGlobe size={15} color={ICON_COLOR.muted} />
+      ),
+      sfSymbol: publica ? 'lock' : 'globe',
+    },
+    ...(publica
+      ? [
+          {
+            label: 'Compartir el link',
+            onPress: () => void compartirLista(playlist.id, playlist.name),
+            icon: <IconShare size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'square.and.arrow.up' as const,
+          },
+        ]
+      : []),
     /* Solo llega en la web de escritorio, donde hay archivos que elegir: en el
        teléfono la fila no aparece. Ver `subirArchivoALista` en la pantalla. */
     ...(onSubirArchivo
@@ -517,6 +568,13 @@ function Header({
     <View>
       <CollectionHeader
         kind="Lista"
+        /* Publicada se dice arriba, al lado del rótulo: es qué clase de lista
+           es, no un dato más de la lista. */
+        insignia={
+          playlist.visibilidad === 'publica' ? (
+            <Insignia icono={<IconGlobe size={10} color={ICON_COLOR.muted} />}>Pública</Insignia>
+          ) : undefined
+        }
         meta={`${total} ${total === 1 ? 'canción' : 'canciones'}${
           totalMs > 0 ? ` · ${formatLength(totalMs)}` : ''
         }`}
