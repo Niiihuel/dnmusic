@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Platform } from 'react-native'
 import { preload, setAudioModeAsync, useAudioPlayer } from 'expo-audio'
 import { artworkSource } from '../lib/artwork'
-import { headroomGain, signedUrl } from '../services/music'
+import { headroomGain, resolveSong, signedUrl, type TrackResult } from '../services/music'
 import { useLockScreen } from '../state/lockScreen'
 import { anotarEscucha } from '../services/plays'
 import type { PlaylistTrack } from '../services/playlists'
 import {
   advance,
+  completarCancion,
+  descartarSinAudio,
   pausaExterna,
   reanudacionExterna,
   reanudarTrasInterrupcion,
@@ -387,6 +389,49 @@ export function MotorAudio() {
     player.volume = headroomGain(current?.truePeak) * volume
   }, [player, current, volume])
 
+  /*
+   * Resolver una candidata de la radio, con el audio en blanco.
+   *
+   * Las tandas entran a la cola al instante y **sin audio** (ver
+   * `proximasRecomendadas`): traer cada canción a Storage tarda segundos, y
+   * hacerlo antes de encolar era lo que dejaba los saltos muertos esperando
+   * la tanda. Acá se trae recién cuando hace falta: la que va a sonar, y la
+   * que sigue mientras suena la actual — cada salto empuja la resolución de
+   * la próxima, así la cola nunca se queda sin a dónde ir.
+   *
+   * El set evita resolver dos veces la misma: la actual y la siguiente pueden
+   * ser la misma canción por un cuadro al saltear rápido.
+   */
+  const resolviendo = useRef(new Set<string>())
+  const resolver = useCallback(
+    (track: PlaylistTrack) => {
+      if (resolviendo.current.has(track.videoId)) return null
+      resolviendo.current.add(track.videoId)
+      const pedido: TrackResult = {
+        videoId: track.videoId,
+        title: track.title,
+        artist: track.artist,
+        artistId: track.artistId,
+        album: '',
+        albumId: null,
+        artworkUrl: track.artworkUrl,
+        durationMs: track.durationMs,
+      }
+      return resolveSong(pedido)
+        .then((song) => {
+          completarCancion(track.videoId, {
+            audioPath: song.path,
+            artworkPath: song.artworkPath,
+            durationMs: song.durationMs,
+          })
+          remember(track.id, song.url)
+          return song
+        })
+        .finally(() => resolviendo.current.delete(track.videoId))
+    },
+    [remember],
+  )
+
   // Firmar la URL de la canción actual. Se firma al reproducir y no antes: una
   // URL firmada vence, y una lista puede quedar abierta mucho rato.
   useEffect(() => {
@@ -395,6 +440,16 @@ export function MotorAudio() {
     if (mudo) return
     // Si la veníamos preparando ya está firmada, y encima a medio bajar.
     if (!current || urlOf(current.id)) return
+    /*
+     * Una candidata sin audio primero se resuelve. El error sí se muestra: es
+     * la canción que la persona está esperando escuchar, y el servicio ya
+     * devuelve el motivo en una frase para la app.
+     */
+    if (!current.audioPath) {
+      const pedido = resolver(current)
+      if (pedido) void pedido.catch((causa: unknown) => reportError(mensajeError(causa)))
+      return
+    }
     /*
      * Si está bajada, suena del teléfono y no se firma nada.
      *
@@ -418,7 +473,7 @@ export function MotorAudio() {
     return () => {
       alive = false
     }
-  }, [current, urlOf, remember, mudo])
+  }, [current, urlOf, remember, mudo, resolver])
 
   /*
    * Preparar la que sigue mientras suena la de ahora.
@@ -437,6 +492,21 @@ export function MotorAudio() {
   useEffect(() => {
     if (mudo) return
     if (!nextUp || urlOf(nextUp.id)) return
+    /*
+     * Una candidata sin audio se **resuelve ahora**, mientras suena la actual:
+     * es la mitad de la resolución perezosa — cada avance de la cola empuja la
+     * resolución de la que sigue. Si el audio no se puede traer, la candidata
+     * se descarta de la cola en silencio: dejarla sería un hueco en el que el
+     * salto tropieza, y para eso la tanda trae de sobra.
+     */
+    if (!nextUp.audioPath) {
+      const pedido = resolver(nextUp)
+      if (pedido)
+        void pedido
+          .then((song) => preload({ uri: song.url }))
+          .catch(() => descartarSinAudio(nextUp.videoId))
+      return
+    }
     /*
      * La bajada no se precarga: ya está entera en el disco, así que no hay buffer
      * que adelantar ni firma que conseguir. Guardarla alcanza para que el cambio
@@ -461,7 +531,7 @@ export function MotorAudio() {
     return () => {
       alive = false
     }
-  }, [nextUp, urlOf, remember, mudo])
+  }, [nextUp, urlOf, remember, mudo, resolver])
 
   /**
    * Pasar a la siguiente, una sola vez por canción.

@@ -2,13 +2,27 @@ import { useEffect, useState } from 'react'
 import { Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import { fetchAlbum, type AlbumInfo, type AlbumTrack } from '../services/music'
-import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
+import {
+  togglePlayback,
+  toggleShuffle,
+  usePlaybackTrack,
+  useShuffle,
+  useWantPlay,
+} from '../state/playback'
 import { CollectionHeader, CollectionTitle, useCoverSize } from './CollectionHeader'
 import { Menu, type MenuItem } from './Menu'
 import { formatLength } from './SeekBar'
 import { Skeleton, SkeletonList } from './Skeleton'
 import { TrackColumnHeader, TrackRow } from './TrackRow'
-import { ICON_COLOR, IconClose, IconMusic, IconPause, IconPlay, IconPlus } from './icons'
+import {
+  ICON_COLOR,
+  IconClose,
+  IconMusic,
+  IconPause,
+  IconPlay,
+  IconPlus,
+  IconShuffle,
+} from './icons'
 
 /**
  * Un álbum o una lista de afuera, en el panel del medio.
@@ -32,7 +46,8 @@ export function AlbumPanel({
   albumId: string
   /** Álbum o lista: cambian de dónde se piden, no cómo se ven. */
   kind: 'album' | 'playlist'
-  onPlay: (track: AlbumTrack, artworkUrl: string) => void
+  /** Con la lista entera y la posición: tocar una fila pone el disco desde ahí. */
+  onPlay: (track: AlbumTrack, artworkUrl: string, tracks: AlbumTrack[], at: number) => void
   onAdd: (track: AlbumTrack, artworkUrl: string) => void
   onPlayAll?: (tracks: AlbumTrack[], artworkUrl: string) => void
   onBack?: () => void
@@ -61,6 +76,9 @@ export function AlbumPanel({
    */
   const sounding = usePlaybackTrack()
   const soundingPlay = useWantPlay()
+  /* El aleatorio es global —una sola cola suena a la vez—, como en una lista
+     propia: se lee del store por su selector y no viaja como prop. */
+  const aleatorio = useShuffle()
 
   useEffect(() => {
     if (fresh) return
@@ -166,6 +184,29 @@ export function AlbumPanel({
               )}
             </Pressable>
 
+            {/* Lineal o aleatorio, al lado de reproducir: la misma decisión y
+                el mismo lenguaje que en una lista propia — encendido es el
+                blanco de acento, apagado el gris (docs/DESIGN.md). */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={aleatorio ? 'Reproducir en orden' : 'Reproducir al azar'}
+              accessibilityState={{ selected: aleatorio }}
+              onPress={toggleShuffle}
+              disabled={total === 0}
+              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+            >
+              <IconShuffle
+                size={19}
+                color={
+                  total === 0
+                    ? ICON_COLOR.muted
+                    : aleatorio
+                      ? ICON_COLOR.foreground
+                      : ICON_COLOR.muted
+                }
+              />
+            </Pressable>
+
             {menu.length ? (
               <Menu items={menu} label={`Opciones de ${album.title}`} size={17} />
             ) : null}
@@ -193,7 +234,9 @@ export function AlbumPanel({
               onHover={(on) => setHovered(on ? track.videoId : null)}
               /* Ya suena esta canción: tocarla pausa o sigue, en vez de
                  volver a resolverla y arrancarla de cero. */
-              onPlay={() => (esta ? togglePlayback() : onPlay(track, album.artworkUrl))}
+              onPlay={() =>
+                esta ? togglePlayback() : onPlay(track, album.artworkUrl, album.tracks, i)
+              }
               /*
                * En escritorio los dos huecos existen siempre y solo se llenan
                * bajo el cursor: si aparecieran de la nada, la fila entera se

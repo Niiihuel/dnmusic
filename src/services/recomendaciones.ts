@@ -37,21 +37,20 @@ const DIAS_RECIENTES = 7
  *
  * Eran tres, y tres se agotan en tres saltos: quien va salteando —que es el
  * uso más común de una radio— se quedaba sin cola en segundos y los saltos
- * siguientes caían al vacío hasta la próxima tanda. Cinco, junto con pedir la
- * siguiente cuando quedan pocas (ver `RELLENO_UMBRAL`), mantienen el botón
- * vivo sin encarecer cada tanda de más.
+ * siguientes caían al vacío hasta la próxima tanda. Ahora que la tanda vuelve
+ * sin resolver (solo metadata, ver `proximasRecomendadas`), ocho candidatas
+ * cuestan lo mismo que tres y aguantan una ráfaga de saltos entera.
  */
-const POR_TANDA = 5
+const POR_TANDA = 8
 /**
  * Cuántas de la tanda salen de artistas que **no** escuchás.
  *
- * Tres de cinco, la misma proporción de siempre: una tanda enteramente
- * desconocida es lo que hace que la gente apague el autoplay, y una enteramente
- * conocida es lo que hacía que esto no sirviera para descubrir nada. Con dos
- * anclas propias por tanda, la cola sigue sonando a vos aunque la mayoría sea
- * nueva.
+ * Cinco de ocho, la proporción de siempre: una tanda enteramente desconocida
+ * es lo que hace que la gente apague el autoplay, y una enteramente conocida
+ * es lo que hacía que esto no sirviera para descubrir nada. Con tres anclas
+ * propias por tanda, la cola sigue sonando a vos aunque la mayoría sea nueva.
  */
-const EXPLORACION = 3
+const EXPLORACION = 5
 
 export type ArtistaEscuchado = { artist_id: string; artist: string; ms: number }
 
@@ -318,6 +317,21 @@ export async function proximasRecomendadas(
    * lo que ya pasaba.
    */
   delaCola: ArtistaEscuchado[] = [],
+  /**
+   * Si hay que traer el audio antes de devolver la tanda.
+   *
+   * Resolver es descargar la canción entera a Storage la primera vez: varios
+   * segundos POR canción, y era lo que hacía que la tanda «tardara en cargar»
+   * — saltear rápido agotaba la cola y los saltos quedaban muertos esperando
+   * las descargas. Por defecto la tanda vuelve **al toque, sin audio**
+   * (`audioPath` vacío): el motor lo resuelve recién cuando la canción va a
+   * sonar, y precarga la siguiente mientras suena la actual.
+   *
+   * El Jam sí resuelve antes (`resolver: true`): su cola vive en el servidor
+   * y `jam_agregar` exige el audio — una fila compartida sin audio no le
+   * sonaría a nadie.
+   */
+  opciones: { resolver?: boolean } = {},
 ): Promise<PlaylistTrack[]> {
   try {
     const supabase = getSupabase()
@@ -356,6 +370,23 @@ export async function proximasRecomendadas(
      * lista: lo propio primero, la exploración después, reintentos incluidos.
      */
     const elegidas = await recomendarDesdeAnclas(candidatos, vetados, POR_TANDA, EXPLORACION)
+
+    /* Sin resolver: la tanda entra a la cola ya mismo, con el audio en blanco.
+       El motor lo trae cuando le toque sonar (ver `MotorAudio`). */
+    if (!opciones.resolver) {
+      return elegidas.map((track) => ({
+        id: `radio:${track.videoId}`,
+        videoId: track.videoId,
+        title: track.title,
+        artist: track.artist,
+        artistId: track.artistId,
+        artworkUrl: track.artworkUrl,
+        artworkPath: null,
+        audioPath: '',
+        durationMs: track.durationMs,
+        truePeak: undefined,
+      }))
+    }
 
     /*
      * Resolver es traer el audio a Storage, y la primera vez de cada tema es un

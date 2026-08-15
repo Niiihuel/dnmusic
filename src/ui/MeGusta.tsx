@@ -6,8 +6,10 @@ import { alternarMeGusta, useMeGusta, useMeGustaCargado } from '../state/gustos'
 import {
   playQueue,
   togglePlayback,
+  toggleShuffle,
   usePlaybackOriginId,
   usePlaybackTrack,
+  useShuffle,
   useWantPlay,
 } from '../state/playback'
 import { usePiso, useTecho } from '../state/shell'
@@ -25,6 +27,7 @@ import {
   IconHeartFilled,
   IconPause,
   IconPlay,
+  IconShuffle,
 } from './icons'
 
 /**
@@ -58,6 +61,7 @@ export function MeGustaView({
   const soundingTrack = usePlaybackTrack()
   const soundingPlay = useWantPlay()
   const originId = usePlaybackOriginId()
+  const aleatorio = useShuffle()
   const piso = usePiso(16)
   const techo = useTecho()
   const colapso = useColapso()
@@ -120,32 +124,55 @@ export function MeGustaView({
                   </View>
                 }
                 actions={
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      mine && soundingPlay ? 'Pausar' : 'Reproducir tus me gusta'
-                    }
-                    onPress={() => {
-                      if (mine) togglePlayback()
-                      else if (total > 0) play(0)
-                    }}
-                    disabled={total === 0}
-                    className={`h-14 w-14 items-center justify-center rounded-full ${
-                      total === 0 ? 'bg-muted' : 'bg-primary active:opacity-80'
-                    }`}
-                  >
-                    {mine && soundingPlay ? (
-                      <IconPause
-                        size={20}
-                        color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
+                  <>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        mine && soundingPlay ? 'Pausar' : 'Reproducir tus me gusta'
+                      }
+                      onPress={() => {
+                        if (mine) togglePlayback()
+                        else if (total > 0) play(0)
+                      }}
+                      disabled={total === 0}
+                      className={`h-14 w-14 items-center justify-center rounded-full ${
+                        total === 0 ? 'bg-muted' : 'bg-primary active:opacity-80'
+                      }`}
+                    >
+                      {mine && soundingPlay ? (
+                        <IconPause
+                          size={20}
+                          color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
+                        />
+                      ) : (
+                        <IconPlay
+                          size={20}
+                          color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
+                        />
+                      )}
+                    </Pressable>
+                    {/* Lineal o aleatorio, como en cualquier colección: el
+                        mismo botón y el mismo lenguaje que en una lista. */}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={aleatorio ? 'Reproducir en orden' : 'Reproducir al azar'}
+                      accessibilityState={{ selected: aleatorio }}
+                      onPress={toggleShuffle}
+                      disabled={total === 0}
+                      className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+                    >
+                      <IconShuffle
+                        size={19}
+                        color={
+                          total === 0
+                            ? ICON_COLOR.muted
+                            : aleatorio
+                              ? ICON_COLOR.foreground
+                              : ICON_COLOR.muted
+                        }
                       />
-                    ) : (
-                      <IconPlay
-                        size={20}
-                        color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
-                      />
-                    )}
-                  </Pressable>
+                    </Pressable>
+                  </>
                 }
               />
               {total > 0 ? <TrackColumnHeader /> : null}

@@ -346,6 +346,18 @@ export function videoIdsRecorridos(): string[] {
   return historial.map((t) => t.videoId)
 }
 
+/**
+ * La generación de la cola: sube cada vez que la cola deja de ser LA misma.
+ *
+ * Existe por una carrera concreta: una tanda de recomendaciones pedida para la
+ * cola que estaba sonando puede llegar **después** de que alguien puso otra
+ * cosa —un álbum, otra lista, el volcado de un Jam— y `pedirRelleno` la
+ * apendeaba igual: aparecía una radio ajena en el medio del disco recién
+ * puesto, y el primer «siguiente» saltaba ahí. La tanda viaja con el número de
+ * la generación que la pidió; si al llegar la cola ya es otra, se descarta.
+ */
+let generacionCola = 0
+
 /** Si ya hay una tanda en camino, para no pedir dos veces al mismo final. */
 let pidiendo = false
 /**
@@ -369,6 +381,7 @@ let avanzarAlLlegar = false
 function pedirRelleno() {
   if (!relleno || pidiendo) return
   pidiendo = true
+  const generacion = generacionCola
   const alFinal = () => {
     const s = store.get()
     /* Si la canción va por la mitad, el pedido vino de apretar «siguiente» y
@@ -379,6 +392,10 @@ function pedirRelleno() {
   }
   void relleno()
     .then((tanda) => {
+      /* La cola ya es otra: esta tanda era para la anterior. Ver
+         `generacionCola` — apendearse acá metía radio ajena en el disco que
+         acaban de poner. */
+      if (generacion !== generacionCola) return
       if (tanda.length) {
         const ahora = store.get()
         store.set({ upNext: [...ahora.upNext, ...tanda] })
@@ -389,7 +406,7 @@ function pedirRelleno() {
       }
     })
     .catch(() => {
-      if (avanzarAlLlegar) alFinal()
+      if (avanzarAlLlegar && generacion === generacionCola) alFinal()
     })
     .finally(() => {
       pidiendo = false
@@ -438,6 +455,56 @@ export function rellenarSiFalta() {
 /** El motor avisa si el audio de la canción actual ya está listo para sonar. */
 export function reportCargada(cargada: boolean) {
   if (store.get().cargada !== cargada) store.set({ cargada })
+}
+
+/**
+ * El audio de una candidata llegó: se completa donde sea que esté.
+ *
+ * Las tandas de la radio entran a la cola **sin audio** (ver
+ * `proximasRecomendadas`) para que encolar sea instantáneo; el motor resuelve
+ * la que va a sonar y precarga la que sigue, y con lo resuelto pasa por acá.
+ * Se busca por `videoId` en la lista, la cola manual y la que suena: para
+ * cuando el audio llega, la canción pudo haberse movido de `upNext` a
+ * `manual`.
+ */
+export function completarCancion(
+  videoId: string,
+  datos: { audioPath: string; artworkPath: string | null; durationMs: number },
+) {
+  const state = store.get()
+  const completar = (t: PlaylistTrack): PlaylistTrack =>
+    t.videoId === videoId && !t.audioPath
+      ? {
+          ...t,
+          audioPath: datos.audioPath,
+          artworkPath: datos.artworkPath ?? t.artworkPath,
+          durationMs: datos.durationMs || t.durationMs,
+        }
+      : t
+  const manual = state.manual ? completar(state.manual) : null
+  const actual = manual ?? state.tracks.map(completar)[state.index]
+  store.set({
+    tracks: state.tracks.map(completar),
+    upNext: state.upNext.map(completar),
+    manual,
+    /* Si la completada es la que suena, el largo de la barra ya puede ser el
+       de verdad — el que vino con la búsqueda a veces es cero. */
+    ...(actual?.videoId === videoId && datos.durationMs
+      ? { durationMs: datos.durationMs }
+      : {}),
+  })
+}
+
+/**
+ * Una candidata cuyo audio no se pudo traer se va de la cola.
+ *
+ * Solo las que siguen sin audio: dejarla sería un hueco en el que «siguiente»
+ * tropieza cada vez que le toca. Lo llama el motor cuando la precarga falla.
+ */
+export function descartarSinAudio(videoId: string) {
+  const { upNext } = store.get()
+  const limpio = upNext.filter((t) => !(t.videoId === videoId && !t.audioPath))
+  if (limpio.length !== upNext.length) store.set({ upNext: limpio })
 }
 
 /*
@@ -519,6 +586,8 @@ export function playQueue(
   stopSnippets()
   // Cola nueva, historia nueva: lo que sonó en la anterior ya no es «anterior».
   historial = []
+  // Y tanda nueva: la que venga en camino era para la cola que se va.
+  generacionCola++
   /*
    * El aleatorio sobrevive como **preferencia**, pero la baraja no: era un
    * orden de índices de LA OTRA lista. Dejarla puesta hacía que la lista nueva
@@ -1188,6 +1257,7 @@ export function stopPlayback() {
   // escucha, no estado de la canción que se cerró.
   const { volume, view } = store.get()
   historial = []
+  generacionCola++
   store.set({ ...EMPTY, volume, view })
 }
 
@@ -1256,6 +1326,7 @@ export function jamAplicar(a: {
   if (a.wantPlay && track) stopSnippets()
   // La cola pasó a ser la del Jam: la historia local ya no describe nada.
   historial = []
+  generacionCola++
   store.set({
     tracks: a.tracks,
     upNext: [],
@@ -1302,6 +1373,7 @@ export function escuchaAplicar(a: {
   if (a.wantPlay && track) stopSnippets()
   // La historia local describía otra cola: se vacía, como en el Jam.
   historial = []
+  generacionCola++
   store.set({
     tracks: a.tracks,
     upNext: a.upNext,

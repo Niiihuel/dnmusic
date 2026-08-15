@@ -238,16 +238,32 @@ function trackFrom(raw: unknown): YtTrack[] {
         ?.flatMap((col) => col.title?.runs ?? [])
         .find((run) => run.endpoint?.payload?.browseId?.startsWith('MPRE'))
 
+  const album = song.album?.name ?? enlace?.text ?? ''
+
+  /*
+   * Un álbum con nombre numérico envenena la duración.
+   *
+   * El parser de youtubei.js busca la duración entre las columnas de texto de
+   * la fila, y con el «5202» de DUKI leyó el **nombre del álbum** como si
+   * fueran segundos: toda la búsqueda mostraba 86:42 (= 5202 s), canción por
+   * canción. Si los segundos coinciden exactamente con un álbum de puros
+   * dígitos, eso no es una duración: se deja en 0, que la app ya trata como
+   * «no se sabe» — el reproductor la corrige al cargar el audio, y el resolve
+   * guarda la real.
+   */
+  const seconds = song.duration?.seconds ?? 0
+  const envenenada = /^\d+$/.test(album.trim()) && Number(album.trim()) === seconds
+
   return [
     {
       videoId: song.id,
       title: song.title ?? '',
       artist: song.artists?.map((a) => a.name).join(', ') ?? '',
       artistId: song.artists?.find((a) => a.channel_id)?.channel_id ?? null,
-      album: song.album?.name ?? enlace?.text ?? '',
+      album,
       albumId: song.album?.id ?? enlace?.endpoint?.payload?.browseId ?? null,
       artworkUrl: fullArtworkUrl(biggestThumb(song.thumbnail)?.url ?? ''),
-      durationMs: (song.duration?.seconds ?? 0) * 1000,
+      durationMs: envenenada ? 0 : seconds * 1000,
     },
   ]
 }
@@ -920,11 +936,16 @@ function collectionFrom(rawHeader: unknown, contents: unknown[]): YtAlbum {
       song.artists?.map((a) => a.name).join(', ') ||
       song.authors?.map((a) => a.name).join(', ') ||
       albumArtist
+    /* La misma guarda que `trackFrom`: una colección con nombre numérico
+       («5202» de DUKI) puede colarse como si fuera la duración de cada fila. */
+    const seconds = song.duration?.seconds ?? 0
+    const titulo = (header?.title?.text ?? '').trim()
+    const envenenada = /^\d+$/.test(titulo) && Number(titulo) === seconds
     return {
       videoId: song.id ?? '',
       title: song.title ?? '',
       artist: quien,
-      durationMs: (song.duration?.seconds ?? 0) * 1000,
+      durationMs: envenenada ? 0 : seconds * 1000,
     }
   }).filter((t) => t.videoId)
 

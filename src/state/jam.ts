@@ -370,11 +370,15 @@ export async function crearJamActual(): Promise<boolean> {
     return false
   }
   // La cola como se va a escuchar: lo encolado a mano va después de lo actual.
+  // Las candidatas de radio sin resolver quedan afuera: el servidor exige el
+  // audio, y para el Jam el host va a rellenar con tandas resueltas igual.
   const canciones = (
     p.manual
       ? [p.manual, ...p.upNext, ...p.tracks.slice(p.index + 1)]
       : [...p.tracks.slice(0, p.index + 1), ...p.upNext, ...p.tracks.slice(p.index + 1)]
-  ).slice(0, 500)
+  )
+    .filter((t) => t.audioPath)
+    .slice(0, 500)
   const indice = p.manual ? 0 : Math.min(p.index, canciones.length - 1)
 
   store.set({ conexion: 'conectando', miId: await miUid() })
@@ -489,8 +493,12 @@ export function tocarColaEnJam(tracks: PlaylistTrack[], desde: number) {
   }
   /* Desde la elegida hasta el final, como afuera del Jam sin aleatorio. El
      tope cuida el viaje y el límite de 500 del servidor; una lista real acá
-     no se le acerca. */
-  const canciones = tracks.slice(Math.max(0, desde)).slice(0, 300)
+     no se le acerca. Lo sin audio (candidatas de radio aún sin resolver) no
+     viaja: el servidor lo rechazaría fila por fila. */
+  const canciones = tracks
+    .slice(Math.max(0, desde))
+    .filter((t) => t.audioPath)
+    .slice(0, 300)
   if (!canciones.length) return
   void jamTocarCola(s.jam.id, canciones).catch((e) => {
     avisar(`No se pudo poner la lista: ${mensajeError(e)}`, true)
@@ -701,9 +709,12 @@ export async function rellenarJamSiFalta() {
       if (previo) previo.ms += Math.max(1, item.durationMs)
       else porArtista.set(item.artistId, { artist_id: item.artistId, artist: item.artist, ms: Math.max(1, item.durationMs) })
     }
+    /* Resueltas antes de entrar: la cola del Jam vive en el servidor y
+       `jam_agregar` exige el audio — acá no hay resolución perezosa posible. */
     const tanda = await proximasRecomendadas(
       s.cola.map((i) => i.videoId),
       [...porArtista.values()],
+      { resolver: true },
     )
 
     const ahora = store.get()
