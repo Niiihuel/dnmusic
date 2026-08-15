@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { FlatList, Pressable, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import type { PlaylistTrack } from '../services/playlists'
@@ -57,7 +56,6 @@ export function MeGustaView({
 }) {
   const canciones = useMeGusta()
   const cargado = useMeGustaCargado()
-  const [hovered, setHovered] = useState<string | null>(null)
   const soundingTrack = usePlaybackTrack()
   const soundingPlay = useWantPlay()
   const originId = usePlaybackOriginId()
@@ -204,8 +202,6 @@ export function MeGustaView({
                 durationMs={item.durationMs}
                 sounding={esta}
                 playing={esta && soundingPlay}
-                hovered={hovered === item.videoId}
-                onHover={(on) => setHovered(on ? item.videoId : null)}
                 onPlay={() => play(index)}
                 menu={opcionesDe(item)}
               />

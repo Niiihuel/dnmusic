@@ -184,8 +184,6 @@ export function PlaylistView({
    */
   const tracks = loaded?.playlistId === playlist.id ? loaded.tracks : null
   const [error, setError] = useState<string | null>(null)
-  /** Fila bajo el cursor: es lo que destapa los íconos, como en Spotify. */
-  const [hovered, setHovered] = useState<string | null>(null)
   /**
    * Qué lista se está renombrando, no un simple «sí o no».
    *
@@ -553,8 +551,6 @@ export function PlaylistView({
               durationMs={item.durationMs}
               sounding={isSounding(item, index)}
               playing={isSounding(item, index) && soundingPlay}
-              hovered={hovered === item.id}
-              onHover={(on) => setHovered(on ? item.id : null)}
               onPlay={() => play(index)}
               /* La misma lista por los dos caminos: los tres puntos y el
                  mantener apretado. Armarla acá una sola vez es lo que evita que

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   ActivityIndicator,
   Image,
@@ -46,7 +46,7 @@ export function TrackRow({
   sounding,
   playing,
   busy,
-  hovered,
+  hovered: hoveredExterno,
   inset = true,
   onHover,
   onPlay,
@@ -70,10 +70,24 @@ export function TrackRow({
   playing: boolean
   /** Se está resolviendo el audio; la primera vez tarda unos segundos. */
   busy?: boolean
-  hovered: boolean
+  /**
+   * El cursor está encima. **Opcional, y conviene no pasarlo.**
+   *
+   * Por defecto la fila se acuerda sola de si la están señalando, y es la
+   * diferencia entre una lista que responde y una que arrastra: con el estado
+   * en el padre, cruzar el cursor por una lista de cuarenta canciones dispara
+   * cuarenta re-render de **las cuarenta filas** —ochenta con la que se apaga y
+   * la que se prende—, y eso es exactamente el «se nota al mover el mouse entre
+   * las canciones» que se reportó en el escritorio. Adentro, cada cruce
+   * redibuja una fila.
+   *
+   * Solo se pasa desde afuera cuando quien llama **dibuja algo más** que
+   * depende de ese hover y que vive fuera de la fila (ver `AlbumPanel`).
+   */
+  hovered?: boolean
   /** El margen lateral de una tabla suelta. En una grilla lo pone la celda. */
   inset?: boolean
-  onHover: (on: boolean) => void
+  onHover?: (on: boolean) => void
   onPlay: () => void
   /** El control del final. El hueco se reserva aunque no haya nada. */
   trailing?: ReactNode
@@ -89,10 +103,20 @@ export function TrackRow({
   const suelto = useWindowDimensions().width < SHELL_PX
   const lado = suelto ? 52 : 40
 
+  /* Propio salvo que lo manden de afuera; el de afuera manda porque quien lo
+     pasa lo necesita para dibujar algo que no está acá adentro. */
+  const [hoveredPropio, setHoveredPropio] = useState(false)
+  const hovered = hoveredExterno ?? hoveredPropio
+
+  const marcarHover = (on: boolean) => {
+    setHoveredPropio(on)
+    onHover?.(on)
+  }
+
   const fila = (
     <View
-      onPointerEnter={() => onHover(true)}
-      onPointerLeave={() => onHover(false)}
+      onPointerEnter={() => marcarHover(true)}
+      onPointerLeave={() => marcarHover(false)}
       className={`flex-row items-center rounded-lg px-2 ${suelto ? 'gap-3 py-2' : 'gap-4 py-2'} ${
         inset ? (suelto ? 'mx-3' : 'mx-6') : ''
       } ${hovered ? 'bg-muted' : sounding ? 'bg-card' : ''}`}

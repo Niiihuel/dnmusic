@@ -85,9 +85,6 @@ export default function ListaPublica() {
   const lista = fresco ? cargado.lista : undefined
   const tracks = fresco ? cargado.tracks : []
   const [guardando, setGuardando] = useState(false)
-  /** Fila bajo el cursor: es lo que destapa el play, como en la lista propia. */
-  const [hovered, setHovered] = useState<string | null>(null)
-
   const sonando = usePlaybackTrack()
   const suena = useWantPlay()
 
@@ -391,8 +388,6 @@ export default function ListaPublica() {
                         durationMs={track.durationMs}
                         sounding={suenaAca(track)}
                         playing={suenaAca(track) && suena}
-                        hovered={hovered === track.id}
-                        onHover={(on) => setHovered(on ? track.id : null)}
                         onPlay={() => play(i)}
                       />
                     ))}

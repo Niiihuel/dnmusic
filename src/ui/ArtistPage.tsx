@@ -69,7 +69,6 @@ export function ArtistPage({
   pendingId: string | null
 }) {
   const [loaded, setLoaded] = useState<{ id: string; info: ArtistInfo | null } | null>(null)
-  const [hovered, setHovered] = useState<string | null>(null)
   const [width, setWidth] = useState(0)
   const foto = useCoverSize()
   const fresh = loaded?.id === artistId
@@ -219,9 +218,7 @@ export function ArtistPage({
                       sounding={esta}
                       playing={esta && soundingPlay}
                       busy={pendingId === song.videoId}
-                      hovered={hovered === song.videoId}
                       inset={false}
-                      onHover={(on) => setHovered(on ? song.videoId : null)}
                       onPlay={() => (esta ? togglePlayback() : onPlaySong(song))}
                       /* La misma lista por los dos caminos: el botón y el
                          mantener apretado. */

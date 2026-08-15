@@ -53,7 +53,6 @@ export function ColaBody({
   const enJam = useJamActivo()
   const colaJam = useColaJam()
   const miembros = useMiembrosJam()
-  const [hovered, setHovered] = useState<string | null>(null)
   /* El arrastre de una encolada, con la física de ColaJam: la agarrada sigue
      al puntero, las demás se corren para mostrar dónde cae. */
   const activa = useSharedValue(-1)
@@ -159,8 +158,6 @@ export function ColaBody({
             durationMs={actual.durationMs}
             sounding
             playing={wantPlay}
-            hovered={hovered === `actual-${actual.id}`}
-            onHover={(on) => setHovered(on ? `actual-${actual.id}` : null)}
             onPlay={() => {
               if (!manual && index >= 0) playAt(index)
             }}
@@ -188,8 +185,6 @@ export function ColaBody({
                 durationMs={track.durationMs}
                 sounding={false}
                 playing={false}
-                hovered={hovered === `encolada-${i}`}
-                onHover={(on) => setHovered(on ? `encolada-${i}` : null)}
                 /* Lo encolado no se salta con un toque: suena cuando le toque.
                    Saltearlo sería adelantar la cola entera de todos modos. */
                 onPlay={() => {}}
@@ -225,8 +220,6 @@ export function ColaBody({
               durationMs={track.durationMs}
               sounding={false}
               playing={false}
-              hovered={hovered === `radio-${i}`}
-              onHover={(on) => setHovered(on ? `radio-${i}` : null)}
               onPlay={() => {}}
               trailing={
                 <Pressable
@@ -256,8 +249,6 @@ export function ColaBody({
               durationMs={track.durationMs}
               sounding={false}
               playing={false}
-              hovered={hovered === `viene-${indice}`}
-              onHover={(on) => setHovered(on ? `viene-${indice}` : null)}
               /* En un Jam esto es un intent de saltar ahí para todos; el
                  puente de playback ya sabe pedir permiso. */
               onPlay={() => playAt(indice)}

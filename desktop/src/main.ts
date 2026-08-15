@@ -130,6 +130,42 @@ function permitirNotificaciones(): void {
   })
 }
 
+/**
+ * Dejar dicho en el log si esta máquina está dibujando por GPU o por software.
+ *
+ * Existe por un reporte de «toda la app va lagueada» que no se pudo reproducir
+ * acá: medido en el navegador, el vidrio no cuesta nada —con y sin
+ * `backdrop-filter` los cuadros salen a 16,7ms y ninguno se pasa de 20— y el
+ * arrastre al mover el cursor era el hover, que ya está arreglado. Lo que
+ * queda por descartar es lo único que no se puede ver desde el código: que
+ * Chromium haya caído a **renderizado por software** en esa máquina, cosa que
+ * pasa cuando el driver está en la lista negra y hace que todo se sienta
+ * pesado sin que nada esté mal en la app.
+ *
+ * Sin esto, la próxima vez la conversación vuelve a ser «a mí me anda bien».
+ * Con esto, la respuesta está en la consola del que la sufre.
+ */
+function registrarGPU(): void {
+  try {
+    const estado = app.getGPUFeatureStatus()
+    const dibujo = estado.gpu_compositing ?? 'desconocido'
+    registrar('gpu_compositing:', dibujo)
+    if (typeof dibujo === 'string' && dibujo.includes('software')) {
+      registrar(
+        'OJO: Chromium está dibujando por software en esta máquina. Todo va a ir a tirones',
+        'y no es la app: es el driver o la lista negra de GPU. Probá arrancar con',
+        '--ignore-gpu-blocklist.',
+      )
+    }
+  } catch (error) {
+    registrar('no se pudo leer el estado de la GPU:', error)
+  }
+}
+
+function registrar(...partes: unknown[]): void {
+  console.log('[dnmusic]', ...partes)
+}
+
 /** Traer la ventana al frente: la usa el click en una notificación. */
 function traerAlFrente(): void {
   if (!ventanaPrincipal || ventanaPrincipal.isDestroyed()) return
@@ -182,6 +218,7 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(() => {
     servirWeb(raizWeb())
     permitirNotificaciones()
+    registrarGPU()
 
     ipcMain.handle('app:version', () => app.getVersion())
     ipcMain.on('ventana:enfocar', () => traerAlFrente())

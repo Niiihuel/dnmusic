@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import type { Playlist } from '../services/playlists'
 import { useCuantosMeGusta } from '../state/gustos'
+import { useWantPlay } from '../state/playback'
 import { usePiso, useTecho } from '../state/shell'
 import { useColapso } from './useColapso'
 import { Panel } from './Panel'
+import { PlayingBars } from './PlayingBars'
 import { PlaylistCover } from './PlaylistCover'
 import { SkeletonList } from './Skeleton'
 import { AnimatedSidebarTitle } from './SidebarMotion'
@@ -60,6 +62,9 @@ export function PlaylistLibrary({
   /* En el teléfono esto es la pestaña «Listas» y llega hasta el borde: la
      última tiene que quedar arriba de lo que flota. */
   const piso = usePiso(12)
+  /* Si además de estar puesta está sonando: las barras se mueven o se quedan
+     quietas según eso. Ver el ecualizador de la fila, más abajo. */
+  const suena = useWantPlay()
   /* Como pestaña del teléfono, el título arranca debajo del encabezado que
      flota, con el respiro que ya tenía (`pt-4`). En escritorio vale eso solo. */
   const techo = useTecho(16)
@@ -270,9 +275,13 @@ export function PlaylistLibrary({
                     </Text>
                   </View>
                 </View>
-                {item.id === soundingId ? (
-                  <View className="h-1.5 w-1.5 rounded-full bg-foreground" />
-                ) : null}
+                {/* El ecualizador y no un punto: es la misma marca que ya usa
+                    la fila de una canción y la tapa del reproductor, y en una
+                    interfaz sin colores el movimiento es lo único que distingue
+                    «esto suena» de un rato para el otro. En pausa las barras se
+                    quedan quietas y bajas, así que sigue diciendo cuál es sin
+                    mentir que está sonando. Ver `PlayingBars`. */}
+                {item.id === soundingId ? <PlayingBars playing={suena} size={12} /> : null}
               </Pressable>
             )
           }}
