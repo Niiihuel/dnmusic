@@ -15,6 +15,8 @@ import {
   searchArtists,
 } from './youtube.js'
 import { isLang, translate } from './translate.js'
+import { leerLista } from './spotify.js'
+import { emparejarLote } from './emparejar.js'
 import { notificarMensaje } from './push.js'
 import { cacheImage } from './artwork.js'
 import { subirPropia } from './propia.js'
@@ -33,6 +35,8 @@ import { subirPropia } from './propia.js'
  *   GET  /artist?id=…         → ficha del artista (foto, bio, suscriptores)
  *   POST /resolve {videoId}   → descarga audio y carátula UNA vez, a Storage
  *   POST /translate {texts,to}→ traduce la letra, línea por línea
+ *   GET  /spotify?url=…       → las canciones de una lista de Spotify
+ *   POST /emparejar {pistas}  → de esos nombres, la canción de YouTube Music
  *
  * El audio se guarda en Supabase Storage y la app lo reproduce desde ahí. Así el
  * contacto con YouTube ocurre una vez por canción y no en cada reproducción: es
@@ -416,6 +420,55 @@ const server = createServer(async (req, res) => {
         ? await cacheImage(supabase, album.artworkUrl, `album-${id}`)
         : null
       return json(200, { ...album, artworkPath })
+    }
+
+    /*
+     * Las canciones de una lista de Spotify, por su enlace.
+     *
+     * Va por el server y no por el cliente por dos razones: la página de embed
+     * no manda cabeceras de CORS —el navegador no la puede leer— y desde el
+     * teléfono tampoco hay forma de poner un User-Agent creíble. Acá además
+     * queda un solo lugar donde arreglar el parseo el día que Spotify cambie la
+     * página.
+     */
+    if (url.pathname === '/spotify' && req.method === 'GET') {
+      const enlace = url.searchParams.get('url')?.trim()
+      if (!enlace) return json(400, { error: 'Falta el parámetro url' })
+      try {
+        return json(200, await leerLista(enlace))
+      } catch (e) {
+        // El texto de estos errores está escrito para mostrarse tal cual: dicen
+        // qué hacer («ponela pública un momento»), no qué falló por dentro.
+        return json(422, { error: e instanceof Error ? e.message : 'No se pudo leer la lista' })
+      }
+    }
+
+    /*
+     * De nombres de Spotify a canciones de YouTube Music.
+     *
+     * Se pide por lotes chicos y no la lista entera de una: así el cliente
+     * puede mostrar avance real, cancelar a la mitad sin dejar trabajo colgado,
+     * y —lo que más importa— el volumen de búsquedas contra YouTube queda
+     * repartido en el tiempo en vez de salir todo junto. El anti-bot mira
+     * justamente eso (ver `salida.ts`).
+     */
+    if (url.pathname === '/emparejar' && req.method === 'POST') {
+      const body = (await readJson(req)) as { pistas?: unknown }
+      const pistas = body.pistas
+      if (!Array.isArray(pistas) || !pistas.length) return json(400, { error: 'Faltan pistas' })
+      if (pistas.length > 20) return json(413, { error: 'Demasiadas pistas en un lote' })
+
+      const limpias = pistas.map((p) => {
+        const pista = p as { titulo?: unknown; artista?: unknown; durationMs?: unknown }
+        return {
+          titulo: String(pista.titulo ?? '').slice(0, 200),
+          artista: String(pista.artista ?? '').slice(0, 200),
+          durationMs: Number(pista.durationMs) || 0,
+        }
+      })
+      if (limpias.some((p) => !p.titulo)) return json(400, { error: 'Hay una pista sin título' })
+
+      return json(200, { emparejados: await emparejarLote(limpias) })
     }
 
     if (url.pathname === '/translate' && req.method === 'POST') {

@@ -13,6 +13,7 @@ import { Vacio } from './Vacio'
 import {
   ICON_COLOR,
   IconCollapseRight,
+  IconDownload,
   IconGlobe,
   IconHeartFilled,
   IconMusic,
@@ -35,6 +36,7 @@ export function PlaylistLibrary({
   onOpen,
   onCreate,
   onOpenGustos,
+  onImportar,
   error,
 }: {
   playlists: Playlist[] | null
@@ -49,6 +51,8 @@ export function PlaylistLibrary({
   onCreate: () => Promise<void>
   /** Abre «Tus me gusta». Sin esto la fila fija no se dibuja. */
   onOpenGustos?: () => void
+  /** Abre «Traer de Spotify». Sin esto la fila del pie no se dibuja. */
+  onImportar?: () => void
   error: string | null
 }) {
   const [busy, setBusy] = useState(false)
@@ -174,9 +178,50 @@ export function PlaylistLibrary({
             <Vacio
               icono={<IconMusic size={22} color={ICON_COLOR.muted} />}
               titulo="Todavía no tenés listas"
-              detalle="Creá la primera y sumale lo que quieras."
+              detalle="Creá la primera y sumale lo que quieras, o traete una de Spotify."
               accion={{ rotulo: 'Nueva lista', onPress: () => void onCreate() }}
             />
+          }
+          /*
+           * Traer de Spotify va al pie y no arriba con el «+».
+           *
+           * Importar es algo que se hace una vez cada tanto —cuando alguien
+           * llega a la app o se acuerda de una lista vieja— y no todos los días
+           * como abrir una lista. Arriba competiría por atención con lo que sí
+           * se usa siempre; acá aparece al terminar de mirar lo que hay, que es
+           * exactamente cuando uno nota que le falta algo.
+           */
+          ListFooterComponent={
+            onImportar ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={onImportar}
+                className={`mt-1 flex-row items-center rounded-lg ${
+                  suelto ? 'gap-3 p-2.5' : 'gap-3 p-2'
+                } active:bg-card`}
+              >
+                <View
+                  className="items-center justify-center rounded bg-muted"
+                  style={{ width: suelto ? 60 : 48, height: suelto ? 60 : 48 }}
+                >
+                  <IconDownload size={suelto ? 20 : 17} color={ICON_COLOR.muted} />
+                </View>
+                <View className="min-w-0 flex-1 gap-0.5">
+                  <Text
+                    className={`text-foreground ${suelto ? 'text-[16px]' : 'text-[14px]'}`}
+                    numberOfLines={1}
+                  >
+                    Traer de Spotify
+                  </Text>
+                  <Text
+                    className={`text-muted-foreground ${suelto ? 'text-[13px]' : 'text-[12px]'}`}
+                    numberOfLines={1}
+                  >
+                    Se rearma con tu música
+                  </Text>
+                </View>
+              </Pressable>
+            ) : null
           }
           renderItem={({ item }) => {
             const open = item.id === openId

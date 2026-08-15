@@ -748,7 +748,16 @@ export default function Home() {
         })
         return
       }
-      const mine = playlists ?? (await listPlaylists().catch(() => []))
+      let mine = playlists ?? (await listPlaylists().catch(() => []))
+      /*
+       * Una lista que no está en la copia de acá puede ser nueva, no ajena.
+       *
+       * La copia se llena al montar esta pantalla y no se entera de lo que pasa
+       * en otras: al volver de «Traer de Spotify» la lista recién creada no
+       * figuraba, así que no se abría **y** la biblioteca seguía mostrando las
+       * de antes. Antes de darla por inexistente se relee una vez.
+       */
+      if (!mine.some((p) => p.id === id)) mine = await listPlaylists().catch(() => mine)
       setPlaylists(mine)
       if (mine.some((p) => p.id === id)) go({ kind: 'playlist', id })
     })
@@ -1902,6 +1911,7 @@ export default function Home() {
                       onOpen={vivo ? (p) => go({ kind: 'playlist', id: p.id }) : () => undefined}
                       onCreate={vivo ? createAndOpen : async () => undefined}
                       onOpenGustos={vivo ? () => go({ kind: 'gustos' }) : () => undefined}
+                      onImportar={vivo ? () => router.push('/importar') : () => undefined}
                       error={playlistError}
                     />
                   ) : (
@@ -2073,6 +2083,7 @@ export default function Home() {
               onOpen={(p) => go({ kind: 'playlist', id: p.id })}
               onCreate={createAndOpen}
               onOpenGustos={() => go({ kind: 'gustos' })}
+              onImportar={() => router.push('/importar')}
               error={playlistError}
             />
           ) : music && view.kind === 'gustos' ? (

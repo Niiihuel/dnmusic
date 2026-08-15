@@ -551,6 +551,24 @@ export function openSoundingPlaylist() {
 }
 
 /**
+ * Abre una lista cualquiera por su id, sin que tenga que estar sonando.
+ *
+ * Es el mismo puente, usado desde el otro lado: quien importa una lista quiere
+ * terminar **viéndola**, y la ruta `/lista/<id>` no sirve para eso — esa es la
+ * pantalla de una lista compartida por un enlace, que se presenta como «una
+ * lista de fulano» y se rotula pública porque llegar ahí significa que alguien
+ * la compartió. Para una lista propia recién creada, el lugar es la biblioteca.
+ *
+ * Devuelve si había alguien escuchando: si la pantalla principal no está
+ * montada —se entró directo por una URL— quien llama tiene que navegar él.
+ */
+export function abrirLista(playlistId: string): boolean {
+  if (!opener) return false
+  opener(playlistId)
+  return true
+}
+
+/**
  * Arranca una lista desde una canción. Frena el fragmento que hubiera sonando.
  *
  * `origin` en null es una canción suelta —de la búsqueda, sin lista detrás—; en

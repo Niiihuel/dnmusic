@@ -31,8 +31,12 @@ const BUCKET = 'songs'
  * La excepción es `artworkUrlAtSize`, que devuelve una URL para `<Image>` en vez
  * de hacer un pedido: ahí no hay dónde poner una cabecera, y por eso `/img` es
  * la única ruta que el servicio deja abierta.
+ *
+ * Se exporta porque `services/importar` habla con el mismo servicio y necesita
+ * la misma credencial. Vive acá y no en `lib/` porque es de este servicio: no
+ * es un `fetch` de propósito general.
  */
-async function fetchMusica(url: string, init?: RequestInit): Promise<Response> {
+export async function fetchMusica(url: string, init?: RequestInit): Promise<Response> {
   const { data } = await getSupabase().auth.getSession()
   const token = data.session?.access_token
   return fetch(url, {
