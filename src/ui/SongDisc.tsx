@@ -10,6 +10,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated'
+import { ES_WEB } from './Glass'
 import { ICON_COLOR, IconMusic } from './icons'
 import { artworkSource } from '../lib/artwork'
 
@@ -23,6 +24,37 @@ const SPIN_MS = 6000
 /** Lo que sigue girando al pausar, y cuánto tarda en frenar. */
 const SPIN_DOWN_DEG = 14
 const SPIN_DOWN_MS = 650
+
+/*
+ * En web la vuelta la da **CSS**, no Reanimated.
+ *
+ * Reanimated en web no tiene hilo de UI: escribe el `transform` desde el hilo
+ * de JS en cada cuadro. Y esta pantalla tiene el hilo ocupado —la posición del
+ * audio avanza diez veces por segundo, la onda se redibuja, la carátula
+ * llega—, así que cada hipo del hilo se veía como un tirón del disco. Una
+ * animación CSS vive en el compositor: sigue girando pareja aunque JS esté
+ * haciendo otra cosa.
+ *
+ * Los keyframes van en una hoja global porque react-native-web no los registra
+ * desde un estilo en línea — el mismo truco que usa el menú (`src/ui/Menu.tsx`).
+ */
+if (ES_WEB && typeof document !== 'undefined') {
+  const hoja = document.createElement('style')
+  hoja.textContent = `
+@keyframes dn-disco-gira { to { transform: rotate(360deg) } }
+[data-disco] {
+  animation: dn-disco-gira ${SPIN_MS}ms linear infinite;
+  /*
+   * No es un adorno: sin capa propia el navegador vuelve a rasterizar el SVG
+   * —dieciséis surcos más la carátula— en cada cuadro, en vez de rotar una
+   * textura ya dibujada. Con esto, girar sale casi gratis.
+   */
+  will-change: transform;
+}
+[data-disco="quieto"] { animation-play-state: paused; }
+`
+  document.head.appendChild(hoja)
+}
 
 /** Proporciones respecto del diámetro. */
 const LABEL_R = 0.3
@@ -82,7 +114,8 @@ export function SongDisc({
   const hasPlayed = useRef(false)
 
   useEffect(() => {
-    if (reduced) return
+    // En web gira por CSS y no hay nada que manejar acá.
+    if (ES_WEB || reduced) return
     if (!playing && !hasPlayed.current) return
     if (playing) {
       hasPlayed.current = true
@@ -104,6 +137,21 @@ export function SongDisc({
 
   const spin = useAnimatedStyle(() => ({ transform: [{ rotate: `${angle.value}deg` }] }))
 
+  /*
+   * La vuelta en web: una animación infinita que se pausa en el lugar.
+   *
+   * `will-change` es la otra mitad y no es un adorno: sin eso el navegador
+   * vuelve a rasterizar el SVG —dieciséis surcos y la carátula— en cada cuadro
+   * en vez de rotar una textura ya dibujada. Con capa propia, girar sale casi
+   * gratis.
+   *
+   * Lo que se pierde respecto de nativo es el frenado por inercia: `paused`
+   * congela donde esté. Es el precio de que gire parejo, y en el teléfono
+   * —donde la inercia se nota más— el camino de Reanimated sigue intacto.
+   */
+  const giroWeb =
+    ES_WEB && !reduced ? { disco: playing ? 'gira' : 'quieto' } : undefined
+
   const c = size / 2
   const labelR = size * LABEL_R
   // A 2x, para que no se vea blanda en pantallas densas.
@@ -116,7 +164,11 @@ export function SongDisc({
   return (
     <Animated.View
       accessibilityLabel={`Disco de ${title}`}
-      style={[{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }, spin]}
+      {...({ dataSet: giroWeb } as object)}
+      style={[
+        { width: size, height: size, alignItems: 'center', justifyContent: 'center' },
+        ES_WEB ? null : spin,
+      ]}
     >
       <Svg width={size} height={size} style={{ position: 'absolute' }}>
         <Defs>

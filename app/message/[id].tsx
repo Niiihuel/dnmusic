@@ -48,6 +48,15 @@ const DISC_WIDE = 300
 const DISC_NARROW = 240
 /** A partir de acá la pieza se sirve en grande. */
 const WIDE_PX = 720
+/**
+ * Hasta acá crece la composición, por más ancha que sea la ventana.
+ *
+ * Sin tope, «centrar» en una ventana de 1990px dejaba la frase pegada al borde
+ * izquierdo y el disco a setecientos píxeles de distancia: tres cosas sueltas
+ * en una pantalla vacía en vez de una pieza. La frase y el disco tienen que
+ * leerse juntos, que es de lo que se trata compartir un fragmento.
+ */
+const ANCHO_MAX = 1020
 
 type StoryView = 'disc' | 'lyrics'
 
@@ -285,7 +294,11 @@ export default function MessageStory() {
           </Pressable>
         </View>
 
-        <View className="min-h-0 flex-1 flex-row items-center justify-center gap-6 px-6">
+        <View className="min-h-0 flex-1 items-center">
+        <View
+          className="min-h-0 w-full flex-1 flex-row items-center justify-center gap-8 px-6"
+          style={{ maxWidth: ANCHO_MAX }}
+        >
           {/* En ancho, la frase al costado: no le saca una sola línea a la
               letra. Con su propio desplazamiento, así una frase larga no
               estira la columna. */}
@@ -359,10 +372,25 @@ export default function MessageStory() {
             </View>
           ) : null}
           </View>
+
+          {/* El contrapeso de la frase: un hueco del mismo ancho del otro lado.
+              Sin esto, mostrar la frase corría el disco a la derecha y dejaba
+              de estar alineado con la onda y el play de abajo, que sí están
+              centrados en la ventana — la pieza se veía descuadrada justo al
+              hacer visible lo que se quiso compartir. */}
+          {wide && verFrase && message.text ? (
+            <View pointerEvents="none" className="w-[300px]" />
+          ) : null}
+        </View>
         </View>
 
         {song ? (
-          <View className="items-center gap-4 px-6 pb-4">
+          /* El pie va en la misma columna topada que el cuerpo: suelto a lo
+             ancho de la ventana, la onda y el segmentado quedaban a metros de
+             lo que están controlando. Y con aire abajo: pegado al borde se
+             cortaba contra el filo de la ventana. */
+          <View className="items-center px-6 pb-8">
+          <View className="w-full items-center gap-4" style={{ maxWidth: ANCHO_MAX }}>
             {/* La onda del fragmento, que además es la única forma de moverse
                 dentro de él: esta pantalla no tenía barra de posición. */}
             {picos ? (
@@ -472,6 +500,7 @@ export default function MessageStory() {
               />
             ) : null}
             </View>
+          </View>
           </View>
         ) : null}
       </SafeAreaView>
