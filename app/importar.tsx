@@ -4,6 +4,7 @@ import {
   FlatList,
   Image,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   useWindowDimensions,
@@ -26,6 +27,7 @@ import {
   IconBack,
   IconCheck,
   IconClose,
+  IconDownload,
   IconMusic,
   IconPause,
   IconPlay,
@@ -34,8 +36,9 @@ import {
   TOPE_SPOTIFY,
   emparejarLista,
   guardarLista,
+  interpretarPegado,
+  leerCancionesSpotify,
   leerListaSpotify,
-  parsearPegado,
   terminarEnSegundoPlano,
   type Avance,
   type Emparejado,
@@ -43,6 +46,16 @@ import {
   type PistaSpotify,
 } from '../src/services/importar'
 import type { TrackResult } from '../src/services/music'
+
+/**
+ * Las paradas del camino, en orden.
+ *
+ * `leyendo` y `emparejando` son dos esperas distintas y se dicen distinto: la
+ * primera habla con Spotify y dura poco, la segunda busca cada canción en
+ * YouTube Music y puede tardar un minuto en una lista larga. Con un solo estado
+ * «trabajando» la barra parecía trabada en la mitad.
+ */
+type Fase = 'entrada' | 'leyendo' | 'emparejando' | 'revision' | 'guardando'
 
 /** Debajo de esto la app es pestañas y el contenido va de borde a borde. */
 const SHELL_PX = 780
@@ -71,13 +84,21 @@ export default function Importar() {
   const suelto = useWindowDimensions().width < SHELL_PX
   const piso = usePiso(24)
 
-  const [fase, setFase] = useState<'entrada' | 'trabajando' | 'revision' | 'guardando'>('entrada')
+  const [fase, setFase] = useState<Fase>('entrada')
   const [enlace, setEnlace] = useState('')
   const [pegado, setPegado] = useState('')
   const [aMano, setAMano] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [lista, setLista] = useState<ListaSpotify | null>(null)
+  /**
+   * Cuántas canciones pegadas no se pudieron leer.
+   *
+   * Spotify puede no devolver alguna —un tema que ya no está en el catálogo de
+   * la región, un link viejo— y filtrarla en silencio sería perder canciones sin
+   * avisar, que es justo lo que esta pantalla existe para no hacer.
+   */
+  const [sinLeer, setSinLeer] = useState(0)
   const [nombre, setNombre] = useState('')
   const [avance, setAvance] = useState<Avance>({ hechas: 0, total: 0 })
   const [resultados, setResultados] = useState<Emparejado[]>([])
@@ -110,14 +131,36 @@ export default function Importar() {
       let leida: ListaSpotify | null = null
 
       if (aMano) {
-        pistas = parsearPegado(pegado)
-        if (!pistas.length) {
-          setError('No encontré ninguna canción en ese texto. Poné una por línea, como «Artista - Título».')
-          return
+        const pegue = interpretarPegado(pegado)
+        if (pegue.tipo === 'enlaces') {
+          /*
+           * Links de canción: es lo que deja el «copiar» de Spotify, y es el
+           * camino de las listas de más de cien y de las privadas. Cada una se
+           * lee de su propia página, así que acá sí hay avance que mostrar.
+           */
+          setFase('leyendo')
+          setAvance({ hechas: 0, total: pegue.ids.length })
+          pistas = await leerCancionesSpotify(pegue.ids, {
+            signal: control.signal,
+            alAvanzar: setAvance,
+          })
+          if (control.signal.aborted) return
+          setSinLeer(pegue.ids.length - pistas.length)
+          if (!pistas.length) {
+            setError('Spotify no devolvió ninguna de esas canciones. Probá de nuevo en un rato.')
+            setFase('entrada')
+            return
+          }
+        } else {
+          pistas = pegue.pistas
+          if (!pistas.length) {
+            setError('No encontré ninguna canción en ese texto. Poné una por línea, como «Artista - Título», o pegá los enlaces copiados de Spotify.')
+            return
+          }
         }
         setNombre('Lista importada')
       } else {
-        setFase('trabajando')
+        setFase('leyendo')
         setAvance({ hechas: 0, total: 0 })
         leida = await leerListaSpotify(enlace, control.signal)
         pistas = leida.pistas
@@ -125,7 +168,7 @@ export default function Importar() {
         setNombre(leida.nombre)
       }
 
-      setFase('trabajando')
+      setFase('emparejando')
       setAvance({ hechas: 0, total: pistas.length })
 
       const emparejados = await emparejarLista(pistas, {
@@ -250,6 +293,7 @@ export default function Importar() {
                 <Centrado suelto={suelto}>
                   <Resumen
                     lista={lista}
+                    sinLeer={sinLeer}
                     nombre={nombre}
                     onNombre={setNombre}
                     total={resultados.length}
@@ -341,34 +385,76 @@ function Entrada({
 }) {
   const listo = aMano ? pegado.trim().length > 0 : enlace.trim().length > 0
 
+  /*
+   * Centrado en el alto, y en una columna angosta.
+   *
+   * En el teléfono la pantalla es justa y da igual, pero en escritorio el panel
+   * es enorme: con el contenido pegado arriba y a lo ancho del tope de 672, un
+   * campo y un botón quedaban flotando en un vacío de mil píxeles. Es la misma
+   * forma que el login —`flex-1 items-center justify-center` sobre una columna
+   * de 380— y por la misma razón: un formulario corto se lee como una tarjeta
+   * centrada, no como el principio de una página que sigue.
+   */
   return (
-    <View className={`flex-1 ${suelto ? 'px-3 pt-4' : 'p-5'}`}>
-      <Centrado suelto={suelto}>
-        <View className="gap-4">
-          <Text className="text-muted-foreground text-[13px] leading-5">
-            Spotify no da el audio, así que la lista no se copia: se vuelve a armar acá
-            buscando cada canción por su nombre. Al final es una lista tuya, con tu música.
-          </Text>
+    <ScrollView
+      className="flex-1"
+      contentContainerClassName={`min-h-full items-center justify-center ${suelto ? 'px-5 py-6' : 'px-6 py-10'}`}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View className="w-full gap-8" style={{ maxWidth: aMano ? 480 : 400 }}>
+        {/*
+         * El encabezado del panel.
+         *
+         * La barra de arriba ya dice «Traer de Spotify», así que acá no se
+         * repite el nombre: se dice **qué va a pasar**, que es la duda real de
+         * quien llega —si esto copia la lista o la recrea—.
+         */}
+        <View className="items-center gap-4">
+          <View className="h-14 w-14 items-center justify-center rounded-full bg-muted">
+            <IconDownload size={22} color={ICON_COLOR.foreground} />
+          </View>
+          <View className="items-center gap-2">
+            <Text className="text-center text-foreground text-[22px] font-bold">
+              Tu lista, con tu música
+            </Text>
+            <Text className="text-center text-muted-foreground text-[13px] leading-5">
+              Spotify no da el audio, así que la lista no se copia: se vuelve a armar acá
+              buscando cada canción por su nombre.
+            </Text>
+          </View>
+        </View>
 
+        <View className="gap-4">
           {aMano ? (
             <View className="gap-2">
               <Text className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.8px]">
-                La lista, una canción por línea
+                Las canciones, una por línea
               </Text>
               <TextInput
                 value={pegado}
                 onChangeText={onPegado}
                 multiline
                 textAlignVertical="top"
-                placeholder={'Tame Impala - The Less I Know The Better\nMac DeMarco - Chamber of Reflection'}
+                placeholder={
+                  'https://open.spotify.com/track/…\nhttps://open.spotify.com/track/…\n\no bien:\nTame Impala - The Less I Know The Better'
+                }
                 placeholderTextColor={PLACEHOLDER_COLOR}
-                accessibilityLabel="La lista, una canción por línea"
+                accessibilityLabel="Las canciones, una por línea"
                 className="h-44 rounded-lg bg-muted p-4 text-foreground text-[15px]"
               />
+              {/*
+               * La receta del «copiar», que es la parte que nadie adivina.
+               *
+               * Es lo que destraba los dos límites del enlace de lista —el tope
+               * de cien y que tenga que ser pública— y no está a la vista en
+               * ningún lado de Spotify: hay que saber que seleccionar todo
+               * dentro de una lista y copiar deja un link por canción.
+               */}
               <Text className="text-muted-foreground text-[12px] leading-4">
-                Sirve «Artista - Título» y también el CSV de un exportador. Es el camino
-                para una lista privada, para una de más de {TOPE_SPOTIFY} canciones, o si
-                el enlace deja de funcionar.
+                En Spotify, abrí la lista, tocá una canción, seleccioná todas (Ctrl+A o
+                ⌘A) y copiá (Ctrl+C o ⌘C). Así entran las listas privadas y las de más de{' '}
+                {TOPE_SPOTIFY} canciones. También sirve «Artista - Título» por línea, o el
+                CSV de un exportador.
               </Text>
             </View>
           ) : (
@@ -395,12 +481,12 @@ function Entrada({
             className="h-11 items-center justify-center rounded-full active:bg-muted"
           >
             <Text className="text-muted-foreground text-[13px]">
-              {aMano ? 'Usar un enlace de Spotify' : 'O pegar la lista a mano'}
+              {aMano ? 'Usar un enlace de Spotify' : 'O pegar las canciones a mano'}
             </Text>
           </Pressable>
         </View>
-      </Centrado>
-    </View>
+      </View>
+    </ScrollView>
   )
 }
 
@@ -418,22 +504,32 @@ function Trabajando({
   avance,
   onCancelar,
 }: {
-  fase: 'trabajando' | 'guardando'
+  fase: 'leyendo' | 'emparejando' | 'guardando'
   avance: Avance
   onCancelar: () => void
 }) {
   const porcentaje = avance.total > 0 ? Math.round((avance.hechas / avance.total) * 100) : 0
 
+  const rotulo =
+    fase === 'guardando'
+      ? 'Guardando la lista'
+      : fase === 'leyendo'
+        ? avance.total === 0
+          ? 'Leyendo la lista en Spotify'
+          : `Leyendo ${Math.min(avance.hechas + 1, avance.total)} de ${avance.total} en Spotify`
+        : `Buscando ${Math.min(avance.hechas + 1, avance.total)} de ${avance.total}`
+
+  const detalle =
+    fase === 'guardando'
+      ? 'Las canciones se descargan cuando las escuches, no ahora.'
+      : fase === 'leyendo'
+        ? 'De Spotify salen los nombres. El audio no viene de ahí.'
+        : 'Cada canción se busca en YouTube Music por su nombre.'
+
   return (
     <View className="flex-1 items-center justify-center gap-5 px-8">
       <ActivityIndicator color={ICON_COLOR.muted} />
-      <Text className="text-foreground text-center text-[15px]">
-        {fase === 'guardando'
-          ? 'Guardando la lista'
-          : avance.total === 0
-            ? 'Leyendo la lista de Spotify'
-            : `Buscando ${Math.min(avance.hechas + 1, avance.total)} de ${avance.total}`}
-      </Text>
+      <Text className="text-foreground text-center text-[15px]">{rotulo}</Text>
 
       {avance.total > 0 ? (
         <View className="h-1 w-full max-w-[280px] overflow-hidden rounded-full bg-muted">
@@ -441,13 +537,9 @@ function Trabajando({
         </View>
       ) : null}
 
-      <Text className="text-muted-foreground text-center text-[12px] leading-4">
-        {fase === 'guardando'
-          ? 'Las canciones se descargan cuando las escuches, no ahora.'
-          : 'Cada canción se busca en YouTube Music por su nombre.'}
-      </Text>
+      <Text className="text-muted-foreground text-center text-[12px] leading-4">{detalle}</Text>
 
-      {fase === 'trabajando' ? (
+      {fase !== 'guardando' ? (
         <Pressable
           accessibilityRole="button"
           onPress={onCancelar}
@@ -464,6 +556,7 @@ function Trabajando({
 
 function Resumen({
   lista,
+  sinLeer,
   nombre,
   onNombre,
   total,
@@ -471,6 +564,8 @@ function Resumen({
   error,
 }: {
   lista: ListaSpotify | null
+  /** De lo pegado, cuántas no devolvió Spotify. */
+  sinLeer: number
   nombre: string
   onNombre: (v: string) => void
   total: number
@@ -491,11 +586,33 @@ function Resumen({
         }
       />
 
-      {lista?.truncada ? (
+      {sinLeer > 0 ? (
         <View className="rounded-lg bg-muted px-4 py-3">
           <Text className="text-muted-foreground text-[13px] leading-5">
-            Spotify sirve hasta {TOPE_SPOTIFY} canciones por enlace. Si la lista era más
-            larga, el resto se puede pegar a mano en otra importación.
+            {sinLeer === 1
+              ? 'Una de las canciones pegadas no la devolvió Spotify y quedó afuera.'
+              : `${sinLeer} de las canciones pegadas no las devolvió Spotify y quedaron afuera.`}
+          </Text>
+        </View>
+      ) : null}
+
+      {/*
+       * El aviso del tope, con la salida al lado.
+       *
+       * Decir «hay 100 y puede haber más» sin decir qué hacer es dejar a alguien
+       * con una lista incompleta y ninguna acción. La salida existe y es
+       * concreta, así que va acá, en el momento exacto en que hace falta.
+       */}
+      {lista?.truncada ? (
+        <View className="gap-2 rounded-lg bg-muted px-4 py-3">
+          <Text className="text-foreground text-[13px] leading-5">
+            Un enlace trae hasta {TOPE_SPOTIFY} canciones. Si la lista era más larga, esto
+            es solo el principio.
+          </Text>
+          <Text className="text-muted-foreground text-[12px] leading-4">
+            Para traerla entera: en Spotify abrí la lista, tocá una canción, seleccioná
+            todas (Ctrl+A o ⌘A), copiá (Ctrl+C o ⌘C) y pegá eso en «pegar las canciones a
+            mano». Así no hay tope.
           </Text>
         </View>
       ) : null}

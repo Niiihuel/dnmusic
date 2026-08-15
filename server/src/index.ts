@@ -15,7 +15,7 @@ import {
   searchArtists,
 } from './youtube.js'
 import { isLang, translate } from './translate.js'
-import { leerLista } from './spotify.js'
+import { leerCanciones, leerLista } from './spotify.js'
 import { emparejarLote } from './emparejar.js'
 import { notificarMensaje } from './push.js'
 import { cacheImage } from './artwork.js'
@@ -36,6 +36,7 @@ import { subirPropia } from './propia.js'
  *   POST /resolve {videoId}   → descarga audio y carátula UNA vez, a Storage
  *   POST /translate {texts,to}→ traduce la letra, línea por línea
  *   GET  /spotify?url=…       → las canciones de una lista de Spotify
+ *   POST /spotify/canciones   → canciones sueltas por id (listas de +100)
  *   POST /emparejar {pistas}  → de esos nombres, la canción de YouTube Music
  *
  * El audio se guarda en Supabase Storage y la app lo reproduce desde ahí. Así el
@@ -441,6 +442,28 @@ const server = createServer(async (req, res) => {
         // qué hacer («ponela pública un momento»), no qué falló por dentro.
         return json(422, { error: e instanceof Error ? e.message : 'No se pudo leer la lista' })
       }
+    }
+
+    /*
+     * Canciones sueltas de Spotify, por sus ids.
+     *
+     * Es la salida al tope de 100 de la página de una lista, y también a las
+     * privadas: seleccionar todo y copiar en Spotify deja un link por canción,
+     * y cada uno tiene su propio embed. El cliente manda de a tandas para poder
+     * mostrar avance.
+     */
+    if (url.pathname === '/spotify/canciones' && req.method === 'POST') {
+      const body = (await readJson(req)) as { ids?: unknown }
+      const ids = body.ids
+      if (!Array.isArray(ids) || !ids.length) return json(400, { error: 'Faltan ids' })
+      if (ids.length > 100) return json(413, { error: 'Demasiadas canciones en una tanda' })
+
+      const limpios = ids
+        .filter((id): id is string => typeof id === 'string')
+        .filter((id) => /^[A-Za-z0-9]{22}$/.test(id))
+      if (!limpios.length) return json(400, { error: 'Ningún id válido' })
+
+      return json(200, { pistas: await leerCanciones(limpios) })
     }
 
     /*

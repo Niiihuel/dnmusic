@@ -11,6 +11,8 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native'
 import Animated, {
   runOnJS,
@@ -439,11 +441,78 @@ export default function Home() {
    * veía llegar tarde.
    */
   const hilo = useRef<FlatList<Message>>(null)
+  /**
+   * El hilo que ya se llevó al final.
+   *
+   * Antes esto era un `setTimeout` de 60 ms colgado del id de la conversación, y
+   * ahí estaba el problema: a los 60 ms de cambiar de hilo **los mensajes todavía
+   * no llegaron** —`selectConversation` deja la lista vacía y la llena el
+   * tiempo real—, así que `scrollToEnd` corría sobre una lista vacía y no hacía
+   * nada. Cuando aparecían los mensajes, el hilo se quedaba donde cayera: a
+   * mitad de la conversación, con las últimas burbujas debajo del campo de
+   * escribir. Se veía como si el chat estuviera cortado.
+   *
+   * Ahora se ubica cuando el contenido **se midió** —`onContentSizeChange`— y una
+   * sola vez por conversación: los mensajes que lleguen después no te arrastran
+   * si estabas leyendo para arriba.
+   */
+  const pegadoAlFinal = useRef(true)
+  const hiloYaAnimo = useRef(false)
   useEffect(() => {
-    if (!activePairId) return
-    const t = setTimeout(() => hilo.current?.scrollToEnd({ animated: true }), 60)
-    return () => clearTimeout(t)
+    pegadoAlFinal.current = true
+    hiloYaAnimo.current = false
   }, [activePairId])
+
+  /*
+   * Se llama en **cada** medición del contenido, no una sola vez por hilo.
+   *
+   * Ubicar el hilo una vez no alcanza y se comprobó midiéndolo: al abrir una
+   * conversación de 36 mensajes, `onContentSizeChange` dispara cuatro veces
+   * —las burbujas se miden, las carátulas cargan, el alto sigue creciendo— y el
+   * `scrollToEnd` de la primera queda a 2000px del final. Cada crecimiento
+   * posterior aleja más el fondo, así que hay que volver a pegarse.
+   */
+  const ubicarHiloAlFinal = useCallback(
+    (_ancho: number, alto: number) => {
+      if (!pegadoAlFinal.current || messages.length === 0) return
+      /*
+       * `scrollToOffset` con el alto que trae el evento, y no `scrollToEnd`.
+       *
+       * `scrollToEnd` calcula el destino con la longitud que la FlatList tiene
+       * anotada adentro, y acá esa cuenta se queda corta: medido, dejaba el
+       * hilo **siempre** a 542px del final —el mismo número en cada corrida, no
+       * una carrera— porque el relleno de abajo del `contentContainer` (el
+       * hueco reservado para el campo de escribir) no entra en esa longitud.
+       *
+       * El alto que llega por parámetro sí es el del contenido completo. Pedir
+       * ese offset se pasa de largo a propósito: la plataforma recorta al
+       * máximo desplazable, que es exactamente el final.
+       *
+       * La primera baja se anima —es la que se ve al entrar— y las correcciones
+       * de mientras se acomoda van instantáneas, para no reemplazar esa
+       * animación con otra a mitad de camino.
+       */
+      const animar = !hiloYaAnimo.current
+      hiloYaAnimo.current = true
+      hilo.current?.scrollToOffset({ offset: alto, animated: animar })
+    },
+    [messages.length],
+  )
+
+  /**
+   * Despegarse es cosa del dedo, no del propio scroll.
+   *
+   * Solo se mira la posición cuando **soltaste** el hilo: el `scrollToEnd` de
+   * acá arriba pasa por posiciones lejísimos del final mientras anima, y si
+   * `onScroll` decidiera, se despegaría a sí mismo a mitad de camino y no
+   * llegaría nunca. Leyendo para arriba, los mensajes nuevos ya no te arrastran
+   * —lo mismo que hace WhatsApp—, y volver al fondo te vuelve a enganchar.
+   */
+  const alSoltarHilo = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent
+    pegadoAlFinal.current =
+      contentSize.height - layoutMeasurement.height - contentOffset.y < 80
+  }, [])
   /**
    * En el teléfono, «Chats» tiene dos niveles: la lista y la conversación.
    *
@@ -622,11 +691,29 @@ export default function Home() {
   const chatPorAbrir = useRef<string | null>(null)
   useEffect(() => {
     registerAbrirChat((pairId) => {
-      chatPorAbrir.current = pairId
       setTab('chats')
-      changeConversation(pairId)
       setChatAbierto(true)
-      if (conversations.some((c) => c.pairId === pairId)) chatPorAbrir.current = null
+
+      if (conversations.some((c) => c.pairId === pairId)) {
+        chatPorAbrir.current = null
+        changeConversation(pairId)
+        return
+      }
+
+      /*
+       * La bandeja en memoria todavía no conoce esa conversación.
+       *
+       * No es un caso raro, es **el caso normal** de una notificación: el push
+       * llega porque acaba de entrar un mensaje, así que la lista que tenemos es
+       * justo la de antes de ese mensaje. Y `selectConversation` busca el hilo
+       * en esa lista: si no está, no hace nada **y no avisa** (ver
+       * `state/session`). El resultado era abrir el panel del chat con la
+       * conversación anterior adentro — el «me dejó donde estaba» de siempre.
+       *
+       * Se pide la bandeja de nuevo y el efecto de abajo entra apenas llega.
+       */
+      chatPorAbrir.current = pairId
+      void refreshConversations()
     })
     return () => registerAbrirChat(null)
   })
@@ -2306,6 +2393,13 @@ export default function Home() {
                       ref={hilo}
                       data={messages}
                       keyExtractor={(message) => message.id}
+                      /* Cada vez que la lista cambia de alto: es donde se
+                         vuelve a pegar al final mientras se acomoda, y donde
+                         un mensaje nuevo baja el hilo si lo estabas mirando.
+                         Ver `ubicarHiloAlFinal`. */
+                      onContentSizeChange={ubicarHiloAlFinal}
+                      onScrollEndDrag={alSoltarHilo}
+                      onMomentumScrollEnd={alSoltarHilo}
                       className="min-h-0 flex-1"
                       /* En el teléfono la barra de desplazamiento no aporta y
                          se dibuja sobre las burbujas. */

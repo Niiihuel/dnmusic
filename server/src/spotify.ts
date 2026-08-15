@@ -94,6 +94,83 @@ export function idDeLista(entrada: string): { tipo: 'playlist' | 'album'; id: st
 }
 
 /**
+ * Los ids de canción sueltos que haya en un texto.
+ *
+ * Es la salida al tope de 100 y, de paso, a las listas privadas —que no tienen
+ * página de embed—. En Spotify se puede seleccionar todo (Ctrl+A) y copiar
+ * (Ctrl+C): lo que va al portapapeles es un link por canción. Cada uno de esos
+ * links **sí** tiene su embed, así que una lista de cualquier tamaño se puede
+ * reconstruir de a una.
+ *
+ * Se aceptan las dos formas que devuelve Spotify según de dónde se copie: la
+ * URL con su `?si=…` y el URI `spotify:track:…`.
+ */
+export function idsDeCanciones(texto: string): string[] {
+  const ids = new Set<string>()
+  const patron = /(?:open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/|spotify:track:)([A-Za-z0-9]{22})/g
+  for (const coincidencia of texto.matchAll(patron)) ids.add(coincidencia[1])
+  return [...ids]
+}
+
+/**
+ * Los datos de una canción, de su propia página de embed.
+ *
+ * Devuelve null en vez de tirar: en una lista de trescientas, que una no se
+ * pueda leer no puede llevarse el resto puesto.
+ */
+async function leerCancion(id: string): Promise<PistaSpotify | null> {
+  try {
+    const respuesta = await fetch(`https://open.spotify.com/embed/track/${id}`, {
+      headers: { 'User-Agent': NAVEGADOR, 'Accept-Language': 'es' },
+    })
+    if (!respuesta.ok) return null
+
+    const entidad = entidadDe(await respuesta.text())
+    const titulo = (entidad?.name ?? entidad?.title ?? '').trim()
+    if (!titulo) return null
+
+    return {
+      uri: entidad?.uri ?? `spotify:track:${id}`,
+      titulo,
+      /* Acá los artistas vienen como lista propia y no en `subtitle` —que en la
+         página de una canción llega vacío—, así que se juntan como los escribe
+         Spotify en cualquier otro lado. */
+      artista: (entidad?.artists ?? []).map((a) => a.name).filter(Boolean).join(', '),
+      durationMs: typeof entidad?.duration === 'number' ? entidad.duration : 0,
+      previewUrl: entidad?.audioPreview?.url ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Un montón de canciones por su id, de a poco.
+ *
+ * Una página por canción es mucho más tráfico que una página por lista, así que
+ * la concurrencia va acotada: son pedidos livianos y sin credencial, pero
+ * trescientos a la vez desde una IP de datacenter es la forma de que Spotify
+ * empiece a mirarnos. Con seis en paralelo, cien canciones tardan unos segundos.
+ *
+ * El orden de entrada se conserva: es el de la lista de la que se copiaron.
+ */
+export async function leerCanciones(ids: string[], concurrencia = 6): Promise<PistaSpotify[]> {
+  const salida = new Array<PistaSpotify | null>(ids.length).fill(null)
+  let siguiente = 0
+
+  const obrero = async () => {
+    for (;;) {
+      const indice = siguiente++
+      if (indice >= ids.length) return
+      salida[indice] = await leerCancion(ids[indice])
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrencia, ids.length) }, obrero))
+  return salida.filter((p): p is PistaSpotify => p !== null)
+}
+
+/**
  * Un navegador cualquiera.
  *
  * Sin User-Agent creíble la página contesta un HTML distinto —el de «actualizá
@@ -109,7 +186,12 @@ type EntidadEmbed = {
   title?: string
   subtitle?: string
   id?: string
+  uri?: string
   coverArt?: { sources?: { url?: string }[] }
+  /* Los tres de abajo solo vienen cuando la entidad es una canción suelta. */
+  artists?: { name?: string }[]
+  duration?: number
+  audioPreview?: { url?: string } | null
   trackList?: {
     uri?: string
     title?: string

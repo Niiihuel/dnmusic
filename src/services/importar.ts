@@ -90,6 +90,78 @@ export async function leerListaSpotify(
 }
 
 /**
+ * Los ids de canción que haya en un texto pegado.
+ *
+ * En Spotify se puede seleccionar todo dentro de una lista (Ctrl+A) y copiar
+ * (Ctrl+C): al portapapeles va **un link por canción**. Esos links son la
+ * salida a los dos límites del enlace de lista —el tope de 100 y que tenga que
+ * ser pública—, porque cada canción tiene su propia página de embed y se puede
+ * leer de a una, sin credencial y sin tope.
+ */
+export function idsDeCanciones(texto: string): string[] {
+  const ids = new Set<string>()
+  const patron = /(?:open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/|spotify:track:)([A-Za-z0-9]{22})/g
+  for (const coincidencia of texto.matchAll(patron)) ids.add(coincidencia[1])
+  return [...ids]
+}
+
+/** De un mismo textarea salen dos cosas distintas, y conviene decir cuál. */
+export type Pegado =
+  | { tipo: 'nombres'; pistas: PistaSpotify[] }
+  | { tipo: 'enlaces'; ids: string[] }
+
+/**
+ * Qué hay en lo que se pegó.
+ *
+ * Los links de canción ganan sobre todo lo demás: si aparecen, el texto viene
+ * del «copiar» de Spotify y leer sus nombres de la página de cada una da datos
+ * mucho mejores —duración incluida, que es la señal más fuerte del emparejado—
+ * que intentar adivinar título y artista de una URL.
+ */
+export function interpretarPegado(texto: string): Pegado {
+  const ids = idsDeCanciones(texto)
+  if (ids.length) return { tipo: 'enlaces', ids }
+  return { tipo: 'nombres', pistas: parsearPegado(texto) }
+}
+
+/** Cuántos ids entran en un pedido. El server rechaza más de 100. */
+const TANDA_CANCIONES = 50
+
+/**
+ * Los nombres de un montón de canciones, por sus ids, con avance.
+ *
+ * Va por tandas por lo mismo que el emparejado: una lista de trescientas tarda,
+ * y una barra que no se mueve durante un minuto se lee como que se colgó.
+ */
+export async function leerCancionesSpotify(
+  ids: string[],
+  opciones?: { signal?: AbortSignal; alAvanzar?: (avance: Avance) => void },
+): Promise<PistaSpotify[]> {
+  const salida: PistaSpotify[] = []
+
+  for (let desde = 0; desde < ids.length; desde += TANDA_CANCIONES) {
+    if (opciones?.signal?.aborted) break
+    const tanda = ids.slice(desde, desde + TANDA_CANCIONES)
+
+    const res = await fetchMusica(`${MUSIC_API}/spotify/canciones`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: tanda }),
+      signal: opciones?.signal,
+    })
+    const datos = (await res.json()) as { pistas?: PistaSpotify[]; error?: string }
+    if (!res.ok || datos.error || !datos.pistas) {
+      throw new Error(datos.error ?? `No se pudieron leer las canciones (${res.status})`)
+    }
+
+    salida.push(...datos.pistas)
+    opciones?.alAvanzar?.({ hechas: Math.min(desde + TANDA_CANCIONES, ids.length), total: ids.length })
+  }
+
+  return salida
+}
+
+/**
  * La lista escrita a mano, que es el respaldo de todo.
  *
  * Existe para tres casos que el enlace no cubre: una lista de más de 100, una
@@ -103,6 +175,9 @@ export async function leerListaSpotify(
  *   1. Tame Impala — The Less I Know The Better  ← numerado, con raya larga
  *   The Less I Know The Better · Tame Impala     ← como lo muestra un reproductor
  *   "Track Name","Artist Name(s)",…              ← el CSV de un exportador
+ *
+ * Los links de canción los atiende `interpretarPegado`, que llama a esto solo
+ * cuando no encontró ninguno.
  */
 export function parsearPegado(texto: string): PistaSpotify[] {
   const lineas = texto
