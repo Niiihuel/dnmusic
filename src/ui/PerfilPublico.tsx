@@ -15,6 +15,7 @@ import { useSnippetPlayer } from '../state/player'
 import { avisar } from '../state/aviso'
 import { mensajeError } from '../lib/mensajeError'
 import { fetchStats, type EstadisticasPerfil } from '../services/plays'
+import { useMyProfile } from '../state/session'
 import { Avatar } from './Avatar'
 import { Vitrina } from './Vitrina'
 
@@ -377,24 +378,30 @@ export function Vitrinas({
    * Las listas se piden solo si alguna vitrina las necesita: la mayoría de los
    * perfiles no va a tener una y sería una consulta al pedo.
    *
-   * **De quién se piden depende de a quién se está mirando.** Antes esto leía
-   * siempre `listPlaylists()` —tu biblioteca— y resolvía la vitrina de otro
-   * contra tus listas: en el perfil ajeno el id nunca aparecía y la tarjeta
-   * decía «esta lista ya no existe» sobre una lista que existía perfectamente.
-   * En un perfil ajeno se piden las públicas de esa persona, que es lo único
-   * que hay derecho a ver; si fijó una privada, la tarjeta sigue diciendo que
-   * no está, y esta vez es verdad.
+   * **De quién se piden depende de si el perfil es tuyo**, y eso se decide
+   * comparando el dueño con la sesión — no con `propio`, que significa otra
+   * cosa: si se dibujan los controles de edición. Son dos preguntas distintas
+   * y confundirlas costó un bug feo: tu propio perfil pasa `propio={false}` a
+   * propósito, para verse como lo ve cualquiera, así que tus vitrinas se
+   * resolvían contra tus listas **públicas** y una lista privada fijada decía
+   * «esta lista ya no existe» en tu propia cara.
+   *
+   * En el perfil de otro se piden sus públicas, que es lo único que hay
+   * derecho a ver. Una privada fijada simplemente no se dibuja para el
+   * visitante (ver `VitrinaLista`): fijar algo privado la deja para vos.
    */
+  const yo = useMyProfile()
+  const esMio = !!yo && yo.userId === ownerId
   const necesitaListas = (vitrinas ?? []).some((v) => v.kind === 'lista')
   useEffect(() => {
     if (!necesitaListas || listas !== null) return
     let vivo = true
-    const pedido = propio ? listPlaylists() : listPublicPlaylists(ownerId)
+    const pedido = esMio ? listPlaylists() : listPublicPlaylists(ownerId)
     pedido.then((l) => vivo && setListas(l)).catch(() => vivo && setListas([]))
     return () => {
       vivo = false
     }
-  }, [necesitaListas, listas, propio, ownerId])
+  }, [necesitaListas, listas, esMio, ownerId])
 
   if (vitrinas === null) return null
   if (!vitrinas.length) return <>{vacio}</>
@@ -430,6 +437,7 @@ export function Vitrinas({
           key={v.id}
           showcase={v}
           playlists={listas}
+          esMio={esMio}
           playing={player.currentId === v.id && player.playing}
           sonando={player.currentId === v.id}
           posicionMs={player.posicionSV}

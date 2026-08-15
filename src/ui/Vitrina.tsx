@@ -13,6 +13,7 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconClose,
+  IconLock,
   IconMusic,
   IconPause,
   IconPlay,
@@ -31,6 +32,7 @@ import {
 export function Vitrina({
   showcase,
   playlists,
+  esMio,
   playing,
   sonando,
   posicionMs,
@@ -45,6 +47,13 @@ export function Vitrina({
   showcase: Showcase
   /** Para resolver la vitrina de lista, que guarda solo el id. */
   playlists: Playlist[] | null
+  /**
+   * El perfil es de quien está mirando.
+   *
+   * Solo lo usa la vitrina de lista, y para decidir qué decir cuando el id no
+   * aparece: en el tuyo es que la borraste, en el de otro es que no es pública.
+   */
+  esMio: boolean
   /** Esta vitrina es la que está sonando. */
   playing: boolean
   /**
@@ -131,6 +140,7 @@ export function Vitrina({
           <VitrinaLista
             playlistId={showcase.playlistId}
             playlists={playlists}
+            esMio={esMio}
             onOpen={onOpenPlaylist}
           />
         ) : (
@@ -315,19 +325,32 @@ function VitrinaCancion({
 function VitrinaLista({
   playlistId,
   playlists,
+  esMio,
   onOpen,
 }: {
   playlistId: string
   playlists: Playlist[] | null
+  esMio: boolean
   onOpen: (playlistId: string) => void
 }) {
   const lista = playlists?.find((p) => p.id === playlistId) ?? null
 
-  /* Mientras la biblioteca no llegó no se dice nada; si llegó y la lista no
-     está, se borró después de fijarla y el perfil lo dice en vez de mostrar un
-     hueco mudo. */
+  // Mientras la biblioteca no llegó no se dice nada.
   if (!playlists) return null
+  /*
+   * No apareció, y qué significa eso depende de quién mira.
+   *
+   * En **tu** perfil la lista se busca en tu biblioteca entera, así que no
+   * estar quiere decir que la borraste después de fijarla: se dice, en vez de
+   * dejar un hueco mudo.
+   *
+   * En el de **otro** se buscó entre sus listas públicas, así que no estar
+   * quiere decir que esa lista es privada — y ahí no se dibuja nada. Un cartel
+   * diciendo «no existe» sería mentira, y uno diciendo «es privada» avisaría
+   * de algo que su dueño decidió no mostrar.
+   */
   if (!lista) {
+    if (!esMio) return null
     return (
       <Text className="text-muted-foreground text-[13px]">
         Esta lista ya no existe.
@@ -342,9 +365,22 @@ function VitrinaLista({
       onPress={() => onOpen(lista.id)}
       className="gap-3 active:opacity-70"
     >
-      <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-        Su lista
-      </Text>
+      <View className="flex-row items-center gap-2">
+        <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+          Su lista
+        </Text>
+        {/* Fijaste una privada: la ves vos y nadie más. Sin esta marca, el
+            perfil se veía lleno para vos y vacío para el resto sin que nada
+            lo explicara. */}
+        {esMio && lista.visibilidad === 'privada' ? (
+          <View className="flex-row items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+            <IconLock size={9} color={ICON_COLOR.muted} />
+            <Text className="text-muted-foreground text-[10px] uppercase tracking-[1.2px]">
+              Solo vos
+            </Text>
+          </View>
+        ) : null}
+      </View>
       <View className="flex-row items-center gap-3">
         <PlaylistCover covers={lista.covers} coverPath={lista.coverPath} size={64} />
         <View className="min-w-0 flex-1 gap-0.5">

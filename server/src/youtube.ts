@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { mintSessionToken, mintVideoToken } from './potoken.js'
+import { fetchYt } from './salida.js'
 
 const run = promisify(execFile)
 
@@ -139,7 +140,13 @@ async function getClient(): Promise<Innertube> {
   clientNacioEn = Date.now()
 
   clientPromise = (async () => {
-    const bootstrap = await Innertube.create({ retrieve_player: false, cookie: YT_COOKIE })
+    /* Todo InnerTube sale por `fetchYt`: con un proxy configurado, la sesión
+       entera —de la creación al último /player— ve la misma IP de salida. */
+    const bootstrap = await Innertube.create({
+      retrieve_player: false,
+      cookie: YT_COOKIE,
+      fetch: fetchYt,
+    })
     const visitorData = bootstrap.session.context.client.visitorData
     if (!visitorData) throw new Error('No se obtuvo visitorData')
 
@@ -151,6 +158,7 @@ async function getClient(): Promise<Innertube> {
       retrieve_player: true,
       generate_session_locally: true,
       cache: new UniversalCache(false),
+      fetch: fetchYt,
     })
   })()
 
@@ -626,7 +634,9 @@ export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
    * es para siempre — el caché de arriba no la vuelve a pedir nunca.
    */
   const pedir = async (desde: number) => {
-    const res = await fetch(url, {
+    // googlevideo por la misma salida que firmó la URL: cambiar de IP a mitad
+    // de camino es una de las formas clásicas del 403.
+    const res = await fetchYt(url, {
       headers: { Range: `bytes=${desde}-${desde + CHUNK_BYTES - 1}` },
     })
     /*

@@ -2,6 +2,7 @@ import { BotGuardClient, getChallenge } from 'bgutils-js/botguard'
 import { WebPoMinter } from 'bgutils-js/webpo'
 import { buildURL, getHeaders } from 'bgutils-js/utils'
 import { JSDOM } from 'jsdom'
+import { fetchYt } from './salida.js'
 
 /**
  * Generación de PO Tokens (Proof of Origin).
@@ -50,7 +51,9 @@ async function getMinter(): Promise<WebPoMinter> {
 
   ensureDom()
 
-  const challenge = await getChallenge({ requestKey: REQUEST_KEY, fetchFunction: fetch })
+  // Por la misma salida que el resto del tráfico a Google: la atestación
+  // tiene que ver la misma IP que después va a usar la media, o no ata nada.
+  const challenge = await getChallenge({ requestKey: REQUEST_KEY, fetchFunction: fetchYt })
   const interpreter = challenge.interpreterJavascript?.privateDoNotAccessOrElseSafeScriptWrappedValue
   if (!interpreter) throw new Error('BotGuard no devolvió intérprete')
 
@@ -66,7 +69,7 @@ async function getMinter(): Promise<WebPoMinter> {
   const webPoSignalOutput: unknown[] = []
   const snapshot = await bg.snapshot({ webPoSignalOutput: webPoSignalOutput as never })
 
-  const res = await fetch(buildURL('GenerateIT', true), {
+  const res = await fetchYt(buildURL('GenerateIT', true), {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify([REQUEST_KEY, snapshot]),
