@@ -6,6 +6,7 @@ import { Panel } from '../../src/ui/Panel'
 import { BotonVidrio } from '../../src/ui/Glass'
 import { alturaDeHeroe, FondoPerfil, Identidad, Vitrinas } from '../../src/ui/PerfilPublico'
 import { ListasPerfil } from '../../src/ui/ListasPerfil'
+import { EscuchaConReacciones, ParedDeReacciones } from '../../src/ui/Reacciones'
 import { FilaSostener } from '../../src/ui/Mantener'
 import { Vacio } from '../../src/ui/Vacio'
 import { ICON_COLOR, IconBack, IconBan, IconUser } from '../../src/ui/icons'
@@ -65,6 +66,10 @@ export default function PerfilAjeno() {
       vivo = false
     }
   }, [usuario, fresco])
+
+  /* Sube al mandar una reacción: es lo que hace que la pared se relea sin
+     recargar el perfil entero. */
+  const [reaccion, setReaccion] = useState(0)
 
   const nombre = perfil?.displayName?.trim() || perfil?.username || ''
   /* Mirándote a vos mismo desde acá, la pantalla sigue siendo la de otro: es
@@ -167,6 +172,24 @@ export default function PerfilAjeno() {
                   bio={perfil.bio ?? ''}
                   centrado={!ancho}
                   banda={ancho}
+                />
+
+                {/* Lo que está sonando en su casa, con los emojis al lado: es
+                    lo más vivo que tiene un perfil y por eso va arriba de todo.
+                    Se dibuja solo si sos su contacto y hay algo sonando. */}
+                {soyYo ? null : (
+                  <EscuchaConReacciones
+                    ownerId={perfil.userId}
+                    nombre={nombre}
+                    onReaccion={() => setReaccion((n) => n + 1)}
+                  />
+                )}
+
+                <ParedDeReacciones
+                  ownerId={perfil.userId}
+                  recarga={reaccion}
+                  propio={soyYo}
+                  nombre={nombre}
                 />
 
                 <Vitrinas

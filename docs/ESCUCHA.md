@@ -87,3 +87,38 @@ aparatos) y el espejo se suspende hasta que el Jam termine.
   por el canal.
 - El nombre del dispositivo es genérico («Computadora», «iPhone»); con
   `expo-device` podría ser «iPhone de Nihuel».
+
+## Reaccionar a lo que escucha otro
+
+La escucha que existe para el traspaso entre dispositivos es, además, lo más
+vivo que tiene un perfil: si un contacto está escuchando algo ahora, se le puede
+dejar un emoji y le queda en el perfil. Es la idea de Airbuds, apoyada sobre la
+fila que ya estaba — no hay un segundo lugar donde se anote qué suena.
+
+| Archivo | Qué hace |
+| --- | --- |
+| `supabase/migrations/20260816000000_reacciones_escucha.sql` | `escucha_de_contacto`, `reaccionar_escucha`, `reacciones_de` |
+| `src/services/reacciones.ts` | Los tres pedidos y sus tipos |
+| `src/ui/Reacciones.tsx` | La escucha con los emojis, y la pared del perfil |
+| `supabase/tests/reacciones_escucha.sql` | Las pruebas |
+
+**La canción la elige el servidor, no el cliente.** `reaccionar_escucha` lee
+`escuchas` en ese instante y congela la canción en la fila. Si el emoji viniera
+con una canción adjunta, cualquiera podría inventarle a otro una reacción sobre
+algo que nunca escuchó — y el perfil dejaría de ser un registro para pasar a ser
+un tablón.
+
+**Y se queda congelada.** La reacción guarda la canción de su momento, no un
+puntero a la escucha: por eso sigue significando algo dentro de un mes, cuando
+esa persona hace rato que escucha otra cosa. Es la misma decisión que toman las
+canciones de una lista (`playlists.sql`) y los fragmentos de un mensaje.
+
+**Solo entre contactos.** `escucha_de_contacto` devuelve cero filas si no
+comparten un par — y también si no hay nada sonando. Que las dos respuestas se
+vean iguales es a propósito: si se distinguieran, esto serviría para averiguar
+quién tiene a quién agregado.
+
+**La fila cruda sigue siendo privada.** `escuchas` conserva su policy `own
+escucha`: lo que se abre es una ventana por RPC con la canción y si suena. La
+posición, el aparato y la revisión son mecánica del traspaso y no le importan a
+nadie más.

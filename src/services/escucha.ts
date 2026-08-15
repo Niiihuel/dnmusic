@@ -2,6 +2,8 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { getSupabase } from '../lib/supabase'
 import type { PlaylistTrack } from './playlists'
 
+export type { PlaylistTrack }
+
 /**
  * La escucha de la cuenta por dentro: los pedidos y el canal.
  *
@@ -64,8 +66,14 @@ function epocaMs(v: unknown): number | null {
 
 type Fila = Record<string, unknown>
 
-/** Una canción del jsonb, validada: sin audio o sin id no se puede reproducir. */
-function cancionFrom(v: unknown): PlaylistTrack | null {
+/**
+ * Una canción del jsonb, validada: sin audio o sin id no se puede reproducir.
+ *
+ * Se exporta porque las reacciones leen el mismo jsonb —la canción que quedó
+ * congelada salió de esta misma fila— y validarlo dos veces con dos criterios
+ * era la forma de que un día una pantalla dibujara algo que la otra descarta.
+ */
+export function cancionDeFila(v: unknown): PlaylistTrack | null {
   const r = v as Fila | null
   if (!r || typeof r.audioPath !== 'string' || r.audioPath.length === 0) return null
   if (typeof r.videoId !== 'string' || r.videoId.length === 0) return null
@@ -90,7 +98,7 @@ export function escuchaFromRow(row: unknown): Escucha | null {
   return {
     deviceId: r.device_id,
     deviceNombre: texto(r.device_nombre),
-    track: cancionFrom(r.track),
+    track: cancionDeFila(r.track),
     suena: r.suena === true,
     posicionMs: numero(r.posicion_ms),
     arrancadoEn: epocaMs(r.arrancado_en),
@@ -102,12 +110,12 @@ function colaFrom(v: unknown): ColaEscucha | null {
   const r = v as Fila | null
   if (!r || !Array.isArray(r.tracks)) return null
   const origin = r.origin as Fila | null
-  const manual = cancionFrom(r.manual)
+  const manual = cancionDeFila(r.manual)
   return {
-    tracks: r.tracks.map(cancionFrom).filter((t): t is PlaylistTrack => t !== null),
+    tracks: r.tracks.map(cancionDeFila).filter((t): t is PlaylistTrack => t !== null),
     index: numero(r.index),
     upNext: Array.isArray(r.upNext)
-      ? r.upNext.map(cancionFrom).filter((t): t is PlaylistTrack => t !== null)
+      ? r.upNext.map(cancionDeFila).filter((t): t is PlaylistTrack => t !== null)
       : [],
     manual,
     origin:

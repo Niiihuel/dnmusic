@@ -19,6 +19,7 @@ import {
   Vitrinas,
 } from '../../src/ui/PerfilPublico'
 import { ListasPerfil } from '../../src/ui/ListasPerfil'
+import { ParedDeReacciones } from '../../src/ui/Reacciones'
 import { ICON_COLOR, IconBack, IconPencil } from '../../src/ui/icons'
 import { listPlaylists, type Playlist } from '../../src/services/playlists'
 import { useMyProfile } from '../../src/state/session'
@@ -226,6 +227,15 @@ export default function ProfileScreen() {
 
                     <View className="flex-row items-start gap-6">
                       <View className="min-w-0 flex-1 gap-8">
+                        {/* Lo que te dejaron reaccionando a tu música. Va
+                            arriba de las vitrinas: es de otros y es reciente,
+                            y eso lo hace lo primero que uno quiere mirar. */}
+                        <ParedDeReacciones
+                          ownerId={profile.userId}
+                          recarga={recarga}
+                          propio
+                          nombre={nombre}
+                        />
                         <Vitrinas
                           ownerId={profile.userId}
                           recarga={recarga}
