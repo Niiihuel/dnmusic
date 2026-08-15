@@ -1842,6 +1842,18 @@ export default function Home() {
                 conversaciones es lo que hacen las pestañas de abajo, y tenerlo
                 dos veces solo compite consigo mismo. */}
             {showSidebar ? (
+              /*
+               * El globito va **afuera** del botón, no adentro.
+               *
+               * `BotonVidrio` es un `Glass` con `overflow: 'hidden'` —lo
+               * necesita para que el vidrio respete el borde redondeado— así
+               * que cualquier hijo posicionado fuera de los 44×44 se recorta:
+               * el número aparecía cortado contra el filo del círculo en vez de
+               * asomar por encima. Sale del botón, se apoya sobre él desde este
+               * contenedor, y no toma toques para que el círculo entero siga
+               * siendo el blanco.
+               */
+              <View>
               <BotonVidrio
                 label={music ? 'Volver a las conversaciones' : 'Tus listas'}
                 onPress={() => {
@@ -1865,23 +1877,26 @@ export default function Home() {
                 {/* El ícono dice a dónde te lleva, no dónde estás: con la música
                     de fondo permanente, marcar el modo activo no aporta nada. */}
                 {music ? (
-                  <View>
-                    <IconInbox size={17} color={ICON_COLOR.muted} />
-                    {/* El globito de la pestaña Chats del teléfono, acá: sin
-                        él, en escritorio una solicitud no se veía desde el
-                        modo música. Mismo blanco de acento, número oscuro. */}
-                    {pendientesChats > 0 ? (
-                      <View className="absolute -right-3 -top-2 min-w-4 items-center justify-center rounded-full bg-primary px-1 py-px">
-                        <Text className="text-primary-foreground text-[9px] font-semibold">
-                          {Math.min(pendientesChats, 99)}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
+                  <IconInbox size={17} color={ICON_COLOR.muted} />
                 ) : (
                   <IconMusic size={17} color={ICON_COLOR.muted} />
                 )}
               </BotonVidrio>
+              {/* El globito de la pestaña Chats del teléfono, acá: sin él, en
+                  escritorio una solicitud no se veía desde el modo música.
+                  Mismo blanco de acento, número oscuro. El borde del color del
+                  fondo lo despega del filo del botón, como en iOS. */}
+              {music && pendientesChats > 0 ? (
+                <View
+                  pointerEvents="none"
+                  className="absolute -right-1.5 -top-1 min-w-[18px] items-center justify-center rounded-full border-2 border-background bg-primary px-1"
+                >
+                  <Text className="text-primary-foreground text-[10px] font-bold leading-[14px]">
+                    {Math.min(pendientesChats, 99)}
+                  </Text>
+                </View>
+              ) : null}
+              </View>
             ) : null}
           </View>
         </View>

@@ -1,3 +1,4 @@
+import { hayNotificaciones, notificar, prepararNotificaciones } from '../lib/notificarEscritorio'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { logOut, subscribeToAuth, type User } from '../services/auth'
 import {
@@ -106,6 +107,16 @@ function listenToConversation(pairId: string, contact: Contact) {
  */
 let solicitudesVistas: Set<string> | null = null
 
+/**
+ * Cuántos sin leer tenía cada conversación la vez anterior.
+ *
+ * `null` mientras no se cargó ninguna vez: es lo que evita que al abrir la app
+ * te lleguen de golpe las notificaciones de todo lo que no leíste desde ayer.
+ * Solo se avisa de lo que **subió** entre dos refrescos, que es lo que acaba de
+ * pasar. Mismo criterio que `solicitudesVistas`.
+ */
+let sinLeerVistos: Map<string, number> | null = null
+
 async function loadConversationList(): Promise<Conversation[]> {
   /* Las solicitudes viajan con la bandeja: mismo refresco, mismo canal de
      realtime. Que fallen no puede dejar sin conversaciones, así que su error
@@ -124,7 +135,9 @@ async function loadConversationList(): Promise<Conversation[]> {
     }
   }
   solicitudesVistas = new Set(requests.map((solicitud) => solicitud.id))
+
   const activePairId = store.get().pairId
+  avisarPorMensajesNuevos(conversations, activePairId)
   const active = conversations.find((conversation) => conversation.pairId === activePairId)
   store.set({
     conversations,
@@ -132,6 +145,42 @@ async function loadConversationList(): Promise<Conversation[]> {
     ...(active ? { contact: active.contact } : {}),
   })
   return conversations
+}
+
+/**
+ * El aviso del sistema cuando llega un mensaje, en la app de escritorio.
+ *
+ * Es el hermano de la campanita de arriba: la misma idea, pero saliendo de la
+ * ventana. Solo hace algo adentro de Electron —ver `lib/notificarEscritorio`—,
+ * así que en la web y en el teléfono esto es una función que no llega a hacer
+ * nada. En iOS el que avisa es el push, que además funciona con la app cerrada.
+ *
+ * **La conversación abierta no notifica.** Si la estás leyendo, el mensaje
+ * aparece en la pantalla solo; un aviso del sistema encima sería contarte algo
+ * que ya estás viendo.
+ */
+function avisarPorMensajesNuevos(conversations: Conversation[], activePairId: string | null) {
+  if (!hayNotificaciones()) return
+
+  const previos = sinLeerVistos
+  sinLeerVistos = new Map(conversations.map((c) => [c.pairId, c.unreadCount]))
+  if (previos === null) return
+
+  for (const conversation of conversations) {
+    if (conversation.pairId === activePairId) continue
+    if (conversation.unreadCount <= (previos.get(conversation.pairId) ?? 0)) continue
+
+    notificar({
+      titulo: contactLabel(conversation.contact),
+      /* El texto del último mensaje, o algo neutro: una flor o un fragmento de
+         canción no tienen texto, y «(sin texto)» no le dice nada a nadie. */
+      cuerpo: conversation.lastMessageText.trim() || 'Te mandó algo',
+      /* Por conversación, no por mensaje: tres seguidos de la misma persona
+         reemplazan el aviso anterior en vez de apilar tres. */
+      tag: conversation.pairId,
+      alTocar: () => selectConversation(conversation.pairId),
+    })
+  }
 }
 
 function scheduleConversationRefresh() {
@@ -145,8 +194,13 @@ function scheduleConversationRefresh() {
 async function activateAccount(uid: string) {
   const version = ++accountVersion
   stopAccountListeners()
-  // Cuenta nueva, memoria nueva: las solicitudes de la anterior no cuentan.
+  // Cuenta nueva, memoria nueva: ni las solicitudes ni los sin leer de la
+  // anterior cuentan. Sin esto, entrar con otra cuenta notificaría de golpe
+  // todo lo que esa cuenta tenía sin leer, como si acabara de llegar.
   solicitudesVistas = null
+  sinLeerVistos = null
+  // El permiso se pide una sola vez y no dibuja ningún diálogo en Electron.
+  void prepararNotificaciones()
   store.set({
     profile: null,
     conversations: [],

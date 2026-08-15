@@ -15,6 +15,17 @@ import type { EstadoActualizacion } from './actualizador'
 const puente = {
   version: (): Promise<string> => ipcRenderer.invoke('app:version'),
 
+  /**
+   * Traer la ventana al frente.
+   *
+   * La usa el click en una notificación del sistema. Desde el renderer,
+   * `window.focus()` no alcanza: en Windows y en la mayoría de los escritorios
+   * de Linux, una ventana no puede levantarse sola sin pasar por el proceso
+   * principal — y una notificación que no te lleva a lo que anuncia no sirve
+   * para mucho.
+   */
+  enfocar: (): void => ipcRenderer.send('ventana:enfocar'),
+
   actualizacion: {
     estado: (): Promise<EstadoActualizacion> => ipcRenderer.invoke('actualizacion:estado'),
     buscar: (): void => ipcRenderer.send('actualizacion:buscar'),

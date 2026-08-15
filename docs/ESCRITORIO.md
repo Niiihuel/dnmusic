@@ -167,6 +167,39 @@ y público, el cliente descarga sin credencial ninguna. GitHub además no cobra 
 ancho de banda de los releases, que con ~150 usuarios y ~100 MB por instalador
 no es un detalle.
 
+## Notificaciones del sistema
+
+Cuando llega un mensaje, el escritorio avisa por fuera de la ventana, como el
+push en iOS. Vive en `src/lib/notificarEscritorio.ts` y se cuelga del refresco
+de la bandeja que ya dispara realtime — no monta ningún canal nuevo.
+
+**No es lo mismo que el push.** El push existe para cuando la app está
+**cerrada**; esto solo funciona con la app abierta. En el teléfono esa
+diferencia es todo; en la compu, donde la app vive minimizada o detrás del
+navegador, alcanza para lo que se le pide.
+
+Tres cosas que hacen que ande y que no molesten:
+
+- **`app.setAppUserModelId('com.nihuel.dnmusic')`** en el proceso principal. Sin
+  eso, Windows **descarta las notificaciones en silencio**: no hay error ni
+  registro, solo no llegan. Tiene que ser el mismo id que registra el
+  instalador NSIS, o sea el `appId` de electron-builder.
+- **El permiso se concede sin diálogo** (`setPermissionRequestHandler`, solo
+  para `notifications`). Chromium trata a `app://dnmusic` como cualquier sitio y
+  preguntaría; en una app instalada eso no tiene sentido. El sistema operativo
+  sigue teniendo la última palabra.
+- **Silencio si estás mirando.** Con la ventana al frente no notifica: el
+  mensaje ya se ve. Y el `tag` es el id de la conversación, así que tres
+  mensajes seguidos de la misma persona **reemplazan** el aviso en vez de
+  apilar tres.
+
+Tocar la notificación trae la ventana al frente por IPC (`ventana:enfocar`) y
+recién después abre la conversación: desde el renderer, `window.focus()` no
+levanta una ventana en Windows ni en la mayoría de los escritorios de Linux.
+
+En el navegador esto **no hace nada** a propósito: `hayNotificaciones()` pide el
+puente del preload, así que una pestaña común nunca pide permiso.
+
 ## Mostrar el aviso en la app (opcional)
 
 Hoy la actualización es silenciosa: se baja y se aplica sin decir nada. El

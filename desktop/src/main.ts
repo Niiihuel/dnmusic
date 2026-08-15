@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, session, shell } from 'electron'
 import { join } from 'node:path'
 import {
   arrancarActualizador,
@@ -24,6 +24,20 @@ import { ORIGEN, raizWeb, registrarEsquema, servirWeb } from './protocolo'
  * hace es romper cualquier «seguí donde lo dejaste».
  */
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+
+/*
+ * Quién dice ser la app cuando notifica.
+ *
+ * En Windows, una notificación de una app sin AppUserModelID **no se muestra**:
+ * el Action Center la descarta sin error y sin dejar rastro, así que el síntoma
+ * es «no llegan las notificaciones» sin nada que depurar. Tiene que ser el
+ * mismo id que registra el instalador NSIS, que sale del `appId` de
+ * electron-builder.
+ *
+ * En Linux no hace nada; ahí lo que importa es el .desktop, que el AppImage ya
+ * trae (ver `desktopName` en package.json).
+ */
+app.setAppUserModelId('com.nihuel.dnmusic')
 
 // Antes de que la app esté lista, o los privilegios del esquema no se aplican.
 registrarEsquema()
@@ -96,6 +110,34 @@ function crearVentana(): BrowserWindow {
   return ventana
 }
 
+/**
+ * Dejar notificar sin preguntar.
+ *
+ * Chromium trata a `app://dnmusic` como cualquier sitio y le pide permiso al
+ * usuario; en una app de escritorio ese diálogo no tiene sentido —ya la
+ * instalaste— y además el permiso quedaría colgado de un origen que solo existe
+ * acá. El sistema operativo sigue teniendo la última palabra: si apagaste las
+ * notificaciones de dnmusic en Windows o en tu escritorio de Linux, esto no las
+ * revive.
+ *
+ * Se responde `true` **solo** a notificaciones: cualquier otro permiso —cámara,
+ * micrófono, ubicación— sigue el camino normal y se rechaza, que es lo que
+ * corresponde en una app que no los usa.
+ */
+function permitirNotificaciones(): void {
+  session.defaultSession.setPermissionRequestHandler((_contenido, permiso, responder) => {
+    responder(permiso === 'notifications')
+  })
+}
+
+/** Traer la ventana al frente: la usa el click en una notificación. */
+function traerAlFrente(): void {
+  if (!ventanaPrincipal || ventanaPrincipal.isDestroyed()) return
+  if (ventanaPrincipal.isMinimized()) ventanaPrincipal.restore()
+  ventanaPrincipal.show()
+  ventanaPrincipal.focus()
+}
+
 function armarMenu(): void {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -135,16 +177,14 @@ function armarMenu(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
-    if (!ventanaPrincipal || ventanaPrincipal.isDestroyed()) return
-    if (ventanaPrincipal.isMinimized()) ventanaPrincipal.restore()
-    ventanaPrincipal.focus()
-  })
+  app.on('second-instance', () => traerAlFrente())
 
   void app.whenReady().then(() => {
     servirWeb(raizWeb())
+    permitirNotificaciones()
 
     ipcMain.handle('app:version', () => app.getVersion())
+    ipcMain.on('ventana:enfocar', () => traerAlFrente())
     ipcMain.handle('actualizacion:estado', () => estadoActual())
     ipcMain.on('actualizacion:buscar', () => void buscarAhora(true))
     ipcMain.on('actualizacion:instalar', () => void instalarYReabrir())
