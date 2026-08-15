@@ -37,13 +37,43 @@ import { Vitrina } from './Vitrina'
  * canción: eso era un cuadrado de 640px estirado a pantalla, que sin desenfocar
  * se pixelaba y desenfocado no era una elección de nadie.
  */
+/**
+ * Si esta ruta es un fondo de verdad — subido por la persona — o nada.
+ *
+ * Solo cuentan las rutas con carpeta (`<uid>/<ts>.gif`). Las planas
+ * (`<videoId>.jpg`) son tapas de canción de cuando el fondo se elegía así; se
+ * ignoran en vez de dibujarse mal. Lo usan `FondoPerfil` para decidir qué
+ * dibujar y las pantallas para decidir cuánto aire darle (ver `alturaDeHeroe`).
+ */
+export function hayFondo(bannerPath: string | null | undefined): boolean {
+  return !!bannerPath?.includes('/')
+}
+
+/**
+ * Dónde arranca el contenido del perfil, medido desde arriba.
+ *
+ * Con un fondo elegido, la primera pantalla le pertenece: el contenido empieza
+ * a ~2/5 del alto, la identidad queda apoyada en el borde de esa zona y todo lo
+ * demás **scrollea por encima de la imagen** — que es exactamente cómo Steam
+ * trata el arte del perfil. Antes el contenido arrancaba a 24–72px del techo y
+ * el fondo se veía solo en las rendijas entre tarjetas: elegir una imagen no
+ * cambiaba casi nada de lo que se veía.
+ *
+ * Sin fondo no hay nada que apreciar y el aire sería un hueco muerto: se usa el
+ * arranque compacto de siempre, que viaja como `compacto` porque cada pantalla
+ * tiene el suyo (safe area en el teléfono, el botón flotante en escritorio).
+ */
+export function alturaDeHeroe(
+  altoVentana: number,
+  bannerPath: string | null | undefined,
+  compacto: number,
+): number {
+  if (!hayFondo(bannerPath)) return compacto
+  return Math.max(compacto, Math.round(altoVentana * 0.38))
+}
+
 export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
-  /*
-   * Solo cuentan las rutas con carpeta (`<uid>/<ts>.gif`), que son las imágenes
-   * subidas. Las planas (`<videoId>.jpg`) son tapas de canción de cuando el
-   * fondo se elegía así; se ignoran en vez de dibujarse mal.
-   */
-  const ruta = bannerPath?.includes('/') ? bannerPath : null
+  const ruta = hayFondo(bannerPath) ? bannerPath! : null
   const uri = ruta ? ilustracionUrl(ruta) : null
   const clip = ruta ? esVideo(ruta) : false
 
@@ -185,7 +215,7 @@ export function Identidad({
   if (banda) {
     return (
       <View className="flex-row items-center gap-5">
-        <Avatar name={nombre} path={avatarPath} size={112} />
+        <FotoDeHeroe nombre={nombre} avatarPath={avatarPath} size={136} />
         <View className="min-w-0 flex-1 gap-1">
           <Text className="text-foreground text-[32px] font-bold" numberOfLines={1}>
             {nombre}
@@ -204,7 +234,7 @@ export function Identidad({
 
   return (
     <View className={`gap-3 ${centrado ? 'items-center' : ''}`}>
-      <Avatar name={nombre} path={avatarPath} size={centrado ? 96 : 84} />
+      <FotoDeHeroe nombre={nombre} avatarPath={avatarPath} size={centrado ? 120 : 96} />
       <View className={`gap-0.5 ${centrado ? 'items-center' : ''}`}>
         <Text className="text-foreground text-[26px] font-bold" numberOfLines={1}>
           {nombre}
@@ -218,6 +248,37 @@ export function Identidad({
           {bio}
         </Text>
       ) : null}
+    </View>
+  )
+}
+
+/**
+ * La foto del perfil, más grande y con su anillo.
+ *
+ * El anillo es del color del fondo de la app y no un borde decorativo: es lo
+ * que hacen Steam (`border: 4px solid var(--bg-primary)`) y Discord con su
+ * tarjeta, y existe por una razón óptica — la foto flota **sobre la imagen que
+ * eligió la persona**, y sin un corte del color de la superficie los bordes de
+ * las dos imágenes se funden. El anillo la despega de cualquier fondo sin
+ * meterle un color nuevo a la pantalla.
+ *
+ * Vive en su propio componente porque acá es donde algún día se cuelga el
+ * marco decorativo (la regla del 1,2× de las referencias: un marco desborda a
+ * la foto, no la pisa). Cuando exista, se dibuja alrededor de esto sin tocar a
+ * nadie más.
+ */
+function FotoDeHeroe({
+  nombre,
+  avatarPath,
+  size,
+}: {
+  nombre: string
+  avatarPath: string | null
+  size: number
+}) {
+  return (
+    <View className="rounded-full border-4 border-background">
+      <Avatar name={nombre} path={avatarPath} size={size} />
     </View>
   )
 }

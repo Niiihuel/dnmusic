@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { BotonVidrio } from '../../src/ui/Glass'
-import { FondoPerfil, Identidad, Vitrinas } from '../../src/ui/PerfilPublico'
+import { alturaDeHeroe, FondoPerfil, Identidad, Vitrinas } from '../../src/ui/PerfilPublico'
 import { ListasPerfil } from '../../src/ui/ListasPerfil'
 import { FilaSostener } from '../../src/ui/Mantener'
 import { Vacio } from '../../src/ui/Vacio'
@@ -36,7 +36,8 @@ export default function PerfilAjeno() {
   const router = useRouter()
   const yo = useMyProfile()
   const piso = usePiso(24)
-  const ancho = useWindowDimensions().width >= ANCHO_PX
+  const { width, height: alto } = useWindowDimensions()
+  const ancho = width >= ANCHO_PX
 
   /*
    * El perfil se guarda **junto al usuario que se pidió**.
@@ -128,9 +129,14 @@ export default function PerfilAjeno() {
 
           <ScrollView
             contentContainerClassName="items-center px-4"
-            /* Mismo motivo que en el perfil propio: en escritorio el contenido
-               empieza debajo del redondel de volver, que flota sobre la imagen. */
-            contentContainerStyle={{ paddingTop: ancho ? 72 : 24, paddingBottom: piso }}
+            /* Con fondo, la primera pantalla es de la imagen y el contenido
+               arranca abajo, scrolleando por encima (`alturaDeHeroe`). Sin
+               fondo, el arranque compacto de siempre: en escritorio debajo del
+               redondel de volver, que flota sobre la imagen. */
+            contentContainerStyle={{
+              paddingTop: alturaDeHeroe(alto, perfil?.bannerPath, ancho ? 72 : 24),
+              paddingBottom: piso,
+            }}
           >
             {perfil === undefined ? (
               <ActivityIndicator color="#FFFFFF" />

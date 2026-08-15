@@ -11,6 +11,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { BotonVidrio } from '../../src/ui/Glass'
 import {
+  alturaDeHeroe,
   FondoPerfil,
   Identidad,
   Resumen,
@@ -57,7 +58,8 @@ export default function ProfileScreen() {
   const profile = useMyProfile()
   const piso = usePiso(24)
   const colapso = useColapso()
-  const ancho = useWindowDimensions().width >= ANCHO_PX
+  const { width, height: altoVentana } = useWindowDimensions()
+  const ancho = width >= ANCHO_PX
   /* El margen del reloj, en el teléfono: la pantalla ya no reserva el área
      segura de arriba — el fondo pasa por detrás de la hora, como la portada. */
   const arriba = useSafeAreaInsets()
@@ -189,7 +191,14 @@ export default function ProfileScreen() {
                  antes, el avatar quedaba justo abajo del botón en una ventana
                  angosta. Es más o menos lo que ocupaba la franja negra, así que
                  el ritmo vertical queda igual y la imagen gana esa altura. */
-              paddingTop: ancho ? 72 : arriba.top + 24,
+              /* Y con un fondo elegido, todo eso queda como piso: la primera
+                 pantalla es de la imagen y el contenido arranca a ~2/5 del
+                 alto, scrolleando por encima. Ver `alturaDeHeroe`. */
+              paddingTop: alturaDeHeroe(
+                altoVentana,
+                profile?.bannerPath,
+                ancho ? 72 : arriba.top + 24,
+              ),
               paddingBottom: piso,
             }}
             {...colapso}
