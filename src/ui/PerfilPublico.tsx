@@ -87,15 +87,29 @@ export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
        * Ninguna de las tres capas llega a opaca. Si tapara del todo, las
        * vitrinas de vidrio quedarían difuminando un gris plano y el fondo
        * dejaría de servir para lo único que lo justifica.
+       *
+       * **El paño parejo es el más flojo de los tres, y esa es la idea.** Estaba
+       * en 0.62 y se comía la imagen: el fondo que alguien eligió llegaba como
+       * una mancha oscura detrás de todo. Pero bajarlo a secas dejaría sin
+       * contraste al texto que flota **fuera** de una tarjeta —el nombre arriba,
+       * el encabezado de las listas abajo—, así que lo que se baja en el medio
+       * se compensa en los dos bordes, que es justo donde ese texto vive.
+       *
+       * Repartido así, la parte de la imagen que queda al descubierto es la del
+       * medio, donde no hay texto suelto: las tarjetas que la cruzan son de
+       * vidrio y traen su propio contraste. El fondo se ve, y lo que hay que
+       * leer se lee.
        */}
-      <View className="absolute inset-0" style={{ backgroundColor: 'rgba(18,18,18,0.62)' }} />
+      <View className="absolute inset-0" style={{ backgroundColor: 'rgba(18,18,18,0.34)' }} />
       <LinearGradient
-        colors={['rgba(18,18,18,0.65)', 'rgba(18,18,18,0)']}
-        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 200 }}
+        colors={['rgba(18,18,18,0.80)', 'rgba(18,18,18,0.15)', 'rgba(18,18,18,0)']}
+        locations={[0, 0.65, 1]}
+        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 260 }}
       />
       <LinearGradient
-        colors={['rgba(18,18,18,0)', 'rgba(18,18,18,0.75)']}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 220 }}
+        colors={['rgba(18,18,18,0)', 'rgba(18,18,18,0.35)', 'rgba(18,18,18,0.88)']}
+        locations={[0, 0.45, 1]}
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 300 }}
       />
     </View>
   )
