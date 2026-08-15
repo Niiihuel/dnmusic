@@ -16,7 +16,9 @@ import { fetchMyProfile, type Profile } from '../services/profile'
 import type { Message } from '../models/message'
 import { avisar } from './aviso'
 import { desconectarJam } from './jam'
+import { desconectarEscucha } from './escucha'
 import { stopPlayback } from './playback'
+import { limpiarMeGusta } from './gustos'
 import { createStore, useStore } from './store'
 
 type SessionState = {
@@ -264,9 +266,15 @@ export async function endSession() {
   // El Jam se suelta antes que nada: su canal firma con la sesión que se va.
   // Solo el cierre local — la membresía la limpia la expiración del servidor.
   desconectarJam()
+  // La escucha también, y **antes** de parar la música: desuscripto, el stop
+  // de abajo no publica un cierre que borraría la fila para los otros
+  // aparatos de la cuenta — la escucha les sigue perteneciendo a ellos.
+  desconectarEscucha()
   // La música no es de la app, es de quien se está yendo: dejarla sonando en la
   // pantalla de login sería de otra cuenta, y con URLs firmadas de su sesión.
   stopPlayback()
+  // Los corazones también son de quien se va: el próximo arranca con los suyos.
+  limpiarMeGusta()
   await logOut()
 }
 

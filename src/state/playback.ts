@@ -159,8 +159,10 @@ type Guardado = {
 
 function guardar(force = false) {
   // La cola de un Jam no es tuya: persistirla dejaría la de otro apareciendo
-  // en tu próxima sesión. Lo guardado antes de entrar queda intacto.
-  if (enJam()) return
+  // en tu próxima sesión. Lo guardado antes de entrar queda intacto. El
+  // espejo tampoco persiste: su verdad vive en el servidor y se repide al
+  // abrir — guardar una foto vieja de eso es justo el bug que vinimos a matar.
+  if (enJam() || enEspejo()) return
   const now = Date.now()
   if (!force && now - ultimoGuardado < GUARDAR_CADA_MS) return
   ultimoGuardado = now
@@ -185,7 +187,8 @@ export async function restorePlayback() {
     const track = tracks?.[index]
     if (!track) return
     // Un Jam reconectado gana: lo guardado es de la sesión pasada y él es ahora.
-    if (enJam()) return
+    // Y un espejo también: la escucha en el servidor es más nueva que el disco.
+    if (enJam() || enEspejo()) return
     if (store.get().index >= 0 || store.get().manual) return
     store.set({
       tracks,
@@ -269,6 +272,43 @@ function enJam(): boolean {
   return jam?.activo() ?? false
 }
 
+/*
+ * La escucha de la cuenta en otros dispositivos: el séptimo puente, por la
+ * misma razón que el del Jam — `state/escucha` importa este archivo para
+ * volcarle el espejo, así que este no puede importarlo a él.
+ *
+ * Cuando la música está sonando en **otro aparato de la misma cuenta**, este
+ * se vuelve un espejo: dibuja lo que suena allá pero no reproduce nada, y
+ * tocar el transporte acá es una decisión sobre esa escucha. `retener`
+ * devuelve si la acción quedó en manos del traspaso: true es «no toques nada,
+ * se está preguntando» — el modal ofrece traerla acá o dejarla donde está—;
+ * false es «seguí», que puede significar que no hay conflicto o que la
+ * escucha se tomó en silencio (nadie estaba sonando allá).
+ */
+export type EscuchaBridge = {
+  /** true = la acción quedó retenida: suena en otro dispositivo y se preguntó. */
+  retener: (continuar: () => void) => boolean
+  /** Este aparato refleja la escucha de otro: no suena, dibuja. */
+  espejo: () => boolean
+  /** Cómo se llama el aparato donde suena, para los avisos. */
+  nombre: () => string
+}
+
+let escucha: EscuchaBridge | null = null
+
+export function registerEscucha(next: EscuchaBridge | null) {
+  escucha = next
+}
+
+function enEspejo(): boolean {
+  return escucha?.espejo() ?? false
+}
+
+/** Para quien no puede importar `state/escucha` sin ciclo (ver `state/jam`). */
+export function enEscuchaEspejo(): boolean {
+  return enEspejo()
+}
+
 /**
  * Lo que sonaba justo antes de cada canción manual, en orden, para poder volver.
  *
@@ -289,6 +329,19 @@ function recordarEnHistorial(track: PlaylistTrack | null) {
   if (!track) return
   historial.push(track)
   if (historial.length > HISTORIAL_MAX) historial.shift()
+}
+
+/**
+ * Los videos que ya pasaron por esta cola, para vetarlos del relleno.
+ *
+ * `escuchadas_recientes` solo conoce lo que sonó más de 30 segundos, así que
+ * una recomendada salteada a los cinco no quedaba anotada en ningún lado y la
+ * tanda siguiente podía volver a traerla: saltear era pedirla de nuevo. El
+ * historial de esta cola es la memoria que faltaba. Se lee en el momento del
+ * pedido —no al registrar el relleno— para que llegue fresco.
+ */
+export function videoIdsRecorridos(): string[] {
+  return historial.map((t) => t.videoId)
 }
 
 /** Si ya hay una tanda en camino, para no pedir dos veces al mismo final. */
@@ -343,14 +396,29 @@ function pedirRelleno() {
 }
 
 /**
+ * Cuántas pueden quedar esperando antes de pedir la próxima tanda.
+ *
+ * Con «pedir recién cuando no queda nada» —que era la regla anterior— saltear
+ * rápido agotaba la tanda en segundos y los saltos siguientes caían al vacío
+ * hasta que llegara la próxima: el botón parecía roto. Con dos de colchón, la
+ * tanda nueva viaja mientras todavía hay con qué seguir salteando.
+ */
+const RELLENO_UMBRAL = 2
+
+/**
  * Pide la próxima tanda **antes** de que haga falta.
  *
- * La llama el motor cuando empieza a sonar la última canción que queda. Pedir
- * recién al terminarse —que era lo único que había— dejaba un silencio de
- * varios segundos entre el final y la primera recomendada, y en el teléfono ese
- * silencio es fatal: sin audio sonando, iOS puede suspender la app con la
- * pantalla bloqueada y la música no vuelve más. Con la tanda ya en `upNext`
- * para cuando el tema termina, el cambio es el encadenado normal de la cola.
+ * La llama el motor cuando la cola se acorta. Pedir recién al terminarse —que
+ * era lo único que había— dejaba un silencio de varios segundos entre el final
+ * y la primera recomendada, y en el teléfono ese silencio es fatal: sin audio
+ * sonando, iOS puede suspender la app con la pantalla bloqueada y la música no
+ * vuelve más. Con la tanda ya en `upNext` para cuando el tema termina, el
+ * cambio es el encadenado normal de la cola.
+ *
+ * **Solo cuando la lista ya no tiene con qué seguir.** Lo que espera en
+ * `upNext` suena ANTES que la lista (es el orden de `advance`), así que pedir
+ * relleno con la lista a medias metería recomendadas adelante de las canciones
+ * que faltan — justo el «me mezcla música que no pedí» que vinimos a matar.
  */
 export function rellenarSiFalta() {
   const state = store.get()
@@ -360,7 +428,8 @@ export function rellenarSiFalta() {
   /* Con repetir prendido la lista no tiene final: no hay nada que rellenar. */
   if (state.repetir !== 'no') return
   if (!state.wantPlay) return
-  if (state.upNext.length || siguienteIndice(state) !== null) return
+  if (siguienteIndice(state) !== null) return
+  if (state.upNext.length > RELLENO_UMBRAL) return
   pedirRelleno()
 }
 
@@ -437,15 +506,30 @@ export function playQueue(
     jam?.tocarAhora(track)
     return
   }
+  // Con la música sonando en otro dispositivo de la cuenta, elegir una cola
+  // acá es una decisión de traspaso: se pregunta antes de pisar nada.
+  if (escucha?.retener(() => playQueue(tracks, index, origin))) return
   stopSnippets()
   // Cola nueva, historia nueva: lo que sonó en la anterior ya no es «anterior».
   historial = []
+  /*
+   * El aleatorio sobrevive como **preferencia**, pero la baraja no: era un
+   * orden de índices de LA OTRA lista. Dejarla puesta hacía que la lista nueva
+   * sonara salteada —los índices viejos, filtrados contra canciones que ya no
+   * son— y que se «terminara» a las pocas canciones, con la radio entrando en
+   * el medio de una playlist entera. Se rebaraja para esta cola, con la
+   * canción tocada primera: tocaste esa, y el azar es para lo que sigue.
+   */
+  const shuffle = store.get().shuffle
+    ? [index, ...barajar(tracks.length).filter((i) => i !== index)]
+    : null
   store.set({
     tracks,
     upNext: [],
     manual: null,
     origin,
     index,
+    shuffle,
     wantPlay: true,
     positionMs: 0,
     durationMs: track.durationMs,
@@ -461,6 +545,8 @@ export function enqueue(track: PlaylistTrack) {
     jam?.encolar(track)
     return
   }
+  // De espejo, encolar también pasa por el traspaso: la cola es la de allá.
+  if (escucha?.retener(() => enqueue(track))) return
   const state = store.get()
   // Sin nada cargado, encolar es simplemente ponerla.
   if (state.index < 0 && !state.manual) {
@@ -502,17 +588,14 @@ export function quitarEncolada(posicion: number) {
   if (posicion < 0 || posicion >= upNext.length) return
   store.set({ upNext: upNext.filter((_, i) => i !== posicion) })
   /*
-   * Si lo quitado era lo último que había para después, la próxima tanda se
-   * pide **ya**. Antes se pedía recién cuando la canción llegaba a su final
-   * —el camino de `rellenarSiFalta`—, y sacar las recomendadas de la cola
-   * dejaba un hueco de varios segundos mientras se resolvía la tanda nueva:
-   * se sentía como que «tardan en cargar».
+   * Si con lo quitado quedan pocas para después, la próxima tanda se pide
+   * **ya**. Antes se pedía recién cuando la canción llegaba a su final —el
+   * camino de `rellenarSiFalta`—, y sacar las recomendadas de la cola dejaba
+   * un hueco de varios segundos mientras se resolvía la tanda nueva: se sentía
+   * como que «tardan en cargar». La regla es la misma de siempre, así que se
+   * reusa el mismo camino.
    */
-  const state = store.get()
-  if (enJam()) return
-  if (!leerAjustes().autoplay || state.repetir !== 'no' || !state.wantPlay) return
-  if (state.upNext.length || siguienteIndice(state) !== null) return
-  pedirRelleno()
+  rellenarSiFalta()
 }
 
 /**
@@ -548,6 +631,7 @@ export function playAt(index: number) {
      puente la bloquea (sin permiso), no se salta ni localmente: verse en otra
      canción que el resto sería mentirse. */
   if (jam?.transporte('tocar', undefined, track.id)) return
+  if (escucha?.retener(() => playAt(index))) return
   stopSnippets()
   store.set({
     manual: null,
@@ -580,16 +664,43 @@ export function resumePlayback() {
     return
   }
   if (jam?.transporte('play')) return
+  /*
+   * Play con la música sonando en otro dispositivo de la cuenta: es LA
+   * pregunta del traspaso — «¿la traés acá o la dejás allá?». Si allá no
+   * suena nada (pausado, o el aparato se cerró), `retener` toma la escucha en
+   * silencio y esto sigue como un play de siempre, en el segundo por el que
+   * iba — que es lo que uno espera al retomar en otro aparato.
+   */
+  if (escucha?.retener(() => resumePlayback())) return
   stopSnippets()
   store.set({ wantPlay: true })
 }
 
 export function pausePlayback() {
   if (jam?.transporte('pause')) return
+  /*
+   * Pausar un espejo no pausa nada: acá no suena ningún audio, y mandar una
+   * pausa al otro aparato sería control remoto — que no existe todavía—. Se
+   * dice dónde está sonando, que es la información que faltaba.
+   */
+  if (enEspejo()) {
+    avisar(`La música está sonando en ${escucha?.nombre() ?? 'otro dispositivo'}.`)
+    return
+  }
   store.set({ wantPlay: false })
 }
 
 export function togglePlayback() {
+  /*
+   * De espejo, el botón es UNA pregunta —«¿la traés acá?»— sin importar el
+   * ícono que muestre: pausar algo que no está sonando en este aparato no
+   * significa nada, y darle play ES el gesto del traspaso. `resumePlayback`
+   * ya sabe retener y preguntar.
+   */
+  if (enEspejo()) {
+    resumePlayback()
+    return
+  }
   if (store.get().wantPlay) pausePlayback()
   else resumePlayback()
 }
@@ -661,6 +772,7 @@ export function playNext() {
     jam.transporte('siguiente')
     return
   }
+  if (escucha?.retener(() => playNext())) return
   const state = store.get()
 
   /*
@@ -732,6 +844,7 @@ export function playPrevious() {
     else jam.transporte('anterior')
     return
   }
+  if (escucha?.retener(() => playPrevious())) return
   const reiniciar = () => {
     engine?.seekTo(0)
     store.set({ positionMs: 0 })
@@ -797,6 +910,8 @@ export function seekToMs(positionMs: number) {
   // En un Jam el salto es de todos: se publica, y si el permiso no alcanza no
   // se salta ni acá — la barra en otro segundo que el resto sería mentira.
   if (jam?.transporte('seek', to)) return
+  // De espejo, arrastrar la barra también es querer la música acá: traspaso.
+  if (escucha?.retener(() => seekToMs(to))) return
   engine?.seekTo(to)
   store.set({ positionMs: to })
 }
@@ -866,6 +981,10 @@ export function toggleRepetir() {
     avisar('En un Jam el orden es de todos.')
     return
   }
+  if (enEspejo()) {
+    avisar(`La música está sonando en ${escucha?.nombre() ?? 'otro dispositivo'}.`)
+    return
+  }
   const actual = store.get().repetir
   store.set({ repetir: actual === 'no' ? 'lista' : actual === 'lista' ? 'una' : 'no' })
 }
@@ -873,6 +992,10 @@ export function toggleRepetir() {
 export function toggleShuffle() {
   if (enJam()) {
     avisar('En un Jam el orden es de todos.')
+    return
+  }
+  if (enEspejo()) {
+    avisar(`La música está sonando en ${escucha?.nombre() ?? 'otro dispositivo'}.`)
     return
   }
   const state = store.get()
@@ -1071,9 +1194,23 @@ export function toggleView(view: Exclude<NowPlayingView, 'info'>) {
   store.set({ view: store.get().view === view ? 'info' : view })
 }
 
+/**
+ * Poner una cara, sin alternar.
+ *
+ * Es para quien llega de afuera y quiere dejarla abierta —entrar a un Jam por
+ * el link, por ejemplo—: con `toggleView` esa misma llamada la cerraría si ya
+ * estaba puesta, que es justo lo contrario de lo que pide un «abrila».
+ */
+export function abrirVista(view: NowPlayingView) {
+  store.set({ view })
+}
+
 /** Frena la cola porque va a sonar un fragmento del chat. */
 export function pauseForSnippet() {
   if (!store.get().wantPlay) return
+  /* Un espejo no está sonando acá: el fragmento no tiene con quién pelear, y
+     «pausar» la escucha remota por escuchar un audio del chat sería absurdo. */
+  if (enEspejo()) return
   /* En un Jam la pausa es solo tuya: escuchar un fragmento del chat no puede
      pausarle la música a todos los demás. El Jam sigue; al volver, play. */
   if (enJam()) {
@@ -1128,6 +1265,77 @@ export function jamAplicar(a: {
     error: null,
     ...(a.positionMs !== undefined ? { positionMs: a.positionMs } : {}),
   })
+}
+
+/* ── El volcado de la escucha ───────────────────────────────────────────────
+ *
+ * `state/escucha` escribe por acá, con el mismo contrato que el volcado del
+ * Jam: esto es **la verdad llegando del servidor** — la escucha que está
+ * sonando en otro dispositivo de la cuenta, o la que se acaba de tomar—. No
+ * pide permiso, no persiste (ver `guardar`) y no vuelve a publicarse.
+ */
+
+/**
+ * Reemplaza el estado local por la escucha del servidor, tal cual era: la
+ * cola, lo encolado a mano, la manual sonando y de qué lista salió. A
+ * diferencia del volcado del Jam conserva `upNext` y `manual`, porque la
+ * escucha ES el estado local de otro aparato — restaurarlo a medias dejaría
+ * el traspaso perdiendo lo que la persona había encolado.
+ */
+export function escuchaAplicar(a: {
+  tracks: PlaylistTrack[]
+  index: number
+  upNext: PlaylistTrack[]
+  manual: PlaylistTrack | null
+  origin: PlaybackOrigin | null
+  wantPlay: boolean
+  positionMs: number
+}) {
+  const track = a.manual ?? a.tracks[a.index] ?? null
+  if (a.wantPlay && track) stopSnippets()
+  // La historia local describía otra cola: se vacía, como en el Jam.
+  historial = []
+  store.set({
+    tracks: a.tracks,
+    upNext: a.upNext,
+    manual: a.manual,
+    origin: a.origin,
+    // El índice solo si apunta a una fila real; la manual vive aparte de él.
+    index: a.index >= 0 && a.tracks[a.index] ? a.index : -1,
+    wantPlay: a.wantPlay && track !== null,
+    positionMs: Math.max(0, a.positionMs),
+    durationMs: track?.durationMs ?? 0,
+    // Orden y repetición son del aparato que reproduce, no del espejo.
+    shuffle: null,
+    repetir: 'no',
+    error: null,
+  })
+}
+
+/**
+ * El transporte del espejo, sin pasar por las acciones: las acciones publican
+ * decisiones de una persona, y esto es el eco de lo que ya pasó en el otro
+ * aparato — play, pausa, o la posición derivada del reloj compartido.
+ */
+export function escuchaTransporte(wantPlay: boolean, positionMs?: number) {
+  store.set({ wantPlay, ...(positionMs !== undefined ? { positionMs: Math.max(0, positionMs) } : {}) })
+}
+
+/** La escucha se cerró en el aparato dueño: acá tampoco queda nada que mostrar. */
+export function escuchaSoltar() {
+  stopPlayback()
+}
+
+/**
+ * Cambios del estado de reproducción, para el publicador de la escucha.
+ *
+ * `state/escucha` no puede suscribirse por hook —no es un componente— y
+ * exponer el store entero regalaría escritura sin contrato. Con esto le
+ * alcanza: en cada cambio relee `getPlaybackState` y decide si hay algo que
+ * publicar.
+ */
+export function subscribePlayback(listener: () => void): () => void {
+  return store.subscribe(listener)
 }
 
 /**

@@ -22,7 +22,8 @@ import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { useColapso } from './useColapso'
 import { FormError } from './Button'
-import { CollectionHeader, CollectionTitle, useCoverSize } from './CollectionHeader'
+import { CollectionHeader, CollectionTitle, useAngosto, useCoverSize } from './CollectionHeader'
+import { TECLADO_FISICO } from '../lib/teclado'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
 import { Vacio } from './Vacio'
@@ -154,8 +155,16 @@ export function PlaylistView({
   const [error, setError] = useState<string | null>(null)
   /** Fila bajo el cursor: es lo que destapa los íconos, como en Spotify. */
   const [hovered, setHovered] = useState<string | null>(null)
-  /** El nombre se edita en su lugar, no en un diálogo aparte. */
-  const [renaming, setRenaming] = useState(false)
+  /**
+   * Qué lista se está renombrando, no un simple «sí o no».
+   *
+   * Guarda el id porque la cabecera no se desmonta al cambiar de lista: con un
+   * booleano, empezar a renombrar una y saltar a otra dejaba el campo abierto
+   * sobre la segunda **con el nombre de la primera adentro** —el borrador vive
+   * en el campo y `initial` cambiando no lo resetea— y confirmar le ponía a la
+   * lista B el nombre de la A.
+   */
+  const [renaming, setRenaming] = useState<string | null>(null)
 
   /*
    * Lo que hay bajado, para toda la pantalla.
@@ -308,7 +317,7 @@ export function PlaylistView({
     },
     {
       label: 'Cambiar el nombre',
-      onPress: () => setRenaming(true),
+      onPress: () => setRenaming(playlist.id),
       icon: <IconPencil size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'pencil',
     },
@@ -361,9 +370,9 @@ export function PlaylistView({
           ListHeaderComponent={
             <Header
               playlist={playlist}
-              renaming={renaming}
+              renaming={renaming === playlist.id}
               onRenamed={async (next) => {
-                setRenaming(false)
+                setRenaming(null)
                 if (next !== null)
                   await onRename(next).catch(() => setError('No se pudo renombrar.'))
               }}
@@ -375,7 +384,7 @@ export function PlaylistView({
               onDescarga={alternarDescarga}
               onPlay={() => (total > 0 ? play(isMine ? soundingIndex : 0) : undefined)}
               onPickCover={onPickCover}
-              onRename={() => setRenaming(true)}
+              onRename={() => setRenaming(playlist.id)}
             >
               {error ? (
                 <View className="px-6 pb-3">
@@ -532,18 +541,11 @@ function Header({
         }
         title={
           renaming ? (
-            <NameField initial={playlist.name} onDone={onRenamed} />
+            /* Con clave: cambiar de lista con el campo abierto tiene que
+               empezar un borrador nuevo, no seguir el de la anterior. */
+            <NameField key={playlist.id} initial={playlist.name} onDone={onRenamed} />
           ) : (
-            /* El nombre también se edita tocándolo, no solo desde el menú: es
-               donde uno va a hacer clic cuando quiere cambiarlo. */
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Cambiar el nombre de la lista"
-              onPress={onRename}
-              className="rounded-lg active:opacity-70"
-            >
-              <CollectionTitle>{playlist.name}</CollectionTitle>
-            </Pressable>
+            <TituloEditable name={playlist.name} onRename={onRename} />
           )
         }
         actions={
@@ -696,12 +698,61 @@ function MarcaDescarga({ descarga }: { descarga: Descarga | undefined }) {
 }
 
 /**
+ * El nombre en reposo, que además es el botón para cambiarlo.
+ *
+ * Es donde uno va a hacer clic cuando quiere renombrar, así que ahí tiene que
+ * poder hacerlo — el menú de los tres puntos es el otro camino, no el único.
+ * Pero un texto que reacciona al clic sin avisar es una función escondida: bajo
+ * el cursor aparece el lápiz y el nombre baja de brillo, que es lo mismo que ya
+ * hace la portada de al lado.
+ *
+ * El lápiz **ocupa su lugar siempre**, transparente cuando no hay cursor: si
+ * apareciera de la nada, el título se correría justo cuando lo vas a apuntar.
+ */
+function TituloEditable({ name, onRename }: { name: string; onRename: () => void }) {
+  const [over, setOver] = useState(false)
+  const angosto = useAngosto()
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Cambiar el nombre de ${name}`}
+      onPress={onRename}
+      onPointerEnter={() => setOver(true)}
+      onPointerLeave={() => setOver(false)}
+      className={`flex-row items-center gap-2 rounded-lg active:opacity-70 ${
+        angosto ? 'justify-center' : ''
+      }`}
+      style={{ opacity: over ? 0.75 : 1 }}
+    >
+      <View className="min-w-0 shrink">
+        <CollectionTitle>{name}</CollectionTitle>
+      </View>
+      <View style={{ opacity: over ? 1 : 0 }}>
+        <IconPencil size={angosto ? 15 : 18} color={ICON_COLOR.muted} />
+      </View>
+    </Pressable>
+  )
+}
+
+/**
  * El nombre, mientras se edita.
+ *
+ * **Sale con el mismo cuerpo y la misma alineación que el título que
+ * reemplaza**: entrar a renombrar no puede cambiarle el tamaño a lo que estás
+ * mirando ni moverlo de lugar. Por eso el margen negativo — el campo tiene su
+ * relleno para que el fondo respire, y sin corrimiento el texto arrancaría
+ * doce píxeles a la derecha de donde estaba.
+ *
+ * El texto **arranca seleccionado**: nueve de cada diez veces renombrar es
+ * cambiar el nombre entero, no corregirle una letra, y sin esto había que
+ * borrarlo a mano antes de escribir. Para corregir una letra alcanza con hacer
+ * clic donde va el cursor, que es lo que uno hace igual.
  *
  * Guarda al salir del campo y no solo con Enter. Antes, salir cancelaba: uno
  * escribía el nombre nuevo, hacía clic en cualquier lado y volvía el viejo sin
  * decir nada — se sentía roto, no cauteloso. Escape sigue estando para
- * arrepentirse a propósito.
+ * arrepentirse a propósito, y el pie lo dice en vez de que haya que adivinarlo.
  *
  * El texto vive acá adentro y no en el padre porque es un borrador: mientras se
  * escribe no es todavía el nombre de la lista.
@@ -714,6 +765,7 @@ function NameField({
   /** `null` cancela sin guardar. */
   onDone: (name: string | null) => void
 }) {
+  const angosto = useAngosto()
   const [draft, setDraft] = useState(initial)
   /* Enter guarda y saca el foco, y ese blur llegaría a guardar de nuevo. Una
      sola salida por edición. */
@@ -724,21 +776,33 @@ function NameField({
     onDone(name)
   }
   const trimmed = draft.trim()
+  const guardar = () => finish(trimmed && trimmed !== initial ? trimmed : null)
 
   return (
-    <TextInput
-      value={draft}
-      onChangeText={setDraft}
-      autoFocus
-      maxLength={60}
-      accessibilityLabel="Nombre de la lista"
-      // Un nombre vacío, o el mismo de antes, no es un cambio: se cancela.
-      onSubmitEditing={() => finish(trimmed && trimmed !== initial ? trimmed : null)}
-      onBlur={() => finish(trimmed && trimmed !== initial ? trimmed : null)}
-      onKeyPress={(e) => {
-        if (e.nativeEvent.key === 'Escape') finish(null)
-      }}
-      className="rounded-lg bg-muted px-3 py-2 text-foreground text-3xl font-bold"
-    />
+    <View className={angosto ? 'w-full items-center gap-1' : 'gap-1'}>
+      <TextInput
+        value={draft}
+        onChangeText={setDraft}
+        autoFocus
+        selectTextOnFocus
+        maxLength={60}
+        accessibilityLabel="Nombre de la lista"
+        // Un nombre vacío, o el mismo de antes, no es un cambio: se cancela.
+        onSubmitEditing={guardar}
+        onBlur={guardar}
+        onKeyPress={(e) => {
+          if (e.nativeEvent.key === 'Escape') finish(null)
+        }}
+        className={`self-stretch rounded-lg bg-muted text-foreground font-bold ${
+          angosto ? 'px-3 py-1 text-center text-2xl' : 'px-3 py-0.5 text-4xl'
+        }`}
+        // El anillo de foco del navegador ya lo apaga `global.css` para todo
+        // campo de texto; acá solo queda correr el relleno.
+        style={angosto ? null : { marginLeft: -12 }}
+      />
+      <Text className={`text-muted-foreground text-[11px] ${angosto ? 'text-center' : ''}`}>
+        {TECLADO_FISICO ? 'Enter para guardar · Esc para cancelar' : 'Tocá afuera para guardar'}
+      </Text>
+    </View>
   )
 }

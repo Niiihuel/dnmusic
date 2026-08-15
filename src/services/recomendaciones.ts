@@ -5,10 +5,12 @@ import type { PlaylistTrack } from './playlists'
 /**
  * Con qué seguir cuando se termina la lista.
  *
- * **Sin ningún modelo.** La señal es tu propio historial de escucha —cuánto
- * tiempo real le diste a cada artista, que vive en `plays`— y el catálogo lo
- * pone YouTube Music, que la app ya consulta para todo lo demás. Es cómo
- * funcionaban las radios antes de que todo fuera una recomendación aprendida.
+ * **Sin ningún modelo.** La señal es tuya y de nadie más: el historial de
+ * escucha —cuánto tiempo real le diste a cada artista, que vive en `plays`— y
+ * tus me gusta —el gusto dicho a propósito, que vive en `me_gusta` y refuerza
+ * a los artistas marcados, ver `MS_POR_GUSTO`—. El catálogo lo pone YouTube
+ * Music, que la app ya consulta para todo lo demás. Es cómo funcionaban las
+ * radios antes de que todo fuera una recomendación aprendida.
  *
  * Son **dos capas**, y la segunda es la que hace que esto sirva para descubrir:
  *
@@ -30,20 +32,61 @@ import type { PlaylistTrack } from './playlists'
 const ARTISTAS = 8
 /** Días hacia atrás que cuentan como «lo escuché recién». */
 const DIAS_RECIENTES = 7
-/** Cuántas canciones se preparan por tanda. */
-const POR_TANDA = 3
+/**
+ * Cuántas canciones se preparan por tanda.
+ *
+ * Eran tres, y tres se agotan en tres saltos: quien va salteando —que es el
+ * uso más común de una radio— se quedaba sin cola en segundos y los saltos
+ * siguientes caían al vacío hasta la próxima tanda. Cinco, junto con pedir la
+ * siguiente cuando quedan pocas (ver `RELLENO_UMBRAL`), mantienen el botón
+ * vivo sin encarecer cada tanda de más.
+ */
+const POR_TANDA = 5
 /**
  * Cuántas de la tanda salen de artistas que **no** escuchás.
  *
- * Dos de tres. La proporción no es un capricho: una tanda enteramente
+ * Tres de cinco, la misma proporción de siempre: una tanda enteramente
  * desconocida es lo que hace que la gente apague el autoplay, y una enteramente
- * conocida es lo que hacía que esto no sirviera para descubrir nada. Con una
- * ancla propia por tanda, la cola sigue sonando a vos aunque la mayoría sea
+ * conocida es lo que hacía que esto no sirviera para descubrir nada. Con dos
+ * anclas propias por tanda, la cola sigue sonando a vos aunque la mayoría sea
  * nueva.
  */
-const EXPLORACION = 2
+const EXPLORACION = 3
 
 export type ArtistaEscuchado = { artist_id: string; artist: string; ms: number }
+
+/**
+ * Cuánto pesa un corazón, medido en tiempo de escucha.
+ *
+ * Las anclas se sortean por milisegundos escuchados, así que el gusto
+ * explícito entra convertido a esa misma moneda: cada me gusta a una canción
+ * suma como diez minutos de escucha de su artista. Diez y no más porque el
+ * corazón **refuerza** al historial, no lo pisa: tres corazones a alguien que
+ * nunca escuchás pesan como media hora — entra al sorteo, pero no desplaza a
+ * quien escuchás todos los días. Y un artista solo-de-corazones entra aunque
+ * el reloj no lo conozca: marcar es la forma más directa de pedir «más de
+ * esto».
+ */
+const MS_POR_GUSTO = 10 * 60_000
+
+/**
+ * Suma los corazones a las anclas del historial, en la moneda común.
+ *
+ * No toca el orden de nadie: devuelve la lista lista para `elegirPesado`, que
+ * ya reparte proporcional al peso.
+ */
+function reforzarConGustos(
+  escuchados: ArtistaEscuchado[],
+  gustos: { artist_id: string; artist: string; cuantos: number }[],
+): ArtistaEscuchado[] {
+  const porId = new Map(escuchados.map((a) => [a.artist_id, { ...a }]))
+  for (const g of gustos) {
+    const previo = porId.get(g.artist_id)
+    if (previo) previo.ms += g.cuantos * MS_POR_GUSTO
+    else porId.set(g.artist_id, { artist_id: g.artist_id, artist: g.artist, ms: g.cuantos * MS_POR_GUSTO })
+  }
+  return [...porId.values()]
+}
 
 /**
  * Tope de canciones del mismo artista por tanda.
@@ -243,13 +286,26 @@ export async function proximasRecomendadas(
 ): Promise<PlaylistTrack[]> {
   try {
     const supabase = getSupabase()
-    const [{ data: artistas }, { data: recientes }] = await Promise.all([
+    const [{ data: artistas }, { data: recientes }, { data: gustadas }] = await Promise.all([
       supabase.rpc('artistas_mas_escuchados', { p_limite: ARTISTAS }),
       supabase.rpc('escuchadas_recientes', { p_dias: DIAS_RECIENTES }),
+      /* El gusto explícito, directo de la tabla: los corazones son pocos y
+         propios, y RLS ya recorta a los tuyos. Se agrupan acá porque traer
+         las filas es más simple que otra función SQL para una suma. */
+      supabase.from('me_gusta').select('artist_id, artist'),
     ])
 
     const escuchados = (artistas ?? []) as ArtistaEscuchado[]
-    const candidatos = escuchados.length ? escuchados : delaCola
+    /* Corazones por artista, contados de las filas crudas. */
+    const porGusto = new Map<string, { artist_id: string; artist: string; cuantos: number }>()
+    for (const g of (gustadas ?? []) as { artist_id: string | null; artist: string }[]) {
+      if (!g.artist_id) continue
+      const previo = porGusto.get(g.artist_id)
+      if (previo) previo.cuantos += 1
+      else porGusto.set(g.artist_id, { artist_id: g.artist_id, artist: g.artist, cuantos: 1 })
+    }
+    const reforzados = reforzarConGustos(escuchados, [...porGusto.values()])
+    const candidatos = reforzados.length ? reforzados : delaCola
     if (!candidatos.length) return []
 
     /* Lo que no se puede volver a ofrecer: lo de esta semana y lo que ya está

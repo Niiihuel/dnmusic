@@ -7,21 +7,111 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import { avisar } from '../state/aviso'
+import { TECLADO_FISICO } from '../lib/teclado'
 
 /** Cuánto hay que sostener para que cuente como decisión. */
 const LLENADO_MS = 1200
 /** Lo que tarda en vaciarse al soltar antes de tiempo. */
 const VACIADO_MS = 180
+/** Cuánto se queda armado el botón de escritorio antes de volver solo. */
+const ARMADO_MS = 4000
 
 /**
- * Un botón que se completa sosteniéndolo: el relleno avanza mientras el dedo
- * está apoyado y, al llegar al final, recién ahí pasa lo irreversible.
+ * Confirmar una acción de las que no se deshacen, en un solo control.
  *
- * Reemplaza a la confirmación de dos toques para terminar un Jam. Aquella
- * pedía leer un texto que cambió («tocá de nuevo…») y acordarse de volver;
- * esta pone la confirmación **en el mismo gesto**: sostener ya es decir «sí,
- * en serio», y soltar antes es arrepentirse gratis. Es el patrón de las
- * acciones destructivas de una pasada — apagar un iPhone es el mismo gesto.
+ * **Con el dedo se sostiene; con el mouse se hace clic dos veces**, y no es
+ * capricho: son dos gestos que quieren decir lo mismo en dos aparatos donde el
+ * otro no existe.
+ *
+ * En el teléfono, sostener pone la confirmación adentro del mismo gesto —«sí,
+ * en serio»— y soltar antes es arrepentirse gratis; es lo que hace el apagado
+ * del iPhone. Con un mouse ese gesto **no está en el vocabulario**: nadie
+ * mantiene apretado un botón de una pantalla grande. Acá el botón parecía roto
+ * — se hacía clic en «Terminar el Jam» y no pasaba nada más que un aviso al pie
+ * explicando un gesto que no se le hace a un mouse.
+ *
+ * Con puntero fino se arma en el primer clic —el botón se enciende en blanco y
+ * pregunta— y se cumple en el segundo. Es la confirmación de dos toques que en
+ * el teléfono se había descartado porque el dedo tapa el rótulo que cambia;
+ * con el cursor eso no pasa: el texto nuevo queda entero a la vista y a un
+ * píxel del clic siguiente. Se desarma solo a los cuatro segundos o al sacar el
+ * cursor de encima, así que arrepentirse sigue siendo gratis.
+ *
+ * Las dos formas terminan **en el mismo cuadro**: fondo blanco —el acento de
+ * este sistema— con el texto en negativo. En una es adonde llega la marea, en
+ * la otra es el estado armado.
+ */
+export function BotonSostener(props: {
+  rotulo: string
+  /** Lo que dice el aviso ante un toque corto: qué hace y cómo se sostiene. */
+  pista: string
+  onCompletar: () => void
+}) {
+  return TECLADO_FISICO ? <DosClics {...props} /> : <Sostenido {...props} />
+}
+
+/**
+ * La forma de escritorio: clic para armar, clic para cumplir.
+ *
+ * Armado se dibuja igual que el sostenido al llenarse —blanco con el texto en
+ * negativo— para que las dos formas del mismo botón terminen en la misma
+ * imagen. Y el rótulo dice lo que falta («¿Seguro?»), que es lo único que
+ * distingue un botón armado de uno que ya hizo algo.
+ */
+function DosClics({
+  rotulo,
+  onCompletar,
+}: {
+  rotulo: string
+  pista: string
+  onCompletar: () => void
+}) {
+  const [armado, setArmado] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const desarmar = () => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+    setArmado(false)
+  }
+  useEffect(() => desarmar, [])
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={armado ? `Confirmar: ${rotulo}` : rotulo}
+      accessibilityHint={armado ? undefined : 'Hay que confirmarlo con un segundo clic.'}
+      onPress={() => {
+        if (armado) {
+          desarmar()
+          onCompletar()
+          return
+        }
+        setArmado(true)
+        timer.current = setTimeout(desarmar, ARMADO_MS)
+      }}
+      /* Sacar el cursor de encima es cambiar de idea: el botón no puede quedar
+         armado esperando un clic que ya no va a llegar ahí. */
+      onPointerLeave={desarmar}
+      className={`h-11 items-center justify-center overflow-hidden rounded-full px-5 ${
+        armado ? 'bg-primary' : 'bg-card active:opacity-80'
+      }`}
+    >
+      <Text
+        selectable={false}
+        style={armado ? { color: '#121212' } : undefined} /* primary-foreground */
+        className={`text-[13px] font-semibold ${armado ? '' : 'text-foreground'}`}
+        numberOfLines={1}
+      >
+        {armado ? `¿Seguro? ${rotulo}` : rotulo}
+      </Text>
+    </Pressable>
+  )
+}
+
+/**
+ * La forma del teléfono: el relleno avanza mientras el dedo está apoyado y, al
+ * llegar al final, recién ahí pasa lo irreversible.
  *
  * El relleno es blanco —el acento de este sistema— y el texto se invierte a
  * medida que la marea sube: son dos capas con el mismo contenido, la de arriba
@@ -32,13 +122,12 @@ const VACIADO_MS = 180
  * Un toque corto no hace nada más que enseñar el gesto, por el aviso: un botón
  * que termina algo para todos no puede dispararse por un roce.
  */
-export function BotonSostener({
+function Sostenido({
   rotulo,
   pista,
   onCompletar,
 }: {
   rotulo: string
-  /** Lo que dice el aviso ante un toque corto: qué hace y cómo se sostiene. */
   pista: string
   onCompletar: () => void
 }) {

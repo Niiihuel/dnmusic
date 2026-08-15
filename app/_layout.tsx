@@ -25,6 +25,9 @@ import { restorePlayback, usePlaybackTrack } from '../src/state/playback'
 import { cargarAjustes } from '../src/state/ajustes'
 import { cargarDescargas } from '../src/state/descargas'
 import { reconectarJam } from '../src/state/jam'
+import { iniciarEscucha } from '../src/state/escucha'
+import { cargarMeGusta } from '../src/state/gustos'
+import { Traspaso } from '../src/ui/Traspaso'
 import { startSession, useMyProfile, useUser } from '../src/state/session'
 import { usePush } from '../src/state/push'
 import { emailToUsername } from '../src/services/auth'
@@ -737,6 +740,10 @@ function Chrome() {
       {/* La oferta de compartir tras una captura de pantalla: mismo lugar en
           la pila que el aviso, por la misma razón. Ver `AvisoCaptura`. */}
       <AvisoCaptura />
+      {/* La pregunta del traspaso: la música suena en otro dispositivo de la
+          cuenta y alguien tocó el transporte acá. Puede saltar desde
+          cualquier pantalla, así que vive en el mismo lugar que el aviso. */}
+      <Traspaso />
 
       {/* El velo y, encima, la zona que cierra: con el panel abierto, tocar la
           app lo cierra en vez de accionar lo que haya debajo del dedo. */}
@@ -802,6 +809,13 @@ function SessionGate() {
     if (!user) return
     void restorePlayback()
     void reconectarJam()
+    /* La escucha compartida entre los dispositivos de la cuenta: se suscribe
+       a la fila propia y reconcilia — si la música quedó en otro aparato,
+       este arranca mostrándola en vez de la cola vieja del disco. */
+    void iniciarEscucha()
+    /* Los corazones: el reproductor los dibuja al instante y las
+       recomendaciones los pesan, así que se cargan una vez y viven acá. */
+    void cargarMeGusta()
   }, [user])
 
   if (user === undefined) {

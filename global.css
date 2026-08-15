@@ -124,3 +124,17 @@ input:focus,
 textarea:focus {
   outline: none;
 }
+
+/*
+ * ── Texto seleccionado ─────────────────────────────────────────────────────
+ *
+ * El azul del sistema era el único color de la pantalla, y se veía justo en el
+ * momento menos disimulable: al entrar a renombrar una lista, donde el nombre
+ * arranca seleccionado entero y a 36px. La paleta está completa con grises
+ * (`docs/DESIGN.md`), así que la selección también se marca por luminancia —
+ * el acento blanco con el texto en negativo, como cualquier estado activo.
+ */
+::selection {
+  background-color: rgb(var(--color-primary));
+  color: rgb(var(--color-primary-foreground));
+}

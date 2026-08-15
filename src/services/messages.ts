@@ -123,6 +123,31 @@ export async function markRead(pairId: string, messageId: string): Promise<void>
   await updateFlag(pairId, messageId, 'read_at')
 }
 
+/**
+ * Marca leído **todo el hilo**, de un viaje.
+ *
+ * Es lo que hace falta cuando lo que se abre es la conversación entera y no un
+ * mensaje suelto: en el hilo se leen los cinco que llegaron, no uno. Antes solo
+ * existía el camino de a uno —el de la pantalla de un mensaje— y el globito de
+ * la conversación se quedaba con su número para siempre por más que la miraras.
+ *
+ * No hace falta decir cuáles: el filtro es el par y «sin leer», y de los tuyos
+ * se encarga la policy, que solo deja tocar los que **no** mandaste vos. Los ya
+ * leídos quedan afuera por el `is null` — el trigger rechaza pisar un `read_at`
+ * que ya estaba, así que incluirlos tiraría la tanda entera.
+ *
+ * La hora que se manda es solo la señal de que la columna cambió: la de verdad
+ * la pone el servidor con `now()` en el trigger.
+ */
+export async function markThreadRead(pairId: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from('messages')
+    .update({ read_at: new Date().toISOString() } satisfies Partial<MessageRow>)
+    .eq('pair_id', pairId)
+    .is('read_at', null)
+  if (error) throw error
+}
+
 async function updateFlag(pairId: string, messageId: string, column: 'opened_at' | 'read_at') {
   const { error } = await getSupabase()
     .from('messages')

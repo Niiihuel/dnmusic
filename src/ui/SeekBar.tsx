@@ -29,7 +29,9 @@ export function formatLength(ms: number): string {
  * Se puede arrastrar además de tocar. Mientras se arrastra, la perilla sigue al
  * dedo y al audio se le pide **un solo** salto, al soltar: pedirlo por cuadro
  * encadena saltos que el audio no llega a completar, y eso suena a estática —
- * el mismo motivo por el que la barra del editor funciona así.
+ * el mismo motivo por el que la barra del editor funciona así. El volumen es la
+ * excepción y lo pide con `envivo`: ahí lo que se arrastra no es la aguja de un
+ * disco sino una perilla, y una perilla se tiene que oír mientras gira.
  *
  * El arrastre solo se activa pasados unos píxeles horizontales para que mover
  * el dedo en vertical siga desplazando lo que haya debajo y no mueva la canción.
@@ -45,6 +47,7 @@ export function SeekBar({
   totalMs,
   onSeek,
   compact = false,
+  envivo = false,
   posicionMs,
 }: {
   label: string
@@ -54,6 +57,16 @@ export function SeekBar({
   onSeek: (fraction: number) => void
   /** Sin los tiempos a los costados, para cuando el ancho no da. */
   compact?: boolean
+  /**
+   * Avisar cada cuadro del arrastre, no solo al soltar.
+   *
+   * Es lo que quiere el volumen: mover la perilla **es** subir y bajar, y hay
+   * que oírlo mientras se mueve — soltar para recién ahí escuchar el resultado
+   * convierte una perilla en un formulario. La posición de la canción hace lo
+   * contrario a propósito: pedirle un salto por cuadro al audio encadena saltos
+   * que no llega a completar y eso suena a estática.
+   */
+  envivo?: boolean
   /**
    * La posición cuadro a cuadro, si quien llama la tiene.
    *
@@ -74,6 +87,11 @@ export function SeekBar({
   const commit = (fraction: number) => {
     setDragAt(null)
     onSeek(fraction)
+  }
+  /** Cada cuadro del arrastre: la perilla siempre, el valor solo si es en vivo. */
+  const arrastrar = (fraction: number) => {
+    setDragAt(fraction)
+    if (envivo) onSeek(fraction)
   }
 
   /*
@@ -106,8 +124,8 @@ export function SeekBar({
     // `onStart` y no `onBegin`: begin dispara al apoyar el dedo, incluso cuando
     // el movimiento va a terminar siendo un scroll vertical, y la perilla
     // pegaba un salto para volver enseguida.
-    .onStart((e) => runOnJS(setDragAt)(at(e.x)))
-    .onUpdate((e) => runOnJS(setDragAt)(at(e.x)))
+    .onStart((e) => runOnJS(arrastrar)(at(e.x)))
+    .onUpdate((e) => runOnJS(arrastrar)(at(e.x)))
     .onEnd((e) => runOnJS(commit)(at(e.x)))
     // Si el gesto se cancela (por ejemplo, gana el scroll) la perilla vuelve a
     // donde está el audio en vez de quedarse colgada donde se soltó.

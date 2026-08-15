@@ -41,6 +41,7 @@ import { LyricsView } from '../src/ui/LyricsView'
 import { Vacio } from '../src/ui/Vacio'
 import { compartirHistoria } from '../src/ui/CompartirHistoria'
 import { BotonAleatorio, BotonRepetir } from '../src/ui/Transport'
+import { BotonMeGusta } from '../src/ui/BotonMeGusta'
 import { SeekBar } from '../src/ui/SeekBar'
 import { SongDisc } from '../src/ui/SongDisc'
 import {
@@ -405,13 +406,19 @@ export default function Playing() {
         </View>
 
         <View className="gap-5 px-6 pb-4 pt-6">
-          <View className="gap-1">
-            <Text className="text-foreground text-2xl font-bold" numberOfLines={2}>
-              {track.title}
-            </Text>
-            <Text className="text-muted-foreground text-[15px]" numberOfLines={1}>
-              {track.artist}
-            </Text>
+          {/* El corazón vive junto al título, como en Spotify: es un juicio
+              sobre ESTA canción, no un control de la cola — con los controles
+              de transporte se leería como un sexto botón de reproducción. */}
+          <View className="flex-row items-center gap-3">
+            <View className="min-w-0 flex-1 gap-1">
+              <Text className="text-foreground text-2xl font-bold" numberOfLines={2}>
+                {track.title}
+              </Text>
+              <Text className="text-muted-foreground text-[15px]" numberOfLines={1}>
+                {track.artist}
+              </Text>
+            </View>
+            <BotonMeGusta track={track} size={24} />
           </View>
 
           <SeekBar

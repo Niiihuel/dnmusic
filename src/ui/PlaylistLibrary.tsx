@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import type { Playlist } from '../services/playlists'
+import { useCuantosMeGusta } from '../state/gustos'
 import { usePiso, useTecho } from '../state/shell'
 import { useColapso } from './useColapso'
 import { Panel } from './Panel'
@@ -9,7 +10,7 @@ import { SkeletonList } from './Skeleton'
 import { AnimatedSidebarTitle } from './SidebarMotion'
 import { BotonVidrio } from './Glass'
 import { Vacio } from './Vacio'
-import { ICON_COLOR, IconCollapseRight, IconMusic, IconPlus } from './icons'
+import { ICON_COLOR, IconCollapseRight, IconHeartFilled, IconMusic, IconPlus } from './icons'
 
 /**
  * Tus listas, en el panel de la derecha.
@@ -26,6 +27,7 @@ export function PlaylistLibrary({
   onCollapse,
   onOpen,
   onCreate,
+  onOpenGustos,
   error,
 }: {
   playlists: Playlist[] | null
@@ -38,9 +40,12 @@ export function PlaylistLibrary({
   onCollapse: () => void
   onOpen: (playlist: Playlist) => void
   onCreate: () => Promise<void>
+  /** Abre «Tus me gusta». Sin esto la fila fija no se dibuja. */
+  onOpenGustos?: () => void
   error: string | null
 }) {
   const [busy, setBusy] = useState(false)
+  const cuantosGustos = useCuantosMeGusta()
   /* En el teléfono esto es la pestaña «Listas» y llega hasta el borde: la
      última tiene que quedar arriba de lo que flota. */
   const piso = usePiso(12)
@@ -123,6 +128,41 @@ export function PlaylistLibrary({
           contentContainerClassName="gap-0.5 px-2"
           contentContainerStyle={{ paddingBottom: piso }}
           {...colapso}
+          /* «Tus me gusta» va fija arriba, como en Spotify: no es una lista
+             tuya —no se renombra ni se borra— pero es de donde más se
+             escucha, y enterrarla entre las listas la volvería invisible. */
+          ListHeaderComponent={
+            onOpenGustos ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={onOpenGustos}
+                className={`flex-row items-center rounded-lg ${
+                  suelto ? 'gap-3 p-2.5' : 'gap-3 p-2'
+                } active:bg-card`}
+              >
+                <View
+                  className="items-center justify-center rounded bg-muted"
+                  style={{ width: suelto ? 60 : 48, height: suelto ? 60 : 48 }}
+                >
+                  <IconHeartFilled size={suelto ? 24 : 20} color={ICON_COLOR.foreground} />
+                </View>
+                <View className="min-w-0 flex-1 gap-0.5">
+                  <Text
+                    className={`text-foreground ${suelto ? 'text-[16px]' : 'text-[14px]'}`}
+                    numberOfLines={1}
+                  >
+                    Tus me gusta
+                  </Text>
+                  <Text
+                    className={`text-muted-foreground ${suelto ? 'text-[13px]' : 'text-[12px]'}`}
+                    numberOfLines={1}
+                  >
+                    Colección · {cuantosGustos} {cuantosGustos === 1 ? 'canción' : 'canciones'}
+                  </Text>
+                </View>
+              </Pressable>
+            ) : null
+          }
           ListEmptyComponent={
             <Vacio
               icono={<IconMusic size={22} color={ICON_COLOR.muted} />}

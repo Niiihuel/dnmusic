@@ -50,7 +50,7 @@ import {
   useUser,
 } from '../src/state/session'
 import { resetDraft, setDraft, useDraft } from '../src/state/draft'
-import { sendMessage } from '../src/services/messages'
+import { markThreadRead, sendMessage } from '../src/services/messages'
 import { emailToUsername } from '../src/services/auth'
 import {
   contactLabel,
@@ -65,6 +65,7 @@ import {
 import { FilaCuenta } from '../src/ui/FilaCuenta'
 import { Vacio } from '../src/ui/Vacio'
 import { mensajeError } from '../src/lib/mensajeError'
+import { TECLADO_FISICO } from '../src/lib/teclado'
 import { avisar } from '../src/state/aviso'
 import { artworkSource } from '../src/lib/artwork'
 import {
@@ -105,6 +106,7 @@ import {
   enqueue,
   playQueue,
   registerPlaylistOpener,
+  toggleView,
   useNowPlayingView,
   usePlaybackOriginId,
   usePlaybackTrack,
@@ -129,6 +131,7 @@ import {
 } from '../src/services/playlists'
 import { PlaylistLibrary, PlaylistRail } from '../src/ui/PlaylistLibrary'
 import { PlaylistView } from '../src/ui/PlaylistView'
+import { MeGustaView, ORIGEN_GUSTOS } from '../src/ui/MeGusta'
 import { LyricsView } from '../src/ui/LyricsView'
 import { SongDisc } from '../src/ui/SongDisc'
 import { AlbumPanel } from '../src/ui/AlbumPanel'
@@ -183,6 +186,8 @@ type Vista =
   | { kind: 'library' }
   | { kind: 'search' }
   | { kind: 'playlist'; id: string }
+  /** Todas las canciones con corazón. No es una playlist: ver `MeGustaView`. */
+  | { kind: 'gustos' }
   | { kind: 'collection'; collection: Coleccion }
   | { kind: 'artist'; id: string; name: string }
   /** La grilla con todos los géneros, y la página de uno. Ver `HomeFeed`. */
@@ -230,7 +235,7 @@ export default function Home() {
   const [leftWidth, setLeftWidth] = useState(340)
   const [rightWidth, setRightWidth] = useState(360)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
-  const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [rightPlegado, setRightPlegado] = useState(false)
   const [sending, setSending] = useState(false)
   const [composerError, setComposerError] = useState<string | null>(null)
   const draft = useDraft()
@@ -249,8 +254,38 @@ export default function Home() {
   /* La cara elegida en la barra (letra, disco) y qué suena: deciden si el
      panel del medio muestra eso en grande, al modo de Spotify. */
   const caraSonando = useNowPlayingView()
+  /*
+   * Abrir el Jam o la cola desde la barra **despliega el panel derecho**.
+   *
+   * Esas dos caras viven ahí, y con el panel plegado a riel el toque cambiaba
+   * la vista adentro de una franja de 64px: parecía que el botón no hacía
+   * nada. Se deriva en vez de sincronizarse con un efecto: el pliegue que
+   * eligió la persona queda guardado como deseo, la cara abierta lo destapa
+   * mientras dure, y al cerrarla el panel vuelve a como estaba.
+   */
+  const rightCollapsed = rightPlegado && caraSonando !== 'jam' && caraSonando !== 'cola'
   const pistaSonando = usePlaybackTrack()
   const sonandoAhora = useWantPlay()
+  /*
+   * La letra o el disco **tomando el panel del medio**.
+   *
+   * Es una capa encima del medio, no una parada del historial: mientras está
+   * puesta gana sobre lo que hubiera abajo —una lista, la portada, un chat— y
+   * cualquier navegación la cierra (ver `dejarCara`). Sin eso, tocar «inicio»
+   * con la letra abierta no hacía nada visible: la pila se iba al principio
+   * detrás de una letra que seguía tapando todo.
+   *
+   * Solo en escritorio: en el teléfono estas caras viven en la pantalla del
+   * reproductor (`app/playing.tsx`).
+   */
+  const caraCentro =
+    !suelto && pistaSonando && (caraSonando === 'lyrics' || caraSonando === 'disc')
+      ? caraSonando
+      : null
+  /** Volver de la letra o el disco al panel que había debajo. */
+  const dejarCara = useCallback(() => {
+    if (caraSonando === 'lyrics' || caraSonando === 'disc') toggleView(caraSonando)
+  }, [caraSonando])
   const [playlists, setPlaylists] = useState<Playlist[] | null>(null)
   const [playlistError, setPlaylistError] = useState<string | null>(null)
   /** Resultados del buscador de arriba cuando estamos en música. */
@@ -276,22 +311,31 @@ export default function Home() {
   const [stack, setStack] = useState<Vista[]>([{ kind: 'home', section: null }])
   const [at, setAt] = useState(0)
   const view = stack[at] ?? { kind: 'home', section: null }
-  const canGoBack = at > 0
+  /* Con la letra puesta hay adónde volver aunque la pila esté en su raíz: la
+     flecha te saca de la letra, que es lo último que tapaste. */
+  const canGoBack = !!caraCentro || at > 0
   const canGoForward = at < stack.length - 1
 
   /** Ir a algo nuevo: lo que hubiera adelante se pierde, como en cualquier navegador. */
   const go = useCallback(
     (next: Vista) => {
+      dejarCara()
       setStack((s) => [...s.slice(0, at + 1), next])
       setAt(at + 1)
     },
-    [at],
+    [at, dejarCara],
   )
-  const goBack = useCallback(() => setAt((n) => Math.max(0, n - 1)), [])
-  const goForward = useCallback(
-    () => setAt((n) => Math.min(stack.length - 1, n + 1)),
-    [stack.length],
-  )
+  const goBack = useCallback(() => {
+    /* Volver con la letra abierta es salir de la letra y nada más: es una capa
+       sobre el medio, y retroceder además en el historial haría dos cosas con
+       un toque. */
+    if (caraCentro) return dejarCara()
+    setAt((n) => Math.max(0, n - 1))
+  }, [caraCentro, dejarCara])
+  const goForward = useCallback(() => {
+    dejarCara()
+    setAt((n) => Math.min(stack.length - 1, n + 1))
+  }, [stack.length, dejarCara])
 
   /**
    * La lista abierta, buscada en la biblioteca por id.
@@ -421,6 +465,40 @@ export default function Home() {
     setEnChat(enChatAhora)
     return () => setEnChat(false)
   }, [enChatAhora])
+
+  /*
+   * Lo que estás mirando ahora **es** el hilo, y no algo que lo tapa.
+   *
+   * En escritorio alcanza con estar en conversaciones con una elegida; en el
+   * teléfono hace falta además haber entrado (`chatAbierto`), porque la lista
+   * de conversaciones y el hilo comparten la pantalla. Y en los dos casos, la
+   * letra puesta descalifica: tapa el panel entero.
+   */
+  const mirandoElHilo =
+    !music && !!contact && !!activePairId && !caraCentro && (suelto ? chatAbierto : true)
+
+  /*
+   * Mirar la conversación es leerla.
+   *
+   * El globito de «sin leer» sale de `read_at`, y hasta acá lo único que lo
+   * marcaba era la pantalla de **un** mensaje —la del teléfono—: en la ventana
+   * grande se leían los tres mensajes nuevos y el número seguía ahí, tanto en
+   * la fila de la conversación como en la campanita de arriba.
+   *
+   * Se marca cuando hay algo por marcar y no en cada render: `messages` cambia
+   * también por el evento de realtime que devuelve el `read_at` recién puesto,
+   * y sin esta guardia eso volvería a disparar el update en un ciclo. Al llegar
+   * ese evento ya no queda ninguno sin leer y el efecto se queda quieto.
+   *
+   * Después se relee la bandeja: el conteo lo cuenta el servidor, no nosotros.
+   */
+  useEffect(() => {
+    if (!mirandoElHilo || !activePairId) return
+    if (!messages.some((m) => !isSentBy(m, myUid) && !m.readAt)) return
+    markThreadRead(activePairId)
+      .then(refreshConversations)
+      .catch(() => {})
+  }, [mirandoElHilo, activePairId, messages, myUid])
   /* Lo escrito vive en `state/busqueda`: el campo lo dibuja el layout, en la
      misma fila que las pestañas, y desde otro árbol. */
   const conversationQuery = useTermino()
@@ -625,6 +703,12 @@ export default function Home() {
   useEffect(() => {
     registerPlaylistOpener(async (id) => {
       setMusic(true)
+      /* «Tus me gusta» suena con este id de origen sin ser una lista: su
+         pantalla es la colección de corazones, no una playlist. */
+      if (id === ORIGEN_GUSTOS) {
+        go({ kind: 'gustos' })
+        return
+      }
       const mine = playlists ?? (await listPlaylists().catch(() => []))
       setPlaylists(mine)
       if (mine.some((p) => p.id === id)) go({ kind: 'playlist', id })
@@ -693,7 +777,7 @@ export default function Home() {
         durationMs: song.durationMs || track.durationMs,
         truePeak: undefined,
       })
-      if (!ok) setPlaylistError(`«${track.title}» ya está en ${playlist.name}.`)
+      if (!ok) avisar(`«${track.title}» ya está en ${playlist.name}.`)
       else {
         changeGlobalSearch('')
         setReloadToken((n) => n + 1)
@@ -702,10 +786,11 @@ export default function Home() {
         void loadPlaylists()
       }
     } catch (e) {
-      setPlaylistError(`No se pudo agregar: ${(e as Error).message}`)
-      /* También por aviso: el cartel de arriba vive en el panel izquierdo, y
-         desde el pie de sugerencias de una lista no se ve nunca. */
-      avisar(`No se pudo agregar: ${(e as Error).message}`, true)
+      /* Solo por aviso: el cartel de `playlistError` vive pegado al título de
+         la biblioteca, y agregar se hace desde el buscador de arriba o desde el
+         pie de sugerencias — dos lugares desde donde ese rincón ni se mira.
+         Además el motivo lo trae el servicio, y ahí no cabe. */
+      avisar(`No se pudo agregar: ${mensajeError(e)}`, true)
     } finally {
       setAddingTrack(null)
     }
@@ -790,15 +875,21 @@ export default function Home() {
     }
   }
 
-  /** Escuchar un resultado sin guardarlo en ninguna lista. */
+  /**
+   * Escuchar un resultado sin guardarlo en ninguna lista.
+   *
+   * El fallo va **solo por aviso**, como el de fijar en el perfil. Antes iba
+   * también a `playlistError`, que se dibuja pegado al título de la biblioteca:
+   * un cartel de una línea entra ahí, pero el de reproducir trae el motivo de
+   * cada cliente de YouTube y son seis renglones que empujaban «Tus listas»
+   * fuera del panel. Y encima se decía dos veces, arriba y abajo.
+   */
   async function playSearchResult(track: TrackResult) {
     setAddingTrack(track.videoId)
-    setPlaylistError(null)
     try {
       playQueue([await resolveForPlayback(track)], 0, null)
     } catch (e) {
-      setPlaylistError(`No se pudo reproducir: ${(e as Error).message}`)
-      avisar(`No se pudo reproducir: ${(e as Error).message}`, true)
+      avisar(`No se pudo reproducir: ${mensajeError(e)}`, true)
     } finally {
       setAddingTrack(null)
     }
@@ -807,12 +898,11 @@ export default function Home() {
   /** Sumar a la cola: suena cuando termine lo de ahora, sin tocar ninguna lista. */
   async function enqueueSearchResult(track: TrackResult) {
     setAddingTrack(track.videoId)
-    setPlaylistError(null)
     try {
       enqueue(await resolveForPlayback(track))
     } catch (e) {
-      setPlaylistError(`No se pudo encolar: ${(e as Error).message}`)
-      avisar(`No se pudo encolar: ${(e as Error).message}`, true)
+      // Solo por aviso, por lo mismo que `playSearchResult`.
+      avisar(`No se pudo encolar: ${mensajeError(e)}`, true)
     } finally {
       setAddingTrack(null)
     }
@@ -1104,6 +1194,9 @@ export default function Home() {
   }
 
   function changeConversation(pairId: string) {
+    /* Abrir una conversación es viajar al chat, y ahí la letra deja de ser lo
+       que estabas mirando: el medio vuelve a ser el hilo. */
+    dejarCara()
     resetDraft()
     setComposerError(null)
     selectConversation(pairId)
@@ -1425,6 +1518,10 @@ export default function Home() {
                   <HeaderButton
                     label="Ir al inicio"
                     onPress={() => {
+                      /* Antes de nada, salir de la letra o el disco: si no, el
+                         botón mandaba la pila al inicio detrás de una cara que
+                         seguía tapando el panel y parecía que no hacía nada. */
+                      dejarCara()
                       changeGlobalSearch('')
                       setStack([{ kind: 'home', section: null }])
                       setAt(0)
@@ -1577,6 +1674,9 @@ export default function Home() {
               <BotonVidrio
                 label={music ? 'Volver a las conversaciones' : 'Tus listas'}
                 onPress={() => {
+                  // Cambiar de modo es navegar: la letra no puede quedar
+                  // tapando el panel del modo al que acabás de entrar.
+                  dejarCara()
                   setMusic((on) => !on)
                   // Salir de música deja el historial en la portada: al volver,
                   // se entra por donde se entra siempre y no en media navegación.
@@ -1648,6 +1748,7 @@ export default function Home() {
                       onCollapse={vivo ? () => setLeftCollapsed(true) : () => undefined}
                       onOpen={vivo ? (p) => go({ kind: 'playlist', id: p.id }) : () => undefined}
                       onCreate={vivo ? createAndOpen : async () => undefined}
+                      onOpenGustos={vivo ? () => go({ kind: 'gustos' }) : () => undefined}
                       error={playlistError}
                     />
                   ) : (
@@ -1685,15 +1786,21 @@ export default function Home() {
               de la biblioteca. */}
           <GestureDetector gesture={gestoVolver}>
           <View className="min-h-0 flex-1">
-          {!suelto && music && pistaSonando && (caraSonando === 'lyrics' || caraSonando === 'disc') ? (
-            /* La letra o el disco **toman el panel del medio**, como en
-               Spotify: es contenido para mirar, no una ficha, y el lugar para
-               mirar es el grande. El panel derecho vuelve a la ficha del
-               artista mientras tanto. Se sale con el mismo botón de la barra.
-               Solo en escritorio: en el teléfono estas caras viven en la
-               pantalla del reproductor (`app/playing.tsx`), y tomar el medio
-               acá dejaba la letra pegada en cualquier pestaña al bajarla. */
-            <CentroSonando cara={caraSonando} pista={pistaSonando} sonando={sonandoAhora} />
+          {caraCentro && pistaSonando ? (
+            /*
+             * La letra o el disco **toman el panel del medio**, como en
+             * Spotify: es contenido para mirar, no una ficha, y el lugar para
+             * mirar es el grande. El panel derecho vuelve a la ficha del
+             * artista mientras tanto. Se sale con el mismo botón de la barra o
+             * navegando a cualquier lado.
+             *
+             * También sobre el chat, y no solo en modo música: la barra del
+             * reproductor está siempre, así que el botón de la letra está
+             * siempre — y en una conversación no hacía nada. Prender la letra
+             * es pedir mirarla; leer el chat es tocar la conversación, que la
+             * cierra por `dejarCara`.
+             */
+            <CentroSonando cara={caraCentro} pista={pistaSonando} sonando={sonandoAhora} />
           ) : openPlaylist ? (
             <PlaylistView
               playlist={openPlaylist}
@@ -1803,7 +1910,16 @@ export default function Home() {
               onCollapse={() => undefined}
               onOpen={(p) => go({ kind: 'playlist', id: p.id })}
               onCreate={createAndOpen}
+              onOpenGustos={() => go({ kind: 'gustos' })}
               error={playlistError}
+            />
+          ) : music && view.kind === 'gustos' ? (
+            /* Todas las canciones con corazón. Las opciones de cada fila son
+               las de cualquier canción; «quitar» lo agrega la vista, porque
+               quitar de acá ES desmarcar. */
+            <MeGustaView
+              onSearch={() => searchRef.current?.focus()}
+              menuFor={(t) => menuForTrack(playlistTrackAsResult(t))}
             />
           ) : music && collection ? (
             <Panel className="flex-1">
@@ -2172,6 +2288,33 @@ export default function Home() {
                           accessibilityLabel="Mensaje"
                           multiline
                           maxLength={2000}
+                          /*
+                           * Enter manda, Shift+Enter hace un renglón — como
+                           * cualquier chat de escritorio. El campo es multilínea
+                           * porque los mensajes largos existen, pero eso dejaba
+                           * el único camino para mandar en la flechita: se
+                           * escribía, se apretaba Enter y aparecía un renglón
+                           * en blanco.
+                           *
+                           * `preventDefault` frena las dos cosas de una: el
+                           * salto de línea del navegador y el `onSubmitEditing`
+                           * que react-native-web dispararía después (mira
+                           * `isDefaultPrevented` justo al salir de acá).
+                           *
+                           * Solo con teclado de verdad: en un teléfono esa
+                           * tecla es la de nueva línea. Ver `TECLADO_FISICO`.
+                           */
+                          onKeyPress={(e) => {
+                            if (!TECLADO_FISICO) return
+                            const tecla = e.nativeEvent as unknown as {
+                              key?: string
+                              shiftKey?: boolean
+                            }
+                            if (tecla.key !== 'Enter' || tecla.shiftKey) return
+                            e.preventDefault()
+                            if (sending || (!draft.text.trim() && !draft.song)) return
+                            void sendChatMessage()
+                          }}
                           className={`max-h-28 min-h-11 min-w-0 flex-1 px-4 py-3 text-foreground text-[15px] ${
                             HAY_VIDRIO ? '' : 'bg-muted'
                           }`}
@@ -2230,7 +2373,22 @@ export default function Home() {
                        está sonando — no el detalle de un mensaje. */
                     <NowPlayingPanel
                       showCollapse={vivo && hovered}
-                      onCollapse={vivo ? () => setRightCollapsed(true) : () => undefined}
+                      onCollapse={
+                        vivo
+                          ? () => {
+                              setRightPlegado(true)
+                              /*
+                               * Plegar con el Jam o la cola abiertos también
+                               * cierra la cara: son las que destapan el panel
+                               * por derivación, y dejarlas abiertas haría que
+                               * el botón de plegar no plegara nada.
+                               */
+                              if (caraSonando === 'jam' || caraSonando === 'cola') {
+                                toggleView(caraSonando)
+                              }
+                            }
+                          : () => undefined
+                      }
                     />
                   ) : (
                     <Panel tone="lateral" className="flex-1">
@@ -2243,7 +2401,7 @@ export default function Home() {
                         positionMs={player.positionMs}
                         posicionSV={player.posicionSV}
                         showCollapse={vivo && hovered}
-                        onCollapse={vivo ? () => setRightCollapsed(true) : () => undefined}
+                        onCollapse={vivo ? () => setRightPlegado(true) : () => undefined}
                         onPlay={
                           vivo && selected?.song
                             ? () =>
@@ -2266,7 +2424,7 @@ export default function Home() {
                   <CollapsedSidebar
                     side="right"
                     hovered={hovered}
-                    onExpand={() => setRightCollapsed(false)}
+                    onExpand={() => setRightPlegado(false)}
                   />
                 ) : (
                   panel(true)

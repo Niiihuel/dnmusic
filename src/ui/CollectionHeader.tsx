@@ -5,6 +5,18 @@ import { Text, useWindowDimensions, View } from 'react-native'
 const ANGOSTO_PX = 640
 
 /**
+ * Si la cabecera está en su forma apilada y centrada.
+ *
+ * Se exporta porque el título de una lista se puede editar, y el campo tiene
+ * que salir con el mismo cuerpo y la misma alineación que el texto que
+ * reemplaza: sin esto, entrar a renombrar movía el nombre de lugar y le
+ * cambiaba el tamaño.
+ */
+export function useAngosto(): boolean {
+  return useWindowDimensions().width < ANGOSTO_PX
+}
+
+/**
  * La cabecera grande de una colección: lista propia, álbum o artista.
  *
  * Las tres se veían igual y estaban escritas tres veces; ahora es una sola
@@ -33,7 +45,7 @@ export function CollectionHeader({
   /** El botón redondo y los tres puntos. */
   actions?: ReactNode
 }) {
-  const angosto = useWindowDimensions().width < ANGOSTO_PX
+  const angosto = useAngosto()
 
   if (angosto) {
     return (
@@ -83,7 +95,7 @@ export function CollectionHeader({
  * vea una sola canción.
  */
 export function CollectionTitle({ children }: { children: string }) {
-  const angosto = useWindowDimensions().width < ANGOSTO_PX
+  const angosto = useAngosto()
   return (
     <Text
       className={`text-foreground font-bold ${angosto ? 'text-center text-2xl' : 'text-4xl'}`}

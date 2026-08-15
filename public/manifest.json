@@ -1,7 +1,7 @@
 {
   "name": "dnmusic",
   "short_name": "dnmusic",
-  "description": "Música para los dos",
+  "description": "Escuchá tu música, armá tus listas y ponete en Jam: la misma canción, al mismo tiempo, con quien quieras.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

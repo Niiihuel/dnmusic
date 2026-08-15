@@ -15,6 +15,7 @@ import {
   Disc3,
   Download,
   HardDrive,
+  Heart,
   SlidersHorizontal,
   Eye,
   EyeOff,
@@ -116,6 +117,10 @@ export const IconForward = make(ArrowRight)
 export const IconExternal = make(ExternalLink)
 export const IconWave = make(AudioWaveform)
 export const IconDisc = make(Disc3)
+export const IconHeart = make(Heart)
+/* El corazón marcado va relleno, como el play: el contorno fino se lee como
+   apagado, y un me gusta puesto no puede parecer apagado. */
+export const IconHeartFilled = makeFilled(Heart)
 export const IconLyrics = make(MicVocal)
 export const IconMessage = make(MessageSquareText)
 /** Recortar un fragmento de una canción. */

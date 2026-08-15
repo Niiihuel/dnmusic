@@ -11,6 +11,7 @@ import {
 import { useJam } from '../state/jam'
 import { usePiso } from '../state/shell'
 import { ArtistCard } from './ArtistCard'
+import { BotonMeGusta } from './BotonMeGusta'
 import { ColaBody } from './ColaBody'
 import { JamBody } from './JamPanel'
 import { Panel } from './Panel'
@@ -153,13 +154,18 @@ export function NowPlayingPanel({
             </View>
           )}
 
-          <View className="gap-1">
-            <Text className="text-foreground text-xl font-bold" numberOfLines={2}>
-              {track.title}
-            </Text>
-            <Text className="text-muted-foreground text-[14px]" numberOfLines={1}>
-              {track.artist}
-            </Text>
+          {/* El corazón junto al título, como en la pantalla del teléfono:
+              el me gusta es de la canción, no un control de la cola. */}
+          <View className="flex-row items-center gap-3">
+            <View className="min-w-0 flex-1 gap-1">
+              <Text className="text-foreground text-xl font-bold" numberOfLines={2}>
+                {track.title}
+              </Text>
+              <Text className="text-muted-foreground text-[14px]" numberOfLines={1}>
+                {track.artist}
+              </Text>
+            </View>
+            <BotonMeGusta track={track} />
           </View>
 
           {/* La tarjeta ya trae su propio «Sobre el artista» sobre la foto, así

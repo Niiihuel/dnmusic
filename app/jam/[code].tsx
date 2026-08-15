@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, Text, View } from 'react-native'
+import { useCallback, useEffect, useState } from 'react'
+import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { verJam, type VistaJam } from '../../src/services/jam'
 import { unirseAJam, useJam } from '../../src/state/jam'
+import { abrirVista } from '../../src/state/playback'
 import { Avatar } from '../../src/ui/Avatar'
+import { PANEL_PX } from '../../src/ui/NowPlayingBar'
 import { ICON_COLOR, IconCheck, IconUsers } from '../../src/ui/icons'
 
 /**
@@ -20,6 +22,26 @@ export default function EntrarAlJam() {
   const router = useRouter()
   const { code } = useLocalSearchParams<{ code: string }>()
   const jam = useJam()
+  const { width } = useWindowDimensions()
+
+  /**
+   * A dónde va quien ya está adentro.
+   *
+   * En una ventana grande el Jam **tiene lugar propio**: el panel de la
+   * derecha, el mismo que abre el botón de la barra. Mandarlo igual a `/jam`
+   * levantaba la hoja de pantalla completa —la forma del teléfono, donde no
+   * hay paneles— sobre una ventana de 1900px, con la app entera escondida
+   * detrás y un «Salir» perdido arriba a la derecha.
+   *
+   * Es la misma decisión que toma el botón de Jam de la barra, con el mismo
+   * `PANEL_PX`: una sola regla de dónde vive el Jam en cada ancho.
+   */
+  const alJam = useCallback(() => {
+    if (width >= PANEL_PX) {
+      abrirVista('jam')
+      router.replace('/')
+    } else router.replace('/jam')
+  }, [width, router])
 
   // Sin código no hay nada que buscar: nace resuelto, sin pasar por cargando.
   const [vista, setVista] = useState<VistaJam | null | 'cargando'>(code ? 'cargando' : null)
@@ -41,16 +63,16 @@ export default function EntrarAlJam() {
      ofrecer, y quedarse acá sería una puerta que da a donde ya estás. */
   useEffect(() => {
     if (jam && vista !== 'cargando' && vista?.id === jam.id) {
-      router.replace('/jam')
+      alJam()
     }
-  }, [jam, vista, router])
+  }, [jam, vista, alJam])
 
   async function entrar() {
     if (!code || entrando) return
     setEntrando(true)
     const ok = await unirseAJam(code, salida)
     setEntrando(false)
-    if (ok) router.replace('/jam')
+    if (ok) alJam()
   }
 
   if (vista === 'cargando') {

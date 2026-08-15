@@ -396,7 +396,38 @@ const CHUNK_BYTES = 1 << 20
  * VR pasan por otras rejas y alguno suele sobrevivir; el recorrido con caída
  * es lo mismo que hacen yt-dlp y zuno.
  */
-const CLIENTES_RESOLVE = ['YTMUSIC', 'TV', 'TV_SIMPLY', 'IOS', 'ANDROID_VR', 'WEB_EMBEDDED'] as const
+const CLIENTES_RESOLVE = [
+  'YTMUSIC',
+  'TV',
+  'TV_SIMPLY',
+  'IOS',
+  'ANDROID_VR',
+  'WEB_EMBEDDED',
+  'MWEB',
+] as const
+
+/**
+ * Clientes que además del token de sesión piden uno **atado al video**.
+ *
+ * Es la familia web —incluida la de TV, que es HTML5— y es la misma lista que
+ * usa yt-dlp. A un cliente de esa familia, desde una IP de datacenter y sin
+ * este token, YouTube le contesta `LOGIN_REQUIRED — Sign in to confirm you're
+ * not a bot`: el cartel habla de iniciar sesión, pero lo que en realidad falta
+ * es la prueba de origen del contenido. Ese era el motivo de que *todos* los
+ * clientes de la lista fallaran a la vez —el error que llenaba la pantalla al
+ * tocar cualquier cosa del trending— mientras lo ya guardado en Storage seguía
+ * sonando.
+ *
+ * iOS y ANDROID_VR no llevan: son clientes nativos, no pasan por BotGuard, y
+ * mandarles un token web solo agrega una firma que no esperan.
+ */
+const TOKEN_POR_VIDEO = new Set<(typeof CLIENTES_RESOLVE)[number]>([
+  'YTMUSIC',
+  'TV',
+  'TV_SIMPLY',
+  'WEB_EMBEDDED',
+  'MWEB',
+])
 
 /** Qué cliente vio el video, o por qué dijo que no cada uno. */
 type Formatos =
@@ -408,11 +439,34 @@ async function buscarFormatos(yt: Innertube, videoId: string): Promise<Formatos>
      historia entera: un «Sin formatos» pelado obligó a mirar los logs de
      producción para descubrir que era el anti-bot. */
   const razones: string[] = []
+  /* El token del video se acuña **una vez** y lo comparten todos los clientes
+     que lo piden: el minter está cacheado, pero acuñar seis veces el mismo
+     token por canción no le aporta nada a nadie. Si BotGuard falla, se sigue
+     sin él —es lo que hacíamos hasta ahora— en vez de tirar el /resolve. */
+  let acunado: Promise<string | undefined> | null = null
+  const tokenDelVideo = () =>
+    (acunado ??= mintVideoToken(videoId).catch((e: unknown) => {
+      console.warn(`[resolve] ${videoId} sin token de video: ${(e as Error).message}`)
+      return undefined
+    }))
+
   for (const candidato of CLIENTES_RESOLVE) {
     try {
-      const intento = await yt.getBasicInfo(videoId, { client: candidato })
-      const audio = (intento.streaming_data?.adaptive_formats ?? []).filter((f) =>
-        f.mime_type.startsWith('audio'),
+      const intento = await yt.getBasicInfo(videoId, {
+        client: candidato,
+        po_token: TOKEN_POR_VIDEO.has(candidato) ? await tokenDelVideo() : undefined,
+      })
+      /*
+       * Un formato sin URL no sirve, aunque venga listado.
+       *
+       * A los clientes web YouTube les está pasando a SABR: los formatos
+       * aparecen en `adaptive_formats` pero sin `url` ni `signature_cipher`
+       * porque el audio hay que pedirlo por el protocolo UMP. Contarlos como
+       * audio encontrado cortaba la caída en seco y el /resolve moría más
+       * abajo, en `decipher`, con un error que no se entendía.
+       */
+      const audio = (intento.streaming_data?.adaptive_formats ?? []).filter(
+        (f) => f.mime_type.startsWith('audio') && (f.url || f.signature_cipher),
       )
       if (audio.length) {
         /* Que quede en los logs cuándo el titular dejó de alcanzar: si esto
@@ -429,6 +483,27 @@ async function buscarFormatos(yt: Innertube, videoId: string): Promise<Formatos>
     }
   }
   return { info: null, razones }
+}
+
+/**
+ * Lo que se le muestra a quien tocó play, sacado de lo que dijeron los clientes.
+ *
+ * Una sola frase, en el idioma de la app y sin nombres de clientes ni códigos:
+ * lo que importa del otro lado es si conviene probar otra versión, esperar, o
+ * si esa canción sencillamente no se puede. El detalle técnico queda en el log,
+ * que es donde sirve.
+ */
+function motivoParaLaApp(razones: string[]): string {
+  const todo = razones.join(' ')
+  if (/LOGIN_REQUIRED|not a bot/i.test(todo))
+    return 'YouTube no está entregando el audio de esta canción ahora mismo. Probá con otra versión o volvé a intentar en un rato.'
+  if (/AGE_(VERIFICATION|CHECK)_REQUIRED|age.?restrict/i.test(todo))
+    return 'Esta canción tiene restricción de edad y no se puede reproducir acá.'
+  if (/premium|members.?only|purchase|paid/i.test(todo))
+    return 'Esta canción es solo para suscriptores de YouTube.'
+  if (/UNPLAYABLE|unavailable|private|removed/i.test(todo))
+    return 'Esta canción no está disponible. Probá con otra versión.'
+  return 'No se pudo obtener el audio de esta canción.'
 }
 
 export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
@@ -450,7 +525,19 @@ export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
     yt = await getClient()
     encontrado = await buscarFormatos(yt, videoId)
   }
-  if (!encontrado.info) throw new Error(`Sin formatos de audio (${encontrado.razones.join('; ')})`)
+  if (!encontrado.info) {
+    /*
+     * El detalle entero va al log; a la app, una frase.
+     *
+     * Saber qué contestó cada cliente es justo lo que hace falta para
+     * diagnosticar el anti-bot, y por eso se arma. Pero ese párrafo llegaba
+     * tal cual a la pantalla: seis renglones de «Sign in to confirm you're not
+     * a bot» encima de la biblioteca, que a quien solo quería escuchar una
+     * canción no le dicen nada y encima rompían el panel.
+     */
+    console.error(`[resolve] ${videoId} sin formatos — ${encontrado.razones.join('; ')}`)
+    throw new Error(motivoParaLaApp(encontrado.razones))
+  }
 
   const { info, cliente } = encontrado
   const formats = (info.streaming_data?.adaptive_formats ?? []).filter((f) =>

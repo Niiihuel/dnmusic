@@ -19,6 +19,7 @@ import {
   reportProgress,
   reportarPosicionFina,
   usePlaybackState,
+  videoIdsRecorridos,
 } from '../state/playback'
 import { proximasRecomendadas, type ArtistaEscuchado } from '../services/recomendaciones'
 import { rutaLocal } from '../state/descargas'
@@ -32,6 +33,7 @@ import {
   useJamSilencioso,
   useJamSincronizo,
 } from '../state/jam'
+import { useEscuchaEspejo } from '../state/escucha'
 import { saltar } from '../lib/seek'
 import { useAppActiva } from '../lib/appActiva'
 import { avisar } from '../state/aviso'
@@ -232,7 +234,15 @@ export function MotorAudio() {
   const silencioso = useJamSilencioso()
   const sincronizo = useJamSincronizo()
   const jamRev = useJamRevision()
-  const url = silencioso ? null : urlOf(current?.id)
+  /*
+   * El espejo de la escucha: la misma cuenta está sonando en OTRO aparato y
+   * este solo dibuja. Es el mismo silencio que el control remoto del Jam —la
+   * fuente queda en null y ni se firma—, con otra procedencia: acá el que
+   * emite no es el host de un Jam, es tu propia computadora (o tu teléfono).
+   */
+  const espejo = useEscuchaEspejo()
+  const mudo = silencioso || espejo
+  const url = mudo ? null : urlOf(current?.id)
   const raf = useRef<number | null>(null)
   /** El cuadro anterior, para medir cuánto sonó de verdad entre uno y otro. */
   const ultimoTick = useRef(0)
@@ -280,10 +290,12 @@ export function MotorAudio() {
    * dos veces.
    */
   useEffect(() => {
-    /* Lo que no puede volver a ofrecer: la lista entera y lo que ya espera —
-       antes solo se vetaba lo encolado, y la tanda podía repetir la lista que
-       acababa de sonar si esos temas no habían llegado al historial. */
-    const enCola = [...tracks, ...upNext].map((t) => t.videoId)
+    /* Lo que no puede volver a ofrecer: la lista entera, lo que ya espera y lo
+       que suena ahora — antes solo se vetaba lo encolado, y la tanda podía
+       repetir la lista que acababa de sonar si esos temas no habían llegado al
+       historial. Lo ya recorrido en esta cola (las salteadas incluidas) se
+       suma recién en el momento del pedido, vía `videoIdsRecorridos`. */
+    const enCola = [...tracks, ...upNext, ...(manual ? [manual] : [])].map((t) => t.videoId)
     /*
      * Los artistas de la cola, pesados por el largo de sus temas.
      *
@@ -298,21 +310,24 @@ export function MotorAudio() {
       if (previo) previo.ms += t.durationMs
       else porArtista.set(t.artistId, { artist_id: t.artistId, artist: t.artist, ms: t.durationMs })
     }
-    registerRelleno(() => proximasRecomendadas(enCola, [...porArtista.values()]))
+    registerRelleno(() =>
+      proximasRecomendadas([...enCola, ...videoIdsRecorridos()], [...porArtista.values()]),
+    )
     return () => registerRelleno(null)
-  }, [tracks, upNext])
+  }, [tracks, upNext, manual])
 
   /*
-   * La próxima tanda se pide cuando **arranca** lo último que queda, no cuando
-   * termina. Pedirla al final dejaba un silencio de varios segundos hasta la
-   * primera recomendada, y con la pantalla bloqueada ese silencio es fatal:
-   * sin audio sonando, iOS suspende la app y la música no vuelve. La función
-   * revisa sola que corresponda — autoplay prendido, sin repetir, nada después.
+   * La próxima tanda se pide cuando la cola **se acorta**, no cuando se vacía.
+   * Pedirla al final dejaba un silencio de varios segundos hasta la primera
+   * recomendada —y saltear rápido dejaba los saltos muertos hasta que llegara
+   * la tanda—; con la pantalla bloqueada ese silencio es fatal: sin audio
+   * sonando, iOS suspende la app y la música no vuelve. La función revisa sola
+   * que corresponda — autoplay prendido, sin repetir, quedan pocas de verdad.
    */
   useEffect(() => {
-    if (!current || nextUp || !playing) return
+    if (!current || !playing) return
     rellenarSiFalta()
-  }, [current, nextUp, playing])
+  }, [current, nextUp, upNext.length, playing])
 
   /*
    * El relleno del Jam, aparte del común: lo maneja el host contra el
@@ -375,8 +390,9 @@ export function MotorAudio() {
   // Firmar la URL de la canción actual. Se firma al reproducir y no antes: una
   // URL firmada vence, y una lista puede quedar abierta mucho rato.
   useEffect(() => {
-    // De control remoto no se firma nada: no hay reproductor que alimentar.
-    if (silencioso) return
+    // De control remoto o de espejo no se firma nada: no hay reproductor que
+    // alimentar.
+    if (mudo) return
     // Si la veníamos preparando ya está firmada, y encima a medio bajar.
     if (!current || urlOf(current.id)) return
     /*
@@ -402,7 +418,7 @@ export function MotorAudio() {
     return () => {
       alive = false
     }
-  }, [current, urlOf, remember, silencioso])
+  }, [current, urlOf, remember, mudo])
 
   /*
    * Preparar la que sigue mientras suena la de ahora.
@@ -419,7 +435,7 @@ export function MotorAudio() {
    * error se traga en vez de mostrarse — todavía no es un problema de nadie.
    */
   useEffect(() => {
-    if (silencioso) return
+    if (mudo) return
     if (!nextUp || urlOf(nextUp.id)) return
     /*
      * La bajada no se precarga: ya está entera en el disco, así que no hay buffer
@@ -445,7 +461,7 @@ export function MotorAudio() {
     return () => {
       alive = false
     }
-  }, [nextUp, urlOf, remember, silencioso])
+  }, [nextUp, urlOf, remember, mudo])
 
   /**
    * Pasar a la siguiente, una sola vez por canción.
@@ -525,11 +541,22 @@ export function MotorAudio() {
   const retomada = useRef<string | null>(null)
   const retomarMs = useRef<number | null>(null)
   useEffect(() => {
+    /*
+     * Un espejo no retoma nada: la posición que se ve es la del otro aparato,
+     * corriendo por reloj. Se deja la memoria en blanco a propósito — al
+     * traer la escucha acá (el traspaso), este mismo efecto vuelve a correr
+     * con el espejo apagado y agarra el segundo exacto por el que iba.
+     */
+    if (espejo) {
+      retomada.current = null
+      retomarMs.current = null
+      return
+    }
     if (!current) return
     if (retomada.current === current.id) return
     retomada.current = current.id
     retomarMs.current = positionMs > 0 ? positionMs : null
-  }, [current, positionMs])
+  }, [current, positionMs, espejo])
 
   // Con la URL cargada, arranca. Es el paso que encadena una canción con la
   // siguiente sin que nadie toque nada.
@@ -882,8 +909,8 @@ export function MotorAudio() {
      remoto de un Jam cuenta como cargado con solo tener canción: acá no se
      carga nada — el audio está sonando en el dispositivo del host. */
   useEffect(() => {
-    reportCargada(url !== null || (silencioso && current !== null))
-  }, [url, silencioso, current])
+    reportCargada(url !== null || (mudo && current !== null))
+  }, [url, mudo, current])
 
   return null
 }

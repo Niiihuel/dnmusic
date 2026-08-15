@@ -30,6 +30,7 @@ import {
   type Unsubscribe,
 } from '../services/jam'
 import {
+  enEscuchaEspejo,
   getPlaybackState,
   jamAplicar,
   jamSoltar,
@@ -355,6 +356,12 @@ AppState.addEventListener('change', (estado) => {
  */
 export async function crearJamActual(): Promise<boolean> {
   if (store.get().jam) return true
+  /* Un espejo no puede emitir: lo que se ve acá está sonando en otro aparato
+     de la cuenta, y un Jam cuyo host no reproduce nada nace mudo. */
+  if (enEscuchaEspejo()) {
+    avisar('La música está sonando en otro dispositivo. Traela acá primero.')
+    return false
+  }
   const p = getPlaybackState()
   const actual = p.manual ?? (p.index >= 0 ? (p.tracks[p.index] ?? null) : null)
   if (!actual) {
@@ -635,17 +642,24 @@ let rellenandoJam = false
  *
  * Lo hace el host y nadie más: es el dueño del Jam (siempre tiene permiso de
  * agregar), su historial es el ancla natural, y un solo aparato pidiendo evita
- * tandas duplicadas. Corre cuando **arranca la última** canción de la cola
- * —para que la tanda llegue antes del final, como afuera— y también si el Jam
- * ya quedó mudo en el final: ahí además lo despierta.
+ * tandas duplicadas. Corre cuando quedan **pocas** canciones por delante —no
+ * recién en la última: saltear rápido agotaba la tanda y el Jam quedaba mudo
+ * con los saltos cayendo al vacío hasta que llegara la siguiente— y también si
+ * el Jam ya quedó mudo en el final: ahí además lo despierta.
  */
+
+/** Con cuántas por delante se pide la próxima tanda. El mismo colchón que
+ *  `RELLENO_UMBRAL` afuera del Jam, y por la misma razón: que saltear no
+ *  alcance nunca el vacío. */
+const JAM_RELLENO_UMBRAL = 2
+
 export async function rellenarJamSiFalta() {
   const s = store.get()
   if (!s.jam || !soyHost(s) || rellenandoJam) return
   if (!leerAjustes().autoplay) return
   const idx = s.jam.itemActual ? s.cola.findIndex((i) => i.id === s.jam?.itemActual) : -1
-  // Solo en la última canción: si hay algo después, no falta nada.
-  if (idx === -1 || idx < s.cola.length - 1) return
+  // Si por delante hay más que el colchón, no falta nada todavía.
+  if (idx === -1 || s.cola.length - 1 - idx > JAM_RELLENO_UMBRAL) return
 
   rellenandoJam = true
   try {
@@ -689,6 +703,11 @@ export async function rellenarJamSiFalta() {
   } finally {
     rellenandoJam = false
   }
+}
+
+/** Si hay un Jam andando, para quien no puede suscribirse por hook. */
+export function hayJam(): boolean {
+  return store.get().jam !== null
 }
 
 /* ── Hooks ────────────────────────────────────────────────────────────────── */

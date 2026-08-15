@@ -21,11 +21,13 @@ import {
   usePlaybackState,
 } from '../state/playback'
 import { crearJamActual, salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
+import { useEscuchaEspejoNombre } from '../state/escucha'
 import { BORDE_REFERENTE, Glass, HAY_VIDRIO } from './Glass'
 import { compartirHistoria } from './CompartirHistoria'
 import { Menu, type MenuItem } from './Menu'
 import { SeekBar, formatClock } from './SeekBar'
 import { BotonAleatorio, BotonRepetir } from './Transport'
+import { BotonMeGusta } from './BotonMeGusta'
 import {
   ICON_COLOR,
   IconClose,
@@ -52,8 +54,12 @@ const WIDE_PX = 720
  * si cambia allá tiene que cambiar acá). Con panel, el Jam se abre ahí como
  * una cara más —al modo del panel de Spotify—; sin panel sigue siendo la
  * pantalla modal de siempre.
+ *
+ * Se exporta porque la puerta del link (`app/jam/[code].tsx`) tiene que tomar
+ * exactamente la misma decisión al terminar de entrar: con panel, el Jam se
+ * abre ahí; sin panel, en su pantalla.
  */
-const PANEL_PX = 1120
+export const PANEL_PX = 1120
 
 /**
  * La barra de abajo: qué suena, y los controles.
@@ -99,6 +105,13 @@ export function NowPlayingBar({
   const wide = width >= WIDE_PX
   const enJam = useJamActivo()
   const cuantosJam = useCuantosJam()
+  /*
+   * El espejo de la escucha: lo que se ve está sonando en otro aparato de la
+   * cuenta. El rótulo va donde iba el artista —el mismo lugar que ya usa el
+   * error— porque es la línea que dice el **estado** de lo que suena, y
+   * «Sonando en tu computadora» es exactamente eso.
+   */
+  const espejoEn = useEscuchaEspejoNombre()
 
   // Lo encolado a mano manda sobre la lista mientras dure.
   const current = manual ?? (index >= 0 ? (tracks[index] ?? null) : null)
@@ -309,7 +322,7 @@ export function NowPlayingBar({
                 {current.title}
               </Text>
               <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-                {error ?? current.artist}
+                {error ?? (espejoEn ? `Sonando en «${espejoEn}»` : current.artist)}
               </Text>
             </View>
           </Pressable>
@@ -402,9 +415,12 @@ export function NowPlayingBar({
             {current.title}
           </Text>
           <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-            {error ?? current.artist}
+            {error ?? (espejoEn ? `Sonando en «${espejoEn}»` : current.artist)}
           </Text>
         </View>
+        {/* El corazón, pegado a lo que suena: es un juicio sobre la canción,
+            no un control de transporte — por eso va acá y no con el play. */}
+        {wide ? <BotonMeGusta track={current} size={16} lado={36} /> : null}
       </View>
 
       {/* Controles y posición, centrados como en cualquier reproductor. */}
@@ -549,9 +565,12 @@ export function NowPlayingBar({
                 {current.title}
               </Text>
               <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-                {error ?? current.artist}
+                {error ?? (espejoEn ? `Sonando en «${espejoEn}»` : current.artist)}
               </Text>
             </View>
+            {/* El corazón, junto a lo que suena — misma regla que en la
+                franja sin vidrio. */}
+            <BotonMeGusta track={current} size={16} lado={36} />
           </View>
 
           {/* El transporte, con aleatorio y repetir rodeando al play como en
@@ -711,6 +730,9 @@ function Volume({ value, onChange }: { value: number; onChange: (v: number) => v
           totalMs={0}
           onSeek={onChange}
           compact
+          /* Suena mientras se arrastra, no recién al soltar: es una perilla,
+             y una perilla que no se oye girar no es una perilla. */
+          envivo
         />
       </View>
     </View>
