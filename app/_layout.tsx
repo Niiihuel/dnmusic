@@ -1036,6 +1036,22 @@ function SessionGate() {
               }
         }
       />
+      {/* Encuadrar la foto o el fondo: la misma hoja para las dos, cambiando
+          la forma del recuadro. Va llena porque el recuadro de trabajo tiene
+          que ser lo más grande posible — es donde se decide qué se ve. */}
+      <Stack.Screen
+        name="perfil/encuadrar"
+        options={
+          ES_WEB
+            ? HOJA_WEB
+            : {
+                presentation: 'formSheet',
+                sheetAllowedDetents: [1],
+                sheetGrabberVisible: true,
+                sheetCornerRadius: 24,
+              }
+        }
+      />
       <Stack.Screen
         name="lista/personas"
         options={

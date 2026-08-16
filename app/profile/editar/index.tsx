@@ -18,7 +18,7 @@ import {
 } from '../../../src/ui/icons'
 import { removeAvatar, saveMyProfile, uploadAvatar } from '../../../src/services/profile'
 import { pickImage } from '../../../src/lib/pickImage'
-import { uploadIlustracion } from '../../../src/services/showcases'
+import { esVideo, uploadIlustracion } from '../../../src/services/showcases'
 import { setMyProfile, useMyProfile, useUser } from '../../../src/state/session'
 import { usePiso } from '../../../src/state/shell'
 import { avisar } from '../../../src/state/aviso'
@@ -80,6 +80,8 @@ export default function EditarPerfil() {
   }
 
   const avatarPath = profile?.avatarPath ?? null
+  /* Un clip no se encuadra con esta pantalla: ver la fila de abajo. */
+  const puedeEncuadrarFondo = !!profile?.bannerPath && !esVideo(profile.bannerPath)
   const nombre = profile?.displayName?.trim() || profile?.username || '?'
 
   /*
@@ -157,21 +159,36 @@ export default function EditarPerfil() {
                       </Text>
                     </Pressable>
                     {avatarPath ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Quitar la foto"
-                        onPress={() => void aplicarFoto(null)}
-                        className="h-10 w-10 items-center justify-center rounded-full border border-border active:bg-muted"
-                      >
-                        <IconClose size={16} color={ICON_COLOR.muted} />
-                      </Pressable>
+                      <>
+                        {/* Encuadrar es distinto de cambiar: la foto ya está,
+                            lo que se elige es qué pedazo se ve. Por eso vive
+                            al lado y no adentro de «cambiar foto». */}
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Encuadrar la foto"
+                          onPress={() =>
+                            router.push({ pathname: '/perfil/encuadrar', params: { que: 'foto' } })
+                          }
+                          className="h-10 flex-row items-center rounded-full border border-border px-4 active:bg-muted"
+                        >
+                          <Text className="text-foreground text-[13px] font-medium">Encuadrar</Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Quitar la foto"
+                          onPress={() => void aplicarFoto(null)}
+                          className="h-10 w-10 items-center justify-center rounded-full border border-border active:bg-muted"
+                        >
+                          <IconClose size={16} color={ICON_COLOR.muted} />
+                        </Pressable>
+                      </>
                     ) : null}
                   </View>
                   {error ? (
                     <Text className="text-destructive text-xs">{error}</Text>
                   ) : (
                     <Text className="text-muted-foreground text-xs">
-                      JPG, PNG o WebP · hasta 2 MB
+                      JPG, PNG, WebP o GIF · hasta 8 MB. El GIF queda animado.
                     </Text>
                   )}
                 </View>
@@ -233,8 +250,27 @@ export default function EditarPerfil() {
                         avisar('Fondo quitado')
                       })
                     }}
-                    ultima
+                    ultima={!puedeEncuadrarFondo}
                   />
+                  {/*
+                   * Encuadrar el fondo, que nunca tuvo recorte de ninguna clase.
+                   *
+                   * Solo con una imagen: un clip de fondo se dibuja con el
+                   * reproductor de video y la pantalla de encuadre trabaja sobre
+                   * una imagen quieta. Ofrecerlo igual sería un botón que abre
+                   * una hoja con un recuadro vacío.
+                   */}
+                  {puedeEncuadrarFondo ? (
+                    <FilaAjuste
+                      rotulo="Encuadrar el fondo"
+                      vacio="Elegí qué parte se ve"
+                      icono={<IconImage size={17} color={ICON_COLOR.muted} />}
+                      onPress={() =>
+                        router.push({ pathname: '/perfil/encuadrar', params: { que: 'fondo' } })
+                      }
+                      ultima
+                    />
+                  ) : null}
                 </GrupoAjustes>
 
                 <GrupoAjustes titulo="Quién lo ve">

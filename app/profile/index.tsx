@@ -144,7 +144,10 @@ export default function ProfileScreen() {
         <Panel className="flex-1">
           {/* El fondo va detrás de todo: además de ser lo de Steam, es la única
               pantalla donde el vidrio tiene una foto que difuminar. */}
-          <FondoPerfil bannerPath={profile?.bannerPath ?? null} />
+          <FondoPerfil
+            bannerPath={profile?.bannerPath ?? null}
+            encuadre={profile?.bannerEncuadre ?? null}
+          />
 
           {/*
            * La salida, en escritorio: un redondel de vidrio sobre la imagen.
@@ -220,6 +223,7 @@ export default function ProfileScreen() {
                       nombre={nombre}
                       usuario={profile.username}
                       avatarPath={profile.avatarPath}
+                      encuadre={profile.avatarEncuadre}
                       bio={profile.bio ?? ''}
                       banda
                       accion={botonEditar}
@@ -263,6 +267,7 @@ export default function ProfileScreen() {
                       nombre={nombre}
                       usuario={profile.username}
                       avatarPath={profile.avatarPath}
+                      encuadre={profile.avatarEncuadre}
                       bio={profile.bio ?? ''}
                       centrado
                     />

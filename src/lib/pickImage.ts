@@ -59,11 +59,17 @@ export type PickOptions = {
    */
   conVideo?: boolean
   /**
-   * Recortar en cuadrado antes de devolverla.
+   * Recortar en cuadrado con el editor del sistema, antes de devolverla.
    *
-   * Va prendido porque el caso original es la foto de perfil, que se ve
-   * cuadrada en todos lados. Una ilustración es lo contrario: su forma es
-   * justamente lo que se quiere mostrar, así que ahí se apaga.
+   * **Apagado, y hay que pensarlo dos veces antes de prenderlo.** El editor de
+   * iOS re-codifica lo que le entra: un GIF vuelve como un JPG de un solo
+   * cuadro, así que una foto de perfil animada se subía bien y llegaba quieta,
+   * sin que nada avisara. Encuadrar ahora se hace después de subir y sin tocar
+   * el archivo (ver `app/perfil/encuadrar` y la migración `encuadre_perfil`).
+   *
+   * Queda como opción porque para una imagen que sí se quiera recortar de
+   * verdad —achicando el archivo— el editor del sistema sigue siendo el mejor
+   * que hay; simplemente no es lo que quiere una foto de perfil.
    */
   cuadrada?: boolean
 }
@@ -103,7 +109,7 @@ function mimeDe(nombre: string, delBlob: string): string {
 }
 
 export async function pickImage({
-  cuadrada = true,
+  cuadrada = false,
   conVideo = false,
 }: PickOptions = {}): Promise<PickedImage | null> {
   if (Platform.OS === 'web') return pickOnWeb(conVideo)
@@ -123,10 +129,7 @@ export async function pickImage({
    */
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: conVideo ? ['images', 'videos'] : ['images'],
-    // Cuadrada: es como se ve en todos lados, del mosaico de la portada al
-    // panel de la derecha. Recortar acá evita subir una foto que después se
-    // vería cortada de una manera que quien la eligió no decidió. Para una
-    // ilustración se apaga: ahí la forma original es el contenido.
+    // Ver el comentario de `cuadrada`: prendido, esto aplasta los GIF.
     allowsEditing: cuadrada,
     ...(cuadrada ? { aspect: [1, 1] as [number, number] } : {}),
     quality: 0.9,

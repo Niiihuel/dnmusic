@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Image, Text, View } from 'react-native'
-import { avatarUrl, initialsFor } from '../services/profile'
+import { avatarUrl, initialsFor, type Encuadre } from '../services/profile'
+import { estiloEncuadrado } from './Encuadre'
 
 /**
  * Foto de perfil, con las iniciales como respaldo.
@@ -11,16 +12,24 @@ import { avatarUrl, initialsFor } from '../services/profile'
  *
  * Si la imagen falla al cargar —ruta vieja, archivo borrado— se cae a las
  * iniciales en vez de dejar el hueco roto.
+ *
+ * El **encuadre** viaja hasta acá y no se aplica en la pantalla porque este
+ * componente dibuja la foto en toda la app —filas, menciones, el encabezado del
+ * perfil—: si el encuadre se aplicara afuera, cada lugar tendría que acordarse
+ * de hacerlo y la misma foto se vería distinta según dónde aparezca.
  */
 export function Avatar({
   name,
   path,
   size = 40,
+  encuadre = null,
 }: {
   /** Nombre visible o usuario; de ahí salen las iniciales. */
   name: string
   path?: string | null
   size?: number
+  /** Cómo mirarla dentro del círculo. `null` = cubrir y centrar, lo de siempre. */
+  encuadre?: Encuadre | null
 }) {
   const [failed, setFailed] = useState(false)
   const uri = failed ? null : avatarUrl(path)
@@ -34,7 +43,8 @@ export function Avatar({
         <Image
           source={{ uri }}
           onError={() => setFailed(true)}
-          style={{ width: size, height: size }}
+          style={estiloEncuadrado(size, encuadre)}
+          resizeMode="cover"
           accessibilityLabel={`Foto de ${name}`}
         />
       ) : (

@@ -45,7 +45,24 @@ export type Profile = {
    * app, que se puede olvidar de preguntar.
    */
   visibility: 'publico' | 'privado'
+  /** Cómo mirar la foto dentro de su círculo. `null` = cubrir y centrar. */
+  avatarEncuadre: Encuadre | null
+  /** Lo mismo para el fondo. */
+  bannerEncuadre: Encuadre | null
 }
+
+/**
+ * Cómo se mira una imagen adentro de su recuadro.
+ *
+ * No es un recorte: la imagen sube entera y esto dice cómo dibujarla. Es lo que
+ * permite que un GIF de perfil siga animado —recortarlo de verdad lo aplastaría
+ * a un cuadro— y que cambiar el encuadre después no vuelva a tocar el archivo.
+ *
+ * `escala` 1 es «cubrir», que es como se dibujaba antes de que esto existiera;
+ * `x` e `y` corren la imagen en fracciones del lado del recuadro. Con `null`
+ * entero se dibuja cubriendo y centrado, o sea: lo de siempre.
+ */
+export type Encuadre = { x: number; y: number; escala: number }
 
 type ProfileRow = {
   user_id?: unknown
@@ -56,6 +73,19 @@ type ProfileRow = {
   banner_path?: unknown
   created_at?: unknown
   visibility?: unknown
+  avatar_encuadre?: unknown
+  banner_encuadre?: unknown
+}
+
+/** Un encuadre del jsonb, o null. Un número raro lo descarta entero: medio
+ *  encuadre dibujaría la imagen en un lugar que nadie eligió. */
+function encuadreDe(v: unknown): Encuadre | null {
+  const r = v as Record<string, unknown> | null
+  if (!r || typeof r !== 'object') return null
+  const { x, y, escala } = r
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof escala !== 'number') return null
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(escala)) return null
+  return { x, y, escala }
 }
 
 function profileFromRow(row: ProfileRow | null | undefined): Profile | null {
@@ -69,6 +99,8 @@ function profileFromRow(row: ProfileRow | null | undefined): Profile | null {
     bannerPath: typeof row.banner_path === 'string' ? row.banner_path : null,
     createdAt: typeof row.created_at === 'string' ? row.created_at : null,
     visibility: row.visibility === 'publico' ? 'publico' : 'privado',
+    avatarEncuadre: encuadreDe(row.avatar_encuadre),
+    bannerEncuadre: encuadreDe(row.banner_encuadre),
   }
 }
 
@@ -82,6 +114,12 @@ export async function fetchMyProfile(): Promise<Profile | null> {
  * Guarda los campos que se pasen. Lo que se omite queda como está; para vaciar
  * el nombre visible o la foto se manda cadena vacía.
  */
+/** Ver el comentario de los `p_*_encuadre` en `saveMyProfile`. */
+function encuadreParaLaBase(e: Encuadre | null | undefined): Encuadre | string | null {
+  if (e === undefined) return null
+  return e === null ? 'BORRAR' : e
+}
+
 export async function saveMyProfile(changes: {
   username?: string
   displayName?: string
@@ -89,6 +127,9 @@ export async function saveMyProfile(changes: {
   bio?: string
   bannerPath?: string
   visibility?: 'publico' | 'privado'
+  /** `null` borra el encuadre y vuelve al centrado; no mandarlo lo deja. */
+  avatarEncuadre?: Encuadre | null
+  bannerEncuadre?: Encuadre | null
 }): Promise<Profile> {
   const { data, error } = await getSupabase().rpc('update_my_profile', {
     p_username: changes.username ?? null,
@@ -97,6 +138,14 @@ export async function saveMyProfile(changes: {
     p_bio: changes.bio ?? null,
     p_banner_path: changes.bannerPath ?? null,
     p_visibility: changes.visibility ?? null,
+    /*
+     * `undefined` no viaja y la base no lo toca. `null` viaja como el texto
+     * `BORRAR`, no como JSON null: PostgREST traduce el null de JSON a NULL de
+     * SQL, con lo cual «borralo» y «no lo toques» llegarían idénticos y no
+     * habría forma de volver al centrado.
+     */
+    p_avatar_encuadre: encuadreParaLaBase(changes.avatarEncuadre),
+    p_banner_encuadre: encuadreParaLaBase(changes.bannerEncuadre),
   })
   if (error) throw error
   const profile = profileFromRow(Array.isArray(data) ? data[0] : data)

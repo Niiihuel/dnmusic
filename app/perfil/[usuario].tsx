@@ -117,7 +117,10 @@ export default function PerfilAjeno() {
         )}
 
         <Panel className="flex-1">
-          <FondoPerfil bannerPath={perfil?.bannerPath ?? null} />
+          <FondoPerfil
+            bannerPath={perfil?.bannerPath ?? null}
+            encuadre={perfil?.bannerEncuadre ?? null}
+          />
 
           {ancho ? (
             <View className="absolute left-4 top-4 z-10">
@@ -169,6 +172,7 @@ export default function PerfilAjeno() {
                   nombre={nombre}
                   usuario={perfil.username}
                   avatarPath={perfil.avatarPath}
+                  encuadre={perfil.avatarEncuadre}
                   bio={perfil.bio ?? ''}
                   centrado={!ancho}
                   banda={ancho}

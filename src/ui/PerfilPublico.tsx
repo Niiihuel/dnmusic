@@ -16,7 +16,9 @@ import { avisar } from '../state/aviso'
 import { mensajeError } from '../lib/mensajeError'
 import { fetchStats, type EstadisticasPerfil } from '../services/plays'
 import { useMyProfile } from '../state/session'
+import type { Encuadre } from '../services/profile'
 import { Avatar } from './Avatar'
+import { estiloEncuadrado } from './Encuadre'
 import { Vitrina } from './Vitrina'
 
 /**
@@ -72,7 +74,14 @@ export function alturaDeHeroe(
   return Math.max(compacto, Math.round(altoVentana * 0.38))
 }
 
-export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
+export function FondoPerfil({
+  bannerPath,
+  encuadre = null,
+}: {
+  bannerPath: string | null
+  /** Cómo mirar el fondo. Solo se aplica a imágenes: un clip va tal cual. */
+  encuadre?: Encuadre | null
+}) {
   const ruta = hayFondo(bannerPath) ? bannerPath! : null
   const uri = ruta ? ilustracionUrl(ruta) : null
   const clip = ruta ? esVideo(ruta) : false
@@ -106,7 +115,7 @@ export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
       {clip ? (
         <FondoClip uri={uri} />
       ) : (
-        <Image source={{ uri }} className="h-full w-full" resizeMode="cover" />
+        <FondoImagen uri={uri} encuadre={encuadre} />
       )}
 
       {/*
@@ -141,6 +150,49 @@ export function FondoPerfil({ bannerPath }: { bannerPath: string | null }) {
         locations={[0, 0.45, 1]}
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 300 }}
       />
+    </View>
+  )
+}
+
+/**
+ * El fondo cuando es una imagen, con su encuadre.
+ *
+ * Necesita medirse a sí mismo porque el encuadre se expresa en fracciones del
+ * recuadro y acá el recuadro es la pantalla entera: hasta que no se sabe cuánto
+ * mide, no se puede saber cuánto correr la imagen. Sin encuadre no espera nada
+ * —`cover` centrado es lo de siempre— así que el caso normal no paga el
+ * compás de espera de la medición.
+ */
+function FondoImagen({ uri, encuadre }: { uri: string; encuadre: Encuadre | null }) {
+  const [caja, setCaja] = useState<{ w: number; h: number } | null>(null)
+
+  if (!encuadre) {
+    return <Image source={{ uri }} className="h-full w-full" resizeMode="cover" />
+  }
+
+  return (
+    <View
+      className="h-full w-full overflow-hidden"
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout
+        setCaja((antes) =>
+          antes?.w === width && antes.h === height ? antes : { w: width, h: height },
+        )
+      }}
+    >
+      {caja ? (
+        <Image
+          source={{ uri }}
+          resizeMode="cover"
+          style={{
+            ...estiloEncuadrado(caja.w, encuadre),
+            /* El alto se recalcula aparte: el recuadro del fondo es apaisado y
+               `estiloEncuadrado` razona sobre un lado cuadrado. */
+            height: caja.h * encuadre.escala,
+            top: (caja.h - caja.h * encuadre.escala) / 2 + encuadre.y * caja.h,
+          }}
+        />
+      ) : null}
     </View>
   )
 }
@@ -188,6 +240,7 @@ export function Identidad({
   nombre,
   usuario,
   avatarPath,
+  encuadre = null,
   bio,
   centrado = false,
   banda = false,
@@ -196,6 +249,8 @@ export function Identidad({
   nombre: string
   usuario: string
   avatarPath: string | null
+  /** Cómo mirar la foto. `null` = centrada, que es lo de siempre. */
+  encuadre?: Encuadre | null
   bio: string
   /** En el teléfono va centrado; con dos columnas, alineado a la izquierda. */
   centrado?: boolean
@@ -215,7 +270,7 @@ export function Identidad({
   if (banda) {
     return (
       <View className="flex-row items-center gap-5">
-        <FotoDeHeroe nombre={nombre} avatarPath={avatarPath} size={136} />
+        <FotoDeHeroe nombre={nombre} avatarPath={avatarPath} encuadre={encuadre} size={136} />
         <View className="min-w-0 flex-1 gap-1">
           <Text className="text-foreground text-[32px] font-bold" numberOfLines={1}>
             {nombre}
@@ -234,7 +289,12 @@ export function Identidad({
 
   return (
     <View className={`gap-3 ${centrado ? 'items-center' : ''}`}>
-      <FotoDeHeroe nombre={nombre} avatarPath={avatarPath} size={centrado ? 120 : 96} />
+      <FotoDeHeroe
+        nombre={nombre}
+        avatarPath={avatarPath}
+        encuadre={encuadre}
+        size={centrado ? 120 : 96}
+      />
       <View className={`gap-0.5 ${centrado ? 'items-center' : ''}`}>
         <Text className="text-foreground text-[26px] font-bold" numberOfLines={1}>
           {nombre}
@@ -270,15 +330,17 @@ export function Identidad({
 function FotoDeHeroe({
   nombre,
   avatarPath,
+  encuadre,
   size,
 }: {
   nombre: string
   avatarPath: string | null
+  encuadre: Encuadre | null
   size: number
 }) {
   return (
     <View className="rounded-full border-4 border-background">
-      <Avatar name={nombre} path={avatarPath} size={size} />
+      <Avatar name={nombre} path={avatarPath} size={size} encuadre={encuadre} />
     </View>
   )
 }
