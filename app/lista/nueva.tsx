@@ -1,6 +1,6 @@
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { ANCHO_HOJA, Hoja } from '../../src/ui/Hoja'
+import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
 import { usePiso } from '../../src/state/shell'
 import { ICON_COLOR, IconMusic, IconUsers } from '../../src/ui/icons'
 
@@ -25,6 +25,8 @@ import { ICON_COLOR, IconMusic, IconUsers } from '../../src/ui/icons'
 export default function NuevaLista() {
   const router = useRouter()
   const piso = usePiso(24)
+  /* En el modal el reproductor queda afuera: la reserva del piso sobra. */
+  const modal = useHojaModal()
   /* El nombre sugerido lo calcula la pantalla principal, que ya tiene la
      biblioteca en memoria: pedirla de nuevo acá sería un viaje a la red para
      escribir un número. */
@@ -43,11 +45,15 @@ export default function NuevaLista() {
   }
 
   return (
-    <Hoja>
+    <Hoja medida="contenido">
       {/* ScrollView y no View, como `jam/opciones`: es la forma con la que el
           `fitToContents` de iOS mide bien la hoja en esta app. */}
       <ScrollView
-        className="flex-1 bg-background"
+        /* `flexGrow` y no `flex-1`: dentro del modal compacto —que mide su
+           contenido— un flex con base cero colapsa; con grow, en la sábana
+           llena el hueco y en el modal mide lo que hay. */
+        className="bg-background"
+        style={{ flexGrow: 1 }}
         contentContainerClassName="px-3 pt-6"
         /*
          * El ancho se corta en el escritorio. En el teléfono la hoja mide lo
@@ -56,7 +62,12 @@ export default function NuevaLista() {
          * izquierda del todo y el texto a un metro, leyéndose como dos cosas
          * sueltas en vez de una fila. Mismo recurso que `MAX_W` en `lista/[id]`.
          */
-        contentContainerStyle={{ paddingBottom: piso, maxWidth: ANCHO_HOJA, width: '100%', alignSelf: 'center' }}
+        contentContainerStyle={{
+          paddingBottom: modal ? 16 : piso,
+          maxWidth: ANCHO_HOJA,
+          width: '100%',
+          alignSelf: 'center',
+        }}
       >
         <Opcion
           icono={<IconMusic size={20} color={ICON_COLOR.foreground} />}

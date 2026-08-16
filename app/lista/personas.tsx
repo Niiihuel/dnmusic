@@ -16,7 +16,7 @@ import { useUser } from '../../src/state/session'
 import { usePiso, useKeyboardH } from '../../src/state/shell'
 import { Avatar } from '../../src/ui/Avatar'
 import { ES_WEB } from '../../src/ui/Glass'
-import { ANCHO_HOJA, Hoja } from '../../src/ui/Hoja'
+import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
 import { ICON_COLOR, IconCheck, IconClose, IconSearch, IconShare } from '../../src/ui/icons'
 
 /**
@@ -35,6 +35,7 @@ export default function PersonasDeLista() {
   const router = useRouter()
   const piso = usePiso(24)
   const teclado = useKeyboardH()
+  const modal = useHojaModal()
   const user = useUser()
   const { id, nombre } = useLocalSearchParams<{ id?: string; nombre?: string }>()
 
@@ -155,7 +156,7 @@ export default function PersonasDeLista() {
         contentContainerClassName="gap-6 px-5 pt-6"
         /* Acotado en el escritorio, como el resto de las hojas de formulario. */
         contentContainerStyle={{
-          paddingBottom: piso + teclado,
+          paddingBottom: modal ? 24 : piso + teclado,
           maxWidth: ANCHO_HOJA,
           width: '100%',
           alignSelf: 'center',

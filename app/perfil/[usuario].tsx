@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { BotonVidrio } from '../../src/ui/Glass'
@@ -70,6 +70,33 @@ export default function PerfilAjeno() {
   /* Sube al mandar una reacción: es lo que hace que la pared se relea sin
      recargar el perfil entero. */
   const [reaccion, setReaccion] = useState(0)
+
+  /*
+   * Al recuperar el foco se vuelve a pedir el perfil, **sin vaciar lo que se
+   * ve**: la respuesta reemplaza cuando llega. Vaciar primero haría parpadear
+   * la pantalla entera para confirmar algo que casi siempre no cambió.
+   *
+   * Existe por la edición: guardás un encuadre o un fondo, volvés atrás, y lo
+   * que mira esta pantalla es su copia cacheada de antes. El primer foco se
+   * saltea — es el montaje y el efecto de carga ya corrió.
+   */
+  const primerFoco = useRef(true)
+  useFocusEffect(
+    useCallback(() => {
+      if (primerFoco.current) {
+        primerFoco.current = false
+        return
+      }
+      if (!usuario) return
+      let vivo = true
+      fetchProfile(usuario)
+        .then((p) => vivo && setCargado({ usuario, perfil: p }))
+        .catch(() => {})
+      return () => {
+        vivo = false
+      }
+    }, [usuario]),
+  )
 
   const nombre = perfil?.displayName?.trim() || perfil?.username || ''
   /* Mirándote a vos mismo desde acá, la pantalla sigue siendo la de otro: es

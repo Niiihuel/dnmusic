@@ -5,7 +5,7 @@ import { volver } from '../../src/lib/volver'
 import { createPlaylist } from '../../src/services/playlists'
 import { avisar } from '../../src/state/aviso'
 import { abrirLista, useKeyboardH, usePiso } from '../../src/state/shell'
-import { ANCHO_HOJA, Hoja } from '../../src/ui/Hoja'
+import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
 
 /**
  * Ponerle nombre, el segundo paso de crear una lista.
@@ -23,6 +23,7 @@ export default function NombreDeLista() {
   const router = useRouter()
   const piso = usePiso(24)
   const teclado = useKeyboardH()
+  const modal = useHojaModal()
   const { sugerido, colaborativa } = useLocalSearchParams<{
     sugerido?: string
     colaborativa?: string
@@ -68,7 +69,7 @@ export default function NombreDeLista() {
       <View className="flex-1 bg-background">
       <View
         className="w-full flex-1 justify-center gap-8 self-center px-8"
-        style={{ paddingBottom: piso + teclado, maxWidth: ANCHO_HOJA }}
+        style={{ paddingBottom: modal ? 24 : piso + teclado, maxWidth: ANCHO_HOJA }}
       >
         <Text className="text-foreground text-center text-[17px] font-bold">
           {esColaborativa ? 'Ponele nombre a la lista de todos' : 'Ponele nombre a tu lista'}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   ScrollView,
@@ -6,7 +6,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { BotonVidrio } from '../../src/ui/Glass'
@@ -86,6 +86,28 @@ export default function ProfileScreen() {
       vivo = false
     }
   }, [recarga])
+
+  /*
+   * Al volver a esta pantalla, se relee todo lo que se edita en otra.
+   *
+   * Las vitrinas se arman en «Editar perfil» y las reacciones llegan solas: al
+   * volver de editar —o de cualquier lado— lo que se ve tiene que ser lo que
+   * hay, sin esperar al próximo cambio. La identidad y el fondo no lo
+   * necesitan: viven en el store de sesión y ya se actualizan al guardar.
+   *
+   * El primer foco se saltea porque es el montaje: los efectos de carga ya
+   * corrieron y repetirlos sería pedir todo dos veces en cada apertura.
+   */
+  const primerFoco = useRef(true)
+  useFocusEffect(
+    useCallback(() => {
+      if (primerFoco.current) {
+        primerFoco.current = false
+        return
+      }
+      setRecarga((n) => n + 1)
+    }, []),
+  )
 
   const canciones = listas?.reduce((suma, l) => suma + l.tracks, 0) ?? null
   const nombre = profile?.displayName?.trim() || profile?.username || '?'

@@ -30,7 +30,7 @@ export default function OpcionesJam() {
 
   if (!jam) {
     return (
-      <Hoja>
+      <Hoja medida="contenido">
       <View className="flex-1 items-center justify-center gap-4 bg-background">
         <Text className="text-muted-foreground text-[13px]">El Jam terminó.</Text>
         <Pressable
@@ -47,7 +47,7 @@ export default function OpcionesJam() {
 
   return (
     /* En web, `Hoja` hace de formSheet: tercera hoja de la pila, un velo más. */
-    <Hoja>
+    <Hoja medida="contenido">
     <ScrollView
       className="flex-1 bg-background"
       contentContainerClassName="gap-4 px-5 pb-10 pt-6"

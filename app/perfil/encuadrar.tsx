@@ -1,5 +1,12 @@
 import { useState } from 'react'
-import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
@@ -8,8 +15,9 @@ import { volver } from '../../src/lib/volver'
 import { avatarUrl, saveMyProfile, type Encuadre } from '../../src/services/profile'
 import { ilustracionUrl } from '../../src/services/showcases'
 import { avisar } from '../../src/state/aviso'
+import { usePiso } from '../../src/state/shell'
 import { setMyProfile, useMyProfile } from '../../src/state/session'
-import { ANCHO_HOJA, Hoja } from '../../src/ui/Hoja'
+import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
 
 /** Hasta dónde se puede acercar. Más allá, cualquier foto se ve rota. */
 const ESCALA_MAX = 4
@@ -30,7 +38,9 @@ const ESCALA_MAX = 4
 export default function Encuadrar() {
   const router = useRouter()
   const perfil = useMyProfile()
-  const { width } = useWindowDimensions()
+  const { width, height } = useWindowDimensions()
+  const modal = useHojaModal()
+  const piso = usePiso(24)
   const { que } = useLocalSearchParams<{ que?: string }>()
   const esFondo = que === 'fondo'
 
@@ -40,9 +50,16 @@ export default function Encuadrar() {
   const uri = esFondo ? (ruta ? ilustracionUrl(ruta) : null) : avatarUrl(ruta)
   const inicial = (esFondo ? perfil?.bannerEncuadre : perfil?.avatarEncuadre) ?? null
 
-  /* El recuadro de trabajo: cuadrado para la foto —así se ve en todos lados— y
-     apaisado para el fondo, que es una banda. */
-  const lado = Math.min(width - 48, ANCHO_HOJA - 48)
+  /*
+   * El recuadro de trabajo: cuadrado para la foto —así se ve en todos lados— y
+   * apaisado para el fondo, que es una banda.
+   *
+   * Acotado también **por el alto de la ventana**, no solo por el ancho. Sin
+   * ese tope, en una ventana apaisada el círculo de 472px más el título y los
+   * botones sumaban más que la pantalla: los controles quedaban debajo del
+   * reproductor flotante — era el recuadro rojo del reporte.
+   */
+  const lado = Math.min(width - 48, ANCHO_HOJA - 48, Math.round(height * 0.45))
   const alto = esFondo ? Math.round(lado * 0.62) : lado
 
   /*
@@ -173,10 +190,19 @@ export default function Encuadrar() {
 
   return (
     <Hoja>
-      <View className="flex-1 bg-background">
-        <View className="w-full flex-1 items-center gap-6 self-center px-6 pt-6"
-          style={{ maxWidth: ANCHO_HOJA }}
-        >
+      {/* Scroll por si aun acotado no entra (una ventana muy baja): mejor
+          desplazar que superponer. El piso solo se reserva en la sábana — en
+          el modal el reproductor queda afuera. */}
+      <ScrollView
+        className="flex-1 bg-background"
+        contentContainerClassName="items-center gap-6 px-6 pt-6"
+        contentContainerStyle={{
+          paddingBottom: modal ? 24 : piso,
+          maxWidth: ANCHO_HOJA,
+          width: '100%',
+          alignSelf: 'center',
+        }}
+      >
           <View className="items-center gap-1">
             <Text className="text-foreground text-[17px] font-bold">
               {esFondo ? 'Encuadrá tu fondo' : 'Encuadrá tu foto'}
@@ -252,8 +278,7 @@ export default function Encuadrar() {
               )}
             </Pressable>
           </View>
-        </View>
-      </View>
+      </ScrollView>
     </Hoja>
   )
 }
