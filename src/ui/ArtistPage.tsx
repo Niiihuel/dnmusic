@@ -11,6 +11,9 @@ import {
 } from '../services/music'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { CollectionHeader, CollectionTitle, useCoverSize } from './CollectionHeader'
+import { addShowcase } from '../services/showcases'
+import { getSupabase } from '../lib/supabase'
+import { avisar } from '../state/aviso'
 import { Menu, type MenuItem } from './Menu'
 import { Skeleton, SkeletonList } from './Skeleton'
 import { TrackRow } from './TrackRow'
@@ -115,16 +118,46 @@ export function ArtistPage({
   const ids = new Set(top.map((s) => s.videoId))
   const mine = sounding !== null && ids.has(sounding.videoId)
 
-  const menu: MenuItem[] = onBack
-    ? [
-        {
-          label: 'Cerrar el artista',
-          onPress: onBack,
-          icon: <IconClose size={15} color={ICON_COLOR.muted} />,
-          sfSymbol: 'xmark',
-        },
-      ]
-    : []
+  /**
+   * Fijar este artista en el perfil, con todo desnormalizado: la vitrina no
+   * vuelve a preguntar por él. Mismo camino que «Fijar en mi perfil» de una
+   * lista (`PlaylistView.fijarLista`).
+   */
+  async function fijarArtista() {
+    const { data } = await getSupabase().auth.getUser()
+    const me = data.user?.id
+    if (!me || !artist) return
+    try {
+      await addShowcase(
+        me,
+        'artista',
+        { artistId, nombre: artist.name, fotoUrl: artist.photoUrl },
+        'mitad',
+      )
+      avisar(`${artist.name} quedó en tu perfil`)
+    } catch {
+      avisar('No se pudo fijar el artista', true)
+    }
+  }
+
+  const menu: MenuItem[] = [
+    {
+      label: 'Fijar en mi perfil',
+      onPress: () => void fijarArtista(),
+      icon: <IconUser size={15} color={ICON_COLOR.muted} />,
+      sfSymbol: 'pin',
+    },
+    ...(onBack
+      ? [
+          {
+            label: 'Cerrar el artista',
+            onPress: onBack,
+            icon: <IconClose size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'xmark' as const,
+          },
+        ]
+      : []),
+  ]
 
   /*
    * En dos columnas cuando hay lugar, como en la referencia: cinco canciones

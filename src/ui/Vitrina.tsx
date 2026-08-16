@@ -3,7 +3,14 @@ import { Image, Pressable, Text, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
 import type { SongSnippet } from '../models/message'
-import { ilustracionUrl, type Showcase, type ShowcaseImagen } from '../services/showcases'
+import {
+  ilustracionUrl,
+  type Showcase,
+  type ShowcaseAlbum,
+  type ShowcaseArtista,
+  type ShowcaseImagen,
+  type ShowcaseLetra,
+} from '../services/showcases'
 import type { Playlist } from '../services/playlists'
 import { Onda, ONDA_PENDIENTE, usePicos } from './Onda'
 import { estiloEncuadrado } from './Encuadre'
@@ -184,6 +191,12 @@ export function Vitrina({
           />
         ) : showcase.kind === 'imagen' ? (
           <VitrinaImagen imagen={showcase.imagen} />
+        ) : showcase.kind === 'artista' ? (
+          <VitrinaArtista artista={showcase.artista} />
+        ) : showcase.kind === 'album' ? (
+          <VitrinaAlbum album={showcase.album} />
+        ) : showcase.kind === 'letra' ? (
+          <VitrinaLetra letra={showcase.letra} />
         ) : (
           <VitrinaCancion
             showcase={showcase}
@@ -238,6 +251,97 @@ function VitrinaImagen({ imagen }: { imagen: ShowcaseImagen }) {
               (imagen.encuadre?.y ?? 0) * alto,
           }}
         />
+      ) : null}
+    </View>
+  )
+}
+
+/**
+ * Un artista fijado: su cara y su nombre.
+ *
+ * La foto va redonda porque así se dibujan los artistas en toda la app (el
+ * buscador, la ficha): un artista es una cara, un álbum es una tapa cuadrada —
+ * la forma es lo que los distingue de un vistazo, antes de leer nada.
+ */
+function VitrinaArtista({ artista }: { artista: ShowcaseArtista }) {
+  return (
+    <View className="flex-row items-center gap-3">
+      {artista.fotoUrl ? (
+        <Image
+          source={{ uri: artista.fotoUrl }}
+          className="rounded-full bg-muted"
+          style={{ width: 56, height: 56 }}
+        />
+      ) : (
+        <View
+          className="items-center justify-center rounded-full bg-muted"
+          style={{ width: 56, height: 56 }}
+        >
+          <IconMusic size={20} color={ICON_COLOR.muted} />
+        </View>
+      )}
+      <View className="min-w-0 flex-1">
+        <Text className="text-muted-foreground text-[10px] font-semibold uppercase tracking-[1.2px]">
+          Artista
+        </Text>
+        <Text className="text-foreground text-[15px] font-bold" numberOfLines={1}>
+          {artista.nombre}
+        </Text>
+      </View>
+    </View>
+  )
+}
+
+/** Un álbum fijado: la tapa, el título y de quién es. */
+function VitrinaAlbum({ album }: { album: ShowcaseAlbum }) {
+  return (
+    <View className="flex-row items-center gap-3">
+      {album.tapaUrl ? (
+        <Image
+          source={{ uri: album.tapaUrl }}
+          className="rounded-lg bg-muted"
+          style={{ width: 56, height: 56 }}
+        />
+      ) : (
+        <View
+          className="items-center justify-center rounded-lg bg-muted"
+          style={{ width: 56, height: 56 }}
+        >
+          <IconMusic size={20} color={ICON_COLOR.muted} />
+        </View>
+      )}
+      <View className="min-w-0 flex-1">
+        <Text className="text-muted-foreground text-[10px] font-semibold uppercase tracking-[1.2px]">
+          Álbum
+        </Text>
+        <Text className="text-foreground text-[15px] font-bold" numberOfLines={1}>
+          {album.titulo}
+        </Text>
+        <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+          {album.artista}
+        </Text>
+      </View>
+    </View>
+  )
+}
+
+/**
+ * Un verso fijado.
+ *
+ * Se dibuja como cita y no como tarjeta de canción: lo que se fijó son las
+ * palabras. La canción firma abajo, chiquita — es la fuente, no el punto.
+ */
+function VitrinaLetra({ letra }: { letra: ShowcaseLetra }) {
+  return (
+    <View className="gap-3">
+      <Text className="text-foreground text-[17px] font-semibold italic leading-6">
+        “{letra.texto}”
+      </Text>
+      {letra.title ? (
+        <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+          {letra.title}
+          {letra.artist ? ` — ${letra.artist}` : ''}
+        </Text>
       ) : null}
     </View>
   )

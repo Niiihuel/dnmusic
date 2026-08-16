@@ -33,6 +33,15 @@ type Props = {
   size?: LyricsSize
   /** Si viene, cada línea es tocable. */
   onPickLine?: (atMs: number) => void
+  /**
+   * Mantener apretada una línea, con su texto.
+   *
+   * Es la puerta de «fijar este verso en el perfil»: el toque corto ya está
+   * tomado —mueve el recorte, o no hace nada— y un botón por línea ensuciaría
+   * una pantalla cuyo punto es ser solo texto. Sostener es el gesto de la app
+   * para «hacer algo con esto» (ver `Mantener`).
+   */
+  onHoldLine?: (texto: string, atMs: number) => void
 }
 
 /**
@@ -51,7 +60,7 @@ type Props = {
  * no multiplicando por un alto fijo: en grande los versos se parten en dos o
  * tres renglones y con un alto constante la letra se va desalineando.
  */
-export function Lyrics({ lines, atMs, visible, size = 'sm', onPickLine }: Props) {
+export function Lyrics({ lines, atMs, visible, size = 'sm', onPickLine, onHoldLine }: Props) {
   const s = SIZE[size]
   /** Alto de la ventana: fijo si se pidieron N líneas, si no lo da el padre. */
   const fixedH = visible ? visible * s.lineH : undefined
@@ -111,6 +120,9 @@ export function Lyrics({ lines, atMs, visible, size = 'sm', onPickLine }: Props)
               if (i === target) center(target)
             }}
             onPress={onPickLine && (() => onPickLine(line.atMs))}
+            onLongPress={
+              onHoldLine && line.text.trim() ? () => onHoldLine(line.text, line.atMs) : undefined
+            }
           />
         ))}
       </Animated.View>
@@ -124,12 +136,14 @@ function Line({
   size,
   onMeasure,
   onPress,
+  onLongPress,
 }: {
   text: string
   distance: number
   size: (typeof SIZE)[LyricsSize]
   onMeasure: (y: number, h: number) => void
   onPress?: () => void
+  onLongPress?: () => void
 }) {
   const active = distance === 0
   /*
@@ -172,7 +186,7 @@ function Line({
     </Text>
   )
 
-  if (!onPress) {
+  if (!onPress && !onLongPress) {
     return (
       <View style={box} onLayout={layout}>
         {body}
@@ -183,10 +197,13 @@ function Line({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityHint="Mueve el recorte a esta parte de la canción"
+      accessibilityHint={
+        onPress ? 'Mueve el recorte a esta parte de la canción' : 'Mantené para fijar este verso'
+      }
       style={box}
       onLayout={layout}
       onPress={onPress}
+      onLongPress={onLongPress}
       className="active:opacity-60"
     >
       {body}

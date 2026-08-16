@@ -22,7 +22,15 @@ function encuadreDe(v: unknown): Encuadre | null {
  * tabla. La base solo garantiza el tipo y el dueño.
  */
 
-export type ShowcaseKind = 'cancion' | 'fragmento' | 'lista' | 'texto' | 'imagen'
+export type ShowcaseKind =
+  | 'cancion'
+  | 'fragmento'
+  | 'lista'
+  | 'texto'
+  | 'imagen'
+  | 'artista'
+  | 'album'
+  | 'letra'
 
 /**
  * Cuánto ocupa una vitrina en la fila.
@@ -60,6 +68,33 @@ export type ShowcaseImagen = {
   encuadre: Encuadre | null
 }
 
+/** Un artista fijado. Todo desnormalizado: la vitrina no vuelve a preguntar. */
+export type ShowcaseArtista = {
+  artistId: string
+  nombre: string
+  fotoUrl: string
+}
+
+/** Un álbum fijado. */
+export type ShowcaseAlbum = {
+  albumId: string
+  titulo: string
+  artista: string
+  tapaUrl: string
+}
+
+/**
+ * Un verso fijado: unas líneas de la letra, con de qué canción son.
+ *
+ * El texto viaja congelado, como todo lo demás: la letra se pidió una vez al
+ * fijar y la vitrina no depende de que el servicio de letras siga contestando.
+ */
+export type ShowcaseLetra = {
+  texto: string
+  title: string
+  artist: string
+}
+
 type Base = { id: string; ancho: ShowcaseAncho }
 
 export type Showcase =
@@ -68,6 +103,9 @@ export type Showcase =
   | (Base & { kind: 'lista'; playlistId: string })
   | (Base & { kind: 'texto'; texto: string })
   | (Base & { kind: 'imagen'; imagen: ShowcaseImagen })
+  | (Base & { kind: 'artista'; artista: ShowcaseArtista })
+  | (Base & { kind: 'album'; album: ShowcaseAlbum })
+  | (Base & { kind: 'letra'; letra: ShowcaseLetra })
 
 type Row = {
   id?: unknown
@@ -102,6 +140,46 @@ function showcaseFromRow(row: Row): Showcase | null {
     return typeof p.playlistId === 'string'
       ? { ...base, kind: 'lista', playlistId: p.playlistId }
       : null
+  }
+
+  if (row.kind === 'artista') {
+    if (typeof p.artistId !== 'string' || typeof p.nombre !== 'string') return null
+    return {
+      ...base,
+      kind: 'artista',
+      artista: {
+        artistId: p.artistId,
+        nombre: p.nombre,
+        fotoUrl: typeof p.fotoUrl === 'string' ? p.fotoUrl : '',
+      },
+    }
+  }
+
+  if (row.kind === 'album') {
+    if (typeof p.albumId !== 'string' || typeof p.titulo !== 'string') return null
+    return {
+      ...base,
+      kind: 'album',
+      album: {
+        albumId: p.albumId,
+        titulo: p.titulo,
+        artista: typeof p.artista === 'string' ? p.artista : '',
+        tapaUrl: typeof p.tapaUrl === 'string' ? p.tapaUrl : '',
+      },
+    }
+  }
+
+  if (row.kind === 'letra') {
+    if (typeof p.texto !== 'string' || !p.texto.trim()) return null
+    return {
+      ...base,
+      kind: 'letra',
+      letra: {
+        texto: p.texto,
+        title: typeof p.title === 'string' ? p.title : '',
+        artist: typeof p.artist === 'string' ? p.artist : '',
+      },
+    }
   }
 
   /* `ilustracion` es el nombre viejo de lo mismo: quedó en el check de la base

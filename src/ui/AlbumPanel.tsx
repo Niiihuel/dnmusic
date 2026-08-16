@@ -10,6 +10,9 @@ import {
   useWantPlay,
 } from '../state/playback'
 import { CollectionHeader, CollectionTitle, useCoverSize } from './CollectionHeader'
+import { addShowcase } from '../services/showcases'
+import { getSupabase } from '../lib/supabase'
+import { avisar } from '../state/aviso'
 import { Menu, type MenuItem } from './Menu'
 import { formatLength } from './SeekBar'
 import { Skeleton, SkeletonList } from './Skeleton'
@@ -118,18 +121,52 @@ export function AlbumPanel({
      en una lista propia, en vez de arrancar de cero lo que ya está sonando. */
   const mine = sounding !== null && ids.has(sounding.videoId)
 
-  /* Las opciones son las de una lista propia menos las de dueño: queda cerrar,
-     que es la misma acción que la flecha de volver. */
-  const menu: MenuItem[] = onBack
-    ? [
+  /** Fijar el álbum en el perfil. Solo álbumes: una lista ajena de YouTube no
+   *  es una pieza que el perfil sepa contar. */
+  async function fijarAlbum() {
+    const { data } = await getSupabase().auth.getUser()
+    const me = data.user?.id
+    if (!me || !album) return
+    try {
+      await addShowcase(
+        me,
+        'album',
         {
-          label: kind === 'album' ? 'Cerrar el álbum' : 'Cerrar la lista',
-          onPress: onBack,
-          icon: <IconClose size={15} color={ICON_COLOR.muted} />,
-          sfSymbol: 'xmark',
+          albumId,
+          titulo: album.title,
+          artista: album.artist,
+          tapaUrl: album.artworkUrl,
         },
-      ]
-    : []
+        'mitad',
+      )
+      avisar(`«${album.title}» quedó en tu perfil`)
+    } catch {
+      avisar('No se pudo fijar el álbum', true)
+    }
+  }
+
+  const menu: MenuItem[] = [
+    ...(kind === 'album'
+      ? [
+          {
+            label: 'Fijar en mi perfil',
+            onPress: () => void fijarAlbum(),
+            icon: <IconMusic size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'pin' as const,
+          },
+        ]
+      : []),
+    ...(onBack
+      ? [
+          {
+            label: kind === 'album' ? 'Cerrar el álbum' : 'Cerrar la lista',
+            onPress: onBack,
+            icon: <IconClose size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'xmark' as const,
+          },
+        ]
+      : []),
+  ]
 
   return (
     <View className="pb-6">

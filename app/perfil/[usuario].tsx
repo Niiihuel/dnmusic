@@ -200,6 +200,7 @@ export default function PerfilAjeno() {
                   usuario={perfil.username}
                   avatarPath={perfil.avatarPath}
                   encuadre={perfil.avatarEncuadre}
+                  marco={perfil.marco}
                   bio={perfil.bio ?? ''}
                   centrado={!ancho}
                   banda={ancho}

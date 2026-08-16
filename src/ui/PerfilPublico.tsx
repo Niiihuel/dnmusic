@@ -21,6 +21,7 @@ import { useMyProfile } from '../state/session'
 import type { Encuadre } from '../services/profile'
 import { Avatar } from './Avatar'
 import { estiloEncuadrado } from './Encuadre'
+import { Marco } from './Marco'
 import { Vitrina } from './Vitrina'
 
 /**
@@ -243,6 +244,7 @@ export function Identidad({
   usuario,
   avatarPath,
   encuadre = null,
+  marco = null,
   bio,
   centrado = false,
   banda = false,
@@ -253,6 +255,8 @@ export function Identidad({
   avatarPath: string | null
   /** Cómo mirar la foto. `null` = centrada, que es lo de siempre. */
   encuadre?: Encuadre | null
+  /** El marco dibujado alrededor. Ver `ui/Marco`. */
+  marco?: string | null
   bio: string
   /** En el teléfono va centrado; con dos columnas, alineado a la izquierda. */
   centrado?: boolean
@@ -272,7 +276,13 @@ export function Identidad({
   if (banda) {
     return (
       <View className="flex-row items-center gap-5">
-        <FotoDeHeroe nombre={nombre} avatarPath={avatarPath} encuadre={encuadre} size={136} />
+        <FotoDeHeroe
+          nombre={nombre}
+          avatarPath={avatarPath}
+          encuadre={encuadre}
+          marco={marco}
+          size={136}
+        />
         <View className="min-w-0 flex-1 gap-1">
           <Text className="text-foreground text-[32px] font-bold" numberOfLines={1}>
             {nombre}
@@ -295,6 +305,7 @@ export function Identidad({
         nombre={nombre}
         avatarPath={avatarPath}
         encuadre={encuadre}
+        marco={marco}
         size={centrado ? 120 : 96}
       />
       <View className={`gap-0.5 ${centrado ? 'items-center' : ''}`}>
@@ -333,16 +344,23 @@ function FotoDeHeroe({
   nombre,
   avatarPath,
   encuadre,
+  marco,
   size,
 }: {
   nombre: string
   avatarPath: string | null
   encuadre: Encuadre | null
+  marco?: string | null
   size: number
 }) {
   return (
-    <View className="rounded-full border-4 border-background">
-      <Avatar name={nombre} path={avatarPath} size={size} encuadre={encuadre} />
+    <View>
+      <View className="rounded-full border-4 border-background">
+        <Avatar name={nombre} path={avatarPath} size={size} encuadre={encuadre} />
+      </View>
+      {/* Por fuera y por encima, desbordando la foto — la regla del 1,2× de
+          las referencias. El +8 cuenta el anillo de 4px de cada lado. */}
+      <Marco marco={marco} size={size + 8} />
     </View>
   )
 }

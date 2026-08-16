@@ -1040,6 +1040,19 @@ function SessionGate() {
           la forma del recuadro. Va llena porque el recuadro de trabajo tiene
           que ser lo más grande posible — es donde se decide qué se ve. */}
       <Stack.Screen
+        name="profile/marco"
+        options={
+          ES_WEB
+            ? HOJA_WEB
+            : {
+                presentation: 'formSheet',
+                sheetAllowedDetents: [0.75, 1],
+                sheetGrabberVisible: true,
+                sheetCornerRadius: 24,
+              }
+        }
+      />
+      <Stack.Screen
         name="perfil/encuadrar"
         options={
           ES_WEB

@@ -49,6 +49,8 @@ export type Profile = {
   avatarEncuadre: Encuadre | null
   /** Lo mismo para el fondo. */
   bannerEncuadre: Encuadre | null
+  /** El marco dibujado alrededor de la foto; null = ninguno. Ver `ui/Marco`. */
+  marco: string | null
 }
 
 /**
@@ -75,6 +77,7 @@ type ProfileRow = {
   visibility?: unknown
   avatar_encuadre?: unknown
   banner_encuadre?: unknown
+  marco?: unknown
 }
 
 /** Un encuadre del jsonb, o null. Un número raro lo descarta entero: medio
@@ -101,6 +104,7 @@ function profileFromRow(row: ProfileRow | null | undefined): Profile | null {
     visibility: row.visibility === 'publico' ? 'publico' : 'privado',
     avatarEncuadre: encuadreDe(row.avatar_encuadre),
     bannerEncuadre: encuadreDe(row.banner_encuadre),
+    marco: typeof row.marco === 'string' && row.marco ? row.marco : null,
   }
 }
 
@@ -130,6 +134,8 @@ export async function saveMyProfile(changes: {
   /** `null` borra el encuadre y vuelve al centrado; no mandarlo lo deja. */
   avatarEncuadre?: Encuadre | null
   bannerEncuadre?: Encuadre | null
+  /** La cadena vacía lo saca, como el resto de los textos de esta función. */
+  marco?: string
 }): Promise<Profile> {
   const { data, error } = await getSupabase().rpc('update_my_profile', {
     p_username: changes.username ?? null,
@@ -146,6 +152,7 @@ export async function saveMyProfile(changes: {
      */
     p_avatar_encuadre: encuadreParaLaBase(changes.avatarEncuadre),
     p_banner_encuadre: encuadreParaLaBase(changes.bannerEncuadre),
+    p_marco: changes.marco ?? null,
   })
   if (error) throw error
   const profile = profileFromRow(Array.isArray(data) ? data[0] : data)

@@ -7,6 +7,9 @@ import {
   type LyricLang,
   type LyricLine,
 } from '../services/music'
+import { addShowcase } from '../services/showcases'
+import { getSupabase } from '../lib/supabase'
+import { avisar } from '../state/aviso'
 import { usePlaybackState } from '../state/playback'
 import { Lyrics } from './Lyrics'
 import { Popover } from './Popover'
@@ -37,6 +40,27 @@ export function LyricsView({
   translatable?: boolean
 }) {
   const { positionMs } = usePlaybackState()
+
+  /**
+   * Fijar un verso en el perfil, congelado: el texto viaja con la vitrina y no
+   * depende de que el servicio de letras siga contestando.
+   */
+  async function fijarVerso(verso: string) {
+    const { data } = await getSupabase().auth.getUser()
+    const me = data.user?.id
+    if (!me) return
+    try {
+      await addShowcase(
+        me,
+        'letra',
+        { texto: verso, title: track.title, artist: track.artist },
+        'mitad',
+      )
+      avisar('El verso quedó en tu perfil')
+    } catch {
+      avisar('No se pudo fijar el verso', true)
+    }
+  }
   const [loaded, setLoaded] = useState<{ key: string; lines: LyricLine[] | null } | null>(null)
   const key = `${track.artist}|${track.title}`
   const fresh = loaded?.key === key
@@ -128,7 +152,18 @@ export function LyricsView({
           media pantalla si la canción tenía pocas líneas— y competía con lo que
           uno está leyendo. Con el hueco vacío abajo, no. */}
       <View className="min-h-0 flex-1">
-        <Lyrics lines={lines} atMs={positionMs} size="lg" />
+        <Lyrics
+          lines={lines}
+          atMs={positionMs}
+          size="lg"
+          /* Sostener fija **la línea original**, no la traducción: se busca por
+             su tiempo en la letra base — lo que la canción dice, no lo que el
+             traductor entendió. */
+          onHoldLine={(texto, atMs) => {
+            const original = base.find((l) => l.atMs === atMs)?.text ?? texto
+            void fijarVerso(original)
+          }}
+        />
       </View>
 
       {translatable ? (
