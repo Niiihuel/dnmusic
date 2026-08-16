@@ -1,10 +1,12 @@
+import { useState } from 'react'
 import { Image, Pressable, Text, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
 import type { SongSnippet } from '../models/message'
-import type { Showcase } from '../services/showcases'
+import { ilustracionUrl, type Showcase, type ShowcaseImagen } from '../services/showcases'
 import type { Playlist } from '../services/playlists'
 import { Onda, ONDA_PENDIENTE, usePicos } from './Onda'
+import { estiloEncuadrado } from './Encuadre'
 import { Glass, HAY_VIDRIO } from './Glass'
 import { PlaylistCover } from './PlaylistCover'
 import { formatClock } from './SeekBar'
@@ -13,6 +15,8 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconClose,
+  IconCollapseLeft,
+  IconExpandLeft,
   IconLock,
   IconMusic,
   IconPause,
@@ -43,6 +47,7 @@ export function Vitrina({
   onRemove,
   onSubir,
   onBajar,
+  onAncho,
 }: {
   showcase: Showcase
   /** Para resolver la vitrina de lista, que guarda solo el id. */
@@ -88,10 +93,27 @@ export function Vitrina({
    */
   onSubir?: (() => void) | null
   onBajar?: (() => void) | null
+  /**
+   * Alternar entre ocupar la fila entera y media fila.
+   *
+   * Es un botón y no un menú porque solo hay dos estados: un menú de dos
+   * opciones donde una siempre es la actual es un menú que sobra.
+   */
+  onAncho?: () => void
 }) {
   return (
     <Glass radius={16} style={HAY_VIDRIO ? {} : { backgroundColor: 'rgb(24,24,24)' }}>
-      <View className="relative p-4">
+      {/*
+       * En modo edición el contenido arranca más abajo.
+       *
+       * Los controles flotan arriba a la derecha, y a fila entera sobra lugar
+       * para que convivan con el texto. A **media fila** no: se montaban encima
+       * —«Escuchando de madrugada» pasaba por debajo de la cruz— y el título de
+       * una canción quedaría cortado. Reservar el renglón cuesta unos píxeles
+       * solo mientras se está editando; en el perfil, que es donde se mira, la
+       * tarjeta no cambia.
+       */}
+      <View className={`relative p-4 ${onRemove ? 'pt-12' : ''}`}>
         {onRemove ? (
           <View className="absolute right-2 top-2 z-10 flex-row items-center">
             {onSubir !== undefined ? (
@@ -122,6 +144,23 @@ export function Vitrina({
                 <IconChevronDown size={15} color={ICON_COLOR.muted} />
               </Pressable>
             ) : null}
+            {onAncho ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  showcase.ancho === 'mitad' ? 'Ocupar toda la fila' : 'Ocupar media fila'
+                }
+                onPress={onAncho}
+                hitSlop={6}
+                className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+              >
+                {showcase.ancho === 'mitad' ? (
+                  <IconExpandLeft size={15} color={ICON_COLOR.muted} />
+                ) : (
+                  <IconCollapseLeft size={15} color={ICON_COLOR.muted} />
+                )}
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Sacar del perfil"
@@ -143,6 +182,8 @@ export function Vitrina({
             esMio={esMio}
             onOpen={onOpenPlaylist}
           />
+        ) : showcase.kind === 'imagen' ? (
+          <VitrinaImagen imagen={showcase.imagen} />
         ) : (
           <VitrinaCancion
             showcase={showcase}
@@ -156,6 +197,49 @@ export function Vitrina({
         )}
       </View>
     </Glass>
+  )
+}
+
+/**
+ * Una imagen fijada.
+ *
+ * Se dibuja **con su encuadre**, el mismo mecanismo que la foto de perfil (ver
+ * `src/ui/Encuadre.tsx`): la imagen sube entera y lo que se guarda es cómo
+ * mirarla, así un GIF fijado sigue animado.
+ *
+ * Va apaisada y no cuadrada porque una vitrina vive en una fila junto a otras:
+ * el 16:10 es lo que hace que una imagen y una canción a media columna tengan
+ * más o menos el mismo peso visual, en vez de que la imagen sea el doble de
+ * alta y rompa el renglón.
+ */
+function VitrinaImagen({ imagen }: { imagen: ShowcaseImagen }) {
+  const [caja, setCaja] = useState(0)
+  const uri = ilustracionUrl(imagen.path)
+  const alto = caja > 0 ? Math.round(caja * 0.62) : 0
+
+  return (
+    <View
+      className="overflow-hidden rounded-xl bg-muted"
+      style={alto ? { height: alto } : { aspectRatio: 1 / 0.62 }}
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width
+        setCaja((antes) => (Math.abs(antes - w) < 1 ? antes : w))
+      }}
+    >
+      {caja > 0 ? (
+        <Image
+          source={{ uri }}
+          resizeMode="cover"
+          style={{
+            ...estiloEncuadrado(caja, imagen.encuadre),
+            height: alto * (imagen.encuadre?.escala ?? 1),
+            top:
+              (alto - alto * (imagen.encuadre?.escala ?? 1)) / 2 +
+              (imagen.encuadre?.y ?? 0) * alto,
+          }}
+        />
+      ) : null}
+    </View>
   )
 }
 

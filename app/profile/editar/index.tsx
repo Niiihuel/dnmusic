@@ -18,7 +18,7 @@ import {
 } from '../../../src/ui/icons'
 import { removeAvatar, saveMyProfile, uploadAvatar } from '../../../src/services/profile'
 import { pickImage } from '../../../src/lib/pickImage'
-import { esVideo, uploadIlustracion } from '../../../src/services/showcases'
+import { addShowcase, esVideo, uploadIlustracion } from '../../../src/services/showcases'
 import { setMyProfile, useMyProfile, useUser } from '../../../src/state/session'
 import { usePiso } from '../../../src/state/shell'
 import { avisar } from '../../../src/state/aviso'
@@ -76,6 +76,34 @@ export default function EditarPerfil() {
       avisar('No se pudo subir el fondo', true)
     } finally {
       setSubiendoFondo(false)
+    }
+  }
+
+  /**
+   * Subir una imagen y fijarla como vitrina.
+   *
+   * Nace en **media fila** a propósito. El tipo se había sacado del perfil
+   * porque «una imagen subida es el fondo, no una tarjeta» (ver `0d02e94`) y
+   * una tarjeta grande en el medio le competía. A media fila es una pieza al
+   * lado de una canción, no un segundo fondo. Se puede agrandar después con el
+   * control de la tarjeta, pero hay que pedirlo.
+   */
+  const [subiendoImagen, setSubiendoImagen] = useState(false)
+  async function sumarImagen() {
+    if (!user || subiendoImagen) return
+    setSubiendoImagen(true)
+    try {
+      const elegida = await pickImage()
+      if (!elegida) return
+      const ruta = await uploadIlustracion(user.id, elegida.blob, elegida.fileName, elegida.mime)
+      await addShowcase(user.id, 'imagen', { path: ruta }, 'mitad')
+      setRecarga((n) => n + 1)
+      avisar('Imagen sumada a tu perfil')
+    } catch (e) {
+      setError((e as Error).message)
+      avisar('No se pudo sumar la imagen', true)
+    } finally {
+      setSubiendoImagen(false)
     }
   }
 
@@ -316,9 +344,36 @@ export default function EditarPerfil() {
                  * que las dos pantallas tengan un trabajo cada una.
                  */}
                 <View className="gap-2">
-                  <Text className="px-4 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-                    Tus vitrinas
-                  </Text>
+                  <View className="flex-row items-center justify-between gap-3 px-4">
+                    <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                      Tus vitrinas
+                    </Text>
+                    {/*
+                     * Sumar una imagen: la única vitrina que no tiene de dónde
+                     * salir sola.
+                     *
+                     * Una lista se fija desde su menú, un fragmento desde el
+                     * suyo — cada cosa se fija donde vive. Una imagen no vive
+                     * en ningún lado hasta que la subís, así que su puerta
+                     * tiene que estar acá, que es donde se arma el mosaico.
+                     */}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Sumar una imagen al perfil"
+                      disabled={subiendoImagen}
+                      onPress={() => void sumarImagen()}
+                      className="h-9 flex-row items-center gap-2 rounded-full bg-muted px-3.5 active:opacity-70"
+                    >
+                      {subiendoImagen ? (
+                        <ActivityIndicator size="small" color={ICON_COLOR.muted} />
+                      ) : (
+                        <IconImage size={14} color={ICON_COLOR.muted} />
+                      )}
+                      <Text className="text-foreground text-[12px] font-semibold">
+                        {subiendoImagen ? 'Subiendo…' : 'Sumar imagen'}
+                      </Text>
+                    </Pressable>
+                  </View>
                   <Vitrinas
                     ownerId={profile.userId}
                     recarga={recarga}

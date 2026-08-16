@@ -1,4 +1,14 @@
 import { getSupabase } from '../lib/supabase'
+import type { Encuadre } from './profile'
+
+/** Un encuadre del payload, o null. Mismo criterio que en `profile`. */
+function encuadreDe(v: unknown): Encuadre | null {
+  const r = v as Record<string, unknown> | null
+  if (!r || typeof r !== 'object') return null
+  const { x, y, escala } = r
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof escala !== 'number') return null
+  return { x, y, escala }
+}
 
 /**
  * Las vitrinas de un perfil.
@@ -12,7 +22,17 @@ import { getSupabase } from '../lib/supabase'
  * tabla. La base solo garantiza el tipo y el dueño.
  */
 
-export type ShowcaseKind = 'cancion' | 'fragmento' | 'lista' | 'texto'
+export type ShowcaseKind = 'cancion' | 'fragmento' | 'lista' | 'texto' | 'imagen'
+
+/**
+ * Cuánto ocupa una vitrina en la fila.
+ *
+ * Dos valores y no una grilla libre: con anchos arbitrarios cada perfil
+ * necesita su propio criterio de qué entra en una fila, y lo que se gana en
+ * libertad se pierde en que ningún perfil se ve bien sin trabajarlo. Con estos
+ * dos, cualquier combinación cierra sola.
+ */
+export type ShowcaseAncho = 'entero' | 'mitad'
 
 /** Una canción fijada, o el fragmento de una. */
 export type ShowcaseCancion = {
@@ -33,16 +53,27 @@ export type ShowcaseCancion = {
   endMs?: number
 }
 
+/** Una imagen fijada. Guarda su encuadre, igual que la foto de perfil. */
+export type ShowcaseImagen = {
+  /** Ruta dentro del bucket `showcases`. */
+  path: string
+  encuadre: Encuadre | null
+}
+
+type Base = { id: string; ancho: ShowcaseAncho }
+
 export type Showcase =
-  | { id: string; kind: 'cancion'; cancion: ShowcaseCancion }
-  | { id: string; kind: 'fragmento'; cancion: ShowcaseCancion }
-  | { id: string; kind: 'lista'; playlistId: string }
-  | { id: string; kind: 'texto'; texto: string }
+  | (Base & { kind: 'cancion'; cancion: ShowcaseCancion })
+  | (Base & { kind: 'fragmento'; cancion: ShowcaseCancion })
+  | (Base & { kind: 'lista'; playlistId: string })
+  | (Base & { kind: 'texto'; texto: string })
+  | (Base & { kind: 'imagen'; imagen: ShowcaseImagen })
 
 type Row = {
   id?: unknown
   kind?: unknown
   payload?: unknown
+  ancho?: unknown
 }
 
 /**
@@ -56,17 +87,33 @@ type Row = {
 function showcaseFromRow(row: Row): Showcase | null {
   if (typeof row.id !== 'string' || typeof row.kind !== 'string') return null
   const p = (row.payload ?? {}) as Record<string, unknown>
+  /* Ante cualquier cosa rara, entero: es como se dibujaba antes de que el
+     ancho existiera, así que lo desconocido cae en lo de siempre. */
+  const ancho: ShowcaseAncho = row.ancho === 'mitad' ? 'mitad' : 'entero'
+  const base = { id: row.id, ancho }
 
   if (row.kind === 'texto') {
     return typeof p.texto === 'string' && p.texto.trim()
-      ? { id: row.id, kind: 'texto', texto: p.texto }
+      ? { ...base, kind: 'texto', texto: p.texto }
       : null
   }
 
   if (row.kind === 'lista') {
     return typeof p.playlistId === 'string'
-      ? { id: row.id, kind: 'lista', playlistId: p.playlistId }
+      ? { ...base, kind: 'lista', playlistId: p.playlistId }
       : null
+  }
+
+  /* `ilustracion` es el nombre viejo de lo mismo: quedó en el check de la base
+     de cuando esto era «la pieza grande del centro» de Steam. Se lee igual para
+     no perder ninguna que haya quedado guardada. */
+  if (row.kind === 'imagen' || row.kind === 'ilustracion') {
+    if (typeof p.path !== 'string' || !p.path) return null
+    return {
+      ...base,
+      kind: 'imagen',
+      imagen: { path: p.path, encuadre: encuadreDe(p.encuadre) },
+    }
   }
 
   if (row.kind === 'cancion' || row.kind === 'fragmento') {
@@ -82,7 +129,7 @@ function showcaseFromRow(row: Row): Showcase | null {
       startMs: typeof p.startMs === 'number' ? p.startMs : undefined,
       endMs: typeof p.endMs === 'number' ? p.endMs : undefined,
     }
-    return { id: row.id, kind: row.kind, cancion }
+    return { ...base, kind: row.kind, cancion }
   }
 
   return null
@@ -92,7 +139,7 @@ function showcaseFromRow(row: Row): Showcase | null {
 export async function listShowcases(ownerId: string): Promise<Showcase[]> {
   const { data, error } = await getSupabase()
     .from('profile_showcases')
-    .select('id, kind, payload')
+    .select('id, kind, payload, ancho')
     .eq('owner_id', ownerId)
     .order('position', { ascending: true })
   if (error) throw error
@@ -110,6 +157,9 @@ export async function addShowcase(
   ownerId: string,
   kind: ShowcaseKind,
   payload: Record<string, unknown>,
+  /* Entero salvo que se pida otra cosa: es como se fijaba todo antes de que el
+     ancho existiera, así que quien no lo sepa sigue obteniendo lo de siempre. */
+  ancho: ShowcaseAncho = 'entero',
 ): Promise<void> {
   const { count, error: countError } = await getSupabase()
     .from('profile_showcases')
@@ -119,7 +169,19 @@ export async function addShowcase(
 
   const { error } = await getSupabase()
     .from('profile_showcases')
-    .insert({ owner_id: ownerId, kind, position: count ?? 0, payload })
+    .insert({ owner_id: ownerId, kind, position: count ?? 0, payload, ancho })
+  if (error) throw error
+}
+
+/**
+ * Cambia cuánto ocupa una vitrina en su fila.
+ *
+ * Va aparte de `reorderShowcases` aunque las dos reacomoden el mosaico: el
+ * orden es de todas a la vez y el ancho es de una sola, así que mezclarlas
+ * obligaría a mandar la lista entera para mover un solo control.
+ */
+export async function setShowcaseAncho(id: string, ancho: ShowcaseAncho): Promise<void> {
+  const { error } = await getSupabase().from('profile_showcases').update({ ancho }).eq('id', id)
   if (error) throw error
 }
 

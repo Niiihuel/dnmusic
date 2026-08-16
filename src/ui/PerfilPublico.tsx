@@ -8,7 +8,9 @@ import {
   listShowcases,
   removeShowcase,
   reorderShowcases,
+  setShowcaseAncho,
   type Showcase,
+  type ShowcaseAncho,
 } from '../services/showcases'
 import { listPlaylists, listPublicPlaylists, type Playlist } from '../services/playlists'
 import { useSnippetPlayer } from '../state/player'
@@ -567,11 +569,51 @@ export function Vitrinas({
     })
   }
 
+  /**
+   * Cambiar cuánto ocupa una: en pantalla al toque, en el servidor después.
+   *
+   * Igual que reordenar, y por lo mismo: esperar la respuesta para que la
+   * tarjeta cambie de tamaño hace que el botón se sienta roto.
+   */
+  function cambiarAncho(id: string, ancho: ShowcaseAncho) {
+    if (!vitrinas) return
+    setVitrinas(vitrinas.map((v) => (v.id === id ? { ...v, ancho } : v)))
+    setShowcaseAncho(id, ancho).catch((e: unknown) => {
+      onCambio()
+      avisar(mensajeError(e), true)
+    })
+  }
+
+  /*
+   * De la lista ordenada al mosaico.
+   *
+   * Las vitrinas siguen siendo **una sola secuencia** —ese es su orden y es lo
+   * que se reordena—; las filas se derivan al dibujar. Guardar filas en la base
+   * sería guardar dos veces la misma información, y a la primera que alguien
+   * cambia un ancho quedan desincronizadas.
+   *
+   * La regla es simple: una `entero` ocupa su propia fila, y dos `mitad`
+   * seguidas comparten una. Una `mitad` suelta al final queda a media fila en
+   * vez de estirarse, que es lo que la hace verse elegida y no sobrante.
+   */
+  const filas: FilaDeMosaico[] = []
+  for (let i = 0; i < vitrinas.length; i++) {
+    const v = vitrinas[i]
+    if (v.ancho === 'mitad' && vitrinas[i + 1]?.ancho === 'mitad') {
+      filas.push([{ v, i }, { v: vitrinas[i + 1], i: i + 1 }])
+      i++
+    } else {
+      filas.push([{ v, i }])
+    }
+  }
+
   return (
     <View className="gap-3">
-      {vitrinas.map((v, i) => (
+      {filas.map((fila) => (
+        <View key={fila[0].v.id} className="flex-row gap-3">
+          {fila.map(({ v, i }) => (
+            <View key={v.id} className={v.ancho === 'mitad' ? 'flex-1' : 'w-full'}>
         <Vitrina
-          key={v.id}
           showcase={v}
           playlists={listas}
           esMio={esMio}
@@ -605,11 +647,27 @@ export function Vitrinas({
              botones se correrían de lugar al mover una tarjeta. */
           onSubir={propio ? (i > 0 ? () => mover(i, i - 1) : null) : undefined}
           onBajar={propio ? (i < vitrinas.length - 1 ? () => mover(i, i + 1) : null) : undefined}
+          onAncho={
+            propio ? () => cambiarAncho(v.id, v.ancho === 'mitad' ? 'entero' : 'mitad') : undefined
+          }
         />
+            </View>
+          ))}
+        </View>
       ))}
     </View>
   )
 }
+
+/**
+ * Una fila del mosaico: una vitrina entera, o dos mitades.
+ *
+ * Lleva el índice además de la vitrina porque los controles de reordenar
+ * razonan sobre la **secuencia**, no sobre la fila: subir la de la derecha de
+ * la segunda fila es moverla un lugar en la lista, y la fila donde termina se
+ * vuelve a derivar sola.
+ */
+type FilaDeMosaico = { v: Showcase; i: number }[]
 
 /** Cuántas vitrinas hay, para el resumen. Se cuenta aparte, sin dibujarlas. */
 export function useCuantasVitrinas(ownerId: string, recarga: number) {
