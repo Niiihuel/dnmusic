@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createClient } from '@supabase/supabase-js'
 import {
+  prepararAporte,
   getAlbum,
   getArtist,
   getGenero,
@@ -251,6 +252,20 @@ async function proxyImage(
  * `CORS` no cumple este papel y por eso no alcanzaba: solo le dice al
  * **navegador** qué respuestas puede leer. Un `curl` lo ignora por completo.
  */
+/** Tope de un aporte: una canción de 10 minutos en 256kbps son ~19 MB. */
+const APORTE_MAX_BYTES = 40 * 1024 * 1024
+
+/** Quién firma este pedido, para el log de aportes. Nunca corta el camino. */
+async function quienEs(req: import('node:http').IncomingMessage): Promise<string> {
+  try {
+    const token = req.headers.authorization?.slice(7) ?? ''
+    const { data } = await supabase!.auth.getUser(token)
+    return data.user?.id ?? 'desconocido'
+  } catch {
+    return 'desconocido'
+  }
+}
+
 async function autorizado(req: import('node:http').IncomingMessage): Promise<boolean> {
   if (!supabase) return false
   const cabecera = req.headers.authorization
@@ -533,6 +548,64 @@ const server = createServer(async (req, res) => {
       if (!body.videoId || !body.url) return json(400, { error: 'Faltan videoId y url' })
       if (!supabase) return json(500, { error: 'Storage no configurado' })
       return json(200, { path: await cacheImage(supabase, body.url, body.videoId) })
+    }
+
+    /*
+     * Un cliente con IP residencial aporta el audio que este servidor no pudo
+     * bajar — la resolución comunitaria contra la reja anti-bot de datacenter.
+     *
+     * El cuerpo son los bytes crudos del formato mp4 que el cliente bajó de
+     * googlevideo; los metadatos van por query. Nada se guarda sin pasar por
+     * `prepararAporte`, que verifica que sea AAC, que dure lo que el catálogo
+     * espera, y lo remuxea estricto. Quién lo aportó queda en el log: en una
+     * app de conocidos alcanza con poder mirar, pero hay que poder mirar.
+     */
+    if (url.pathname === '/aportar' && req.method === 'POST') {
+      if (!supabase) return json(500, { error: 'Storage no configurado' })
+      const videoId = url.searchParams.get('videoId') ?? ''
+      if (!/^[\w-]{11}$/.test(videoId)) return json(400, { error: 'videoId inválido' })
+      const durationMs = Number(url.searchParams.get('durationMs') ?? 0) || null
+      const artworkUrl = url.searchParams.get('artworkUrl') ?? undefined
+
+      const path = `${videoId}.m4a`
+      const artworkP = cacheImage(supabase, artworkUrl, videoId)
+
+      /* Idempotente: si otro lo aportó (o el servidor lo resolvió) mientras
+         este cliente bajaba, se contesta lo guardado y los bytes se tiran. */
+      const { data: existing } = await supabase.storage.from(BUCKET).list('', { search: path })
+      if (existing?.some((f) => f.name === path)) {
+        return json(200, { path, artworkPath: await artworkP, cached: true, durationMs })
+      }
+
+      let crudo: Buffer
+      try {
+        crudo = await readRaw(req, APORTE_MAX_BYTES)
+      } catch {
+        return json(413, { error: 'El aporte no puede pasar de 40 MB' })
+      }
+      if (crudo.length < 100_000) return json(422, { error: 'Demasiado chico para ser una canción' })
+
+      try {
+        const listo = await prepararAporte(crudo, durationMs)
+        const { error } = await supabase.storage
+          .from(BUCKET)
+          .upload(path, listo.bytes, { contentType: 'audio/mp4', upsert: false })
+        if (error && !/already exists|duplicate/i.test(error.message)) {
+          return json(500, { error: `No se pudo guardar: ${error.message}` })
+        }
+        console.log(
+          `[aporta] ${videoId} (${listo.bytes.length}b, ${listo.durationMs}ms) por ${await quienEs(req)}`,
+        )
+        return json(200, {
+          path,
+          artworkPath: await artworkP,
+          cached: false,
+          durationMs: listo.durationMs,
+        })
+      } catch (e) {
+        console.warn(`[aporta] ${videoId} rechazado: ${(e as Error).message}`)
+        return json(422, { error: 'El audio aportado no pasó la verificación.' })
+      }
     }
 
     if (url.pathname === '/resolve' && req.method === 'POST') {

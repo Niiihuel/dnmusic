@@ -8,6 +8,7 @@ import {
   seguirAudioDe,
 } from './actualizador'
 import { ORIGEN, raizWeb, registrarEsquema, servirWeb } from './protocolo'
+import { resolverYAportar, type Aporte } from './resolutor'
 
 /**
  * dnmusic para escritorio.
@@ -166,6 +167,34 @@ function registrar(...partes: unknown[]): void {
   console.log('[dnmusic]', ...partes)
 }
 
+/**
+ * El resolutor de a bordo (ver resolutor.ts), con lo que llegó por IPC validado.
+ *
+ * El renderer es nuestro propio bundle, pero corre sandboxeado justamente
+ * porque trae código de terceros: nada de lo que mande se toma por su palabra.
+ * Un videoId con otra forma o un apiBase que no sea una URL no llegan ni a
+ * intentarse — el proceso principal no descarga nada que no tenga la forma de
+ * un pedido legítimo.
+ */
+async function resolverDesdeAca(opciones: unknown): Promise<Aporte> {
+  const o = (opciones ?? {}) as Record<string, unknown>
+  if (typeof o.videoId !== 'string' || !/^[\w-]{11}$/.test(o.videoId)) {
+    throw new Error('videoId inválido')
+  }
+  if (typeof o.apiBase !== 'string' || !/^https?:\/\//.test(o.apiBase)) {
+    throw new Error('apiBase inválido')
+  }
+  if (typeof o.token !== 'string' || !o.token) throw new Error('sin sesión')
+  registrar('resolviendo de a bordo:', o.videoId)
+  return resolverYAportar({
+    videoId: o.videoId,
+    apiBase: o.apiBase,
+    token: o.token,
+    artworkUrl: typeof o.artworkUrl === 'string' ? o.artworkUrl : undefined,
+    durationMs: typeof o.durationMs === 'number' ? o.durationMs : undefined,
+  })
+}
+
 /** Traer la ventana al frente: la usa el click en una notificación. */
 function traerAlFrente(): void {
   if (!ventanaPrincipal || ventanaPrincipal.isDestroyed()) return
@@ -225,6 +254,7 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle('actualizacion:estado', () => estadoActual())
     ipcMain.on('actualizacion:buscar', () => void buscarAhora(true))
     ipcMain.on('actualizacion:instalar', () => void instalarYReabrir())
+    ipcMain.handle('resolver:aportar', (_evento, opciones) => resolverDesdeAca(opciones))
 
     armarMenu()
     ventanaPrincipal = crearVentana()

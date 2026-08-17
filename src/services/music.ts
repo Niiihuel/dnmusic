@@ -323,8 +323,70 @@ export async function resolveSong(track: TrackResult, signal?: AbortSignal): Pro
   }
 }
 
+/**
+ * El resolutor de a bordo de la app de escritorio, si esta sesión corre ahí.
+ *
+ * Cuando la IP del servidor está en la reja anti-bot de YouTube —le pasa a
+ * las IPs de datacenter por temporadas—, Electron puede bajar el audio con la
+ * IP residencial de la compu y aportárselo al servidor, que lo verifica con
+ * ffprobe y lo guarda en Storage **para todos**: la canción que resolvió un
+ * escritorio le suena después a la web y al teléfono desde el caché.
+ *
+ * El navegador no puede hacer lo mismo: hablar con YouTube desde una página
+ * lo frena CORS. Por eso el puente existe solo en el escritorio.
+ */
+function resolutorDeAca():
+  | ((opciones: {
+      videoId: string
+      apiBase: string
+      token: string
+      artworkUrl?: string
+      durationMs?: number
+    }) => Promise<{ path: string; artworkPath: string | null; durationMs: number | null }>)
+  | undefined {
+  const puente = (globalThis as { dnmusicEscritorio?: { resolver?: unknown } }).dnmusicEscritorio
+  return typeof puente?.resolver === 'function'
+    ? (puente.resolver as ReturnType<typeof resolutorDeAca>)
+    : undefined
+}
+
 /** El viaje a `/resolve` pelado, que comparten resolver y recuperar. */
 async function pedirResolve(
+  body: { videoId: string; artworkUrl?: string; durationMs?: number },
+  signal?: AbortSignal,
+): Promise<{ path: string; artworkPath?: string | null; durationMs?: number }> {
+  try {
+    return await pedirResolveAlServidor(body, signal)
+  } catch (e) {
+    /*
+     * El servidor no pudo: si esto es el escritorio, se intenta de a bordo.
+     *
+     * Solo con un videoId con forma de YouTube —las canciones propias no
+     * tienen a dónde ir a buscarse— y nunca sobre un pedido cancelado. Si el
+     * plan B también falla, viaja el error **del servidor**: está en el idioma
+     * de la app, mientras que el de a bordo es técnico y no le dice nada a
+     * quien solo quería escuchar.
+     */
+    const resolver = resolutorDeAca()
+    if (!resolver || signal?.aborted || !/^[\w-]{11}$/.test(body.videoId)) throw e
+    const { data } = await getSupabase().auth.getSession()
+    const token = data.session?.access_token
+    if (!token) throw e
+    try {
+      const aporte = await resolver({ ...body, apiBase: MUSIC_API, token })
+      return {
+        path: aporte.path,
+        artworkPath: aporte.artworkPath,
+        durationMs: aporte.durationMs ?? undefined,
+      }
+    } catch (deAca) {
+      console.warn(`[resolve] el plan B de a bordo tampoco pudo: ${(deAca as Error).message}`)
+      throw e
+    }
+  }
+}
+
+async function pedirResolveAlServidor(
   body: { videoId: string; artworkUrl?: string; durationMs?: number },
   signal?: AbortSignal,
 ): Promise<{ path: string; artworkPath?: string | null; durationMs?: number }> {

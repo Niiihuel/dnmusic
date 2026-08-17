@@ -5,8 +5,14 @@
     // solo carga como CommonJS cuando el sandbox está prendido, y el sandbox
     // es lo que evita que el bundle web —que trae código de terceros— vea Node.
     // Mezclar los dos sistemas en un paquete tan chico no compra nada.
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    //
+    // `nodenext` y no `node`: bgutils-js y youtubei.js solo se publican vía
+    // `exports` de package.json, que la resolución vieja no sabe leer. Como
+    // este paquete no declara `type: module`, la emisión sigue siendo CommonJS
+    // — y cargar esas dependencias ESM con `require` funciona porque el Node
+    // de Electron 43 ya trae require(esm).
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "lib": ["ES2023", "DOM"],
     "outDir": "dist",
     "rootDir": "src",

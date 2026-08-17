@@ -700,6 +700,80 @@ export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
   }
 }
 
+/**
+ * Verifica y prepara un audio que **aportó un cliente**, antes de guardarlo.
+ *
+ * Existe por la resolución comunitaria: cuando la IP de este servidor está en
+ * la reja anti-bot, los dispositivos con IP residencial (Electron, iOS)
+ * resuelven ellos y mandan los bytes. Pero el bucket es de todos —una canción
+ * se guarda una vez y suena para siempre—, así que **nada entra sin pasar por
+ * acá**: un cliente malicioso no puede envenenar el caché con un archivo que
+ * no sea el audio que dice ser.
+ *
+ * Tres controles, todos del lado del servidor:
+ *   1. ffprobe confirma que es audio AAC en contenedor mp4 — el único formato
+ *      que aceptamos de un aporte, porque es el único que suena en iOS.
+ *   2. La duración medida tiene que coincidir con la esperada (la que el
+ *      catálogo ya conocía): un archivo válido pero de otra canción rebota.
+ *   3. El remux es **estricto**: si ffmpeg no puede reescribir el contenedor,
+ *      el aporte se rechaza — a diferencia del remux del camino propio, que
+ *      ante la duda devuelve los bytes tal cual porque confía en su origen.
+ */
+export async function prepararAporte(
+  crudo: Buffer,
+  duracionEsperadaMs: number | null,
+): Promise<{ bytes: Buffer; durationMs: number }> {
+  let dir: string | null = null
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'dnmusic-aporte-'))
+    const entrada = join(dir, 'in.m4a')
+    await writeFile(entrada, crudo)
+
+    const { stdout } = await run('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=format_name,duration:stream=codec_type,codec_name',
+      '-of', 'json',
+      entrada,
+    ])
+    const info = JSON.parse(String(stdout)) as {
+      format?: { format_name?: string; duration?: string }
+      streams?: { codec_type?: string; codec_name?: string }[]
+    }
+    const contenedor = info.format?.format_name ?? ''
+    if (!/mp4|m4a|mov/.test(contenedor)) {
+      throw new Error(`no es un contenedor mp4 (${contenedor || 'ilegible'})`)
+    }
+    const audio = (info.streams ?? []).find((s) => s.codec_type === 'audio')
+    if (!audio || audio.codec_name !== 'aac') {
+      throw new Error(`no trae audio AAC (${audio?.codec_name ?? 'sin audio'})`)
+    }
+    const durationMs = Math.round(Number(info.format?.duration ?? 0) * 1000)
+    if (!Number.isFinite(durationMs) || durationMs < 15_000) {
+      throw new Error(`dura ${durationMs}ms, demasiado corto para una canción`)
+    }
+    if (
+      duracionEsperadaMs !== null &&
+      duracionEsperadaMs > 0 &&
+      Math.abs(durationMs - duracionEsperadaMs) > 7_000
+    ) {
+      throw new Error(
+        `dura ${durationMs}ms y el catálogo esperaba ${duracionEsperadaMs}ms: no es esta canción`,
+      )
+    }
+
+    const salida = join(dir, 'out.m4a')
+    await run('ffmpeg', [
+      '-y', '-loglevel', 'error',
+      '-i', entrada,
+      '-c', 'copy', '-movflags', '+faststart',
+      salida,
+    ])
+    return { bytes: await readFile(salida), durationMs }
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
 // ── Ficha del artista ──────────────────────────────────────────────────────
 
 /**

@@ -16,6 +16,8 @@ app— y eso es un trámite aparte, no una casilla más en el YAML.
 | `desktop/src/protocolo.ts` | Sirve el bundle web desde `app://dnmusic` |
 | `desktop/src/actualizador.ts` | Busca, baja e instala; decide **cuándo** |
 | `desktop/src/preload.ts` | Lo único que la web puede ver del escritorio |
+| `desktop/src/resolutor.ts` | Baja el audio con la IP de esta compu y lo aporta |
+| `desktop/src/potoken.ts` | Los PO tokens del resolutor (espejo del servidor) |
 | `desktop/electron-builder.yml` | Cómo se empaqueta y a qué repo se publica |
 | `desktop/scripts/traer-web.mjs` | Copia `dist/` y el ícono adentro de `desktop/` |
 | `.github/workflows/escritorio.yml` | Compila los dos sistemas y publica el release |
@@ -37,6 +39,39 @@ Para ver el instalador de verdad sin publicar nada:
 ```bash
 cd desktop && npm run empaquetar   # queda en desktop/release/
 ```
+
+## El resolutor de a bordo
+
+El escritorio no es solo una ventana: cuando el `/resolve` del servidor falla,
+**esta compu baja el audio con su propia IP y se lo aporta al bucket común**.
+
+Existe por la reja anti-bot de YouTube contra las IPs de datacenter: Railway
+puede pasar días con `LOGIN_REQUIRED` en los siete clientes mientras cualquier
+IP residencial resuelve sin drama — se comprobó el día del apagón, corriendo el
+mismo código en una casa y en Railway a la vez. Con esto, cada usuario de
+escritorio es una salida más, y lo que resuelve uno le suena a todos: la web y
+el teléfono lo encuentran después en el caché de Storage.
+
+El circuito completo, con quién confía en quién:
+
+1. `pedirResolve` (en `src/services/music.ts`) intenta el servidor. Si falla y
+   el puente del preload existe, prueba el plan B — y si el plan B también
+   falla, muestra el error **del servidor**, que está en el idioma de la app.
+2. El main valida lo que llegó por IPC (forma del videoId, URL del api, sesión)
+   y corre `resolverYAportar`: la misma maquinaria que el servidor — sesión
+   MUSIC, PO tokens de BotGuard con jsdom, descifrado, cirugía de `cver` y
+   `pot`, descarga por rangos. Es un **espejo de `server/src/youtube.ts`**; el
+   atajo de los clientes móviles sin token no existe: googlevideo corta con 403
+   pasado el primer megabyte también en IPs residenciales.
+3. Los bytes viajan a `POST /aportar` con el JWT del usuario. **El servidor
+   decide qué se guarda**: ffprobe confirma que es AAC en mp4 con la duración
+   que el catálogo esperaba (±7s), ffmpeg lo remuxea estricto, y recién ahí
+   entra a Storage — un cliente malicioso no puede envenenar el caché. El uid
+   del aportante queda en el log.
+
+El navegador no puede hacer lo mismo (hablar con YouTube desde una página lo
+frena CORS); por eso el puente existe solo acá. El teléfono podría, y es la
+fase que sigue si hace falta.
 
 ### En NixOS, `npm run dev` no arranca
 

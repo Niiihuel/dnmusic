@@ -16,9 +16,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "bgutils-js": "^4.0.3",
+    "electron-updater": "^6.8.9",
+    "jsdom": "^28.1.0",
+    "youtubei.js": "^17.2.0"
   },
   "devDependencies": {
+    "@types/jsdom": "^28.0.3",
     "@types/node": "^22.10.0",
     "electron": "^43.4.0",
     "electron-builder": "^26.15.3",

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { EstadoActualizacion } from './actualizador'
+import type { Aporte } from './resolutor'
 
 /**
  * Lo único que el bundle web puede ver del escritorio.
@@ -25,6 +26,22 @@ const puente = {
    * para mucho.
    */
   enfocar: (): void => ipcRenderer.send('ventana:enfocar'),
+
+  /**
+   * Resolver una canción con la IP de esta compu y aportarla al bucket común.
+   *
+   * Es el plan B del /resolve: cuando la IP del servidor está en la reja
+   * anti-bot de YouTube, cada escritorio puede bajar el audio con su propia IP
+   * residencial y subírselo al servidor, que lo verifica y lo guarda para
+   * todos (ver desktop/src/resolutor.ts). Devuelve lo mismo que /resolve.
+   */
+  resolver: (opciones: {
+    videoId: string
+    apiBase: string
+    token: string
+    artworkUrl?: string
+    durationMs?: number
+  }): Promise<Aporte> => ipcRenderer.invoke('resolver:aportar', opciones),
 
   actualizacion: {
     estado: (): Promise<EstadoActualizacion> => ipcRenderer.invoke('actualizacion:estado'),
