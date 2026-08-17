@@ -11,8 +11,9 @@
     "build": "tsc",
     "traer-web": "node scripts/traer-web.mjs",
     "dev": "npm run build && electron .",
-    "empaquetar": "npm run build && npm run traer-web && electron-builder --publish never",
-    "publicar": "npm run build && npm run traer-web && electron-builder --publish always",
+    "notas": "node scripts/notas-release.mjs",
+    "empaquetar": "npm run build && npm run traer-web && npm run notas && electron-builder --publish never",
+    "publicar": "npm run build && npm run traer-web && npm run notas && electron-builder --publish always",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -20,6 +20,7 @@ app— y eso es un trámite aparte, no una casilla más en el YAML.
 | `desktop/src/potoken.ts` | Los PO tokens del resolutor (espejo del servidor) |
 | `desktop/electron-builder.yml` | Cómo se empaqueta y a qué repo se publica |
 | `desktop/scripts/traer-web.mjs` | Copia `dist/` y el ícono adentro de `desktop/` |
+| `desktop/scripts/notas-release.mjs` | El cuerpo del release, sacado de las novedades |
 | `.github/workflows/escritorio.yml` | Compila los dos sistemas y publica el release |
 
 ## Probarlo en local
@@ -130,12 +131,22 @@ vacíos salen en blanco. La forma que no falla es desde un archivo:
 gh secret set RELEASES_TOKEN --repo Niiihuel/dnmusic < /tmp/tok && shred -u /tmp/tok
 ```
 
-Después, cada versión es un tag:
+Después, cada versión son **las novedades y un tag**:
 
 ```bash
+# 1. Escribir qué trae, en src/lib/novedades.json (la entrada nueva, arriba).
+# 2. Taggear:
 git tag escritorio-v1.1.0
 git push origin escritorio-v1.1.0
 ```
+
+Las novedades son una sola fuente con dos lectores: la pantalla «Ajustes →
+Novedades» de la app —la misma en la web, la compu y el teléfono— y el cuerpo
+del release de GitHub, que escribe `scripts/notas-release.mjs`. Si el tag no
+tiene entrada en el JSON, **el workflow corta ahí**: publicar una versión sin
+contar qué trae es justo el olvido que ese paso existe para atajar. En esa
+misma pantalla, el escritorio muestra además el actualizador —en qué anda, y
+buscar ya— que hasta la 1.0.1 solo vivía detrás de Alt, en el menú.
 
 El workflow exporta la web, escribe esa versión en `desktop/package.json`,
 compila Windows y Linux y sube los cuatro archivos al release: los dos

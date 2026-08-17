@@ -71,3 +71,4 @@ npm-debug.*
 # cada uno y viven en el repo de releases, no acá.
 desktop/web/
 desktop/release/
+desktop/release-notas.md

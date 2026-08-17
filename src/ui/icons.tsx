@@ -56,6 +56,7 @@ import {
   WifiOff,
   SkipBack,
   SkipForward,
+  Sparkles,
   UserRound,
   X,
 } from 'lucide-react-native'
@@ -162,6 +163,7 @@ export const IconCola = make(ListMusic)
 export const IconVolume = make(Volume2)
 export const IconVolumeOff = make(VolumeX)
 export const IconBan = make(Ban)
+export const IconSparkles = make(Sparkles)
 export const IconUser = make(UserRound)
 export const IconUsers = make(UsersRound)
 export const IconShare = make(Share2)

@@ -22,6 +22,12 @@ extraResources:
   - from: web
     to: app
 
+# El cuerpo del release: las mismas novedades que muestra la app, en markdown.
+# Lo escribe scripts/notas-release.mjs antes de empaquetar (el CI lo corre con
+# la versión del tag; los scripts de npm lo corren solos).
+releaseInfo:
+  releaseNotesFile: release-notas.md
+
 publish:
   provider: github
   owner: Niiihuel

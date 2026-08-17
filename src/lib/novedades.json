@@ -1,0 +1,40 @@
+[
+  {
+    "version": "1.1.0",
+    "fecha": "17 de agosto de 2026",
+    "titulo": "El perfil se arma a tu gusto, y la música no depende de nadie",
+    "cambios": [
+      "Reaccioná a lo que está escuchando un contacto: tu emoji le queda en el perfil.",
+      "El perfil ahora es una imagen de fondo y un mosaico de vitrinas —canciones, versos, listas, imágenes, artistas y álbumes— en tres tamaños, que se acomodan arrastrando.",
+      "La foto y el fondo se encuadran sin recortar el archivo: un GIF sigue animado.",
+      "Marcos animados para la foto de perfil, dibujados para la app.",
+      "Cuando YouTube no le entrega una canción al servidor, la app de escritorio la baja con la conexión de tu casa y la comparte: te suena a vos y queda lista para todos.",
+      "En la computadora, lo que antes eran hojas deslizantes ahora son ventanas centradas.",
+      "A los contactos se los encuentra escribiendo su nombre, no paseando; y la solicitud ahora avisa con una notificación.",
+      "Tocar la notificación de un mensaje te deja en esa conversación, abierta en lo último.",
+      "El buscador del escritorio volvió a andar, y las listas largas se mueven más livianas.",
+      "Esta pantalla: las novedades de cada versión, para saber qué cambió."
+    ]
+  },
+  {
+    "version": "1.0.1",
+    "fecha": "15 de agosto de 2026",
+    "titulo": "Listas para armar entre varios",
+    "cambios": [
+      "Listas colaborativas: invitá por link o desde tus contactos, y cualquiera suma y saca canciones.",
+      "Crear una lista tiene su propio recorrido, y el «+» pregunta antes de crear.",
+      "Una lista de Spotify se puede importar: se recrea con tu música.",
+      "En la computadora, los mensajes avisan con notificaciones del sistema aunque la ventana esté atrás.",
+      "El mosaico de una lista con canciones de un solo disco ya no pierde cuadros."
+    ]
+  },
+  {
+    "version": "1.0.0",
+    "fecha": "15 de agosto de 2026",
+    "titulo": "dnmusic llega a la computadora",
+    "cambios": [
+      "La app entera en una ventana propia, para Windows y Linux.",
+      "Las actualizaciones se bajan solas: se instalan al cerrar y la app vuelve abierta y al día."
+    ]
+  }
+]

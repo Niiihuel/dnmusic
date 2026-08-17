@@ -125,6 +125,14 @@ jobs:
         working-directory: desktop
         run: npm run traer-web
 
+      # Las notas del release salen de las mismas novedades que lee la app.
+      # Con la versión del tag: si no tiene entrada escrita, esto corta acá —
+      # publicar sin contar qué trae es el olvido que el script existe para
+      # atajar.
+      - name: Notas del release
+        working-directory: desktop
+        run: node scripts/notas-release.mjs "${{ steps.version.outputs.version }}"
+
       - name: Empaquetar y publicar
         working-directory: desktop
         env:

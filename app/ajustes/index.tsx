@@ -12,6 +12,7 @@ import {
   IconDisc,
   IconDisk,
   IconLogOut,
+  IconSparkles,
   IconTrash,
 } from '../../src/ui/icons'
 import {
@@ -30,6 +31,7 @@ import { avisar } from '../../src/state/aviso'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { usePiso } from '../../src/state/shell'
 import { volver } from '../../src/lib/volver'
+import { NOVEDADES } from '../../src/lib/novedades'
 
 /** Debajo de esto la app es pestañas y el contenido va de borde a borde. */
 const SHELL_PX = 780
@@ -180,6 +182,22 @@ export default function Ajustes() {
                   />
                 </GrupoAjustes>
               ) : null}
+
+              {/*
+               * Las novedades: qué cambió en cada versión. En el escritorio la
+               * sub-pantalla además muestra el actualizador — por eso el grupo
+               * se llama por la app y no «Acerca de», que suena a licencias.
+               */}
+              <GrupoAjustes titulo="La app">
+                <FilaAjuste
+                  rotulo="Novedades"
+                  valor={NOVEDADES[0] ? `Versión ${NOVEDADES[0].version}` : ''}
+                  vacio=""
+                  icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+                  onPress={() => router.push('/ajustes/novedades')}
+                  ultima
+                />
+              </GrupoAjustes>
 
               {/*
                * Borrar el historial no tiene vuelta, así que se sostiene.
