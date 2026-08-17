@@ -33,14 +33,21 @@ export type ShowcaseKind =
   | 'letra'
 
 /**
- * Cuánto ocupa una vitrina en la fila.
+ * Cuánto ocupa una vitrina: el modelo de los widgets de iOS.
  *
- * Dos valores y no una grilla libre: con anchos arbitrarios cada perfil
- * necesita su propio criterio de qué entra en una fila, y lo que se gana en
- * libertad se pierde en que ningún perfil se ve bien sin trabajarlo. Con estos
- * dos, cualquier combinación cierra sola.
+ * `mitad` es el chico (1×1), `entero` el mediano (2×1) y `grande` el 2×2 — la
+ * fila entera con el doble de presencia vertical. Tres tamaños cerrados y no
+ * una grilla libre: con tamaños arbitrarios cada perfil necesita su propio
+ * criterio de qué entra en una fila, y lo que se gana en libertad se pierde en
+ * que ningún perfil se ve bien sin trabajarlo. Con estos tres, cualquier
+ * combinación cierra sola.
  */
-export type ShowcaseAncho = 'entero' | 'mitad'
+export type ShowcaseAncho = 'entero' | 'mitad' | 'grande'
+
+/** El tamaño que sigue al tocar el control: chico → mediano → grande → chico. */
+export function siguienteAncho(ancho: ShowcaseAncho): ShowcaseAncho {
+  return ancho === 'mitad' ? 'entero' : ancho === 'entero' ? 'grande' : 'mitad'
+}
 
 /** Una canción fijada, o el fragmento de una. */
 export type ShowcaseCancion = {
@@ -127,7 +134,8 @@ function showcaseFromRow(row: Row): Showcase | null {
   const p = (row.payload ?? {}) as Record<string, unknown>
   /* Ante cualquier cosa rara, entero: es como se dibujaba antes de que el
      ancho existiera, así que lo desconocido cae en lo de siempre. */
-  const ancho: ShowcaseAncho = row.ancho === 'mitad' ? 'mitad' : 'entero'
+  const ancho: ShowcaseAncho =
+    row.ancho === 'mitad' ? 'mitad' : row.ancho === 'grande' ? 'grande' : 'entero'
   const base = { id: row.id, ancho }
 
   if (row.kind === 'texto') {

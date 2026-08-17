@@ -1,5 +1,13 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { Image, Text, View } from 'react-native'
+import { Gesture, GestureDetector, State } from 'react-native-gesture-handler'
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useVideoPlayer, VideoView } from 'expo-video'
 import {
@@ -9,6 +17,7 @@ import {
   removeShowcase,
   reorderShowcases,
   setShowcaseAncho,
+  siguienteAncho,
   type Showcase,
   type ShowcaseAncho,
 } from '../services/showcases'
@@ -20,6 +29,8 @@ import { fetchStats, type EstadisticasPerfil } from '../services/plays'
 import { useMyProfile } from '../state/session'
 import type { Encuadre } from '../services/profile'
 import { Avatar } from './Avatar'
+import { ES_WEB } from './Glass'
+import { ICON_COLOR, IconManija } from './icons'
 import { estiloEncuadrado } from './Encuadre'
 import { Marco } from './Marco'
 import { Vitrina } from './Vitrina'
@@ -509,6 +520,7 @@ export function Vitrinas({
   vacio,
   /** Solo en el perfil propio: sin esto no aparece la cruz de sacar. */
   propio = true,
+  onArrastre,
 }: {
   ownerId: string
   recarga: number
@@ -516,6 +528,11 @@ export function Vitrinas({
   /** Qué mostrar cuando no hay ninguna. */
   vacio?: ReactNode
   propio?: boolean
+  /**
+   * Un arrastre empezó o terminó: la pantalla que scrollea lo necesita para
+   * congelarse — un ScrollView vivo abajo del dedo se pelea con el gesto.
+   */
+  onArrastre?: (activo: boolean) => void
 }) {
   const [vitrinas, setVitrinas] = useState<Showcase[] | null>(null)
   const [listas, setListas] = useState<Playlist[] | null>(null)
@@ -559,6 +576,69 @@ export function Vitrinas({
       vivo = false
     }
   }, [necesitaListas, listas, esMio, ownerId])
+
+  /*
+   * El agarre: lo que las celdas comparten para arrastrarse.
+   *
+   * Los valores del gesto viven en shared values —decenas de eventos por
+   * segundo, un render por cada uno mataría la lista— y las medidas de las
+   * celdas en refs: se toman **al empezar cada arrastre** con
+   * `measureInWindow`, así el scroll previo no las deja viejas.
+   */
+  const activa = useSharedValue(-1)
+  const dx = useSharedValue(0)
+  const dy = useSharedValue(0)
+  const refs = useRef(new Map<number, MedibleRef>())
+  const rects = useRef(new Map<number, Rect>())
+
+  const medir = useCallback(() => {
+    rects.current.clear()
+    refs.current.forEach((ref, i) => {
+      ref?.measureInWindow?.((x, y, w, h) => rects.current.set(i, { x, y, w, h }))
+    })
+  }, [])
+
+  /*
+   * Dónde cayó: la celda cuyo centro quede más cerca del centro de la
+   * arrastrada. Distancia y no contención porque entre celdas hay huecos de
+   * grilla, y soltar en un hueco tiene que caer en la vecina más cercana, no
+   * en la nada.
+   */
+  function soltar(desde: number, tx: number, ty: number) {
+      const propio = rects.current.get(desde)
+      if (!propio) return
+      const cx = propio.x + propio.w / 2 + tx
+      const cy = propio.y + propio.h / 2 + ty
+      let mejor = desde
+      let distancia = Infinity
+      rects.current.forEach((r, i) => {
+        const d = (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2
+        if (d < distancia) {
+          distancia = d
+          mejor = i
+        }
+      })
+      if (mejor !== desde) mover(desde, mejor)
+      onArrastre?.(false)
+    }
+
+  function empezarArrastre() {
+    medir()
+    onArrastre?.(true)
+  }
+
+  const cancelarArrastre = () => onArrastre?.(false)
+
+  const agarre: Agarre = {
+    activa,
+    dx,
+    dy,
+    refs,
+    empezar: empezarArrastre,
+    soltar,
+    cancelar: cancelarArrastre,
+  }
+
 
   if (vitrinas === null) return null
   if (!vitrinas.length) return <>{vacio}</>
@@ -614,6 +694,7 @@ export function Vitrinas({
    * seguidas comparten una. Una `mitad` suelta al final queda a media fila en
    * vez de estirarse, que es lo que la hace verse elegida y no sobrante.
    */
+  /* Grande y entero ocupan su fila; solo dos mitades vecinas comparten una. */
   const filas: FilaDeMosaico[] = []
   for (let i = 0; i < vitrinas.length; i++) {
     const v = vitrinas[i]
@@ -630,7 +711,12 @@ export function Vitrinas({
       {filas.map((fila) => (
         <View key={fila[0].v.id} className="flex-row gap-3">
           {fila.map(({ v, i }) => (
-            <View key={v.id} className={v.ancho === 'mitad' ? 'flex-1' : 'w-full'}>
+            <CeldaDeMosaico
+              key={v.id}
+              indice={i}
+              mitad={v.ancho === 'mitad'}
+              agarre={agarre}
+            >
         <Vitrina
           showcase={v}
           playlists={listas}
@@ -663,17 +749,166 @@ export function Vitrinas({
           }
           /* En las puntas la flecha existe pero apagada: si desapareciera, los
              botones se correrían de lugar al mover una tarjeta. */
-          onSubir={propio ? (i > 0 ? () => mover(i, i - 1) : null) : undefined}
-          onBajar={propio ? (i < vitrinas.length - 1 ? () => mover(i, i + 1) : null) : undefined}
-          onAncho={
-            propio ? () => cambiarAncho(v.id, v.ancho === 'mitad' ? 'entero' : 'mitad') : undefined
+          manija={
+            propio ? (
+              <ManijaDeCelda
+                indice={i}
+                activa={agarre.activa}
+                dx={agarre.dx}
+                dy={agarre.dy}
+                empezar={agarre.empezar}
+                soltar={agarre.soltar}
+                cancelar={agarre.cancelar}
+              />
+            ) : undefined
           }
+          onAncho={propio ? () => cambiarAncho(v.id, siguienteAncho(v.ancho)) : undefined}
         />
-            </View>
+            </CeldaDeMosaico>
           ))}
         </View>
       ))}
     </View>
+  )
+}
+
+/** Lo que sabe medirse en la ventana: la ref de una celda. */
+type MedibleRef = {
+  measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void
+} | null
+
+type Rect = { x: number; y: number; w: number; h: number }
+
+/** Lo que las celdas comparten para arrastrarse. Lo arma `Vitrinas`. */
+type Agarre = {
+  activa: SharedValue<number>
+  dx: SharedValue<number>
+  dy: SharedValue<number>
+  refs: MutableRefObject<Map<number, MedibleRef>>
+  empezar: () => void
+  soltar: (desde: number, tx: number, ty: number) => void
+  cancelar: () => void
+}
+
+/**
+ * Una celda del mosaico que sabe seguir al dedo.
+ *
+ * La física es la de la cola (`EncoladaArrastrable`), adaptada a dos
+ * dimensiones: la celda agarrada sigue al puntero apenas agrandada y por
+ * encima, y las demás **se apagan un poco** en vez de correrse — con alturas
+ * variables y filas de a dos, la corrida en vivo miente más de lo que ayuda, y
+ * el reacomodo real se ve al soltar, animado por el re-render.
+ */
+function CeldaDeMosaico({
+  indice,
+  mitad,
+  agarre,
+  children,
+}: {
+  indice: number
+  mitad: boolean
+  agarre: Agarre
+  children: ReactNode
+}) {
+  const estilo = useAnimatedStyle(() => {
+    if (agarre.activa.value === indice) {
+      return {
+        transform: [
+          { translateX: agarre.dx.value },
+          { translateY: agarre.dy.value },
+          { scale: 1.03 },
+        ],
+        zIndex: 20,
+        opacity: 1,
+      }
+    }
+    return {
+      transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }],
+      zIndex: 0,
+      opacity: withTiming(agarre.activa.value >= 0 ? 0.7 : 1, { duration: 160 }),
+    }
+  })
+
+  return (
+    <View
+      className={mitad ? 'flex-1' : 'w-full'}
+      ref={(r) => {
+        agarre.refs.current.set(indice, r as MedibleRef)
+      }}
+    >
+      <Animated.View style={estilo}>{children}</Animated.View>
+    </View>
+  )
+}
+
+/**
+ * La manija: el único lugar de la tarjeta que arrastra.
+ *
+ * Desde la manija y no desde la tarjeta entera porque la tarjeta ya tiene
+ * toques propios —reproducir, la cruz, el tamaño— y un arrastre que arranca
+ * desde cualquier lado se los roba. En web agarra al primer píxel (con mouse
+ * no hay scroll que ceder); con dedo espera los 130ms de siempre.
+ */
+function ManijaDeCelda({
+  indice,
+  activa,
+  dx,
+  dy,
+  empezar,
+  soltar,
+  cancelar,
+}: {
+  indice: number
+  /* Los SharedValue llegan como props sueltas, igual que en la cola: es la
+     forma en que el gesto puede escribirlos sin pelearse con nadie. */
+  activa: SharedValue<number>
+  dx: SharedValue<number>
+  dy: SharedValue<number>
+  empezar: () => void
+  soltar: (desde: number, tx: number, ty: number) => void
+  cancelar: () => void
+}) {
+  /* eslint-disable react-hooks/immutability -- escribir `.value` es la API
+     imperativa de un SharedValue; es el mismo gesto que `EncoladaArrastrable`
+     en la cola, que el analizador acepta con otra forma de llegar al valor. */
+  const gesto = (ES_WEB ? Gesture.Pan() : Gesture.Pan().activateAfterLongPress(130))
+    .onStart(() => {
+      activa.value = indice
+      dx.value = 0
+      dy.value = 0
+      runOnJS(empezar)()
+    })
+    .onUpdate((e) => {
+      dx.value = e.translationX
+      dy.value = e.translationY
+    })
+    .onEnd((e) => {
+      activa.value = -1
+      dx.value = 0
+      dy.value = 0
+      runOnJS(soltar)(indice, e.translationX, e.translationY)
+    })
+    .onFinalize((e) => {
+      if (e.state !== State.END) {
+        activa.value = -1
+        dx.value = 0
+        dy.value = 0
+        runOnJS(cancelar)()
+      }
+    })
+  /* eslint-enable react-hooks/immutability */
+
+  return (
+    <GestureDetector gesture={gesto}>
+      <View
+        accessibilityRole="adjustable"
+        accessibilityLabel="Mover en el mosaico"
+        className="h-8 w-8 items-center justify-center"
+        style={ES_WEB ? ({ cursor: 'grab', touchAction: 'none' } as object) : null}
+      >
+        <IconManija size={16} color={ICON_COLOR.muted} />
+      </View>
+    </GestureDetector>
   )
 }
 

@@ -14,19 +14,12 @@ import {
   IconImage,
   IconMessage,
   IconMusic,
-  IconSliders,
   IconUser,
 } from '../../../src/ui/icons'
 import { removeAvatar, saveMyProfile, uploadAvatar } from '../../../src/services/profile'
 import { MARCOS } from '../../../src/ui/Marco'
 import { pickImage } from '../../../src/lib/pickImage'
-import {
-  addShowcase,
-  esVideo,
-  listShowcases,
-  setShowcaseAncho,
-  uploadIlustracion,
-} from '../../../src/services/showcases'
+import { addShowcase, esVideo, uploadIlustracion } from '../../../src/services/showcases'
 import { setMyProfile, useMyProfile, useUser } from '../../../src/state/session'
 import { usePiso } from '../../../src/state/shell'
 import { avisar } from '../../../src/state/aviso'
@@ -97,6 +90,9 @@ export default function EditarPerfil() {
    * control de la tarjeta, pero hay que pedirlo.
    */
   const [subiendoImagen, setSubiendoImagen] = useState(false)
+  /* Mientras se arrastra una vitrina, el scroll se congela: un ScrollView vivo
+     abajo del dedo se pelea con el gesto. Mismo trato que la cola. */
+  const [arrastrando, setArrastrando] = useState(false)
   async function sumarImagen() {
     if (!user || subiendoImagen) return
     setSubiendoImagen(true)
@@ -112,41 +108,6 @@ export default function EditarPerfil() {
       avisar('No se pudo sumar la imagen', true)
     } finally {
       setSubiendoImagen(false)
-    }
-  }
-
-  /**
-   * Acomodar el mosaico solo: la mitad del «auto-diseño» de Airbuds que se
-   * puede hacer sin adivinar gustos.
-   *
-   * La regla es de peso visual, no de estética: lo que trae controles y onda
-   * —una canción, un fragmento, una lista— ocupa su fila; lo compacto —texto,
-   * imagen, artista, álbum, un verso— va a media fila y se aparea solo (el
-   * mosaico junta mitades vecinas). **No reordena**: el orden es una decisión
-   * de quien armó el perfil, y el botón acomoda, no opina.
-   */
-  const [acomodando, setAcomodando] = useState(false)
-  async function acomodarMosaico() {
-    if (!user || acomodando) return
-    setAcomodando(true)
-    try {
-      const vitrinas = await listShowcases(user.id)
-      const compactas = new Set(['texto', 'imagen', 'artista', 'album', 'letra'])
-      const cambios = vitrinas.filter((v) => {
-        const objetivo = compactas.has(v.kind) ? 'mitad' : 'entero'
-        return v.ancho !== objetivo
-      })
-      await Promise.all(
-        cambios.map((v) =>
-          setShowcaseAncho(v.id, compactas.has(v.kind) ? 'mitad' : 'entero'),
-        ),
-      )
-      setRecarga((n) => n + 1)
-      avisar(cambios.length ? 'Mosaico acomodado' : 'Ya estaba acomodado')
-    } catch {
-      avisar('No se pudo acomodar', true)
-    } finally {
-      setAcomodando(false)
     }
   }
 
@@ -208,6 +169,7 @@ export default function EditarPerfil() {
           <ScrollView
             contentContainerClassName="items-center px-4 pt-6"
             contentContainerStyle={{ paddingBottom: piso }}
+            scrollEnabled={!arrastrando}
           >
             {!profile ? (
               <ActivityIndicator color="#FFFFFF" />
@@ -418,20 +380,6 @@ export default function EditarPerfil() {
                     <View className="flex-row items-center gap-2">
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="Acomodar el mosaico"
-                      disabled={acomodando}
-                      onPress={() => void acomodarMosaico()}
-                      className="h-9 flex-row items-center gap-2 rounded-full bg-muted px-3.5 active:opacity-70"
-                    >
-                      {acomodando ? (
-                        <ActivityIndicator size="small" color={ICON_COLOR.muted} />
-                      ) : (
-                        <IconSliders size={14} color={ICON_COLOR.muted} />
-                      )}
-                      <Text className="text-foreground text-[12px] font-semibold">Acomodar</Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
                       accessibilityLabel="Sumar una imagen al perfil"
                       disabled={subiendoImagen}
                       onPress={() => void sumarImagen()}
@@ -452,6 +400,7 @@ export default function EditarPerfil() {
                     ownerId={profile.userId}
                     recarga={recarga}
                     onCambio={() => setRecarga((n) => n + 1)}
+                    onArrastre={setArrastrando}
                     vacio={
                       <View className="gap-2 rounded-2xl bg-card px-5 py-6">
                         <Text className="text-foreground text-[15px] font-semibold">

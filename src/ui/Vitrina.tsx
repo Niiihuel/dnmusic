@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Image, Pressable, Text, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
@@ -19,11 +19,7 @@ import { PlaylistCover } from './PlaylistCover'
 import { formatClock } from './SeekBar'
 import {
   ICON_COLOR,
-  IconChevronDown,
-  IconChevronUp,
   IconClose,
-  IconCollapseLeft,
-  IconExpandLeft,
   IconLock,
   IconMusic,
   IconPause,
@@ -40,6 +36,9 @@ import {
  *
  * Lo que cambia entre tipos es qué hay adentro, nunca el marco.
  */
+/** El rótulo de cada tamaño, en el idioma de los widgets. */
+const TAMANOS = { mitad: '1×1', entero: '2×1', grande: '2×2' } as const
+
 export function Vitrina({
   showcase,
   playlists,
@@ -52,8 +51,7 @@ export function Vitrina({
   onSeek,
   onOpenPlaylist,
   onRemove,
-  onSubir,
-  onBajar,
+  manija,
   onAncho,
 }: {
   showcase: Showcase
@@ -98,74 +96,53 @@ export function Vitrina({
    * vitrinas no compensa. Además las flechas se pueden tocar con precisión y
    * las lee un lector de pantalla, cosa que un arrastre no.
    */
-  onSubir?: (() => void) | null
-  onBajar?: (() => void) | null
   /**
-   * Alternar entre ocupar la fila entera y media fila.
+   * La manija de arrastrar, ya envuelta en su gesto.
    *
-   * Es un botón y no un menú porque solo hay dos estados: un menú de dos
-   * opciones donde una siempre es la actual es un menú que sobra.
+   * La dibuja acá pero la arma el padre: el gesto necesita hablar con la
+   * grilla entera —qué celda está agarrada, dónde cae— y eso la tarjeta no lo
+   * sabe ni tiene por qué saberlo.
    */
+  manija?: ReactNode
+  /** Pasar al tamaño siguiente: chico → mediano → grande → chico. */
   onAncho?: () => void
 }) {
   return (
     <Glass radius={16} style={HAY_VIDRIO ? {} : { backgroundColor: 'rgb(24,24,24)' }}>
       {/*
-       * En modo edición el contenido arranca más abajo.
+       * El relleno según el tipo y el modo, y no uno solo para todos.
        *
-       * Los controles flotan arriba a la derecha, y a fila entera sobra lugar
-       * para que convivan con el texto. A **media fila** no: se montaban encima
-       * —«Escuchando de madrugada» pasaba por debajo de la cruz— y el título de
-       * una canción quedaría cortado. Reservar el renglón cuesta unos píxeles
-       * solo mientras se está editando; en el perfil, que es donde se mira, la
-       * tarjeta no cambia.
+       * Una **imagen es la tarjeta**: fuera de edición va a sangre, sin borde
+       * de relleno — es lo que hace de una foto una pieza y no una foto dentro
+       * de una caja. El resto lleva un respiro parejo, más corto que antes: la
+       * tarjeta minimalista es la que muestra contenido, no marco.
+       *
+       * En edición todo reserva el renglón de los controles, que flotan arriba:
+       * a media fila se montaban sobre el texto. Cuesta unos píxeles solo
+       * mientras se edita; en el perfil la tarjeta no cambia.
        */}
-      <View className={`relative p-4 ${onRemove ? 'pt-12' : ''}`}>
+      <View
+        className={`relative ${
+          showcase.kind === 'imagen' && !onRemove ? 'p-0' : onRemove ? 'p-3 pt-11' : 'p-3'
+        }`}
+      >
         {onRemove ? (
-          <View className="absolute right-2 top-2 z-10 flex-row items-center">
-            {onSubir !== undefined ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Subir en el perfil"
-                accessibilityState={{ disabled: !onSubir }}
-                disabled={!onSubir}
-                onPress={() => onSubir?.()}
-                hitSlop={6}
-                className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
-                style={{ opacity: onSubir ? 1 : 0.3 }}
-              >
-                <IconChevronUp size={15} color={ICON_COLOR.muted} />
-              </Pressable>
-            ) : null}
-            {onBajar !== undefined ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Bajar en el perfil"
-                accessibilityState={{ disabled: !onBajar }}
-                disabled={!onBajar}
-                onPress={() => onBajar?.()}
-                hitSlop={6}
-                className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
-                style={{ opacity: onBajar ? 1 : 0.3 }}
-              >
-                <IconChevronDown size={15} color={ICON_COLOR.muted} />
-              </Pressable>
-            ) : null}
+          <View className="absolute inset-x-2 top-2 z-10 flex-row items-center">
+            {/* La manija a la izquierda —de dónde se agarra— y las acciones a
+                la derecha. El medio queda libre: la tarjeta se sigue viendo. */}
+            {manija ?? null}
+            <View className="flex-1" />
             {onAncho ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={
-                  showcase.ancho === 'mitad' ? 'Ocupar toda la fila' : 'Ocupar media fila'
-                }
+                accessibilityLabel={`Tamaño ${TAMANOS[showcase.ancho]}: tocá para cambiarlo`}
                 onPress={onAncho}
                 hitSlop={6}
-                className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+                className="h-7 items-center justify-center rounded-full bg-background/60 px-2.5 active:opacity-60"
               >
-                {showcase.ancho === 'mitad' ? (
-                  <IconExpandLeft size={15} color={ICON_COLOR.muted} />
-                ) : (
-                  <IconCollapseLeft size={15} color={ICON_COLOR.muted} />
-                )}
+                <Text className="text-muted-foreground text-[10px] font-bold tracking-wide">
+                  {TAMANOS[showcase.ancho]}
+                </Text>
               </Pressable>
             ) : null}
             <Pressable
@@ -190,13 +167,13 @@ export function Vitrina({
             onOpen={onOpenPlaylist}
           />
         ) : showcase.kind === 'imagen' ? (
-          <VitrinaImagen imagen={showcase.imagen} />
+          <VitrinaImagen imagen={showcase.imagen} grande={showcase.ancho === 'grande'} />
         ) : showcase.kind === 'artista' ? (
           <VitrinaArtista artista={showcase.artista} />
         ) : showcase.kind === 'album' ? (
           <VitrinaAlbum album={showcase.album} />
         ) : showcase.kind === 'letra' ? (
-          <VitrinaLetra letra={showcase.letra} />
+          <VitrinaLetra letra={showcase.letra} grande={showcase.ancho === 'grande'} />
         ) : (
           <VitrinaCancion
             showcase={showcase}
@@ -225,15 +202,17 @@ export function Vitrina({
  * más o menos el mismo peso visual, en vez de que la imagen sea el doble de
  * alta y rompa el renglón.
  */
-function VitrinaImagen({ imagen }: { imagen: ShowcaseImagen }) {
+function VitrinaImagen({ imagen, grande = false }: { imagen: ShowcaseImagen; grande?: boolean }) {
   const [caja, setCaja] = useState(0)
   const uri = ilustracionUrl(imagen.path)
-  const alto = caja > 0 ? Math.round(caja * 0.62) : 0
+  /* Grande es el 2×2: la banda se vuelve casi cuadrada y la imagen manda. */
+  const razon = grande ? 0.92 : 0.62
+  const alto = caja > 0 ? Math.round(caja * razon) : 0
 
   return (
     <View
       className="overflow-hidden rounded-xl bg-muted"
-      style={alto ? { height: alto } : { aspectRatio: 1 / 0.62 }}
+      style={alto ? { height: alto } : { aspectRatio: 1 / razon }}
       onLayout={(e) => {
         const w = e.nativeEvent.layout.width
         setCaja((antes) => (Math.abs(antes - w) < 1 ? antes : w))
@@ -331,10 +310,14 @@ function VitrinaAlbum({ album }: { album: ShowcaseAlbum }) {
  * Se dibuja como cita y no como tarjeta de canción: lo que se fijó son las
  * palabras. La canción firma abajo, chiquita — es la fuente, no el punto.
  */
-function VitrinaLetra({ letra }: { letra: ShowcaseLetra }) {
+function VitrinaLetra({ letra, grande = false }: { letra: ShowcaseLetra; grande?: boolean }) {
   return (
-    <View className="gap-3">
-      <Text className="text-foreground text-[17px] font-semibold italic leading-6">
+    <View className={grande ? 'gap-4 py-6' : 'gap-3'}>
+      <Text
+        className={`text-foreground font-semibold italic ${
+          grande ? 'text-[24px] leading-9' : 'text-[17px] leading-6'
+        }`}
+      >
         “{letra.texto}”
       </Text>
       {letra.title ? (

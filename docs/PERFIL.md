@@ -26,7 +26,7 @@ un descuido, es lo que te deja mirar lo que muestra tu perfil sin la interfaz
 de armarlo delante.
 
 **Editar perfil es donde se arma.** Ahí aparecen los controles de cada vitrina:
-subir, bajar, cambiar el ancho, sacar.
+la manija de arrastrar, el chip del tamaño y la cruz de sacar.
 
 ## El fondo
 
@@ -71,16 +71,31 @@ Dos detalles que cuestan una tarde si no están escritos:
 ## El mosaico
 
 Las vitrinas son **una sola secuencia ordenada**; las filas se derivan al
-dibujar. Una `entero` ocupa su fila, dos `mitad` seguidas la comparten, y una
-`mitad` suelta al final queda a media fila en vez de estirarse — así se ve
+dibujar. `entero` y `grande` ocupan su fila, dos `mitad` seguidas la comparten,
+y una `mitad` suelta al final queda a media fila en vez de estirarse — así se ve
 elegida y no sobrante.
 
 Guardar las filas en la base sería guardar dos veces la misma información, y a
-la primera que alguien cambia un ancho quedan desincronizadas.
+la primera que alguien cambia un tamaño quedan desincronizadas.
 
-Dos anchos y no una grilla libre: con anchos arbitrarios cada perfil necesita su
-propio criterio de qué entra en una fila, y lo que se gana en libertad se pierde
-en que ningún perfil se ve bien sin trabajarlo.
+**Tres tamaños, el modelo de los widgets de iOS**: `mitad` (1×1), `entero`
+(2×1) y `grande` (2×2 — la fila entera con el doble de presencia; una imagen se
+vuelve casi cuadrada, un verso crece). Tres cerrados y no una grilla libre: con
+tamaños arbitrarios cada perfil necesita su propio criterio de qué entra en una
+fila, y lo que se gana en libertad se pierde en que ningún perfil se ve bien
+sin trabajarlo. El chip de la tarjeta (1×1 → 2×1 → 2×2) los cicla.
+
+**Se reordena arrastrando la manija**, en el editor. La física es la de la cola
+(`EncoladaArrastrable`) adaptada a dos dimensiones: la celda agarrada sigue al
+puntero apenas agrandada, las demás se apagan un poco —con alturas variables y
+filas de a dos, la corrida en vivo miente más de lo que ayuda— y al soltar cae
+en la celda cuyo centro quede más cerca. Las medidas se toman al **empezar**
+cada arrastre (`measureInWindow`), así el scroll previo no las deja viejas; y
+mientras se arrastra, el scroll del editor se congela.
+
+**Las tarjetas muestran contenido, no marco.** El relleno es corto (12px), y
+una **imagen fuera de edición va a sangre**: sin borde de relleno, la foto es
+la pieza y no una foto dentro de una caja.
 
 | Tipo | De dónde se fija |
 | --- | --- |
@@ -95,15 +110,22 @@ imagen dos veces y la tarjeta ganaba por estar en el medio. Ahora el fondo tiene
 su propia primera pantalla y esto es otra cosa — pero nace en **media fila** a
 propósito, para no volver a competirle. Agrandarla se puede; hay que pedirlo.
 
-En modo edición el contenido de una vitrina arranca más abajo (`pt-12`): los
-controles flotan arriba a la derecha y a media fila se montaban sobre el texto.
+En modo edición el contenido de una vitrina arranca más abajo: los controles
+flotan arriba y a media fila se montaban sobre el texto.
+
+## El marco de la foto
+
+Cinco decoraciones dibujadas en SVG con animación (`src/ui/Marco.tsx`),
+acromáticas, desbordando la foto con la regla del 1,2× de Discord y Steam. Cero
+assets: la lección de decoprofile fue no depender de archivos ajenos. En la base
+es solo un nombre (`profiles.marco`); uno desconocido se dibuja como ninguno.
+Se elige en «Editar perfil → Marco de la foto», cada opción puesta sobre tu
+propia foto.
 
 ## Lo que no hace
 
-- **No se arrastra para reordenar.** Se sube y se baja con flechas. El arrastre
-  entre plataformas es bastante más maquinaria y las flechas ya ordenan.
-- **No hay marcos ni efectos** tipo Discord. Si alguna vez van, el enchufe es
-  `FotoDeHeroe` y la regla es la de las referencias: un marco **desborda** a la
-  foto (1,2× su lado), no la pisa.
 - **Un clip de fondo no se encuadra.** La pantalla de encuadre trabaja sobre una
   imagen quieta; con un video la fila no se ofrece.
+- **No hay efectos de tarjeta completa** tipo Discord (el overlay animado sobre
+  el perfil entero). Los marcos decoran la foto; la tarjeta entera queda para el
+  fondo.
