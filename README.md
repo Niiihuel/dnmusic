@@ -1,169 +1,225 @@
 # dnmusic 🎧
 
-Un reproductor de música para dos personas, con un canal de mensajes al lado.
-Tus listas, la portada, los álbumes y los artistas viven en el panel del medio;
-el chat es el otro modo de la misma pantalla, y un mensaje puede llevar un
-**fragmento de canción** con su letra sincronizada.
+Una app de música con la gente adentro: escuchás, armás listas, y las mismas
+personas con las que hablás son las que ves escuchando. Un solo código
+TypeScript corre en el navegador, en el iPhone y en una ventana propia de
+Windows o Linux.
 
-> Un regalito hecho con cariño. 💛
+Arrancó como una mensajería con flores 3D (se llamaba Dany, después Flora) y
+terminó siendo, sobre todo, música. De aquello no queda código — ni las flores,
+ni el par de usuarios fijos: hoy hay registro abierto, solicitudes de contacto y
+bloqueo.
 
-Arrancó como una app de mensajería con flores 3D (se llamaba Dany, después
-Flora) y terminó siendo, sobre todo, música. De aquello no queda código.
+## Qué hace
+
+| | |
+|---|---|
+| **Música** | Buscador, portada por géneros, álbumes, artistas, radio de recomendadas y cola editable |
+| **Listas** | Propias, **públicas** o privadas, **colaborativas** por link, e importables desde Spotify |
+| **Perfil** | Fondo a sangre estilo Steam y un mosaico de vitrinas que se arrastra — canciones, versos, listas, imágenes, artistas y álbumes, en tres tamaños |
+| **Chat** | Conversaciones en tiempo real; un mensaje puede llevar un **fragmento de canción** con su letra sincronizada |
+| **Jam** | Escuchar juntos, sincronizados, con cola compartida — se entra por link o código |
+| **Escucha** | Tu cuenta en varios aparatos es **una sola música**: los demás son espejos, y tocar el transporte traspasa |
+| **Reacciones** | Dejarle un emoji a lo que un contacto está escuchando ahora; le queda en el perfil |
+| **Descargas** | Canciones guardadas en el teléfono para que suenen sin conexión |
+| **Push** | Avisos con la app cerrada, en el teléfono y en el escritorio |
+
+Cada pieza grande tiene su documento en `docs/`, con las decisiones y el porqué.
 
 ## Stack
 
 | Capa | Tecnología |
 |------|------------|
-| App | **Expo SDK 57** (React Native 0.86, React 19) + TypeScript |
-| Rutas | expo-router (SPA, `web.output: single`) |
+| App | **Expo SDK 57** (React Native 0.86, React 19) + TypeScript 6 |
+| Rutas | expo-router (SPA, `web.output: single`), typed routes |
 | Estilos | NativeWind 4 + Tailwind 3.4, tokens propios |
-| Animación | react-native-reanimated |
-| Backend | **Supabase** — Postgres + Realtime + Auth + RLS |
-| Web / PC | react-native-web → PWA instalable |
-| Hosting | Vercel (`vercel.json` incluido) |
+| Animación | react-native-reanimated 4 |
+| Audio | expo-audio + módulos Expo propios en Swift (`modules/`) |
+| Backend | **Supabase** — Postgres + Realtime + Auth + Storage + RLS |
+| Servicio de música | Node (`server/`) en Railway — YouTube necesita jsdom y la VM de BotGuard |
+| Web / PWA | react-native-web → Vercel (`dnmusic-app.vercel.app`) |
+| Escritorio | Electron (`desktop/`) — Windows y Linux, con auto-actualización |
+| iOS | EAS Build + submit a App Store Connect |
 
-Un solo código TypeScript para el iPhone de ella, tu PC y la app nativa, sin
-reescribir nada.
+### Las tres plataformas, un solo bundle
 
-### PWA hoy, build nativo cuando haga falta
+La **PWA** es el camino corto: se abre la URL, "Agregar a pantalla de inicio", y
+queda un ícono sin la barra de Safari. Lo que no puede dar es audio en segundo
+plano con la pantalla bloqueada ni controles nativos — para eso está el build de
+iOS.
 
-La PWA es el camino corto: ella abre la URL, hace **"Agregar a pantalla de
-inicio"** y le queda un ícono que abre sin la barra de Safari. Desde iOS 16.4 las
-PWA instaladas soportan Web Push, así que las notificaciones también funcionan
-(solo si está agregada a la pantalla de inicio, no abierta en una pestaña).
-
-Lo que la PWA **no** puede dar es el audio en segundo plano con la pantalla
-bloqueada ni los controles nativos del sistema. Para eso hace falta un build de
-verdad —EAS o `expo prebuild` + fastlane en un runner macOS— y la cuenta de
-Apple Developer.
+El **escritorio** no tiene versión propia del código: `desktop/` es una cáscara
+que carga el export de `npm run build:web` sin tocarle una línea. Además hace de
+salida a internet — ver más abajo.
 
 ## Estructura
 
 ```
 app/                     Rutas (expo-router)
-  _layout.tsx            Arranque de sesión + redirección
-  sign-in.tsx            Login de los 2 usuarios
   index.tsx              Los tres paneles: biblioteca, contenido, lo que suena
-  compose.tsx            Escribir un mensaje
-  song.tsx               Elegir el fragmento de una canción
-  message/[id].tsx       Un mensaje a pantalla completa
+  sign-in · sign-up      Login por usuario y registro abierto
+  playing · cola         Reproductor y cola a pantalla completa
+  lista/ · perfil/       Listas y perfiles ajenos
+  profile/               El tuyo, y todo lo de editarlo
+  jam/                   Crear, entrar, personas y opciones
+  ajustes/               Descargas, bloqueados, novedades
+  compose · song         Escribir un mensaje, elegir el fragmento
 src/
-  models/                Message, SongSnippet
-  services/              auth.ts, messages.ts (realtime), music.ts, playlists.ts
-  state/                 store.ts (useSyncExternalStore), session.ts, playback.ts
-  lib/                   supabase.ts
-  ui/                    PlaylistView, AlbumPanel, ArtistPage, NowPlayingBar…
-server/                  Servicio de música (Node): resuelve audio de YouTube
-supabase/migrations/     Tablas + RLS + trigger + realtime
-public/                  manifest.json + íconos PWA
-scripts/inject-pwa.mjs   Inyecta las etiquetas PWA en el export
-docs/DESIGN.md           El sistema de diseño; se sigue sin excepciones
-docs/MUSICA.md           De dónde sale el audio y por qué
-docs/BUILD-IOS.md        Cómo se buildea para iPhone (EAS)
+  services/              music, playlists, jam, escucha, contacts, profile…
+  state/                 Stores con useSyncExternalStore (playback, player, jam…)
+  ui/                    Los componentes; MotorAudio es el que suena
+  lib/                   supabase, artwork, novedades, puentes al escritorio
+  models/                Message, SongSnippet, username
+server/                  Servicio de música (Node): busca, resuelve y cachea
+desktop/                 Cáscara de Electron + resolutor de a bordo
+modules/                 Módulos Expo en Swift: comandos remotos, ruta de audio,
+                         exclusión del backup
+supabase/
+  migrations/            La verdad del esquema: tablas, RLS, triggers, RPCs
+  tests/                 Pruebas SQL contra un Postgres real
+public/ · scripts/       Manifest e íconos PWA, y el script que los inyecta
+docs/                    DESIGN, MUSICA, JAM, ESCUCHA, PERFIL, LISTAS,
+                         DESCARGAS, ESCRITORIO, BUILD-IOS
 ```
 
-## Desarrollo local (Docker)
+`docs/DESIGN.md` es el sistema de diseño y **se sigue sin excepciones**.
 
-Todo el stack de Supabase corre en contenedores: Postgres, Auth (GoTrue),
-Realtime, PostgREST y Studio. No hace falta ninguna cuenta ni conexión a
-internet para desarrollar.
+## Desarrollo local
+
+Supabase entero corre en contenedores —Postgres, Auth, Realtime, PostgREST y
+Studio— y el servicio de música en el suyo. No hace falta ninguna cuenta.
 
 ```bash
 npm install
-npx supabase start        # levanta el stack y aplica supabase/migrations/
+npx supabase start                 # levanta el stack y aplica supabase/migrations/
+cp .env.example .env.local         # pegá ahí la API_URL y la ANON_KEY que imprime
+docker compose up --build music    # el servicio de música, en :8787
+npm run web                        # http://localhost:8081
 ```
 
-El comando imprime la `API_URL` y la `ANON_KEY` locales. Ponelas en `.env.local`
-(`cp .env.example .env.local`). Son las claves de desarrollo estándar del CLI —
-idénticas en toda instalación local y sin ningún valor fuera de tu máquina.
+Las claves que imprime el CLI son las de desarrollo estándar: idénticas en toda
+instalación local y sin ningún valor fuera de tu máquina. La `service_role` va
+en un `.env` aparte (sin `.local`) — es el único archivo que lee docker compose
+para resolver los `${...}` del `docker-compose.yml`.
 
-### Crear los usuarios y el par
+> **En NixOS**, el CLI de Supabase por `npx` no arranca y el de nixpkgs está
+> viejo: las migraciones se aplican con `docker exec … psql` contra el
+> contenedor, registrándolas después en el ledger de migraciones a mano.
+
+### Comandos
 
 ```bash
-# Los 2 usuarios (no hay registro abierto en la app)
-SRK=$(npx supabase status -o json | python3 -c 'import sys,json;print(json.load(sys.stdin)["SERVICE_ROLE_KEY"])')
-for EMAIL in vos@ejemplo.com ella@ejemplo.com; do
-  curl -s -X POST http://127.0.0.1:54321/auth/v1/admin/users \
-    -H "apikey: $SRK" -H "Authorization: Bearer $SRK" -H 'Content-Type: application/json' \
-    -d "{\"email\":\"$EMAIL\",\"password\":\"<CONTRASEÑA>\",\"email_confirm\":true}"
-done
+npm run web          # dev server
+npm run typecheck    # tsc --noEmit
+npm run lint         # eslint
+npm run build:web    # export estático + etiquetas PWA → dist/
+npx supabase stop    # apagar el stack
 ```
 
-Después, en **Studio** (http://127.0.0.1:54323) o por `psql`, vinculalos:
+Los mismos chequeos corren en cada PR (`.github/workflows/ci-checks.yml`), para
+la app, el servicio y el escritorio.
 
-```sql
-insert into public.pairs (id) values (gen_random_uuid()) returning id;
+### Las pruebas del esquema
 
-insert into public.pair_members (pair_id, user_id) values
-  ('<PAIR_ID>', '<TU_USER_ID>'),
-  ('<PAIR_ID>', '<SU_USER_ID>');
-```
-
-### Correr la app
+Las policies y los RPCs se prueban contra un Postgres real, no contra un mock.
+Cada archivo corre en **una** transacción que termina en `rollback`, y la
+identidad se simula fijando el claim `sub` como lo hace Supabase:
 
 ```bash
-npm run web        # http://localhost:8081
-npm run typecheck  # tsc --noEmit
-npm run build:web  # export estático + etiquetas PWA → dist/
-npx supabase stop  # apagar el stack
+psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+  -v ON_ERROR_STOP=1 -f supabase/tests/jam.sql
 ```
+
+Hoy son 104 verificaciones en 6 archivos: Jam, escucha entre dispositivos,
+listas colaborativas, reacciones y búsqueda de contactos.
 
 ## Producción
 
-Creá un proyecto en [supabase.com](https://supabase.com) y aplicá el mismo
-esquema:
+**Supabase.** Creá el proyecto y aplicá el mismo esquema:
 
 ```bash
 npx supabase link --project-ref <REF>
-npx supabase db push        # aplica supabase/migrations/
+npx supabase db push
 ```
 
-Repetí los pasos de usuarios y par contra el proyecto hosteado, y poné su URL y
-anon key en las variables de entorno de Vercel. **Nunca** uses ahí la
-`service_role` key: saltea RLS por completo.
+**Web.** Vercel toma `vercel.json` (`build:web` → `dist/`, con rewrite de SPA).
+Los deploys por git están bloqueados a propósito: se publica con `vercel`.
 
-### Deploy
+**Servicio de música.** Railway, y se sube con `railway up` — no por git.
+
+**iOS.** `npm run ios:release` (EAS build de producción + auto-submit). El
+detalle está en `docs/BUILD-IOS.md`.
+
+**Escritorio.** Un tag dispara el workflow, que compila los dos sistemas y
+publica los instaladores donde electron-updater los busca:
 
 ```bash
-vercel            # usa vercel.json: build:web → dist/, con rewrite de SPA
+git tag escritorio-v1.2.0 && git push origin escritorio-v1.2.0
 ```
 
-Después, en el iPhone de ella: abrir la URL en **Safari** → Compartir →
-**Agregar a pantalla de inicio**.
+En las variables de entorno **nunca** va la `service_role` key: saltea RLS por
+completo.
+
+## Cómo llega el audio
+
+El servicio de música resuelve la canción y la deja cacheada en Storage, así que
+se baja una sola vez para todos. El problema es que YouTube le niega el audio a
+las IPs de datacenter —`Sign in to confirm you're not a bot`— mientras cualquier
+IP de casa resuelve sin drama.
+
+La salida a esto es comunitaria: cuando el `/resolve` del servidor falla, **la
+app de escritorio baja el tema con la IP de esa casa y lo aporta al bucket
+común**. Lo que resuelve uno le suena a todos, y la web y el teléfono lo
+encuentran después en el caché. Cada usuario de escritorio es una salida más.
+
+El camino alternativo —un proxy residencial por el que salga todo el tráfico a
+YouTube— está implementado y es una variable de entorno (`YT_PROXY_URL`, ver
+`server/src/salida.ts`). Los detalles, en `docs/MUSICA.md` y `docs/ESCRITORIO.md`.
 
 ## Modelo de seguridad
 
-Las policies de RLS en `supabase/migrations/` son el único control de acceso, y
-están verificadas con 11 casos contra un Postgres real:
+Las policies de RLS en `supabase/migrations/` son el único control de acceso. Lo
+que sostienen:
 
-- Solo los miembros del par leen sus mensajes; un tercero autenticado ve **0**.
-- Solo podés insertar mensajes de los que sos remitente.
-- Solo el **receptor** puede marcar `opened_at` / `read_at`, nunca el remitente.
-- El texto, el remitente y la fecha son **inmutables** tras el insert
-  (lo impone un trigger, porque una policy de UPDATE no puede comparar contra la
-  fila vieja).
+- Solo los miembros de una conversación leen sus mensajes; un tercero
+  autenticado ve **0**.
+- Solo podés insertar mensajes de los que sos remitente, y solo el **receptor**
+  marca `opened_at` / `read_at`.
+- El texto, el remitente y la fecha son **inmutables** tras el insert — lo
+  impone un trigger, porque una policy de UPDATE no puede comparar contra la
+  fila vieja.
 - Los timestamps los pisa el servidor con `now()`: el reloj del cliente no cuenta.
 - Nadie borra mensajes (no hay policy de DELETE).
+- Escribirle a alguien nuevo pide una **solicitud** que la otra persona acepta;
+  el **bloqueo** corta la visibilidad en los dos sentidos sin borrar nada.
+- Buscar contactos pasa por un RPC que encuentra a quien buscás y **no** deja
+  pasearse por las cuentas de la app.
+- Una lista tiene dos permisos que no son el mismo: **visibilidad** (quién la
+  lee) y **colaboración** (quién la escribe). Son ortogonales.
 
 ## Estado actual
 
 Funcionando y verificado:
 
-- [x] Scaffold Expo + TypeScript, `tsc --noEmit` limpio
-- [x] NativeWind con tokens de diseño, tema claro/oscuro por `data-theme`
-- [x] Esquema SQL + RLS, probado contra Postgres real (11/11)
-- [x] Auth, conversaciones en tiempo real, composer y visor de mensajes
-- [x] Música: buscador, listas propias, álbumes, artistas y cola con letra
-- [x] PWA instalable: manifest, íconos, deep links, cero errores de consola
+- [x] Auth con registro abierto, contactos, solicitudes y bloqueo
+- [x] Música completa: buscador, portada, álbumes, artistas, cola y radio
+- [x] Listas propias, públicas, colaborativas e importadas de Spotify
+- [x] Perfil con fondo, marcos y mosaico de vitrinas arrastrable
+- [x] Jam y escucha entre dispositivos, probados contra Postgres real
+- [x] Descargas para escuchar sin internet
+- [x] Push con la app cerrada, en teléfono y escritorio
+- [x] Pantalla bloqueada de iOS con ⏮⏭ (módulo Swift propio en `modules/`)
+- [x] PWA instalable y app de escritorio con auto-actualización
+- [x] Ícono propio, `tsc --noEmit` y `eslint` limpios
 
 Pendiente:
 
-- [ ] Ícono propio (hoy es el placeholder de Expo)
-- [ ] Botones ⏮⏭ en la pantalla bloqueada de iOS: expo-audio no los registra,
-      hace falta un módulo Expo local en Swift (ver `expo/expo#43538`)
-- [ ] Build de iOS de la app Expo — el pipeline viejo compilaba el scaffold Swift
-- [ ] Web Push para avisar "te llegó un mensaje"
+- [ ] Publicar en la App Store — el build de EAS está armado, falta la subida
+- [ ] macOS en el escritorio: auto-actualizar exige firma y notarización de Apple
+- [ ] Control remoto de verdad entre dispositivos (pausar el otro aparato sin
+      traer la música); hoy el modal solo ofrece el traspaso
+- [ ] Nombres de dispositivo reales («iPhone de Nihuel»), hoy son genéricos
 
 ## Licencia
 
-Privado. Solo para uso personal de las dos personas.
+Privado. Uso personal.
