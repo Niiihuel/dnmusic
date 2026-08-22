@@ -1121,11 +1121,24 @@ export async function getHome(): Promise<YtHomeSection[]> {
   return sections
 }
 
+type HomeItemFlexColumn = {
+  title?: {
+    text?: string
+    runs?: {
+      text?: string
+      endpoint?: { payload?: { browseId?: string; videoId?: string } }
+    }[]
+  }
+}
+
 function mapHomeItem(raw: unknown): YtHomeItem[] {
-  const item = raw as {
+  let item = raw as {
     id?: string
     title?: { text?: string } | string
-    subtitle?: { text?: string }
+    subtitle?: {
+      text?: string
+      runs?: { text?: string; endpoint?: { payload?: { browseId?: string } } }[]
+    }
     subtitles?: { text?: string }[]
     artists?: { name: string; channel_id?: string }[]
     item_type?: string
@@ -1133,6 +1146,59 @@ function mapHomeItem(raw: unknown): YtHomeItem[] {
     thumbnail?:
       | { contents?: { url: string; width?: number; height?: number }[] }
       | { url: string; width?: number; height?: number }[]
+    /* Las filas planas («Trending», «New music videos») llegan como
+       MusicResponsiveListItem: dos columnas de texto y nada más. */
+    flex_columns?: HomeItemFlexColumn[]
+  }
+
+  /*
+   * El canal del artista escondido en el subtítulo.
+   *
+   * En los ítems altos («New music videos», «New releases») el artista no viene
+   * como campo: es el primer fragmento del subtítulo, y el que enlaza a una
+   * página `UC`. Sin esto, esas canciones — justo los lanzamientos nuevos —
+   * se anotaban sin `artistId` y el historial que alimenta las recomendaciones
+   * no las podía usar.
+   */
+  const canalDelSubtitulo = item.subtitle?.runs?.find((run) =>
+    run.endpoint?.payload?.browseId?.startsWith('UC'),
+  )?.endpoint?.payload?.browseId
+
+  /*
+   * La fila plana de la portada, traducida al idioma del ítem alto.
+   *
+   * «Trending» y «New music videos» no traen `title` ni `subtitle` como campos:
+   * traen `flex_columns`, donde la primera columna es el título completo y la
+   * segunda junta «artista • N vistas». Leerlos como si fuera un
+   * MusicTwoRowItem daba canciones sin artista y sin `artistId` — justo los
+   * lanzamientos nuevos, que es lo primero que se toca — y el historial que
+   * alimenta recomendaciones las perdía todas.
+   *
+   * El canal del artista sale del primer fragmento de la segunda columna que
+   * enlace a una página `UC`; el resto de esa columna («• 704K views») queda
+   * como subtítulo, igual a como lo muestra YouTube.
+   */
+  if (item.flex_columns?.length) {
+    const primera = item.flex_columns[0]
+    const segunda = item.flex_columns[1]
+    const artista = (segunda?.title?.runs ?? []).find((run) =>
+      run.endpoint?.payload?.browseId?.startsWith('UC'),
+    )
+    item = {
+      ...item,
+      title: primera?.title?.text,
+      subtitle: segunda?.title ? { text: segunda.title.text ?? '' } : item.subtitle,
+      ...(artista?.endpoint?.payload?.browseId
+        ? {
+            artists: [
+              { name: artista.text ?? '', channel_id: artista.endpoint.payload.browseId },
+            ],
+          }
+        : {}),
+      /* Sin `item_type` propio, estas filas dependen de que el id se parezca a
+         una canción: decírselo explícito vale más que deducir. */
+      item_type: item.item_type ?? 'video',
+    }
   }
 
   const thumbs = Array.isArray(item.thumbnail) ? item.thumbnail : (item.thumbnail?.contents ?? [])
@@ -1182,10 +1248,14 @@ function mapHomeItem(raw: unknown): YtHomeItem[] {
       title,
       subtitle,
       artworkUrl: fullArtworkUrl(biggest?.url ?? ''),
-      /* Mismo criterio que la búsqueda: el primer artista con canal. */
+      /* Mismo criterio que la búsqueda: el primer artista con canal. El canal
+         del subtítulo entra como último recurso, que es el único lugar donde
+         viven los videos oficiales nuevos. */
       artistId:
         kind === 'song'
-          ? (item.artists?.find((a) => a.channel_id)?.channel_id ?? null)
+          ? (item.artists?.find((a) => a.channel_id)?.channel_id ??
+            canalDelSubtitulo ??
+            null)
           : null,
       year: year ? Number(year[0]) : null,
     },
