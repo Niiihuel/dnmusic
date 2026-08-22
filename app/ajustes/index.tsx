@@ -12,6 +12,7 @@ import {
   IconDisc,
   IconDisk,
   IconLogOut,
+  IconMusic,
   IconSparkles,
   IconTrash,
 } from '../../src/ui/icons'
@@ -182,6 +183,23 @@ export default function Ajustes() {
                   />
                 </GrupoAjustes>
               ) : null}
+
+              {/*
+               * La reelección de semillas: el mismo paseo del registro, pero
+               * premarcado y volviendo acá. Es el lugar natural: es gusto
+               * declarado —lo que la radio usa para arrancar—, y quien lo
+               * quiere cambiar ya sabe que existe.
+               */}
+              <GrupoAjustes titulo="Tu música">
+                <FilaAjuste
+                  rotulo="Géneros y artistas"
+                  valor=""
+                  vacio=""
+                  icono={<IconMusic size={17} color={ICON_COLOR.muted} />}
+                  onPress={() => router.push('/onboarding?de=ajustes')}
+                  ultima
+                />
+              </GrupoAjustes>
 
               {/*
                * Las novedades: qué cambió en cada versión. En el escritorio la

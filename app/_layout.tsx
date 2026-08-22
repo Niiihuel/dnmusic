@@ -31,6 +31,7 @@ import { Traspaso } from '../src/ui/Traspaso'
 import { startSession, useMyProfile, useUser } from '../src/state/session'
 import { usePush } from '../src/state/push'
 import { emailToUsername } from '../src/services/auth'
+import { esOnboardingPendiente } from '../src/services/semillas'
 import { AppDrawer } from '../src/ui/AppDrawer'
 import {
   abrirLista,
@@ -779,9 +780,13 @@ function SessionGate() {
   const router = useRouter()
   /** Lo que se quiso abrir sin sesión, para llevarte ahí después de entrar. */
   const destino = useRef<string | null>(null)
+  /* La cuenta que acaba de crearse debe su paseo por el onboarding. Se lee una
+     vez al arrancar la app: es una bandera del aparato, no un dato vivo. */
+  const [onboardingPendiente, setOnboardingPendiente] = useState(false)
 
   useEffect(() => {
     startSession()
+    void esOnboardingPendiente().then(setOnboardingPendiente)
     void cargarAjustes()
     /* Antes que nada de música: es lo que decide si una canción suena del
        teléfono o de la red, y contrasta el índice contra el disco. */
@@ -810,6 +815,13 @@ function SessionGate() {
       router.replace('/sign-in')
     }
     if (user && onGate) {
+      /* Primero lo prometido en el registro: si la cuenta debe su paseo por
+         las semillas, va ahí antes que a ningún destino guardado. */
+      if (onboardingPendiente) {
+        destino.current = null
+        router.replace('/onboarding')
+        return
+      }
       const guardado = destino.current
       destino.current = null
       /* El tipo de `href` de expo-router enumera las rutas estáticas y no
@@ -817,7 +829,7 @@ function SessionGate() {
          `usePathname`, así que es una ruta de esta misma app. */
       router.replace((guardado ?? '/') as '/')
     }
-  }, [user, segments, pathname, router])
+  }, [user, segments, pathname, router, onboardingPendiente])
 
   /*
    * Todo lo que es «de quien escucha» espera a que haya alguien escuchando.
@@ -884,6 +896,9 @@ function SessionGate() {
       <Stack.Screen name="index" />
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="sign-up" />
+      {/* El onboarding: géneros y artistas con los que nace la radio de una
+          cuenta nueva. Pantalla común, como las puertas de entrada. */}
+      <Stack.Screen name="onboarding" />
       <Stack.Screen name="compose" />
       {/* El perfil es una carpeta: la vista y su editor son pantallas
           distintas, apiladas. Ver `app/profile/`. */}

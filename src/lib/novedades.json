@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.2.0",
+    "fecha": "22 de agosto de 2026",
+    "titulo": "Una radio que te conoce desde el primer día",
+    "cambios": [
+      "Al crear cuenta elegís géneros y artistas: la música que te recomiendan arranca sonando a eso, sin esperar a que haya historial.",
+      "La portada tiene una fila «Hecho para vos»: una tanda armada con tu escucha, tus corazones y lo que dijiste que te gusta.",
+      "Desde Ajustes → Tu música volvés a elegir géneros y artistas cuando quieras; lo que ya tenías aparece marcado.",
+      "La portada reconoce al artista en los lanzamientos nuevos, así que escucharlos alimenta lo que te sugiere."
+    ]
+  },
+  {
     "version": "1.1.0",
     "fecha": "17 de agosto de 2026",
     "titulo": "El perfil se arma a tu gusto, y la música no depende de nadie",

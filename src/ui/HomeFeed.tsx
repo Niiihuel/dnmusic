@@ -14,6 +14,8 @@ import {
 import { FadingRow } from './FadingScroll'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { usePiso, useTecho } from '../state/shell'
+import { proximasRecomendadas } from '../services/recomendaciones'
+import type { PlaylistTrack } from '../services/playlists'
 import { useColapso } from './useColapso'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
@@ -179,27 +181,32 @@ export function HomeFeed({
             onReintentar={() => setSections(null)}
           />
         ) : (
-          sections.map((section, i) => (
-            <Fragment key={section.title}>
-              <Section
-                section={section}
-                /* La primera sección es la vidriera: tapas más grandes. */
-                destacada={i === 0}
-                onOpen={() => onOpenSection(section.title)}
-                onOpenAlbum={onOpenAlbum}
-                onOpenPlaylist={onOpenPlaylist}
-                onPlaySong={onPlaySong}
-                menuForSong={menuForSong}
-                pendingId={pendingId}
-              />
-              {/* Los géneros van después del primer carrusel, como el
-                  «Explorar por género» de Apple Music: arriba lo nuevo, y
-                  enseguida el mapa para el que no busca nada puntual. */}
-              {i === 0 && generos?.length && onOpenGenero && onOpenGeneros ? (
-                <GenerosRow generos={generos} onOpen={onOpenGenero} onVerTodo={onOpenGeneros} />
-              ) : null}
-            </Fragment>
-          ))
+          <>
+            {/* «Hecho para vos» abre la portada: es lo único que habla de
+                quién sos, y va antes de lo que habla del mundo. */}
+            <ParaVos onPlaySong={onPlaySong} menuForSong={menuForSong} pendingId={pendingId} />
+            {sections.map((section, i) => (
+              <Fragment key={section.title}>
+                <Section
+                  section={section}
+                  /* La primera sección es la vidriera: tapas más grandes. */
+                  destacada={i === 0}
+                  onOpen={() => onOpenSection(section.title)}
+                  onOpenAlbum={onOpenAlbum}
+                  onOpenPlaylist={onOpenPlaylist}
+                  onPlaySong={onPlaySong}
+                  menuForSong={menuForSong}
+                  pendingId={pendingId}
+                />
+                {/* Los géneros van después del primer carrusel, como el
+                    «Explorar por género» de Apple Music: arriba lo nuevo, y
+                    enseguida el mapa para el que no busca nada puntual. */}
+                {i === 0 && generos?.length && onOpenGenero && onOpenGeneros ? (
+                  <GenerosRow generos={generos} onOpen={onOpenGenero} onVerTodo={onOpenGeneros} />
+                ) : null}
+              </Fragment>
+            ))}
+          </>
         )}
       </ScrollView>
     </Panel>
@@ -836,5 +843,69 @@ function SectionPage({
           </View>
         )}
     </ScrollView>
+  )
+}
+
+/* ── Hecho para vos ───────────────────────────────────────────────────────── */
+
+/**
+ * La fila que habla de **vos**: una tanda de la radio, en la portada.
+ *
+ * Es el mismo motor del autoplay (`proximasRecomendadas`): anclas de tu
+ * historial, tus corazones y tus semillas del onboarding, con su mitad de
+ * exploración. Si el motor no tiene nada que decir —cuenta sin semillas, sin
+ * escucha y sin red— la fila simplemente no aparece: la portada vuelve a ser
+ * la vidriera de YouTube, que es lo que era.
+ *
+ * No se recarga al volver a la portada: se pide una vez por montado y listo,
+ * porque cada tanda cuesta varios pedidos al catálogo y esto no es más que
+ * un aperitivo de la radio.
+ */
+function ParaVos({
+  onPlaySong,
+  menuForSong,
+  pendingId,
+}: {
+  onPlaySong: (item: HomeItem) => void
+  menuForSong: (item: HomeItem) => MenuItem[]
+  pendingId: string | null
+}) {
+  const [tanda, setTanda] = useState<PlaylistTrack[] | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    proximasRecomendadas().then((tracks) => {
+      /* Un pedido abortado devuelve vacío; solo cuenta si llegó entero. */
+      if (alive && tracks.length) setTanda(tracks)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  if (!tanda?.length) return null
+
+  const items: HomeItem[] = tanda.map((t) => ({
+    kind: 'song',
+    id: t.videoId,
+    title: t.title,
+    subtitle: t.artist,
+    artworkUrl: t.artworkUrl ?? '',
+    artistId: t.artistId,
+    year: null,
+  }))
+
+  return (
+    <View className="gap-3">
+      <Text className="px-6 text-foreground text-[19px] font-bold">Hecho para vos</Text>
+      <FadingRow gap={16} padding={24}>
+        <SongColumns
+          items={items}
+          onPlay={onPlaySong}
+          menuFor={menuForSong}
+          pendingId={pendingId}
+        />
+      </FadingRow>
+    </View>
   )
 }

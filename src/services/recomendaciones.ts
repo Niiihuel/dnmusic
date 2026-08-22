@@ -69,6 +69,41 @@ export type ArtistaEscuchado = { artist_id: string; artist: string; ms: number }
 const MS_POR_GUSTO = 10 * 60_000
 
 /**
+ * Cuánto pesa una semilla, en la moneda común.
+ *
+ * Las semillas del onboarding son gusto **dicho**, pero dicho antes de
+ * escuchar nada: medio corazón cada una. Con historial cero son las únicas
+ * anclas — la radio arranca sonando a lo declarado el día uno—, y a medida
+ * que `plays` acumula horas reales su peso relativo baja solo: diez horas de
+ * escucha tapan cualquier declaración. Nunca valen cero a propósito: quien
+ * dijo «me gusta el jazz» merece que el jazz asome aunque el reloj diga otra
+ * cosa, igual que los corazones lo garantizan para lo marcado después.
+ */
+const MS_POR_SEMILLA = 5 * 60_000
+
+/**
+ * Las semillas del onboarding, convertidas en anclas.
+ *
+ * Solo las de artista: guardan el id de canal, que es literalmente lo que una
+ * ancla necesita. Devuelve vacío ante cualquier tropiezo — sin sesión o sin
+ * semillas, el comportamiento es el de siempre.
+ */
+async function anclasDeSemillas(): Promise<ArtistaEscuchado[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from('semillas')
+      .select('ref, name')
+      .eq('kind', 'artista')
+    if (error) return []
+    return ((data ?? []) as { ref: string; name: string }[])
+      .filter((s) => s.ref)
+      .map((s) => ({ artist_id: s.ref, artist: s.name || s.ref, ms: MS_POR_SEMILLA }))
+  } catch {
+    return []
+  }
+}
+
+/**
  * Mezcla las anclas de siempre con los artistas de la cola que está sonando.
  *
  * La cola dejó de ser un respaldo para cuentas sin historial: es **la mitad
@@ -354,8 +389,25 @@ export async function proximasRecomendadas(
       else porGusto.set(g.artist_id, { artist_id: g.artist_id, artist: g.artist, cuantos: 1 })
     }
     const reforzados = reforzarConGustos(escuchados, [...porGusto.values()])
+
+    /*
+     * Las semillas entran **siempre** al sorteo, con su peso chico de
+     * declaración (ver `MS_POR_SEMILLA`). En una cuenta nueva son las únicas
+     * anclas — sin ellas, `proximasRecomendadas` devolvía vacío y la radio
+     * no existía hasta haber escuchado algo—; después conviven con el
+     * historial, que las va diluyendo solo.
+     */
+    const semillas = await anclasDeSemillas()
+    const porIdSemilla = new Map(reforzados.map((a) => [a.artist_id, { ...a }]))
+    for (const s of semillas) {
+      const previo = porIdSemilla.get(s.artist_id)
+      if (previo) continue /* ya es un artista real: el reloj pesa más. */
+      porIdSemilla.set(s.artist_id, s)
+    }
+    const conSemillas = [...porIdSemilla.values()]
+
     /* Mitad lo que estás escuchando, mitad lo que sos. Ver `mezclarConLaCola`. */
-    const candidatos = mezclarConLaCola(reforzados, delaCola)
+    const candidatos = mezclarConLaCola(conSemillas, delaCola)
     if (!candidatos.length) return []
 
     /* Lo que no se puede volver a ofrecer: lo de esta semana y lo que ya está

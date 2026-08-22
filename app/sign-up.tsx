@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { isUsernameAvailable, signUp } from '../src/services/auth'
+import { marcarOnboardingPendiente } from '../src/services/semillas'
 import { isSupabaseConfigured } from '../src/lib/supabase'
 import { Field, PasswordField } from '../src/ui/Field'
 import { FormError, PrimaryButton } from '../src/ui/Button'
@@ -108,7 +109,12 @@ export default function SignUp() {
     setError(null)
     try {
       await signUp(username, password)
-      // La sesión queda iniciada; el guardia de _layout lleva al panel solo.
+      /* La cuenta nueva todavía no sabe nada de sí misma: la bandera manda al
+         onboarding en cuanto el guardia de `_layout` vea la sesión. Si el
+         aparato pierde la app antes del paseo, retoma en el próximo login —
+         y si no, la radio arranca sin semillas, como siempre hizo. */
+      await marcarOnboardingPendiente()
+      // La sesión queda iniciada; el guardia lleva a elegir géneros.
     } catch (e) {
       setError(mapSignUpError(e))
       setBusy(false)
