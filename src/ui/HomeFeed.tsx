@@ -12,9 +12,20 @@ import {
   type HomeSection,
 } from '../services/music'
 import { FadingRow } from './FadingScroll'
-import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
+import {
+  playQueue,
+  togglePlayback,
+  usePlaybackOriginId,
+  usePlaybackTrack,
+  useWantPlay,
+} from '../state/playback'
 import { usePiso, useTecho } from '../state/shell'
-import { proximasRecomendadas } from '../services/recomendaciones'
+import {
+  mezclasPersonales,
+  proximasRecomendadas,
+  tandaDeMix,
+  type MixPersonal,
+} from '../services/recomendaciones'
 import type { PlaylistTrack } from '../services/playlists'
 import { useColapso } from './useColapso'
 import { Menu, type MenuItem } from './Menu'
@@ -22,7 +33,7 @@ import { Panel } from './Panel'
 import { VacioError } from './Vacio'
 import { EstadoTapa } from './CoverState'
 import { Skeleton } from './Skeleton'
-import { ICON_COLOR, IconBack, IconChevronRight, IconMusic } from './icons'
+import { ICON_COLOR, IconBack, IconChevronRight, IconMusic, IconPause, IconPlay } from './icons'
 
 /** Lado de una tapa en el carrusel, y el tamaño deseable en la grilla. */
 const CARD = 168
@@ -848,17 +859,26 @@ function SectionPage({
 
 /* ── Hecho para vos ───────────────────────────────────────────────────────── */
 
+/** El id de origen con que la radio personal entra a la cola. */
+const ORIGEN_RADIO = 'radio-personal'
+
 /**
- * La fila que habla de **vos**: una tanda de la radio, en la portada.
+ * La fila que habla de **vos**, ahora en tres capas.
  *
- * Es el mismo motor del autoplay (`proximasRecomendadas`): anclas de tu
- * historial, tus corazones y tus semillas del onboarding, con su mitad de
- * exploración. Si el motor no tiene nada que decir —cuenta sin semillas, sin
- * escucha y sin red— la fila simplemente no aparece: la portada vuelve a ser
- * la vidriera de YouTube, que es lo que era.
+ * · **Tu radio**: una tarjeta grande que arranca la tanda del motor — anclas
+ *   del historial, tus corazones, tus listas y tus semillas, con su mitad de
+ *   exploración. Es la puerta grande al algoritmo propio.
+ * · **Tus mixes**: un mix por artista que pesa en tu biblioteca (corazones +
+ *   listas, ver `mezclasPersonales`). Tocarlo suena la radio anclada solo en
+ *   ese artista — «todo suyo y lo cercano a él», sin pasar por la búsqueda.
+ * · **La tanda**: las canciones concretas del motor, como siempre.
+ *
+ * Si el motor no tiene nada que decir —cuenta sin corazones, sin listas, sin
+ * escucha y sin red— la fila entera no aparece: la portada vuelve a ser la
+ * vidriera de YouTube, que es lo que era.
  *
  * No se recarga al volver a la portada: se pide una vez por montado y listo,
- * porque cada tanda cuesta varios pedidos al catálogo y esto no es más que
+ * porque cada pieza cuesta varios pedidos al catálogo y esto no es más que
  * un aperitivo de la radio.
  */
 function ParaVos({
@@ -870,42 +890,187 @@ function ParaVos({
   menuForSong: (item: HomeItem) => MenuItem[]
   pendingId: string | null
 }) {
-  const [tanda, setTanda] = useState<PlaylistTrack[] | null>(null)
+  /* La tanda global; `null` es «todavía no llegó», `[]` ya sería «no hay». */
+  const [radio, setRadio] = useState<PlaylistTrack[] | null>(null)
+  const [mixes, setMixes] = useState<MixPersonal[] | null>(null)
 
   useEffect(() => {
     let alive = true
-    proximasRecomendadas().then((tracks) => {
+    void (async () => {
+      const [tanda, personales] = await Promise.all([
+        proximasRecomendadas(),
+        mezclasPersonales(6),
+      ])
       /* Un pedido abortado devuelve vacío; solo cuenta si llegó entero. */
-      if (alive && tracks.length) setTanda(tracks)
-    })
+      if (!alive) return
+      if (tanda.length) setRadio(tanda)
+      if (personales.length) setMixes(personales)
+    })()
     return () => {
       alive = false
     }
   }, [])
 
-  if (!tanda?.length) return null
+  const soundingTrack = usePlaybackTrack()
+  const wantPlay = useWantPlay()
+  const originId = usePlaybackOriginId()
 
-  const items: HomeItem[] = tanda.map((t) => ({
-    kind: 'song',
-    id: t.videoId,
-    title: t.title,
-    subtitle: t.artist,
-    artworkUrl: t.artworkUrl ?? '',
-    artistId: t.artistId,
-    year: null,
-  }))
+  if (!radio?.length && !mixes?.length) return null
+
+  const sonandoRadio = originId === ORIGEN_RADIO && !!soundingTrack
+  const tocarRadio = () => {
+    /* Ya es tu cola: tocarla pausa o sigue, como cualquier colección. */
+    if (sonandoRadio) {
+      togglePlayback()
+      return
+    }
+    if (radio?.length) playQueue(radio, 0, { id: ORIGEN_RADIO, name: 'Tu radio' })
+  }
+
+  const itemsTanda: HomeItem[] | null = radio?.length
+    ? radio.map((t) => ({
+        kind: 'song' as const,
+        id: t.videoId,
+        title: t.title,
+        subtitle: t.artist,
+        artworkUrl: t.artworkUrl ?? '',
+        artistId: t.artistId,
+        year: null,
+      }))
+    : null
+
+  const taparMix = (mix: MixPersonal) => {
+    void tandaDeMix({ artist_id: mix.artist_id, artist: mix.artist, ms: 1 }).then((tanda) => {
+      if (tanda.length)
+        playQueue(tanda, 0, { id: `mix:${mix.artist_id}`, name: `Mix de ${mix.artist}` })
+    })
+  }
 
   return (
     <View className="gap-3">
       <Text className="px-6 text-foreground text-[19px] font-bold">Hecho para vos</Text>
+      {/* Radio y mixes comparten carrusel: la tarjeta grande abre la fila y
+          los mixes la siguen, como el hero + tiles de Apple Music. */}
       <FadingRow gap={16} padding={24}>
-        <SongColumns
-          items={items}
-          onPlay={onPlaySong}
-          menuFor={menuForSong}
-          pendingId={pendingId}
-        />
+        {radio?.length ? (
+          <TarjetaRadio
+            tapa={radio[0].artworkUrl ?? ''}
+            sonando={sonandoRadio}
+            playing={wantPlay}
+            onPress={tocarRadio}
+          />
+        ) : null}
+        {(mixes ?? []).map((mix) => (
+          <TarjetaMix key={mix.artist_id} mix={mix} onPress={() => taparMix(mix)} />
+        ))}
       </FadingRow>
+      {itemsTanda ? (
+        <FadingRow gap={16} padding={24}>
+          <SongColumns
+            items={itemsTanda}
+            onPlay={onPlaySong}
+            menuFor={menuForSong}
+            pendingId={pendingId}
+          />
+        </FadingRow>
+      ) : null}
     </View>
+  )
+}
+
+/** Lado de la tarjeta de radio: la misma medida que la vidriera. */
+const RADIO_LADO = CARD_GRANDE
+
+/**
+ * La tarjeta de Tu radio: la tapa de la primera canción, el botón encima.
+ *
+ * El color lo trae la imagen y el velo oscuro garantiza la lectura, igual que
+ * en las tarjetas de género; el botón centrado dice sin palabras que acá se
+ * toca para escuchar, no para abrir nada.
+ */
+function TarjetaRadio({
+  tapa,
+  sonando,
+  playing,
+  onPress,
+}: {
+  tapa: string
+  /** Esta cola es la que está sonando ahora mismo. */
+  sonando: boolean
+  playing: boolean
+  onPress: () => void
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={sonando && playing ? 'Pausar tu radio' : 'Reproducir tu radio'}
+      onPress={onPress}
+      className="gap-2 active:opacity-80"
+      style={{ width: RADIO_LADO }}
+    >
+      <View
+        className="overflow-hidden rounded-lg bg-card"
+        style={{ width: RADIO_LADO, height: RADIO_LADO }}
+      >
+        {tapa ? (
+          <Image
+            source={{ uri: proxiedImage(artworkUrlAtSize(tapa, 400)) }}
+            style={{ width: RADIO_LADO, height: RADIO_LADO }}
+          />
+        ) : (
+          <View className="flex-1 items-center justify-center">
+            <IconMusic size={26} color={ICON_COLOR.muted} />
+          </View>
+        )}
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.28)', 'rgba(0,0,0,0.78)']}
+          locations={[0.35, 0.62, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View className="absolute inset-0 items-center justify-center">
+          <View className="h-16 w-16 items-center justify-center rounded-full bg-black/45">
+            {sonando && playing ? (
+              <IconPause size={24} color="#fff" />
+            ) : (
+              <View style={{ paddingLeft: 3 }}>
+                <IconPlay size={24} color="#fff" />
+              </View>
+            )}
+          </View>
+        </View>
+        <Text
+          numberOfLines={1}
+          className="absolute bottom-2.5 left-3 right-3 text-foreground text-[15px] font-bold"
+          style={{ textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 6 }}
+        >
+          Tu radio
+        </Text>
+      </View>
+      <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+        según tus me gusta y tus listas
+      </Text>
+    </Pressable>
+  )
+}
+
+/**
+ * Un mix de artista, con la forma de las tarjetas de álbum.
+ *
+ * Se distingue de un disco en el título («Mix de …») y en el comportamiento:
+ * tocarlo no abre página alguna, pone la cola a sonar — el mix es un destino
+ * audible, no una pantalla más que atravesar.
+ */
+function TarjetaMix({ mix, onPress }: { mix: MixPersonal; onPress: () => void }) {
+  return (
+    <Card item={{
+      kind: 'playlist',
+      id: `mix:${mix.artist_id}`,
+      title: `Mix de ${mix.artist}`,
+      subtitle: mix.artist,
+      artworkUrl: mix.artworkUrl,
+      artistId: null,
+      year: null,
+    }} width={CARD} onPress={onPress} />
   )
 }

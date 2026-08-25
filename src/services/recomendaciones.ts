@@ -1,6 +1,7 @@
 import { getSupabase } from '../lib/supabase'
 import { fetchArtist, resolveSong, type TrackResult } from './music'
-import type { PlaylistTrack } from './playlists'
+import { listarMeGusta } from './gustos'
+import { listPlaylists, listTracks, type PlaylistTrack } from './playlists'
 
 /**
  * Con qué seguir cuando se termina la lista.
@@ -98,6 +99,43 @@ async function anclasDeSemillas(): Promise<ArtistaEscuchado[]> {
     return ((data ?? []) as { ref: string; name: string }[])
       .filter((s) => s.ref)
       .map((s) => ({ artist_id: s.ref, artist: s.name || s.ref, ms: MS_POR_SEMILLA }))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Los artistas de **tus listas**, en la moneda de las anclas.
+ *
+ * Las playlists son gusto dicho con trabajo: alguien armó esa lista canción por
+ * canción. Cada artista pesa lo que dura su música adentro de todas tus listas
+ * sumadas — una lista entera de alguien cuenta más que tres corazones sueltos,
+ * y es justo lo que uno espera: el corazón dice «esto me gusta», la lista dice
+ * «esto va junto».
+ *
+ * Devuelve vacío ante cualquier tropiezo, igual que las semillas.
+ */
+async function anclasDeListas(): Promise<ArtistaEscuchado[]> {
+  try {
+    const listas = await listPlaylists()
+    const porArtista = new Map<string, ArtistaEscuchado>()
+    await Promise.all(
+      listas.map(async (lista) => {
+        const temas = await listTracks(lista.id)
+        for (const t of temas) {
+          if (!t.artistId) continue
+          const previo = porArtista.get(t.artistId)
+          if (previo) previo.ms += Math.max(1, t.durationMs)
+          else
+            porArtista.set(t.artistId, {
+              artist_id: t.artistId,
+              artist: t.artist,
+              ms: Math.max(1, t.durationMs),
+            })
+        }
+      }),
+    )
+    return [...porArtista.values()]
   } catch {
     return []
   }
@@ -404,7 +442,20 @@ export async function proximasRecomendadas(
       if (previo) continue /* ya es un artista real: el reloj pesa más. */
       porIdSemilla.set(s.artist_id, s)
     }
-    const conSemillas = [...porIdSemilla.values()]
+
+    /*
+     * Tus listas entran al sorteo con su peso de duración (ver
+     * `anclasDeListas`): lo que armaste a mano dice tanto como lo que escuchás,
+     * y la radio que solo miraba el reloj ignoraba justo la parte curada.
+     */
+    const delistas = await anclasDeListas()
+    const porIdListas = new Map([...porIdSemilla.values()].map((a) => [a.artist_id, { ...a }]))
+    for (const a of delistas) {
+      const previo = porIdListas.get(a.artist_id)
+      if (previo) previo.ms += a.ms
+      else porIdListas.set(a.artist_id, a)
+    }
+    const conSemillas = [...porIdListas.values()]
 
     /* Mitad lo que estás escuchando, mitad lo que sos. Ver `mezclarConLaCola`. */
     const candidatos = mezclarConLaCola(conSemillas, delaCola)
@@ -425,20 +476,7 @@ export async function proximasRecomendadas(
 
     /* Sin resolver: la tanda entra a la cola ya mismo, con el audio en blanco.
        El motor lo trae cuando le toque sonar (ver `MotorAudio`). */
-    if (!opciones.resolver) {
-      return elegidas.map((track) => ({
-        id: `radio:${track.videoId}`,
-        videoId: track.videoId,
-        title: track.title,
-        artist: track.artist,
-        artistId: track.artistId,
-        artworkUrl: track.artworkUrl,
-        artworkPath: null,
-        audioPath: '',
-        durationMs: track.durationMs,
-        truePeak: undefined,
-      }))
-    }
+    if (!opciones.resolver) return sinResolver(elegidas)
 
     /*
      * Resolver es traer el audio a Storage, y la primera vez de cada tema es un
@@ -468,6 +506,99 @@ export async function proximasRecomendadas(
     )
 
     return resueltas.filter((t): t is PlaylistTrack => t !== null)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Una tanda de resultados convertida en cola, **sin audio**.
+ *
+ * Es el formato que comparten todas las salidas del motor: la cola la acepta
+ * al toque y el motor de audio baja cada canción recién cuando va a sonar.
+ */
+function sinResolver(elegidas: TrackResult[]): PlaylistTrack[] {
+  return elegidas.map((track) => ({
+    id: `radio:${track.videoId}`,
+    videoId: track.videoId,
+    title: track.title,
+    artist: track.artist,
+    artistId: track.artistId,
+    artworkUrl: track.artworkUrl,
+    artworkPath: null,
+    audioPath: '',
+    durationMs: track.durationMs,
+    truePeak: undefined,
+  }))
+}
+
+/** Un mix de la portada: un artista tuyo y su tapa. */
+export type MixPersonal = {
+  artist_id: string
+  artist: string
+  /** La carátula de una canción suya, para la tarjeta. */
+  artworkUrl: string
+}
+
+/**
+ * Tus mixes personales: los artistas que más pesan en tu biblioteca.
+ *
+ * La biblioteca son dos fuentes y las dos dicen cosas distintas: los corazones
+ * (peso fijo por canción, ver `MS_POR_GUSTO`) y tus listas (peso por duración,
+ * ver `anclasDeListas`). Sumadas en una sola bolsa dan el ránking con el que se
+ * arman los mixes de «Hecho para vos» — el mismo criterio de la radio, pero
+ * visto como catálogo para tocar.
+ */
+export async function mezclasPersonales(cuantas = 6): Promise<MixPersonal[]> {
+  try {
+    const porArtista = new Map<string, { ancla: ArtistaEscuchado; artworkUrl: string }>()
+    const sumar = (t: { artistId: string | null; artist: string; durationMs: number; artworkUrl?: string }) => {
+      if (!t.artistId) return
+      const peso = Math.max(1, t.durationMs)
+      const previo = porArtista.get(t.artistId)
+      if (previo) previo.ancla.ms += peso
+      else
+        porArtista.set(t.artistId, {
+          ancla: { artist_id: t.artistId, artist: t.artist, ms: peso },
+          /* La primera carátula que llega sirve de tapa: es de una canción
+             real del artista, que es lo único que la tarjeta promete. */
+          artworkUrl: t.artworkUrl ?? '',
+        })
+    }
+
+    for (const g of await listarMeGusta()) sumar(g)
+    for (const a of await anclasDeListas())
+      sumar({ artistId: a.artist_id, artist: a.artist, durationMs: a.ms })
+
+    return [...porArtista.values()]
+      .sort((x, y) => y.ancla.ms - x.ancla.ms)
+      .slice(0, cuantas)
+      .map(({ ancla, artworkUrl }) => ({
+        artist_id: ancla.artist_id,
+        artist: ancla.artist,
+        artworkUrl,
+      }))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * La tanda de un mix: la radio entera arrancando de **un** artista tuyo.
+ *
+ * Mismo núcleo de siempre (`recomendarDesdeAnclas`) con una sola ancla: mitad
+ * suyo, mitad exploración desde sus relacionados. Sin vetados porque el mix es
+ * una cola nueva — no viene reemplazando nada.
+ */
+export async function tandaDeMix(ancla: ArtistaEscuchado): Promise<PlaylistTrack[]> {
+  try {
+    const elegidas = await recomendarDesdeAnclas(
+      [ancla],
+      new Set(),
+      POR_TANDA,
+      Math.floor(POR_TANDA / 2),
+    )
+    return sinResolver(elegidas)
   } catch {
     return []
   }
