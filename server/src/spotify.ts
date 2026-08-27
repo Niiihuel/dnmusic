@@ -28,6 +28,8 @@
  * para ese día es pegar la lista a mano, que el cliente ya sabe hacer.
  */
 
+import { createHmac, randomUUID } from 'node:crypto'
+
 /** Cuántas canciones sirve la página de embed, medido. No hay paginado. */
 export const TOPE_EMBED = 100
 
@@ -224,6 +226,266 @@ function entidadDe(html: string): EntidadEmbed | null {
 }
 
 /**
+ * El camino largo: una lista de cualquier tamaño, no solo los primeros 100.
+ *
+ * El embed tapa en 100 y no pagina. Para el resto hay un solo camino sin login:
+ * el mismo que usa el **reproductor web** de Spotify —su API interna
+ * `api-partner.spotify.com/pathfinder`, que sí pagina—. No es una API pública;
+ * es replicar lo que hace la página. Está medido de punta a punta.
+ *
+ * La cadena tiene cuatro piezas y Spotify rota las cuatro sin avisar:
+ *
+ *   1. Un **TOTP**. El endpoint que da el token pide un código de seis dígitos
+ *      generado con un secreto que Spotify cambia cada tanto (es lo que rompió a
+ *      spotDL en febrero de 2026). El secreto no se hardcodea: se baja de un
+ *      repo de la comunidad que lo mantiene al día, y se usa la versión más alta.
+ *   2. El **access token** del web player, que sale de `/api/token` con ese TOTP.
+ *   3. El **client token**, de `clienttoken.spotify.com`, atado al client id del
+ *      web player (el del embed no sirve, está medido).
+ *   4. El **hash** de la consulta `fetchPlaylist`, que versiona el bundle del
+ *      reproductor. Va hardcodeado abajo; si Spotify lo cambia, esto falla y se
+ *      cae al embed.
+ *
+ * Por eso **todo esto es de mejor esfuerzo**: cualquier eslabón que falle
+ * devuelve `null` y quien llama se queda con los 100 del embed y el pegado a
+ * mano —exactamente lo de antes, nunca peor. Cuando funciona, trae la lista
+ * entera.
+ */
+const SECRETOS_URL =
+  'https://raw.githubusercontent.com/xyloflake/spot-secrets-go/main/secrets/secretDict.json'
+/** El id de la consulta de playlist del reproductor web. Rota; ver arriba. */
+const FETCH_PLAYLIST_HASH =
+  '86dde7b9d9356e2369414647cf6950cfed96e778e129cfdfc99aea6c1613b3b0'
+/** Cuántas pide cada página del pathfinder. 100 es el máximo que sirve. */
+const PAGINA_PATHFINDER = 100
+/** Un techo de sensatez: nadie importa una lista de diez mil a mano tampoco. */
+const TOPE_PATHFINDER = 10_000
+
+/** El secreto del TOTP, cacheado. Se rebaja de la comunidad una vez por proceso. */
+let secretoCache: { ver: number; bytes: number[] } | null = null
+
+async function secretoTotp(): Promise<{ ver: number; bytes: number[] } | null> {
+  if (secretoCache) return secretoCache
+  try {
+    const res = await fetch(SECRETOS_URL, { headers: { 'User-Agent': NAVEGADOR } })
+    if (!res.ok) return null
+    const dict = (await res.json()) as Record<string, number[]>
+    // La versión más alta es la vigente; las viejas quedan por compatibilidad.
+    const ver = Math.max(...Object.keys(dict).map(Number).filter(Number.isFinite))
+    const bytes = dict[String(ver)]
+    if (!Array.isArray(bytes) || !bytes.length) return null
+    secretoCache = { ver, bytes }
+    return secretoCache
+  } catch {
+    return null
+  }
+}
+
+/** Base32 de un buffer, sin padding (lo que espera el generador de TOTP). */
+function base32(buf: Buffer): string {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  let bits = 0
+  let val = 0
+  let out = ''
+  for (const b of buf) {
+    val = (val << 8) | b
+    bits += 8
+    while (bits >= 5) {
+      out += A[(val >>> (bits - 5)) & 31]
+      bits -= 5
+    }
+  }
+  if (bits > 0) out += A[(val << (5 - bits)) & 31]
+  return out
+}
+
+/**
+ * El código TOTP para un instante dado.
+ *
+ * El secreto no se usa tal cual: cada byte se transforma (`b ^ (i%33 + 9)`), la
+ * tira de números resultante se pasa a hex y de ahí a base32. Es la receta de
+ * Spotify, ni más ni menos; el porqué de cada paso es de ellos. Después es un
+ * TOTP común (RFC 6238): HMAC-SHA1 sobre el contador de 30 segundos, seis
+ * dígitos.
+ */
+function generarTotp(bytes: number[], segundos: number): string {
+  const transformado = bytes.map((e, i) => e ^ ((i % 33) + 9)).join('')
+  const secreto = base32(Buffer.from(Buffer.from(transformado, 'utf8').toString('hex'), 'hex'))
+
+  // decodificar el base32 a la clave binaria del HMAC
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  let bits = 0
+  let val = 0
+  const clave: number[] = []
+  for (const c of secreto) {
+    val = (val << 5) | A.indexOf(c)
+    bits += 5
+    if (bits >= 8) {
+      clave.push((val >>> (bits - 8)) & 0xff)
+      bits -= 8
+    }
+  }
+
+  let contador = Math.floor(segundos / 30)
+  const cb = Buffer.alloc(8)
+  for (let i = 7; i >= 0; i--) {
+    cb[i] = contador & 0xff
+    contador = Math.floor(contador / 256)
+  }
+  const h = createHmac('sha1', Buffer.from(clave)).update(cb).digest()
+  const o = h[19] & 0xf
+  const bin = ((h[o] & 0x7f) << 24) | ((h[o + 1] & 0xff) << 16) | ((h[o + 2] & 0xff) << 8) | (h[o + 3] & 0xff)
+  return String(bin % 1_000_000).padStart(6, '0')
+}
+
+type SesionSpotify = { accessToken: string; clientToken: string; expira: number }
+let sesionCache: SesionSpotify | null = null
+
+/**
+ * Un access token + client token del reproductor web, listos para el pathfinder.
+ *
+ * Se cachea: el access token vale una hora, así que una ráfaga de importaciones
+ * no rehace el trámite —ni el TOTP, ni las dos llamadas— cada vez. Con margen,
+ * se rehace a los cincuenta minutos.
+ */
+async function sesionPathfinder(): Promise<SesionSpotify | null> {
+  if (sesionCache && Date.now() < sesionCache.expira) return sesionCache
+
+  const secreto = await secretoTotp()
+  if (!secreto) return null
+
+  try {
+    // El TOTP se calcula contra la hora del servidor de Spotify, no la nuestra:
+    // un reloj local corrido tiraría un código inválido.
+    const cabecera = await fetch('https://open.spotify.com/', { headers: { 'User-Agent': NAVEGADOR } })
+    const horaServidor = new Date(cabecera.headers.get('date') ?? Date.now()).getTime()
+    const totp = generarTotp(secreto.bytes, Math.floor(horaServidor / 1000))
+
+    const tokRes = await fetch(
+      `https://open.spotify.com/api/token?reason=init&productType=web-player&totp=${totp}&totpServer=${totp}&totpVer=${secreto.ver}`,
+      { headers: { 'User-Agent': NAVEGADOR, Referer: 'https://open.spotify.com/', Origin: 'https://open.spotify.com' } },
+    )
+    const tok = (await tokRes.json().catch(() => null)) as { accessToken?: string; clientId?: string } | null
+    if (!tok?.accessToken || !tok.clientId) return null
+
+    const ctRes = await fetch('https://clienttoken.spotify.com/v1/clienttoken', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': NAVEGADOR },
+      body: JSON.stringify({
+        client_data: {
+          client_version: '1.2.99',
+          client_id: tok.clientId,
+          js_sdk_data: {
+            device_brand: 'unknown',
+            device_model: 'unknown',
+            os: 'windows',
+            os_version: 'NT 10.0',
+            device_id: randomUUID(),
+            device_type: 'computer',
+          },
+        },
+      }),
+    })
+    const ct = (await ctRes.json().catch(() => null)) as { granted_token?: { token?: string } } | null
+    const clientToken = ct?.granted_token?.token
+    if (!clientToken) return null
+
+    sesionCache = { accessToken: tok.accessToken, clientToken, expira: Date.now() + 50 * 60_000 }
+    return sesionCache
+  } catch {
+    return null
+  }
+}
+
+/** Un track del pathfinder, tal como viene anidado, mapeado a lo nuestro. */
+type ItemPathfinder = {
+  itemV2?: {
+    data?: {
+      __typename?: string
+      uri?: string
+      name?: string
+      trackDuration?: { totalMilliseconds?: number }
+      artists?: { items?: { profile?: { name?: string } }[] }
+    }
+  }
+}
+
+function pistaDePathfinder(item: ItemPathfinder): PistaSpotify | null {
+  const d = item.itemV2?.data
+  const titulo = (d?.name ?? '').trim()
+  if (!titulo || d?.__typename !== 'Track') return null
+  return {
+    uri: d.uri ?? '',
+    titulo,
+    artista: (d.artists?.items ?? []).map((a) => a.profile?.name).filter(Boolean).join(', '),
+    durationMs: d.trackDuration?.totalMilliseconds ?? 0,
+    // El pathfinder no trae el preview de 30s; el embed sí, pero por el camino
+    // largo ese extra se resigna. Emparejar contra YouTube no lo necesita.
+    previewUrl: null,
+  }
+}
+
+/**
+ * Todas las pistas de una lista, paginando el pathfinder.
+ *
+ * De mejor esfuerzo: `null` ante cualquier tropiezo —sin sesión, hash cambiado,
+ * un 4xx— para que `leerLista` se quede con lo del embed. Cuando anda, devuelve
+ * la lista completa en orden.
+ */
+async function pistasCompletas(playlistId: string): Promise<PistaSpotify[] | null> {
+  const sesion = await sesionPathfinder()
+  if (!sesion) return null
+
+  type ContenidoPathfinder = { totalCount?: number; items?: ItemPathfinder[] }
+  const pistas: PistaSpotify[] = []
+  for (let offset = 0; offset < TOPE_PATHFINDER; offset += PAGINA_PATHFINDER) {
+    let contenido: ContenidoPathfinder | null = null
+    try {
+      const res = await fetch('https://api-partner.spotify.com/pathfinder/v1/query', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${sesion.accessToken}`,
+          'client-token': sesion.clientToken,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'app-platform': 'WebPlayer',
+          'User-Agent': NAVEGADOR,
+          Origin: 'https://open.spotify.com',
+          Referer: 'https://open.spotify.com/',
+        },
+        body: JSON.stringify({
+          operationName: 'fetchPlaylist',
+          variables: {
+            uri: `spotify:playlist:${playlistId}`,
+            offset,
+            limit: PAGINA_PATHFINDER,
+            // El hash las exige aunque no las usemos; sin ellas contesta 400.
+            enableWatchFeedEntrypoint: false,
+            includeEpisodeContentRatingsV2: true,
+          },
+          extensions: { persistedQuery: { version: 1, sha256Hash: FETCH_PLAYLIST_HASH } },
+        }),
+      })
+      if (!res.ok) return offset === 0 ? null : pistas
+      const json = (await res.json()) as { data?: { playlistV2?: { content?: ContenidoPathfinder } } }
+      contenido = json.data?.playlistV2?.content ?? null
+    } catch {
+      return offset === 0 ? null : pistas
+    }
+    if (!contenido) return offset === 0 ? null : pistas
+
+    for (const item of contenido.items ?? []) {
+      const pista = pistaDePathfinder(item)
+      if (pista) pistas.push(pista)
+    }
+
+    const total = contenido.totalCount ?? 0
+    if (!contenido.items?.length || offset + PAGINA_PATHFINDER >= total) break
+  }
+  return pistas
+}
+
+/**
  * La lista, lista para emparejar.
  *
  * Los errores se redactan pensando en quien los va a leer en la pantalla, no en
@@ -271,12 +533,29 @@ export async function leerLista(entrada: string): Promise<ListaSpotify> {
     ]
   })
 
+  /*
+   * Si el embed tapó en 100 y es una lista, se intenta traerla entera por el
+   * camino largo. El embed ya nos dio los metadatos ricos —nombre, portada,
+   * autor— y sirve de fallback: si `pistasCompletas` no puede, la lista queda
+   * con sus 100 y `truncada: true`, igual que antes. Solo las listas se
+   * paginan; un álbum de más de 100 pistas no existe.
+   */
+  let pistasFinales = pistas
+  let truncada = crudas.length >= TOPE_EMBED
+  if (truncada && referencia.tipo === 'playlist') {
+    const completas = await pistasCompletas(referencia.id)
+    if (completas && completas.length > pistas.length) {
+      pistasFinales = completas
+      truncada = false
+    }
+  }
+
   return {
     id: entidad.id ?? referencia.id,
     nombre: (entidad.name ?? entidad.title ?? 'Lista de Spotify').trim(),
     autor: (entidad.subtitle ?? '').trim(),
     portadaUrl: entidad.coverArt?.sources?.[0]?.url ?? null,
-    pistas,
-    truncada: crudas.length >= TOPE_EMBED,
+    pistas: pistasFinales,
+    truncada,
   }
 }
