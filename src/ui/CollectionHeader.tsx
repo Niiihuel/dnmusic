@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import { Text, useWindowDimensions, View } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
+import { conAlfa } from '../lib/colorPortada'
 
 /** Debajo de esto la cabecera se apila y se centra. */
 const ANGOSTO_PX = 640
@@ -35,6 +37,8 @@ export function CollectionHeader({
   meta,
   insignia,
   actions,
+  tint,
+  bleedTop = 0,
 }: {
   /** La tapa o la foto, ya con su forma y su tamaño resueltos. */
   image: ReactNode
@@ -54,12 +58,24 @@ export function CollectionHeader({
   insignia?: ReactNode
   /** El botón redondo y los tres puntos. */
   actions?: ReactNode
+  /**
+   * El color de la portada, para el degradado de arriba (ver `useColorPortada`).
+   * Sin él la cabecera queda en el fondo liso de siempre.
+   */
+  tint?: string | null
+  /**
+   * Cuánto sube el degradado por detrás del encabezado que flota. En el
+   * teléfono vale el alto del velo, así el color asoma tras la hora y la señal
+   * como en Spotify; en escritorio, 0.
+   */
+  bleedTop?: number
 }) {
   const angosto = useAngosto()
 
   if (angosto) {
     return (
       <View className="items-center gap-3 px-6 pb-5 pt-4">
+        {tint ? <Tinte color={tint} bleedTop={bleedTop} /> : null}
         {image}
         <View className="flex-row items-center gap-2">
           <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.4px]">
@@ -80,6 +96,7 @@ export function CollectionHeader({
 
   return (
     <View>
+      {tint ? <Tinte color={tint} bleedTop={bleedTop} /> : null}
       <View className="flex-row items-end gap-5 px-6 pb-5 pt-6">
         {image}
         <View className="min-w-0 flex-1 gap-2 pb-1">
@@ -101,6 +118,24 @@ export function CollectionHeader({
         <View className="flex-row items-center gap-3 px-6 pb-5">{actions}</View>
       ) : null}
     </View>
+  )
+}
+
+/**
+ * El degradado de la cabecera: el color de la portada arriba, esfumándose a
+ * nada. Va detrás del contenido —queda `pointerEvents="none"`— y puede subir
+ * por detrás del velo que flota (`bleedTop`) para que el color no arranque de
+ * golpe bajo la hora, como en Spotify. Tres paradas para que la caída sea
+ * suave y no una banda dura.
+ */
+function Tinte({ color, bleedTop }: { color: string; bleedTop: number }) {
+  return (
+    <LinearGradient
+      pointerEvents="none"
+      colors={[conAlfa(color, 0.55), conAlfa(color, 0.14), 'transparent']}
+      locations={[0, 0.6, 1]}
+      style={{ position: 'absolute', left: 0, right: 0, top: -bleedTop, height: 360 + bleedTop }}
+    />
   )
 }
 

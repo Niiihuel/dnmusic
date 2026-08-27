@@ -4,6 +4,7 @@ import { artworkSource } from '../lib/artwork'
 import {
   listTracks,
   removeTrack,
+  coverUrl,
   type Playlist,
   type PlaylistTrack,
   type Visibilidad,
@@ -31,6 +32,7 @@ import { FormError } from './Button'
 import { CollectionHeader, CollectionTitle, Insignia, useAngosto, useCoverSize } from './CollectionHeader'
 import { TECLADO_FISICO } from '../lib/teclado'
 import { compartirLista } from '../lib/compartirLista'
+import { useColorPortada } from '../lib/colorPortada'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
 import { Vacio } from './Vacio'
@@ -337,6 +339,19 @@ export function PlaylistView({
      y pasa por detrás del velo al desplazar. En escritorio vale 0. */
   const techo = useTecho()
   const colapso = useColapso()
+  /*
+   * De qué imagen sale el color de la cabecera: la portada propia si la hay,
+   * si no la primera tapa del mosaico. Es la misma que dibuja `PlaylistCover`,
+   * así el degradado y la tapa hablan del mismo color.
+   */
+  const portadaUri =
+    coverUrl(playlist.coverPath) ??
+    (playlist.covers[0]
+      ? playlist.covers[0].startsWith('http')
+        ? playlist.covers[0]
+        : artworkSource(playlist.covers[0], null, 240)
+      : null)
+  const tint = useColorPortada(portadaUri)
   const publica = playlist.visibilidad === 'publica'
   /*
    * Qué se puede hacer con esta lista, según de quién sea.
@@ -476,6 +491,8 @@ export function PlaylistView({
           ListHeaderComponent={
             <Header
               playlist={playlist}
+              tint={tint}
+              bleedTop={techo}
               renaming={renaming === playlist.id}
               onRenamed={async (next) => {
                 setRenaming(null)
@@ -580,6 +597,8 @@ export function PlaylistView({
 /** La cabecera grande: portada, nombre y los controles de la lista. */
 function Header({
   playlist,
+  tint,
+  bleedTop,
   renaming,
   onRenamed,
   total,
@@ -594,6 +613,8 @@ function Header({
   children,
 }: {
   playlist: Playlist
+  tint: string | null
+  bleedTop: number
   renaming: boolean
   /** `null` cancela sin guardar. */
   onRenamed: (name: string | null) => void
@@ -621,6 +642,8 @@ function Header({
     <View>
       <CollectionHeader
         kind="Lista"
+        tint={tint}
+        bleedTop={bleedTop}
         /* Publicada se dice arriba, al lado del rótulo: es qué clase de lista
            es, no un dato más de la lista. */
         insignia={

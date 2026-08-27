@@ -10,6 +10,8 @@ import {
   useWantPlay,
 } from '../state/playback'
 import { CollectionHeader, CollectionTitle, useCoverSize } from './CollectionHeader'
+import { useColorPortada } from '../lib/colorPortada'
+import { useTecho } from '../state/shell'
 import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { avisar } from '../state/aviso'
@@ -82,6 +84,13 @@ export function AlbumPanel({
   /* El aleatorio es global —una sola cola suena a la vez—, como en una lista
      propia: se lee del store por su selector y no viaja como prop. */
   const aleatorio = useShuffle()
+  const techo = useTecho()
+  /* El color de la cabecera sale de la tapa; se lee antes de los returns de
+     carga para no romper el orden de hooks. Ver `useColorPortada`. */
+  const tapaUri = loaded?.info
+    ? artworkSource(loaded.info.artworkPath, loaded.info.artworkUrl, 640)
+    : null
+  const tint = useColorPortada(tapaUri)
 
   useEffect(() => {
     if (fresh) return
@@ -172,6 +181,8 @@ export function AlbumPanel({
     <View className="pb-6">
       <CollectionHeader
         kind={kind === 'album' ? 'Álbum' : 'Lista'}
+        tint={tint}
+        bleedTop={techo}
         title={<CollectionTitle>{album.title}</CollectionTitle>}
         meta={[
           album.artist,

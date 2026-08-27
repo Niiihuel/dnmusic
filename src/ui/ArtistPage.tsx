@@ -11,6 +11,8 @@ import {
 } from '../services/music'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { CollectionHeader, CollectionTitle, useCoverSize } from './CollectionHeader'
+import { useColorPortada } from '../lib/colorPortada'
+import { useTecho } from '../state/shell'
 import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { avisar } from '../state/aviso'
@@ -78,6 +80,13 @@ export function ArtistPage({
 
   const sounding = usePlaybackTrack()
   const soundingPlay = useWantPlay()
+  const techo = useTecho()
+  /* El tinte de la cabecera sale de la foto; se lee antes de los returns de
+     carga para no romper el orden de hooks. Ver `useColorPortada`. */
+  const fotoUri = loaded?.info
+    ? artworkSource(loaded.info.photoPath, loaded.info.photoUrl, 1024)
+    : null
+  const tint = useColorPortada(fotoUri)
 
   useEffect(() => {
     if (fresh) return
@@ -208,6 +217,8 @@ export function ArtistPage({
       ) : (
       <CollectionHeader
         kind="Artista"
+        tint={tint}
+        bleedTop={techo}
         title={<CollectionTitle>{artist.name}</CollectionTitle>}
         meta={meta}
         image={
