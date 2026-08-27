@@ -243,7 +243,7 @@ export default function SongPicker() {
      * que se apoya ahí. Reservándolo acá se contaba dos veces.
      */
     <SafeAreaView
-      className={`flex-1 ${suelto ? 'bg-background' : 'bg-canvas'}`}
+      className="flex-1 bg-background"
       edges={['top']}
     >
       {/* Sin margen ni hueco en el teléfono: con un solo panel a la vista, el

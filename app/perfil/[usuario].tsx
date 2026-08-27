@@ -119,7 +119,7 @@ export default function PerfilAjeno() {
 
   return (
     <SafeAreaView
-      className={`flex-1 ${ancho ? 'bg-canvas' : 'bg-background'}`}
+      className="flex-1 bg-background"
       edges={ancho ? ['top', 'bottom'] : ['top']}
     >
       <View className={`flex-1 ${ancho ? 'gap-2 p-2' : ''}`}>

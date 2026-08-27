@@ -462,7 +462,7 @@ export default function Compose() {
    */
   return (
     <SafeAreaView
-      className={`flex-1 ${suelto ? 'bg-background' : 'bg-canvas'}`}
+      className="flex-1 bg-background"
       edges={['top', 'bottom']}
     >
       {/* Sin margen ni hueco en el teléfono: con un solo panel a la vista, el

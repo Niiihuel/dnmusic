@@ -151,6 +151,18 @@ la HIG de Liquid Glass y **corrige** al de Tahoe:
   eso mismo). La separación es un escalón de luminancia: los laterales
   —biblioteca, inspector— en `canvas` (negro), el contenido del medio en
   `background`. Lo decide `tone` en `src/ui/Panel.tsx`.
+- **Una pantalla es una sola superficie.** El `canvas` negro es *solo* de las
+  columnas laterales del layout; una pantalla de detalle —Ajustes, una lista, un
+  perfil, novedades— es una superficie continua en `background`, con su
+  encabezado incluido. Antes esas pantallas ponían el `canvas` negro de fondo y
+  el contenido en un panel `background`, así que el header quedaba flotando en un
+  negro más oscuro que su propio contenido: un corte horizontal negro→gris que
+  no separaba nada, solo ensuciaba. Es el criterio *base/elevated* de la HIG de
+  Apple —la vista que llena la pantalla es el nivel base, el contenido se separa
+  **elevándose** (las tarjetas y grupos en `card`), nunca hundiendo el fondo del
+  header. La pantalla inmersiva de «Sonando» es la excepción y a propósito:
+  negro pleno de borde a borde, sin nada que separar, como el *now playing* de
+  Apple Music.
 - **La barra de arriba es uniforme y está en el flujo**, no flotando sobre el
   contenido: es el cromo de la ventana, del mismo tono que los laterales.
 - **El vidrio es solo de la capa de controles**: los redondeles del encabezado,

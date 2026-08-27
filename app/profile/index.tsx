@@ -155,7 +155,7 @@ export default function ProfileScreen() {
     /* En el teléfono el fondo es el mismo del contenido; el negro puro es el de
        la ventana en escritorio, donde los paneles flotan. Ver `app/index.tsx`. */
     <SafeAreaView
-      className={`flex-1 ${ancho ? 'bg-canvas' : 'bg-background'}`}
+      className="flex-1 bg-background"
       /* En el teléfono el margen de abajo lo pone la barra de pestañas.
          Reservarlo también acá lo contaría dos veces. Y el de arriba tampoco
          va: el fondo del perfil pasa por detrás del reloj —el velo del layout

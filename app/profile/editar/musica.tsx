@@ -120,7 +120,7 @@ export default function BuscarParaPerfil() {
        flotan; en el teléfono el fondo es el mismo del contenido. Sin el borde de
        abajo cuando el campo va acá: ese margen lo pone él. Ver `app/song.tsx`. */
     <SafeAreaView
-      className={`flex-1 ${suelto ? 'bg-background' : 'bg-canvas'}`}
+      className="flex-1 bg-background"
       edges={['top']}
     >
       <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>

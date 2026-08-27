@@ -82,7 +82,7 @@ export default function Bloqueados() {
 
   return (
     <SafeAreaView
-      className={`flex-1 ${suelto ? 'bg-background' : 'bg-canvas'}`}
+      className="flex-1 bg-background"
       edges={suelto ? ['top'] : ['top', 'bottom']}
     >
       <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
