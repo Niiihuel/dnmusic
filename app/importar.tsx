@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useAudioPlayer } from 'expo-audio'
 import { Panel } from '../src/ui/Panel'
 import { Field, PLACEHOLDER_COLOR } from '../src/ui/Field'
@@ -401,7 +402,22 @@ function Entrada({
       contentContainerClassName={`min-h-full items-center justify-center ${suelto ? 'px-5 py-6' : 'px-6 py-10'}`}
       keyboardShouldPersistTaps="handled"
     >
-      <View className="w-full gap-8" style={{ maxWidth: aMano ? 480 : 400 }}>
+      {/*
+       * Una luz arriba, la misma del login.
+       *
+       * Del gris de `muted` al fondo, sin llegar nunca al blanco: le da
+       * profundidad a la mitad superior sin dibujar un borde, que es como Apple
+       * separa las capas —por luz, nunca por línea (docs/DESIGN.md)—. Es lo que
+       * hace que el formulario se lea como una tarjeta con aire propio en el
+       * panel enorme del escritorio, y no como un campo suelto en el vacío.
+       */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={['#1F1F1F', '#121212']}
+        locations={[0, 1]}
+        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 420 }}
+      />
+      <View className="w-full gap-10" style={{ maxWidth: aMano ? 480 : 400 }}>
         {/*
          * El encabezado del panel.
          *
@@ -409,17 +425,19 @@ function Entrada({
          * repite el nombre: se dice **qué va a pasar**, que es la duda real de
          * quien llega —si esto copia la lista o la recrea—.
          */}
-        <View className="items-center gap-4">
-          <View className="h-14 w-14 items-center justify-center rounded-full bg-muted">
-            <IconDownload size={22} color={ICON_COLOR.foreground} />
+        <View className="items-center gap-5">
+          {/* El ícono con más presencia: un redondel más grande y un aro sutil
+              alrededor, al modo de los glyphs de ajustes de iOS. */}
+          <View className="h-20 w-20 items-center justify-center rounded-full border border-border bg-card">
+            <IconDownload size={28} color={ICON_COLOR.foreground} />
           </View>
-          <View className="items-center gap-2">
-            <Text className="text-center text-foreground text-[22px] font-bold">
+          <View className="items-center gap-2.5">
+            <Text className="text-center text-foreground text-[24px] font-bold tracking-[-0.3px]">
               Tu lista, con tu música
             </Text>
-            <Text className="text-center text-muted-foreground text-[13px] leading-5">
-              Spotify no da el audio, así que la lista no se copia: se vuelve a armar acá
-              buscando cada canción por su nombre.
+            <Text className="max-w-[300px] text-center text-muted-foreground text-[14px] leading-[21px]">
+              Spotify no da el audio: la lista se rearma acá, buscando cada canción por su
+              nombre.
             </Text>
           </View>
         </View>
@@ -791,13 +809,17 @@ function usePrevio(): Previo {
     player.play()
   }, [url, player])
 
-  // Al irse de la pantalla no puede quedar nada sonando por detrás.
-  useEffect(
-    () => () => {
-      player.pause()
-    },
-    [player],
-  )
+  /*
+   * NO se llama `player.pause()` al desmontar, y esa ausencia es a propósito.
+   *
+   * Antes había un `useEffect(() => () => player.pause(), [player])`, y era el
+   * que cerraba la app en iOS al terminar de traer una lista de Spotify: al
+   * navegar afuera, ese cleanup corría `pause()` sobre el mismo `AVAudioPlayer`
+   * que expo-audio estaba liberando por el desmonte de `useAudioPlayer` —una
+   * carrera que en iOS es un `EXC_BAD_ACCESS`, no una excepción que se pueda
+   * atrapar—. expo-audio ya detiene el audio al cambiar la fuente y al liberar
+   * el player, así que el `pause()` a mano no cuidaba nada y sí crasheaba.
+   */
 
   return {
     sonando: url,
