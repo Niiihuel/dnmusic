@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.4.0",
+    "fecha": "27 de agosto de 2026",
+    "titulo": "Listas enteras, un login más limpio y el reproductor más prolijo",
+    "cambios": [
+      "Traer de Spotify ya no se queda en 100: las listas grandes se traen enteras, sin tener que pegar canción por canción. Si Spotify cambia algo de su lado, vuelve solo al modo de antes.",
+      "El volumen deja de resetearse cada vez que abrís la app, y el slider ahora tiene rango de verdad: subís de a poco en vez de saltar de bajo a fuerte.",
+      "Mientras una canción carga, el botón de play muestra que está trabajando; y si algo falla, te avisa en vez de quedarse mudo.",
+      "El login quedó más limpio y directo, con lo justo para entrar.",
+      "El ecualizador de la canción que suena se dibuja prolijo, sin esa línea rara.",
+      "En la computadora, cada pantalla es una sola superficie pareja en vez de tener el encabezado sobre un negro y el resto sobre un gris."
+    ]
+  },
+  {
     "version": "1.3.0",
     "fecha": "26 de agosto de 2026",
     "titulo": "Las canciones aparecen solas, y las actualizaciones se dejan ver",
