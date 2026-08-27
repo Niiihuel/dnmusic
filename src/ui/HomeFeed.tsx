@@ -6,6 +6,7 @@ import {
   fetchGenero,
   fetchGeneros,
   fetchHome,
+  fetchHomeGeneros,
   proxiedImage,
   type Genero,
   type HomeItem,
@@ -27,6 +28,7 @@ import {
   type MixPersonal,
 } from '../services/recomendaciones'
 import type { PlaylistTrack } from '../services/playlists'
+import { listarSemillas, type Semilla } from '../services/semillas'
 import { useColapso } from './useColapso'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
@@ -105,6 +107,28 @@ export function HomeFeed({
     return () => controller.abort()
   }, [sections])
 
+  /* Las filas tejidas de los géneros elegidos, arriba de la portada. Salen de
+     las semillas del onboarding —lo que la persona dijo que le gusta— y el
+     servidor las arma con las listas de cada género. Sin semillas, no hay filas
+     y el home es la portada de siempre. */
+  const [misGeneros, setMisGeneros] = useState<HomeSection[] | null>(null)
+  const [semillas, setSemillas] = useState<Semilla[]>([])
+
+  useEffect(() => {
+    if (misGeneros !== null) return
+    let vivo = true
+    void listarSemillas().then((ss) => {
+      if (!vivo) return
+      setSemillas(ss)
+      const soloGeneros = ss.filter((s) => s.kind === 'genero')
+      if (!soloGeneros.length) return setMisGeneros([])
+      fetchHomeGeneros(soloGeneros).then((secs) => vivo && setMisGeneros(secs))
+    })
+    return () => {
+      vivo = false
+    }
+  }, [misGeneros])
+
   useEffect(() => {
     if (generos !== null) return
     const controller = new AbortController()
@@ -180,23 +204,51 @@ export function HomeFeed({
         contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
         {...colapso}
       >
-        {sections === null ? (
+        {/*
+         * El home tiene dos mitades independientes: **lo tuyo** —«Hecho para
+         * vos» y las filas de tus géneros— y **la portada** de YouTube Music.
+         * La primera no depende de la segunda: antes, cuando la portada no
+         * llegaba, se comía también lo tuyo con un cartel de error a pantalla
+         * completa. Ahora lo tuyo se muestra igual, y la portada que falla es a
+         * lo sumo un renglón chico —o nada, si tenés con qué llenar el inicio.
+         */}
+        {sections === null && misGeneros === null ? (
           <Loading />
-        ) : sections.length === 0 ? (
-          /* Sin conexión lo dice como tal, con reintento; cualquier otra falla
-             también tiene salida. Volver a null dispara el efecto de nuevo. */
-          <VacioError
-            icono={<IconMusic size={22} color={ICON_COLOR.muted} />}
-            titulo="La portada no llegó"
-            detalle="No pude traer las novedades. Tus listas siguen donde siempre."
-            onReintentar={() => setSections(null)}
-          />
         ) : (
           <>
-            {/* «Hecho para vos» abre la portada: es lo único que habla de
-                quién sos, y va antes de lo que habla del mundo. */}
+            {/* «Hecho para vos» habla de quién sos, y va antes de lo que habla
+                del mundo. */}
             <ParaVos onPlaySong={onPlaySong} menuForSong={menuForSong} pendingId={pendingId} />
-            {sections.map((section, i) => (
+            {/* Lo tuyo: una fila de listas por cada género que elegiste. Tocar
+                «ver todo» abre la página del género, reconstruida desde la
+                semilla. */}
+            {misGeneros?.map((section) => (
+              <Section
+                key={`mio-${section.title}`}
+                section={section}
+                onOpen={() => {
+                  const semilla = semillas.find((s) => s.kind === 'genero' && s.name === section.title)
+                  if (semilla && onOpenGenero)
+                    onOpenGenero({ params: semilla.ref, name: semilla.name, artworkUrl: semilla.artworkUrl })
+                }}
+                onOpenAlbum={onOpenAlbum}
+                onOpenPlaylist={onOpenPlaylist}
+                onPlaySong={onPlaySong}
+                menuForSong={menuForSong}
+                pendingId={pendingId}
+              />
+            ))}
+            {/* La portada que no llegó solo grita si no hay nada más para
+                mostrar; con filas propias arriba, se calla. */}
+            {sections?.length === 0 && !misGeneros?.length ? (
+              <VacioError
+                icono={<IconMusic size={22} color={ICON_COLOR.muted} />}
+                titulo="La portada no llegó"
+                detalle="No pude traer las novedades. Tus listas siguen donde siempre."
+                onReintentar={() => setSections(null)}
+              />
+            ) : null}
+            {(sections ?? []).map((section, i) => (
               <Fragment key={section.title}>
                 <Section
                   section={section}

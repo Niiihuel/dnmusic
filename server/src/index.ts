@@ -10,6 +10,8 @@ import {
   getGenero,
   getGeneros,
   getHome,
+  getHomeGeneros,
+  type SemillaEntrada,
   getPlaylistInfo,
   resolveAudio,
   peaks,
@@ -429,6 +431,26 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/home' && req.method === 'GET') {
       return json(200, { sections: await getHome() })
+    }
+
+    /*
+     * El home tejido de los géneros que la persona eligió. Las semillas vienen
+     * en el cuerpo —el cliente ya las tiene, así que el servidor no toca la
+     * base— y se acotan a un puñado para no armar una portada infinita.
+     */
+    if (url.pathname === '/home-generos' && req.method === 'POST') {
+      const body = (await readJson(req)) as { semillas?: unknown }
+      const semillas = Array.isArray(body.semillas)
+        ? (body.semillas.filter(
+            (s): s is SemillaEntrada =>
+              typeof s === 'object' &&
+              s !== null &&
+              typeof (s as SemillaEntrada).ref === 'string' &&
+              typeof (s as SemillaEntrada).name === 'string',
+          ) as SemillaEntrada[])
+        : []
+      if (!semillas.length) return json(200, { sections: [] })
+      return json(200, { sections: await getHomeGeneros(semillas.slice(0, 20)) })
     }
 
     if (url.pathname === '/generos' && req.method === 'GET') {

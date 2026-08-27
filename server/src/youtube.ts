@@ -1469,3 +1469,43 @@ export async function getGenero(params: string): Promise<{ items: YtHomeItem[] }
   }
   return { items: [...unicos.values()] }
 }
+
+/** Una semilla del onboarding, tal como la guarda el cliente. */
+export type SemillaEntrada = { kind: string; ref: string; name: string }
+
+/**
+ * El home tejido de lo que la persona eligió, no la portada genérica.
+ *
+ * Por cada género que marcó en el onboarding se arma una fila con sus listas
+ * —lo que `getGenero` ya sabe traer—, y el cliente las pone arriba de la
+ * portada de YouTube Music: primero lo suyo, después lo nuevo para descubrir.
+ * Es el salto de una portada igual para todos a un inicio que arranca sonando
+ * a lo que dijo que le gusta.
+ *
+ * Sin cuenta de YouTube, como todo acá: sale de la misma sesión anónima que el
+ * resto. Las semillas viajan en el pedido —el cliente ya las tiene— así que el
+ * servidor no toca la base para esto.
+ *
+ * De mejor esfuerzo por fila: un `params` viejo que YouTube ya no reconoce
+ * devuelve vacío y esa fila no se dibuja, sin llevarse las demás. Se acota a
+ * seis géneros: más que eso es un home que no termina de cargar nunca.
+ */
+export async function getHomeGeneros(semillas: SemillaEntrada[]): Promise<YtHomeSection[]> {
+  const generos = semillas
+    .filter((s) => s.kind === 'genero' && typeof s.ref === 'string' && s.ref && s.name)
+    .slice(0, 6)
+
+  const secciones = await Promise.all(
+    generos.map(async (g) => {
+      try {
+        const { items } = await getGenero(g.ref)
+        /* La fila vacía no se muestra: prometer un género y no traer nada es
+           peor que no ofrecerlo. Doce alcanzan para un carrusel. */
+        return items.length ? { title: g.name, items: items.slice(0, 12) } : null
+      } catch {
+        return null
+      }
+    }),
+  )
+  return secciones.filter((s): s is YtHomeSection => s !== null)
+}

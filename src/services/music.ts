@@ -188,6 +188,36 @@ export async function fetchHome(signal?: AbortSignal): Promise<HomeSection[]> {
   }
 }
 
+/**
+ * Las filas tejidas de los géneros que la persona eligió en el onboarding.
+ *
+ * Van **arriba** de la portada de YouTube Music: primero lo suyo —una fila de
+ * listas por cada género marcado—, después lo nuevo para descubrir. Las
+ * semillas viajan en el pedido; el servidor no necesita saber quién sos.
+ *
+ * Vacío si no hay semillas o si el servidor no pudo: en los dos casos el home
+ * se queda con la portada de siempre, que es contenido válido.
+ */
+export async function fetchHomeGeneros(
+  semillas: { kind: string; ref: string; name: string }[],
+  signal?: AbortSignal,
+): Promise<HomeSection[]> {
+  if (!semillas.length) return []
+  try {
+    const res = await fetchMusica(`${MUSIC_API}/home-generos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ semillas }),
+      signal,
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as { sections?: HomeSection[] }
+    return data.sections ?? []
+  } catch {
+    return []
+  }
+}
+
 /** Una categoría de «géneros y momentos» de YouTube Music. */
 export type Genero = {
   /** El parámetro opaco con el que se pide su página. */
