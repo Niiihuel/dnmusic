@@ -65,7 +65,13 @@ export function PrimaryButton({
       }`}
     >
       {busy ? (
-        <ActivityIndicator color="#121212" />
+        /*
+         * Blanco, no el negro del acento: mientras trabaja, `active` es falso
+         * —`active = !disabled && !busy`— así que el fondo es `bg-muted` (gris
+         * oscuro), no la píldora blanca. Un spinner casi negro sobre ese gris no
+         * se ve; el `foreground` sí. (#FFFFFF es el token `foreground`.)
+         */
+        <ActivityIndicator color={ICON_COLOR.foreground} />
       ) : (
         <Text
           className={`text-[13px] font-semibold uppercase tracking-[1.4px] ${

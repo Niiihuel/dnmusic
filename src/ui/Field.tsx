@@ -14,7 +14,13 @@ import { ICON_COLOR, IconEye, IconEyeOff } from './icons'
 export const PLACEHOLDER_COLOR = '#777777'
 
 type Props = Omit<TextInputProps, 'className'> & {
-  label: string
+  /**
+   * La etiqueta en versalitas arriba del campo. Opcional: sin ella, el campo va
+   * pelado —solo el placeholder guía— para las pantallas que quieren el mínimo,
+   * como el login. Cuando falta, la accesibilidad cae al placeholder, así que
+   * el campo nunca queda sin nombre para el lector de pantalla.
+   */
+  label?: string
   icon?: ReactNode
   /** Texto de ayuda bajo el campo. Lo pisa `error` cuando hay uno. */
   hint?: string
@@ -29,11 +35,19 @@ export const Field = forwardRef<TextInput, Props>(function Field(
   { label, icon, hint, error, accessory, ...input },
   ref,
 ) {
+  /* El pie solo existe si hay algo que decir. Con etiqueta arriba se mantiene
+     siempre —reservar su renglón evita que el formulario salte al aparecer un
+     error—; sin etiqueta (el modo mínimo del login) no hay a qué saltar, así
+     que un renglón vacío sería aire de más. */
+  const pie = error ?? hint ?? (label ? ' ' : null)
+
   return (
     <View className="gap-2">
-      <Text className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.8px]">
-        {label}
-      </Text>
+      {label ? (
+        <Text className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.8px]">
+          {label}
+        </Text>
+      ) : null}
       <View
         className={`h-14 flex-row items-center gap-3 rounded-lg bg-muted px-4 ${
           error ? 'border border-destructive' : ''
@@ -43,17 +57,19 @@ export const Field = forwardRef<TextInput, Props>(function Field(
         <TextInput
           ref={ref}
           placeholderTextColor={PLACEHOLDER_COLOR}
-          accessibilityLabel={label}
+          accessibilityLabel={label ?? input.placeholder}
           className="h-full flex-1 text-foreground text-[15px]"
           {...input}
         />
         {accessory}
       </View>
-      <Text
-        className={`text-[12px] leading-4 ${error ? 'text-destructive' : 'text-muted-foreground'}`}
-      >
-        {error ?? hint ?? ' '}
-      </Text>
+      {pie !== null ? (
+        <Text
+          className={`text-[12px] leading-4 ${error ? 'text-destructive' : 'text-muted-foreground'}`}
+        >
+          {pie}
+        </Text>
+      ) : null}
     </View>
   )
 })

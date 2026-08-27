@@ -82,21 +82,18 @@ export default function SignIn() {
                 style={{ width: 64, height: 64, borderRadius: 14 }}
                 accessibilityLabel="dnmusic"
               />
-              <View className="items-center gap-2">
-                <Text className="text-center text-foreground text-2xl font-bold">
-                  Volvé a tu música
-                </Text>
-                {/* El texto decía «volvé a tus mensajes» y «compartir palabras»:
-                    era de cuando la app era un chat. Hoy es un reproductor con
-                    listas, escucha compartida y chat — y lo primero es la
-                    música. */}
-                <Text className="max-w-xs text-center text-muted-foreground text-sm leading-5">
-                  Tus listas, lo que estabas escuchando y con quién.
-                </Text>
-              </View>
+              {/* Solo el título, sin el subtítulo descriptivo que había debajo.
+                  El login tiene una sola cosa que hacer y el logo ya dice a
+                  dónde llegaste; una línea que explica la app es texto que nadie
+                  lee dos veces. */}
+              <Text className="text-center text-foreground text-2xl font-bold">
+                Volvé a tu música
+              </Text>
             </View>
 
-            <View className="gap-1">
+            {/* gap-3 y no gap-1: sin la etiqueta ni el pie de cada campo, el
+                aire entre los dos lo tiene que poner el contenedor. */}
+            <View className="gap-3">
               {!isSupabaseConfigured ? (
                 <View className="mb-3 rounded-lg bg-muted p-3">
                   <Text className="text-muted-foreground text-xs leading-5">
@@ -106,14 +103,14 @@ export default function SignIn() {
                 </View>
               ) : null}
 
-              {/* Los campos compartidos de `src/ui/Field`, como en el registro
-                  y el editor de perfil: un solo campo para toda la app. */}
+              {/* Sin etiqueta arriba: el placeholder ya dice qué va en cada
+                  campo, y dos son suficientes para no necesitar rótulos. Es el
+                  modo mínimo de `Field`. */}
               <Field
-                label="Usuario"
                 icon={<IconAt size={18} color={ICON_COLOR.muted} />}
                 value={username}
                 onChangeText={setUsername}
-                placeholder="tu_usuario"
+                placeholder="Usuario"
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete="username"
@@ -122,12 +119,11 @@ export default function SignIn() {
               />
 
               <PasswordField
-                label="Contraseña"
                 visible={showPassword}
                 onToggleVisible={() => setShowPassword((v) => !v)}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Tu contraseña"
+                placeholder="Contraseña"
                 autoComplete="current-password"
                 textContentType="password"
                 onSubmitEditing={submit}
