@@ -1268,6 +1268,17 @@ store.subscribe(() => {
 
 export function reportError(message: string) {
   store.set({ error: message, wantPlay: false })
+  /*
+   * Además del subtítulo en la barra, el toast de abajo.
+   *
+   * El error viajaba solo como subtítulo de la NowPlayingBar —donde antes iba
+   * el artista— y ahí es fácil no verlo: quien tocó play está mirando la fila
+   * que tocó, no el pie. El `Aviso` aparece sobre lo que sea que esté en
+   * pantalla y es el mismo componente en iOS y en la web, que es justo lo que
+   * hace falta para un fallo que hay que notar. `true` lo marca como malo: se
+   * queda más tiempo y con más peso.
+   */
+  avisar(message, true)
 }
 
 export function stopPlayback() {
@@ -1279,9 +1290,36 @@ export function stopPlayback() {
   store.set({ ...EMPTY, volume, view })
 }
 
+/**
+ * El volumen se guarda **aparte** de la cola.
+ *
+ * Es una preferencia de quien escucha, no estado de la sesión: sobrevive a
+ * cerrar la app, y a diferencia de la cola se guarda también durante un Jam o un
+ * espejo (ahí `guardar` no escribe, con razón, pero la perilla es tuya igual).
+ * Antes no se persistía en ningún lado, así que cada arranque volvía al máximo
+ * —fuerte y molesto— y había que bajarlo de nuevo. Clave propia, un solo número.
+ */
+const VOL_CLAVE = 'volume:v1'
+
 export function setVolume(volume: number) {
   if (!Number.isFinite(volume)) return
-  store.set({ volume: Math.max(0, Math.min(1, volume)) })
+  const v = Math.max(0, Math.min(1, volume))
+  store.set({ volume: v })
+  void AsyncStorage.setItem(VOL_CLAVE, String(v)).catch(() => {
+    // Sin memoria del volumen, pero suena igual.
+  })
+}
+
+/** Devuelve el volumen de la sesión anterior. Lo llama el layout al arrancar. */
+export async function restaurarVolumen() {
+  try {
+    const crudo = await AsyncStorage.getItem(VOL_CLAVE)
+    if (crudo === null) return
+    const v = Number(crudo)
+    if (Number.isFinite(v)) store.set({ volume: Math.max(0, Math.min(1, v)) })
+  } catch {
+    // Lo guardado no se entiende: se ignora y queda el default.
+  }
 }
 
 /** Volver a tocar la vista que ya está puesta la devuelve a la ficha. */

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Platform } from 'react-native'
 import { preload, setAudioModeAsync, useAudioPlayer } from 'expo-audio'
 import { artworkSource } from '../lib/artwork'
-import { headroomGain, resolveSong, signedUrl, type TrackResult } from '../services/music'
+import { headroomGain, perceptualGain, resolveSong, signedUrl, type TrackResult } from '../services/music'
 import { useLockScreen } from '../state/lockScreen'
 import { anotarEscucha } from '../services/plays'
 import type { PlaylistTrack } from '../services/playlists'
@@ -385,8 +385,10 @@ export function MotorAudio() {
      * primero, subir la perilla al máximo traería de vuelta la distorsión.
      */
     // expo-audio expone el volumen como una propiedad mutable del reproductor.
+    // La perilla pasa por `perceptualGain`: el slider es lineal en pantalla pero
+    // el oído no lo es, así que la posición se curva antes de volverse gain.
     // eslint-disable-next-line react-hooks/immutability
-    player.volume = headroomGain(current?.truePeak) * volume
+    player.volume = headroomGain(current?.truePeak) * perceptualGain(volume)
   }, [player, current, volume])
 
   /*

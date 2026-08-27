@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useRouter } from 'expo-router'
-import { Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { artworkSource } from '../lib/artwork'
 import { useTabsVisible } from '../state/shell'
@@ -129,6 +129,15 @@ export function NowPlayingBar({
    * sobre algo que nunca arrancó.
    */
   const playing = wantPlay && cargada
+  /*
+   * Quiere sonar pero el audio todavía no está: se está resolviendo.
+   *
+   * La primera vez que se toca una canción tarda unos segundos —el servidor la
+   * baja de YouTube y la deja cacheada— y sin señal el botón se queda en «play»
+   * como si el toque no hubiera hecho nada. El spinner ocupa el mismo lugar que
+   * el ícono, así que el transporte no salta de tamaño al empezar a sonar.
+   */
+  const cargando = wantPlay && !cargada
 
   /* Sin nada cargado no se dibuja, y oculto tampoco. Salir acá ya no tiene
      ninguna consecuencia sobre el audio: eso vive en `MotorAudio`, que sigue
@@ -348,11 +357,13 @@ export function NowPlayingBar({
             ) : null}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}
+              accessibilityLabel={cargando ? 'Cargando' : playing ? 'Pausar' : 'Reproducir'}
               onPress={togglePlayback}
               className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
             >
-              {playing ? (
+              {cargando ? (
+                <ActivityIndicator size="small" color={ICON_COLOR.foreground} />
+              ) : playing ? (
                 <IconPause size={19} color={ICON_COLOR.foreground} />
               ) : (
                 <IconPlay size={19} color={ICON_COLOR.foreground} />
@@ -441,11 +452,13 @@ export function NowPlayingBar({
           ) : null}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}
+            accessibilityLabel={cargando ? 'Cargando' : playing ? 'Pausar' : 'Reproducir'}
             onPress={togglePlayback}
             className="h-10 w-10 items-center justify-center rounded-full bg-primary active:opacity-80"
           >
-            {playing ? (
+            {cargando ? (
+              <ActivityIndicator size="small" color={ICON_COLOR.onPrimary} />
+            ) : playing ? (
               <IconPause size={16} color={ICON_COLOR.onPrimary} />
             ) : (
               <IconPlay size={16} color={ICON_COLOR.onPrimary} />
@@ -587,11 +600,13 @@ export function NowPlayingBar({
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}
+              accessibilityLabel={cargando ? 'Cargando' : playing ? 'Pausar' : 'Reproducir'}
               onPress={togglePlayback}
               className="h-10 w-10 items-center justify-center rounded-full bg-primary active:opacity-80"
             >
-              {playing ? (
+              {cargando ? (
+                <ActivityIndicator size="small" color={ICON_COLOR.onPrimary} />
+              ) : playing ? (
                 <IconPause size={16} color={ICON_COLOR.onPrimary} />
               ) : (
                 <IconPlay size={16} color={ICON_COLOR.onPrimary} />

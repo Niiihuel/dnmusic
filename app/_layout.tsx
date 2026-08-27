@@ -21,7 +21,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
-import { restorePlayback, usePlaybackTrack } from '../src/state/playback'
+import { restaurarVolumen, restorePlayback, usePlaybackTrack } from '../src/state/playback'
 import { cargarAjustes } from '../src/state/ajustes'
 import { cargarDescargas } from '../src/state/descargas'
 import { reconectarJam } from '../src/state/jam'
@@ -868,6 +868,7 @@ function SessionGate() {
   useEffect(() => {
     if (!user) return
     void restorePlayback()
+    void restaurarVolumen()
     void reconectarJam()
     /* La escucha compartida entre los dispositivos de la cuenta: se suscribe
        a la fila propia y reconcilia — si la música quedó en otro aparato,

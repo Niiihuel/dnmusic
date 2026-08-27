@@ -572,6 +572,28 @@ export function headroomGain(truePeak: number | undefined): number {
 }
 
 /**
+ * Cuánto sube el volumen por cada tramo del slider.
+ *
+ * El oído es **logarítmico**: la diferencia entre 0.9 y 1.0 casi no se nota,
+ * mientras que entre 0.0 y 0.1 va de silencio a claramente audible. Un slider
+ * lineal —el gain era `headroomGain * volume` a secas— reparte todo su recorrido
+ * útil en el primer tercio: al 40% ya sonaba casi tan fuerte como al 100%, y el
+ * resto del viaje no cambiaba nada. De ahí las dos quejas: «viene muy fuerte» y
+ * «no tengo rango».
+ *
+ * Elevar la posición a una potencia estira la parte baja y comprime la alta, que
+ * es justo la forma inversa del oído: el slider pasa a sentirse parejo de punta
+ * a punta. El tope (1.0) sigue siendo el volumen pleno; lo que cambia es que el
+ * medio ahora suena a medio.
+ */
+const CURVA_VOLUMEN = 2.5
+
+export function perceptualGain(volume: number): number {
+  const v = Math.max(0, Math.min(1, volume))
+  return Math.pow(v, CURVA_VOLUMEN)
+}
+
+/**
  * La forma de onda de una canción, para dibujarla en el editor.
  *
  * La calcula el servicio de música con ffmpeg y no el cliente.

@@ -40,8 +40,8 @@ export function PlayingBars({ playing, size = 14 }: { playing: boolean; size?: n
       className="flex-row items-end"
       style={{ height: size, gap: BAR_GAP }}
     >
-      {BEATS_MS.map((beat, i) => (
-        <Bar key={beat} playing={playing} beatMs={beat} height={size} delayMs={i * 90} />
+      {BEATS_MS.map((beat) => (
+        <Bar key={beat} playing={playing} beatMs={beat} height={size} />
       ))}
     </View>
   )
@@ -51,31 +51,40 @@ function Bar({
   playing,
   beatMs,
   height,
-  delayMs,
 }: {
   playing: boolean
   beatMs: number
   height: number
-  delayMs: number
 }) {
-  const scale = useSharedValue(MIN_H)
+  /*
+   * Se anima la **altura**, no `scaleY`.
+   *
+   * Escalar deformaba el `borderRadius`: una barra comprimida al 25% con
+   * `scaleY` aplasta su radio de 1px en la misma proporción, así que las barras
+   * cortas quedaban con la punta achatada —esquinas elípticas— y el ecualizador
+   * se leía como líneas mal dibujadas. Con la altura directa, cada barra es un
+   * rectángulo redondeado nítido midan lo que midan, y el `items-end` del
+   * contenedor mantiene todas las bases en la misma línea sin depender de que el
+   * `transformOrigin` sobreviva a Reanimated en web (no siempre lo hace).
+   */
+  const alto = useSharedValue(height * MIN_H)
 
   useEffect(() => {
     if (!playing) {
-      cancelAnimation(scale)
-      scale.value = withTiming(MIN_H, { duration: 180 })
+      cancelAnimation(alto)
+      alto.value = withTiming(height * MIN_H, { duration: 180 })
       return
     }
-    scale.value = withRepeat(
+    alto.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: beatMs }),
-        withTiming(MIN_H, { duration: beatMs }),
+        withTiming(height, { duration: beatMs }),
+        withTiming(height * MIN_H, { duration: beatMs }),
       ),
       -1,
       false,
     )
-    return () => cancelAnimation(scale)
-  }, [playing, beatMs, delayMs, scale])
+    return () => cancelAnimation(alto)
+  }, [playing, beatMs, height, alto])
 
   /*
    * NativeWind no procesa `className` en componentes de Reanimated: el color va
@@ -83,7 +92,7 @@ function Bar({
    * docs/DESIGN.md, y #FFFFFF es el token `foreground`.
    */
   const style = useAnimatedStyle(() => ({
-    transform: [{ scaleY: scale.value }],
+    height: alto.value,
   }))
 
   return (
@@ -91,10 +100,8 @@ function Bar({
       style={[
         {
           width: BAR_W,
-          height,
           backgroundColor: '#FFFFFF',
           borderRadius: 1,
-          transformOrigin: 'bottom',
         },
         style,
       ]}
