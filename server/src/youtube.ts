@@ -5,8 +5,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { mintSessionToken, mintVideoToken } from './potoken.js'
-import { fetchYt } from './salida.js'
+import { mintSessionToken, mintVideoToken, tokensSinRespaldo } from './potoken.js'
+import { UA_NAVEGADOR, fetchYt } from './salida.js'
 
 const run = promisify(execFile)
 
@@ -133,6 +133,52 @@ function resetClient() {
   clientExpiraEn = 0
 }
 
+/**
+ * Le pone a la sesión la versión de YouTube Music que corre **hoy**.
+ *
+ * youtubei.js trae la versión del cliente en una constante compilada, y la de
+ * la copia instalada dice `1.20250219.01.00` — febrero de 2025. La que sirve
+ * `music.youtube.com` hoy es de esta semana: **año y medio de diferencia**.
+ * Un cliente que se anuncia con una versión de hace dieciocho meses no es lo
+ * que rompe nada desde una IP limpia, pero es exactamente la clase de dato que
+ * decide un caso dudoso desde una IP de datacenter.
+ *
+ * Sirve además para algo que ya estaba escrito y no hacía nada: más abajo,
+ * `resolveAudio` reescribe el `cver` de la URL de media con
+ * `session.context.client.clientVersion` para que la firma y el pedido de
+ * bytes digan lo mismo. Mientras esa versión salía de la misma constante que
+ * la firmó, la reescritura era una copia sobre sí misma. Con esto pasa a
+ * corregir de verdad, que es lo que hace zuno.
+ *
+ * `originalUrl` y `graftUrl` van en el mismo viaje: es de dónde dice venir el
+ * cliente, y el de verdad viene de music.youtube.com.
+ *
+ * No tira si falla. Una versión vieja resuelve; quedarse sin sesión, no.
+ */
+async function refrescarVersionDeMusica(yt: Innertube): Promise<void> {
+  try {
+    const res = await fetchYt('https://music.youtube.com/', {
+      headers: { Accept: 'text/html', 'User-Agent': UA_NAVEGADOR },
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const html = await res.text()
+
+    const version = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/)?.[1]
+    if (!version) throw new Error('la portada no traía la versión del cliente')
+    const apiKey = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1]
+
+    const cliente = yt.session.context.client
+    cliente.clientVersion = version
+    cliente.originalUrl = 'https://music.youtube.com/'
+    if (cliente.mainAppWebInfo) cliente.mainAppWebInfo.graftUrl = 'https://music.youtube.com/'
+    if (apiKey) yt.session.api_key = apiKey
+
+    console.log(`[resolve] YouTube Music ${version}`)
+  } catch (e) {
+    console.warn(`[resolve] sigue la versión compilada de YouTube Music: ${(e as Error).message}`)
+  }
+}
+
 async function getClient(): Promise<Innertube> {
   if (clientPromise && Date.now() < clientExpiraEn) return clientPromise
   ensurePlatform()
@@ -146,20 +192,48 @@ async function getClient(): Promise<Innertube> {
       retrieve_player: false,
       cookie: YT_COOKIE,
       fetch: fetchYt,
+      user_agent: UA_NAVEGADOR,
+      retrieve_innertube_config: false,
     })
     const visitorData = bootstrap.session.context.client.visitorData
     if (!visitorData) throw new Error('No se obtuvo visitorData')
 
-    return Innertube.create({
+    const yt = await Innertube.create({
       client_type: ClientType.MUSIC,
       po_token: await mintSessionToken(visitorData),
       visitor_data: visitorData,
       cookie: YT_COOKIE,
       retrieve_player: true,
-      generate_session_locally: true,
+      /*
+       * El contexto lo arma Google, no nosotros.
+       *
+       * Con `true`, youtubei.js lo inventa de sus constantes compiladas:
+       * Windows 10, Chrome 125, y `remoteHost`, `deviceExperimentId`,
+       * `rolloutToken` y `appInstallData` **vacíos**. Es un cliente que
+       * ninguna instalación de YouTube produjo jamás, y desde una IP limpia
+       * no importa: alcanza con parecer plausible. Desde una IP marcada, que
+       * es donde vivimos, cada campo que Google no reconoce suma. Con `false`
+       * pide `/sw.js_data` y usa el contexto que le devuelven — el mismo
+       * criterio que el cliente de descarga de zuno, que lo justifica así:
+       * un visitor id fabricado «describe una sesión que Google nunca emitió,
+       * y nada en ella valida».
+       *
+       * El `visitor_data` sigue siendo el del bootstrap: el PO token de sesión
+       * está atado a *ese*, y que la sesión use otro lo invalidaría.
+       */
+      generate_session_locally: false,
+      /*
+       * No se pide la config fría: es un POST que contesta 401 en todos los
+       * clientes y nada de acá lee lo que trae. Un pedido que siempre falla no
+       * ayuda a parecer un cliente sano.
+       */
+      retrieve_innertube_config: false,
+      user_agent: UA_NAVEGADOR,
       cache: new UniversalCache(false),
       fetch: fetchYt,
     })
+    await refrescarVersionDeMusica(yt)
+    return yt
   })()
 
   /* Una creación que falló no puede quedar cacheada seis horas: se suelta para
@@ -559,7 +633,21 @@ export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
      * a bot» encima de la biblioteca, que a quien solo quería escuchar una
      * canción no le dicen nada y encima rompían el panel.
      */
-    console.error(`[resolve] ${videoId} sin formatos — ${encontrado.razones.join('; ')}`)
+    /* Cuál de las dos rejas fue. `LOGIN_REQUIRED` sale igual cuando la IP está
+       marcada y cuando la atestación fue rechazada, y el arreglo de cada una
+       no tiene nada que ver con el de la otra: proxy/IP residencial contra
+       BotGuard. Sin esta línea hay que adivinar.
+
+       Ojo con el «sin token de reserva»: dice que Google **aceptó acuñar**, no
+       que vaya a honrar lo acuñado. Está medido —dos corridas, orden y videos
+       cruzados— que en la misma ventana de tiempo un token de jsdom se comía un
+       403 pasado el primer MiB mientras uno acuñado en un navegador de verdad
+       servía los bytes. O sea: la atestación de jsdom es más débil, y este
+       renglón solo descarta el caso ruidoso. */
+    const reja = tokensSinRespaldo()
+      ? 'BotGuard rechazó este runtime (PO tokens sin respaldo)'
+      : 'BotGuard acuñó sin quejarse — puede ser la IP, o un token de jsdom que igual no honran'
+    console.error(`[resolve] ${videoId} sin formatos [${reja}] — ${encontrado.razones.join('; ')}`)
     throw new Error(motivoParaLaApp(encontrado.razones))
   }
 
@@ -590,7 +678,8 @@ export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
    * estar meses atrasada respecto de la versión que la sesión negoció. La
    * llamada a /player firma como un cliente y la petición de media dice ser
    * otro; googlevideo responde 403 sin cuerpo. `cver` no entra en la firma, así
-   * que reescribirlo es seguro. (Truco tomado de zuno.)
+   * que reescribirlo es seguro. (Truco tomado de zuno.) La versión buena la
+   * pone `refrescarVersionDeMusica`; sin ella esto se copiaba sobre sí mismo.
    *
    * Solo para el cliente MUSIC: la versión que negoció la sesión es la de
    * MUSIC, y estampársela a una URL firmada por el cliente de TV o iOS crearía
@@ -637,7 +726,28 @@ export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
     // googlevideo por la misma salida que firmó la URL: cambiar de IP a mitad
     // de camino es una de las formas clásicas del 403.
     const res = await fetchYt(url, {
-      headers: { Range: `bytes=${desde}-${desde + CHUNK_BYTES - 1}` },
+      headers: {
+        Range: `bytes=${desde}-${desde + CHUNK_BYTES - 1}`,
+        /*
+         * Las cabeceras que manda el reproductor de verdad.
+         *
+         * Este pedido salía con `Range` a secas: sin User-Agent propio, sin
+         * origen y sin las `Sec-Fetch-*` que Chrome pone en **todo** pedido de
+         * media. googlevideo sirve igual a una IP limpia, pero es el último
+         * tramo del recorrido y el único que mueve bytes de verdad; llegar
+         * hasta acá con la sesión atestada y pedir el audio con cara de script
+         * es tirar el trabajo en la puerta. Mismo criterio que
+         * `fetch_audio_bytes` de zuno.
+         */
+        'User-Agent': UA_NAVEGADOR,
+        Origin: 'https://music.youtube.com',
+        Referer: 'https://music.youtube.com/',
+        Accept: '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'cross-site',
+      },
     })
     /*
      * Un 200 en un rango que no arranca en cero es el archivo ENTERO metido en

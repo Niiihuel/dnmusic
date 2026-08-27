@@ -1,6 +1,7 @@
 import { ClientType, Innertube, Platform, UniversalCache } from 'youtubei.js'
 import { runInNewContext } from 'node:vm'
 import { mintSessionToken, mintVideoToken } from './potoken.js'
+import { CABECERAS_MEDIA, UA_NAVEGADOR, fetchYt } from './salida.js'
 
 /**
  * El resolutor de a bordo: esta compu baja el audio con **su propia IP**.
@@ -104,6 +105,37 @@ function resetClient() {
   clientExpiraEn = 0
 }
 
+/**
+ * Le pone a la sesión la versión de YouTube Music que corre hoy — espejo del
+ * servidor. youtubei.js trae la suya compilada y está año y medio atrasada, y
+ * es de donde sale el `cver` que más abajo se le estampa a la URL de media:
+ * sin este refresco, esa reescritura se copia sobre sí misma.
+ *
+ * No tira si falla: una versión vieja resuelve, quedarse sin sesión no.
+ */
+async function refrescarVersionDeMusica(yt: Innertube): Promise<void> {
+  try {
+    const res = await fetchYt('https://music.youtube.com/', {
+      headers: { Accept: 'text/html', 'User-Agent': UA_NAVEGADOR },
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const html = await res.text()
+
+    const version = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/)?.[1]
+    if (!version) throw new Error('la portada no traía la versión del cliente')
+    const apiKey = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1]
+
+    const cliente = yt.session.context.client
+    cliente.clientVersion = version
+    cliente.originalUrl = 'https://music.youtube.com/'
+    if (cliente.mainAppWebInfo) cliente.mainAppWebInfo.graftUrl = 'https://music.youtube.com/'
+    if (apiKey) yt.session.api_key = apiKey
+  } catch {
+    /* Silencioso a propósito: esto corre en la máquina de alguien que solo
+       quería escuchar música, y la sesión sigue siendo utilizable. */
+  }
+}
+
 async function getClient(): Promise<Innertube> {
   if (clientPromise && Date.now() < clientExpiraEn) return clientPromise
   ensurePlatform()
@@ -111,18 +143,32 @@ async function getClient(): Promise<Innertube> {
   clientNacioEn = Date.now()
 
   clientPromise = (async () => {
-    const bootstrap = await Innertube.create({ retrieve_player: false })
+    const bootstrap = await Innertube.create({
+      retrieve_player: false,
+      fetch: fetchYt,
+      user_agent: UA_NAVEGADOR,
+      retrieve_innertube_config: false,
+    })
     const visitorData = bootstrap.session.context.client.visitorData
     if (!visitorData) throw new Error('No se obtuvo visitorData')
 
-    return Innertube.create({
+    const yt = await Innertube.create({
       client_type: ClientType.MUSIC,
       po_token: await mintSessionToken(visitorData),
       visitor_data: visitorData,
       retrieve_player: true,
-      generate_session_locally: true,
+      /* El contexto lo arma Google, no youtubei.js de sus constantes: ver el
+         porqué largo en el servidor. El `visitor_data` sigue siendo el del
+         bootstrap, que es al que está atado el PO token de sesión. */
+      generate_session_locally: false,
+      /* La config fría es un POST que contesta 401 siempre y que nadie lee. */
+      retrieve_innertube_config: false,
+      user_agent: UA_NAVEGADOR,
       cache: new UniversalCache(false),
+      fetch: fetchYt,
     })
+    await refrescarVersionDeMusica(yt)
+    return yt
   })()
 
   const propia = clientPromise
@@ -274,8 +320,10 @@ export async function resolverYAportar(opciones: {
  */
 async function bajarPorRangos(url: string): Promise<Buffer> {
   const pedir = async (desde: number) => {
-    const res = await fetch(url, {
-      headers: { Range: `bytes=${desde}-${desde + CHUNK_BYTES - 1}` },
+    const res = await fetchYt(url, {
+      /* Con las cabeceras del reproductor de verdad, no un `Range` pelado:
+         es el último tramo y el único que mueve bytes. Ver el servidor. */
+      headers: { ...CABECERAS_MEDIA, Range: `bytes=${desde}-${desde + CHUNK_BYTES - 1}` },
     })
     if (res.status !== 206 && !(res.status === 200 && desde === 0)) {
       throw new Error(`googlevideo respondió ${res.status} al rango ${desde}`)

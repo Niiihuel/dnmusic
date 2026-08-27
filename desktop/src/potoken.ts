@@ -2,6 +2,7 @@ import { BotGuardClient, getChallenge } from 'bgutils-js/botguard'
 import { WebPoMinter } from 'bgutils-js/webpo'
 import { buildURL, getHeaders } from 'bgutils-js/utils'
 import { JSDOM } from 'jsdom'
+import { UA_NAVEGADOR, fetchYt } from './salida.js'
 
 /**
  * Generación de PO Tokens (Proof of Origin) — espejo de `server/src/potoken.ts`.
@@ -28,6 +29,11 @@ function ensureDom() {
     url: 'https://www.youtube.com/',
     referrer: 'https://www.youtube.com/',
     pretendToBeVisual: true,
+    /* Sin esto `navigator.userAgent` dice `…jsdom/28.1.0`, y BotGuard mira el
+       navigator: es pedirle que certifique un navegador mostrándole una cadena
+       que dice que no lo es. Va el mismo UA que después usan InnerTube y la
+       media (ver `UA_NAVEGADOR`). Dentro de `resources`: ahí se mudó en jsdom 28. */
+    resources: { userAgent: UA_NAVEGADOR },
   })
   Object.assign(globalThis, {
     window: dom.window,
@@ -44,6 +50,20 @@ function ensureDom() {
   domReady = true
 }
 
+/**
+ * `fetchYt` con el User-Agent de la casa: `getHeaders()` de bgutils-js pone el
+ * suyo —deliberadamente no-navegador— cuando detecta que no corre en uno, y
+ * con jsdom su detección siempre da que no. Sin esto la atestación sale
+ * diciendo ser otra cosa que el resto de la sesión.
+ */
+const fetchAtestacion: typeof fetch = (input, init) => {
+  /* `set` sobre un Headers, no un spread del objeto: bgutils manda la clave en
+     minúscula y `{ ...h, 'User-Agent': x }` deja las dos. */
+  const headers = new Headers(init?.headers)
+  headers.set('user-agent', UA_NAVEGADOR)
+  return fetchYt(input, { ...(init ?? {}), headers })
+}
+
 type Cached = { minter: WebPoMinter; expiresAt: number }
 let cached: Cached | null = null
 
@@ -52,7 +72,7 @@ async function getMinter(): Promise<WebPoMinter> {
 
   ensureDom()
 
-  const challenge = await getChallenge({ requestKey: REQUEST_KEY, fetchFunction: fetch })
+  const challenge = await getChallenge({ requestKey: REQUEST_KEY, fetchFunction: fetchAtestacion })
   const interpreter = challenge.interpreterJavascript?.privateDoNotAccessOrElseSafeScriptWrappedValue
   if (!interpreter) throw new Error('BotGuard no devolvió intérprete')
 
@@ -68,14 +88,24 @@ async function getMinter(): Promise<WebPoMinter> {
   const webPoSignalOutput: unknown[] = []
   const snapshot = await bg.snapshot({ webPoSignalOutput: webPoSignalOutput as never })
 
-  const res = await fetch(buildURL('GenerateIT', true), {
+  /* Por el mismo endpoint que el challenge (`Create` sale a jnn-pa por
+     defecto): las dos mitades del mismo trámite contra hosts distintos no es
+     algo que haga ningún cliente real. */
+  const res = await fetchAtestacion(buildURL('GenerateIT'), {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify([REQUEST_KEY, snapshot]),
   })
-  const json = (await res.json()) as [string, number]
-  const [integrityToken, ttlSecs] = json
+  const json = (await res.json()) as [string?, number?, number?, string?]
+  const [integrityToken, ttlSecs, , tokenDeReserva] = json
   if (!integrityToken) throw new Error('No se obtuvo integrity token')
+
+  /* El cuarto elemento es el «no te creo» de Google: cuando no confía en el
+     runtime igual devuelve un integrity token, que acuña PO tokens de aspecto
+     normal y que rebotan río abajo. Sin mirarlo, un fallo de atestación llega
+     disfrazado de `LOGIN_REQUIRED`. */
+  if (tokenDeReserva)
+    console.warn('[potoken] BotGuard no confió en este runtime: los PO tokens pueden no valer')
 
   const minter = await WebPoMinter.create({ integrityToken }, webPoSignalOutput as never)
   cached = {
