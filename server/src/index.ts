@@ -2,6 +2,7 @@ import { createServer } from 'node:http'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createClient } from '@supabase/supabase-js'
+import { chequearSalud } from './salud.js'
 import {
   prepararAporte,
   getAlbum,
@@ -291,7 +292,10 @@ const server = createServer(async (req, res) => {
 
     const url = new URL(req.url ?? '/', `http://localhost:${PORT}`)
 
-    if (url.pathname === '/health') return json(200, { ok: true })
+    if (url.pathname === '/health') {
+      const salud = await chequearSalud(supabase)
+      return json(salud.ok ? 200 : 503, salud)
+    }
 
     /*
      * El aviso de push, que **no viene de una persona**: lo manda el trigger
