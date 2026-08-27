@@ -55,7 +55,9 @@ import { Aviso } from '../src/ui/Aviso'
 import { AvisoCaptura } from '../src/ui/AvisoCaptura'
 import { NowPlayingBar } from '../src/ui/NowPlayingBar'
 import { MotorAudio } from '../src/ui/MotorAudio'
+import { MotorWebView } from '../src/services/motor/MotorWebView'
 import { CompartirHistoria } from '../src/ui/CompartirHistoria'
+import { AvisoActualizacion } from '../src/ui/AvisoActualizacion'
 import { FilaChat } from '../src/ui/TabBar'
 import { Cascara } from '../src/ui/Cascara'
 import '../global.css'
@@ -473,6 +475,17 @@ function Chrome() {
        * No dibuja nada; solo suena. Ver `src/ui/MotorAudio.tsx`.
        */}
       <MotorAudio />
+      {/*
+       * El motor de a bordo: un WebView de 1×1 fuera de pantalla que atestigua
+       * ante BotGuard y evalúa el JS que Hermes no puede.
+       *
+       * Va acá y no colgado del reproductor por el mismo motivo que `MotorAudio`
+       * —este nodo no depende de ningún estado, así que React no lo desmonta
+       * nunca— y encima le importa más: rehacerlo tira el integrity token de
+       * BotGuard, que cuesta segundos y vale doce horas. En web y en binarios
+       * viejos no dibuja nada. Ver `src/services/motor/`.
+       */}
+      <MotorWebView />
       {/* La tarjeta de compartir a historias: tampoco dibuja nada hasta que
           alguien pide una. Ver `src/ui/CompartirHistoria.tsx`. */}
       <CompartirHistoria />
@@ -738,6 +751,16 @@ function Chrome() {
           sobre lo que haya, y no tiene que moverse con el teclado ni plegarse
           con la barra. */}
       <Aviso />
+      {/*
+       * «Hay una versión nueva y ya está bajada», solo en el escritorio.
+       *
+       * Acá y no más arriba en el árbol: la actualización llega cuando llega y
+       * quien la está usando puede estar en cualquier pantalla, así que tiene
+       * que quedar **por encima** de las pantallas. Montado antes, se dibujaba
+       * pero la pantalla de turno le comía los clics — medido en el navegador
+       * con el puente simulado. Ver `src/ui/AvisoActualizacion.tsx`.
+       */}
+      <AvisoActualizacion />
       {/* La oferta de compartir tras una captura de pantalla: mismo lugar en
           la pila que el aviso, por la misma razón. Ver `AvisoCaptura`. */}
       <AvisoCaptura />

@@ -1,4 +1,4 @@
-# dnmusic 🎧
+# dnmusic
 
 Una app de música con la gente adentro: escuchás, armás listas, y las mismas
 personas con las que hablás son las que ves escuchando. Un solo código
@@ -66,6 +66,7 @@ app/                     Rutas (expo-router)
   compose · song         Escribir un mensaje, elegir el fragmento
 src/
   services/              music, playlists, jam, escucha, contacts, profile…
+    motor/               El resolutor de a bordo del teléfono (WebView + BotGuard)
   state/                 Stores con useSyncExternalStore (playback, player, jam…)
   ui/                    Los componentes; MotorAudio es el que suena
   lib/                   supabase, artwork, novedades, puentes al escritorio
@@ -79,7 +80,7 @@ supabase/
   tests/                 Pruebas SQL contra un Postgres real
 public/ · scripts/       Manifest e íconos PWA, y el script que los inyecta
 docs/                    DESIGN, MUSICA, JAM, ESCUCHA, PERFIL, LISTAS,
-                         DESCARGAS, ESCRITORIO, BUILD-IOS
+                         DESCARGAS, ESCRITORIO, MOTOR-TELEFONO, BUILD-IOS
 ```
 
 `docs/DESIGN.md` es el sistema de diseño y **se sigue sin excepciones**.
@@ -167,14 +168,33 @@ se baja una sola vez para todos. El problema es que YouTube le niega el audio a
 las IPs de datacenter —`Sign in to confirm you're not a bot`— mientras cualquier
 IP de casa resuelve sin drama.
 
-La salida a esto es comunitaria: cuando el `/resolve` del servidor falla, **la
-app de escritorio baja el tema con la IP de esa casa y lo aporta al bucket
-común**. Lo que resuelve uno le suena a todos, y la web y el teléfono lo
-encuentran después en el caché. Cada usuario de escritorio es una salida más.
+La salida a esto es comunitaria: cuando el `/resolve` del servidor falla, **el
+dispositivo baja el tema con la IP de esa casa y lo aporta al bucket común**. Lo
+que resuelve uno le suena a todos, y la web lo encuentra después en el caché.
+
+Lo hacen los dos que pueden:
+
+- **El escritorio**, desde el proceso principal de Electron (`desktop/src/resolutor.ts`).
+- **El teléfono**, con un WebView oculto que atestigua ante BotGuard y evalúa el
+  JS que Hermes no puede (`src/services/motor/`, y el porqué en
+  [docs/MOTOR-TELEFONO.md](docs/MOTOR-TELEFONO.md)). Vino después y por un motivo
+  concreto: quien solo tiene un iPhone dependía de que otro prendiera una compu.
+
+El navegador no tiene ninguno — hablar con InnerTube desde una página lo frena
+CORS, que es exactamente lo que una app nativa no sufre — y sigue yendo por el
+servidor.
 
 El camino alternativo —un proxy residencial por el que salga todo el tráfico a
 YouTube— está implementado y es una variable de entorno (`YT_PROXY_URL`, ver
 `server/src/salida.ts`). Los detalles, en `docs/MUSICA.md` y `docs/ESCRITORIO.md`.
+
+Aparte de por dónde sale, importa **con qué cara**: el servicio se presenta como
+un cliente de YouTube Music de verdad —habla con `music.youtube.com` y no con
+`www`, con la versión de cliente que corre hoy y no la que trae compilada
+youtubei.js (año y medio atrasada), y con un solo navegador de punta a punta en
+la atestación de BotGuard, el `/player` y la descarga—. Eso no destraba una IP
+marcada, pero es todo lo que sí depende de nosotros; el detalle de cada pieza
+está comentado en `server/src/salida.ts` y `server/src/youtube.ts`.
 
 ## Modelo de seguridad
 
@@ -208,7 +228,7 @@ Funcionando y verificado:
 - [x] Jam y escucha entre dispositivos, probados contra Postgres real
 - [x] Descargas para escuchar sin internet
 - [x] Push con la app cerrada, en teléfono y escritorio
-- [x] Pantalla bloqueada de iOS con ⏮⏭ (módulo Swift propio en `modules/`)
+- [x] Pantalla bloqueada de iOS con controles de transporte (módulo Swift propio en `modules/`)
 - [x] PWA instalable y app de escritorio con auto-actualización
 - [x] Ícono propio, `tsc --noEmit` y `eslint` limpios
 

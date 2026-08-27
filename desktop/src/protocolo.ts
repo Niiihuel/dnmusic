@@ -70,8 +70,35 @@ function esArchivo(ruta: string): boolean {
   }
 }
 
-function servirArchivo(ruta: string): Promise<Response> {
-  return net.fetch(pathToFileURL(ruta).toString())
+/**
+ * Cuánto puede cachear Chromium cada cosa.
+ *
+ * Sin cabecera de caché, una respuesta es **no cacheable**, y eso no cuesta
+ * solo un `read` de disco: el código compilado de V8 se guarda atado a la
+ * entrada de caché HTTP, así que un bundle no cacheable se **vuelve a compilar
+ * entero en cada arranque**. El de esta app son 5,3 MB de JavaScript, y ese
+ * parseo es lo más caro que pasa entre que hacés doble clic y ves algo.
+ *
+ * El corte es el mismo que usa cualquier build moderno, y acá es seguro por
+ * construcción: Expo exporta todo bajo `/_expo/` con el hash del contenido en
+ * el nombre, así que un archivo con ese nombre nunca cambia — si cambia el
+ * contenido, cambia la URL. `index.html` es lo contrario: es el único nombre
+ * fijo y es el que apunta a los hashes nuevos después de una actualización, así
+ * que **tiene** que revalidarse o la app quedaría cargando para siempre el
+ * bundle de la versión vieja.
+ */
+function cacheDe(pathname: string): string {
+  return pathname.startsWith('/_expo/') ? 'public, max-age=31536000, immutable' : 'no-cache'
+}
+
+async function servirArchivo(ruta: string, pathname: string): Promise<Response> {
+  const res = await net.fetch(pathToFileURL(ruta).toString())
+  /* Se rearma la respuesta en vez de mutar `res.headers`: las cabeceras de una
+     Response ya construida son de solo lectura. El cuerpo pasa como stream, sin
+     leerse a memoria. */
+  const headers = new Headers(res.headers)
+  headers.set('cache-control', cacheDe(pathname))
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
 }
 
 export function servirWeb(raiz: string): void {
@@ -81,7 +108,7 @@ export function servirWeb(raiz: string): void {
     const { pathname } = new URL(pedido.url)
     const destino = resolverDentro(raiz, decodeURIComponent(pathname))
 
-    if (destino && esArchivo(destino)) return servirArchivo(destino)
+    if (destino && esArchivo(destino)) return servirArchivo(destino, pathname)
 
     /*
      * El fallback de SPA, con el mismo corte que hace vercel.json en la web:
@@ -109,6 +136,6 @@ export function servirWeb(raiz: string): void {
       )
     }
 
-    return servirArchivo(indice)
+    return servirArchivo(indice, '/index.html')
   })
 }

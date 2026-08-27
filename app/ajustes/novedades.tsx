@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -6,6 +5,14 @@ import { Panel } from '../../src/ui/Panel'
 import { GrupoAjustes } from '../../src/ui/Ajustes'
 import { ICON_COLOR, IconBack } from '../../src/ui/icons'
 import { NOVEDADES } from '../../src/lib/novedades'
+import {
+  buscarActualizacion,
+  HAY_ACTUALIZADOR,
+  instalarActualizacion,
+  useActualizacion,
+  type EstadoActualizacion,
+  type NotasVersion,
+} from '../../src/state/actualizacion'
 import { usePiso } from '../../src/state/shell'
 import { volver } from '../../src/lib/volver'
 
@@ -27,92 +34,130 @@ const CAP = 672
  * en qué anda y se le puede pedir que busque ya.
  */
 
-/** El estado del actualizador, como lo publica desktop/src/actualizador.ts. */
-type EstadoActualizacion =
-  | { fase: 'inactivo' }
-  | { fase: 'buscando' }
-  | { fase: 'sin-novedad' }
-  | { fase: 'esperando-silencio'; version: string }
-  | { fase: 'bajando'; version: string; porcentaje: number }
-  | { fase: 'lista'; version: string }
-  | { fase: 'error'; mensaje: string }
-
-/*
- * El puente del preload, tipado estructural como en `lib/notificarEscritorio`:
- * la app no importa nada de `desktop/` — si el puente no está, no estamos en
- * la app de escritorio y la sección entera no se dibuja.
- */
-type PuenteEscritorio = {
-  version?: () => Promise<string>
-  actualizacion?: {
-    estado: () => Promise<EstadoActualizacion>
-    buscar: () => void
-    instalar: () => void
-    alCambiar: (escuchar: (estado: EstadoActualizacion) => void) => () => void
-  }
-}
-
-function puente(): PuenteEscritorio | undefined {
-  return (globalThis as { dnmusicEscritorio?: PuenteEscritorio }).dnmusicEscritorio
+/** Megabytes, para poder decir «42 de 137 MB» y no solo un porcentaje. */
+function mb(bytes: number): string {
+  return `${Math.round(bytes / 1_000_000)} MB`
 }
 
 /** Qué contar de cada fase, en una frase. */
-function fraseDelEstado(estado: EstadoActualizacion, version: string): string {
+function fraseDelEstado(estado: EstadoActualizacion): string {
   switch (estado.fase) {
     case 'buscando':
       return 'Buscando…'
     case 'sin-novedad':
-      return `Estás al día (${version}).`
+      return `Estás al día. Versión ${estado.version}.`
     case 'esperando-silencio':
-      return `Hay una versión nueva (${estado.version}); se baja cuando pares la música.`
+      return `Hay una versión nueva; se baja cuando pares la música.`
     case 'bajando':
-      return `Bajando la ${estado.version}… ${Math.round(estado.porcentaje)}%`
+      return estado.total
+        ? `Bajando… ${mb(estado.bajados)} de ${mb(estado.total)}`
+        : 'Bajando…'
     case 'lista':
-      return `La ${estado.version} está lista: se instala al cerrar la app.`
+      return 'Lista para instalar. Si no hacés nada, se instala sola al cerrar la app.'
     case 'error':
       return 'No se pudo buscar. Probá de nuevo en un rato.'
+    case 'apagado':
+      return `Acá no se actualiza sola: ${estado.motivo}.`
     default:
-      return version ? `Versión ${version}` : ''
+      return estado.version ? `Versión ${estado.version}` : ''
   }
 }
 
+/** La versión que viene, si hay alguna en camino. */
+function versionEnCamino(estado: EstadoActualizacion): string | null {
+  return estado.fase === 'esperando-silencio' || estado.fase === 'bajando' || estado.fase === 'lista'
+    ? estado.version
+    : null
+}
+
+function notasEnCamino(estado: EstadoActualizacion): NotasVersion | null {
+  return estado.fase === 'esperando-silencio' || estado.fase === 'bajando' || estado.fase === 'lista'
+    ? estado.notas
+    : null
+}
+
+/**
+ * La barra de progreso.
+ *
+ * Sin color, como todo (`docs/DESIGN.md`): el riel es la superficie
+ * interactiva y lo que avanza es el blanco, que es el acento. Píldora, como
+ * cualquier otra cosa de la app.
+ */
+function Barra({ porcentaje }: { porcentaje: number }) {
+  return (
+    <View className="h-1 w-full overflow-hidden rounded-full bg-muted">
+      <View
+        className="h-full rounded-full bg-primary"
+        style={{ width: `${Math.max(2, Math.min(100, porcentaje))}%` }}
+      />
+    </View>
+  )
+}
+
 function Actualizador() {
-  const [estado, setEstado] = useState<EstadoActualizacion>({ fase: 'inactivo' })
-  const [version, setVersion] = useState('')
+  const estado = useActualizacion()
 
-  useEffect(() => {
-    const p = puente()
-    if (!p?.actualizacion) return
-    void p.version?.().then(setVersion)
-    void p.actualizacion.estado().then(setEstado)
-    return p.actualizacion.alCambiar(setEstado)
-  }, [])
-
-  const p = puente()
-  if (!p?.actualizacion) return null
+  if (!HAY_ACTUALIZADOR) return null
 
   const ocupado = estado.fase === 'buscando' || estado.fase === 'bajando'
   const lista = estado.fase === 'lista'
+  const enCamino = versionEnCamino(estado)
+  const notas = notasEnCamino(estado)
 
   return (
     <GrupoAjustes titulo="Tu versión">
       <View className="gap-3 px-4 py-3.5">
-        <Text className="text-foreground text-[13px] leading-5">
-          {fraseDelEstado(estado, version)}
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={lista ? 'Reiniciar e instalar' : 'Buscar actualizaciones'}
-          disabled={ocupado}
-          onPress={() => (lista ? p.actualizacion?.instalar() : p.actualizacion?.buscar())}
-          className={`self-start rounded-full px-4 py-2 ${
-            ocupado ? 'bg-muted' : 'bg-primary active:opacity-80'
-          }`}
-        >
-          <Text className="text-primary-foreground text-[13px] font-semibold">
-            {lista ? 'Reiniciar e instalar' : ocupado ? 'En eso…' : 'Buscar actualizaciones'}
+        {enCamino ? (
+          <Text className="text-foreground text-[15px] font-semibold">
+            Versión {enCamino} {lista ? 'lista' : 'en camino'}
           </Text>
-        </Pressable>
+        ) : null}
+
+        <Text className="text-muted-foreground text-[13px] leading-5">
+          {fraseDelEstado(estado)}
+        </Text>
+
+        {estado.fase === 'bajando' ? <Barra porcentaje={estado.porcentaje} /> : null}
+
+        {/*
+          Qué trae, antes de instalarla.
+          Sale del propio feed de actualización (`latest.yml` lleva las notas del
+          release), que es la única fuente posible: las novedades del bundle
+          llegan hasta la versión que estás corriendo, no hasta la que viene.
+        */}
+        {notas && notas.cambios.length ? (
+          <View className="gap-2 rounded-2xl bg-muted p-3.5">
+            {notas.titulo ? (
+              <Text className="text-foreground text-[13px] font-semibold">{notas.titulo}</Text>
+            ) : null}
+            {notas.cambios.map((cambio) => (
+              <View key={cambio} className="flex-row gap-2.5">
+                <Text className="text-muted-foreground text-[13px] leading-5">·</Text>
+                <Text className="flex-1 text-muted-foreground text-[13px] leading-5">{cambio}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {estado.fase === 'apagado' ? null : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={lista ? 'Reiniciar e instalar' : 'Buscar actualizaciones'}
+            disabled={ocupado}
+            onPress={lista ? instalarActualizacion : buscarActualizacion}
+            className={`self-start rounded-full px-4 py-2 ${
+              ocupado ? 'bg-muted' : 'bg-primary active:opacity-80'
+            }`}
+          >
+            <Text
+              className={`text-[13px] font-semibold ${
+                ocupado ? 'text-muted-foreground' : 'text-primary-foreground'
+              }`}
+            >
+              {lista ? 'Reiniciar e instalar' : ocupado ? 'En eso…' : 'Buscar actualizaciones'}
+            </Text>
+          </Pressable>
+        )}
       </View>
     </GrupoAjustes>
   )

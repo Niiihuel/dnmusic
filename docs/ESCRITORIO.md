@@ -14,10 +14,11 @@ app— y eso es un trámite aparte, no una casilla más en el YAML.
 | --- | --- |
 | `desktop/src/main.ts` | La ventana, el menú, el cierre que instala y reabre |
 | `desktop/src/protocolo.ts` | Sirve el bundle web desde `app://dnmusic` |
-| `desktop/src/actualizador.ts` | Busca, baja e instala; decide **cuándo** |
+| `desktop/src/actualizador.ts` | Busca, baja e instala; decide **cuándo**, y publica su estado |
 | `desktop/src/preload.ts` | Lo único que la web puede ver del escritorio |
 | `desktop/src/resolutor.ts` | Baja el audio con la IP de esta compu y lo aporta |
 | `desktop/src/potoken.ts` | Los PO tokens del resolutor (espejo del servidor) |
+| `desktop/src/salida.ts` | El host de YouTube Music y el User-Agent (espejo) |
 | `desktop/electron-builder.yml` | Cómo se empaqueta y a qué repo se publica |
 | `desktop/scripts/traer-web.mjs` | Copia `dist/` y el ícono adentro de `desktop/` |
 | `desktop/scripts/notas-release.mjs` | El cuerpo del release, sacado de las novedades |
@@ -145,8 +146,9 @@ Novedades» de la app —la misma en la web, la compu y el teléfono— y el cue
 del release de GitHub, que escribe `scripts/notas-release.mjs`. Si el tag no
 tiene entrada en el JSON, **el workflow corta ahí**: publicar una versión sin
 contar qué trae es justo el olvido que ese paso existe para atajar. En esa
-misma pantalla, el escritorio muestra además el actualizador —en qué anda, y
-buscar ya— que hasta la 1.0.1 solo vivía detrás de Alt, en el menú.
+misma pantalla, el escritorio muestra además el actualizador —en qué anda, qué
+trae lo que viene, y buscar ya— más una píldora de aviso cuando hay algo listo
+(ver «El aviso de actualización en la app»).
 
 El workflow exporta la web, escribe esa versión en `desktop/package.json`,
 compila Windows y Linux y sube los cuatro archivos al release: los dos
@@ -246,26 +248,75 @@ levanta una ventana en Windows ni en la mayoría de los escritorios de Linux.
 En el navegador esto **no hace nada** a propósito: `hayNotificaciones()` pide el
 puente del preload, así que una pestaña común nunca pide permiso.
 
-## Mostrar el aviso en la app (opcional)
+## El aviso de actualización en la app
 
-Hoy la actualización es silenciosa: se baja y se aplica sin decir nada. El
-puente para mostrarla ya está expuesto, si alguna vez se quiere un aviso con el
-[`Aviso`](../src/ui/Aviso.tsx) de siempre:
+La actualización se sigue aplicando sola al cerrar —eso no cambió— pero ahora
+**se ve**, y sin diálogos del sistema.
 
-```ts
-type Puente = {
-  actualizacion: {
-    alCambiar: (f: (e: { fase: string; version?: string }) => void) => () => void
-  }
-}
-const escritorio = (globalThis as any).dnmusicEscritorio as Puente | undefined
+Antes, `actualizador.ts` abría un `dialog.showMessageBox` para el «hay una
+nueva», el «ya tenés la última» y el «no se puede acá». Un diálogo del sistema
+es una caja gris con el marco del sistema operativo encima de una interfaz que
+se separa por luminancia (`docs/DESIGN.md`), es modal, y el peor de los tres
+aparecía **incluso mientras sonaba música**. Los tres se fueron.
 
-useEffect(() => {
-  return escritorio?.actualizacion.alCambiar((e) => {
-    if (e.fase === 'lista') mostrarAviso(`Actualización lista: se aplica al cerrar`)
-  })
-}, [])
-```
+En su lugar, el actualizador **publica su estado** y la app lo dibuja con su
+propia tipografía:
+
+- `src/state/actualizacion.ts` — el store. Una sola suscripción al puente para
+  toda la app, armada al cargar el módulo (no dentro de un `useEffect`): el
+  evento de «lista» puede llegar mientras estás en cualquier pantalla, y perderlo
+  porque la píldora todavía no se montó sería un bug. Fuera del escritorio el
+  puente no existe, `HAY_ACTUALIZADOR` es falso y nadie se suscribe a nada.
+- `src/ui/AvisoActualizacion.tsx` — la píldora de abajo, solo cuando la
+  actualización ya está **bajada y lista**. No es un pedido, es un ofrecimiento:
+  se instala igual al cerrar, así que descartarla no cuesta nada y por eso lleva
+  una X. Vive en el mismo rincón que el [`Aviso`](../src/ui/Aviso.tsx), que se
+  corre hacia arriba cuando la píldora está presente.
+- La pantalla de Novedades muestra el detalle: progreso en MB, la barra, y **qué
+  trae la versión que viene** antes de instalarla.
+
+Ese «qué trae» sale de un lugar que hasta ahora tirábamos: **`latest.yml`
+incluye las notas del release** —las mismas que escribe `notas-release.mjs`— y
+son la única fuente posible, porque el `novedades.json` del bundle llega hasta la
+versión que estás corriendo, no hasta la que viene. `actualizador.ts` las parsea
+con `leerNotas` (de vuelta a `{ titulo, cambios, fecha }`) y las manda en el
+estado. El parseo es seguro porque ese markdown lo generamos nosotros con un
+formato fijo; ante cualquier cosa rara, devuelve `null` y la interfaz cae al caso
+sin notas.
+
+## Que la ventana escondida no rompa la sincronía
+
+Chromium **estrangula los `setInterval` a uno por minuto** cuando la ventana
+está oculta o tapada por otra. En una página cualquiera está bien; en un
+reproductor que se usa justamente minimizado, rompe dos cosas concretas: la
+corrección de deriva del Jam (cada 7 s, `MotorAudio.tsx`) y el latido de la
+escucha entre dispositivos (cada 1 s, `state/escucha.ts`). El audio nunca se
+frena —eso lo maneja otro proceso— así que el síntoma no es silencio: es que el
+otro aparato cree que dejaste de escuchar, que es peor de encontrar.
+
+`backgroundThrottling: false` en las `webPreferences` lo apaga. Es de las cosas
+que solo se pueden arreglar del lado de Electron: el bundle web no tiene forma de
+pedirlo.
+
+## Que abra más rápido
+
+Dos piezas que trabajan juntas, las dos en el lado de Electron:
+
+- **Cabeceras de caché** en `protocolo.ts`. Sin `Cache-Control`, una respuesta
+  es no cacheable, y eso no cuesta solo un `read` de disco: V8 guarda el código
+  compilado atado a la entrada de caché HTTP, así que un bundle no cacheable **se
+  recompila entero en cada arranque** — 5,3 MB de JavaScript. Todo lo de
+  `/_expo/` lleva el hash del contenido en el nombre, así que va `immutable` por
+  un año; `index.html` es el único nombre fijo y va `no-cache`, porque es el que
+  apunta a los hashes nuevos después de actualizar.
+- **`v8CacheOptions: 'bypassHeatCheck'`**. Por defecto V8 espera a que un script
+  se ejecute varias veces antes de cachear su compilado; un bundle de app se
+  ejecuta una vez por arranque, así que esa heurística no se cumple nunca. Con
+  esto lo cachea desde la primera. Sin las cabeceras de arriba no tendría dónde
+  guardarlo, así que las dos van juntas.
+
+El efecto se nota del **segundo** arranque en adelante: el primero todavía
+compila.
 
 ## Lo que no hace
 

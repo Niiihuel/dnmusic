@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.3.0",
+    "fecha": "26 de agosto de 2026",
+    "titulo": "Las canciones aparecen solas, y las actualizaciones se dejan ver",
+    "cambios": [
+      "El teléfono ya no depende de que haya una computadora prendida: consigue la canción por su cuenta y la deja guardada para todos. Si sos la única persona con iPhone del grupo, esto es lo que hace que puedas escuchar cualquier tema.",
+      "Menos «no se pudo obtener el audio»: la app se presenta ante YouTube como lo que es —un reproductor de música— en vez de con una versión de hace año y medio.",
+      "Cuando hay una versión nueva, ahora se ve: un aviso discreto abajo que te deja reiniciar en el momento, o ignorarlo tranquilo porque se instala sola al cerrar igual.",
+      "En Novedades se ve qué trae la versión que viene antes de instalarla, y cuánto le falta de bajar.",
+      "Se fueron los carteles grises del sistema que aparecían en el medio de la pantalla —a veces incluso mientras sonaba música— para avisar de una actualización.",
+      "Minimizar la ventana ya no desacomoda la escucha compartida ni el Jam: el reloj de la app sigue corriendo aunque no la estés mirando.",
+      "El escritorio abre más rápido a partir del segundo arranque."
+    ]
+  },
+  {
     "version": "1.2.0",
     "fecha": "22 de agosto de 2026",
     "titulo": "Una radio que te conoce desde el primer día",

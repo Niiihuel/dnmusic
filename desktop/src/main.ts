@@ -90,6 +90,34 @@ function crearVentana(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      /*
+       * Los temporizadores siguen corriendo con la ventana escondida.
+       *
+       * Chromium estrangula a **una vez por minuto** los `setInterval` de una
+       * ventana oculta u ocupada por otra. En una página cualquiera eso está
+       * perfecto; en un reproductor que se usa justamente minimizado, rompe
+       * cosas concretas: la corrección de deriva de Jam corre cada 7 segundos
+       * (`MotorAudio.tsx`) y el latido de la escucha entre dispositivos cada
+       * uno (`state/escucha.ts`). Con el estrangulamiento, escuchar en Jam con
+       * la ventana atrás se desincroniza y el otro aparato cree que dejaste de
+       * escuchar.
+       *
+       * El audio en sí nunca se frena —eso lo maneja el proceso de audio— así
+       * que el síntoma no es silencio: es que se desacomoda todo lo que
+       * depende del reloj, que es peor de encontrar.
+       */
+      backgroundThrottling: false,
+      /*
+       * Que V8 guarde el código compilado desde la primera corrida.
+       *
+       * Por defecto (`'code'`) V8 espera a que un script se ejecute varias
+       * veces antes de molestarse en cachear su compilado. Un bundle de app se
+       * ejecuta **una vez por arranque**, así que esa heurística no se cumple
+       * nunca y se recompila siempre. Junto con las cabeceras de caché de
+       * `protocolo.ts` —sin las que no hay dónde guardarlo— esto es lo que hace
+       * que el segundo arranque sea más rápido que el primero.
+       */
+      v8CacheOptions: 'bypassHeatCheck',
     },
   })
 

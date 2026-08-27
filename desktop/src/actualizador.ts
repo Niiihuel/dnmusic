@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
 
 /**
@@ -36,18 +36,71 @@ const CADA_MS = 6 * 60 * 60 * 1000
  */
 const ESPERA_SILENCIO_MS = 30 * 1000
 
+/**
+ * Qué trae la versión que viene, sacado del propio feed.
+ *
+ * `latest.yml` incluye las notas del release —las escribe
+ * `scripts/notas-release.mjs` desde las mismas novedades que muestra la app— y
+ * hasta ahora las tirábamos. Son la única forma de contar qué trae una versión
+ * que todavía no está instalada: el `novedades.json` del bundle llega hasta la
+ * que estás corriendo, no más.
+ */
+export type NotasVersion = { titulo: string; cambios: string[]; fecha: string | null }
+
 export type EstadoActualizacion =
-  | { fase: 'inactivo' }
+  /** Todavía no buscó nada. Trae la versión instalada para no pedirla aparte. */
+  | { fase: 'inactivo'; version: string }
+  /** No corre acá, y por qué. Antes esto era un diálogo del sistema. */
+  | { fase: 'apagado'; motivo: string }
   | { fase: 'buscando' }
-  | { fase: 'sin-novedad' }
-  | { fase: 'esperando-silencio'; version: string }
-  | { fase: 'bajando'; version: string; porcentaje: number }
-  | { fase: 'lista'; version: string }
+  | { fase: 'sin-novedad'; version: string }
+  | { fase: 'esperando-silencio'; version: string; notas: NotasVersion | null }
+  | {
+      fase: 'bajando'
+      version: string
+      notas: NotasVersion | null
+      porcentaje: number
+      /** Bytes, para poder decir «42 de 137 MB» en vez de solo un porcentaje. */
+      bajados: number
+      total: number
+    }
+  | { fase: 'lista'; version: string; notas: NotasVersion | null }
   | { fase: 'error'; mensaje: string }
 
-let estado: EstadoActualizacion = { fase: 'inactivo' }
+/**
+ * Las notas del release, de markdown a algo que la app pueda dibujar con su
+ * propia tipografía.
+ *
+ * Se parsea y no se muestra el markdown crudo porque del otro lado hay un
+ * sistema de diseño, no un visor de texto. Es seguro parsearlo: ese markdown lo
+ * generamos nosotros con un formato fijo (`## título`, `- cambio`, `_fecha_`).
+ * Si algún día cambia de forma, esto devuelve lo que pueda y la interfaz cae al
+ * caso sin notas — nunca tira.
+ */
+export function leerNotas(crudo: unknown): NotasVersion | null {
+  /* electron-updater las da como string o como lista por idioma; con el
+     provider de GitHub y nuestro yml es siempre string. */
+  const texto =
+    typeof crudo === 'string'
+      ? crudo
+      : Array.isArray(crudo)
+        ? crudo.map((n) => (typeof n === 'object' && n && 'note' in n ? String(n.note) : '')).join('\n')
+        : ''
+  if (!texto.trim()) return null
+
+  const lineas = texto.split('\n').map((l) => l.trim())
+  const titulo = lineas.find((l) => l.startsWith('## '))?.slice(3).trim() ?? ''
+  const cambios = lineas.filter((l) => l.startsWith('- ')).map((l) => l.slice(2).trim())
+  const fecha = lineas.find((l) => /^_.+_$/.test(l))?.slice(1, -1) ?? null
+
+  if (!titulo && !cambios.length) return null
+  return { titulo, cambios, fecha }
+}
+
+let estado: EstadoActualizacion = { fase: 'inactivo', version: '' }
 let sonando = false
 let pendiente: UpdateInfo | null = null
+let notasPendientes: NotasVersion | null = null
 let bajando = false
 let temporizadorSilencio: NodeJS.Timeout | null = null
 /** Una sola vez por sesión: si el instalador falla, cerrar tiene que cerrar. */
@@ -65,6 +118,13 @@ function avisar(nuevo: EstadoActualizacion): void {
 }
 
 export function estadoActual(): EstadoActualizacion {
+  /* Si nunca buscó, se contesta con la versión instalada ya adentro: la
+     pantalla de novedades la pedía por separado y quedaba un cuadro con el
+     estado puesto y el número todavía vacío. */
+  if (estado.fase === 'inactivo' && !estado.version) {
+    const motivo = porQueNoCorre()
+    estado = motivo ? { fase: 'apagado', motivo } : { fase: 'inactivo', version: app.getVersion() }
+  }
   return estado
 }
 
@@ -128,14 +188,18 @@ export async function buscarAhora(manual = false): Promise<void> {
   const motivo = porQueNoCorre()
   if (motivo) {
     registrar('no busco:', motivo)
-    if (manual) {
-      await dialog.showMessageBox({
-        type: 'info',
-        message: 'Las actualizaciones automáticas están apagadas acá',
-        detail: `${motivo[0].toUpperCase()}${motivo.slice(1)}.`,
-        buttons: ['Listo'],
-      })
-    }
+    /*
+     * Antes esto abría un `dialog.showMessageBox`, y también lo hacían el «ya
+     * tenés la última» y el «hay una nueva».
+     *
+     * Se fueron los tres. Un diálogo del sistema es una caja gris con el marco
+     * del sistema operativo encima de una interfaz que se separa por luminancia
+     * y no por bordes (docs/DESIGN.md), es modal —te bloquea la app para
+     * decirte algo que no es urgente— y encima aparecía **incluso mientras
+     * sonaba música**. Todo lo que decían ahora se publica como estado, y la
+     * app lo dibuja con su propia tipografía y sin frenar a nadie.
+     */
+    if (manual) avisar({ fase: 'apagado', motivo })
     return
   }
 
@@ -145,48 +209,17 @@ export async function buscarAhora(manual = false): Promise<void> {
      * El resultado del promise no alcanza para saber si hay algo nuevo: trae
      * `updateInfo` siempre, con la versión que hay publicada, haya o no
      * novedad. Quien contesta esa pregunta son los eventos, que ya corrieron
-     * cuando este await vuelve — de ahí que se mire `pendiente`.
+     * cuando este await vuelve.
      */
     await autoUpdater.checkForUpdates()
-    if (!manual) return
-
-    if (!pendiente) {
-      await dialog.showMessageBox({
-        type: 'info',
-        message: 'Ya tenés la última',
-        detail: `Versión ${app.getVersion()}.`,
-        buttons: ['Listo'],
-      })
-      return
-    }
-
-    await dialog.showMessageBox({
-      type: 'info',
-      message: `Hay una nueva: ${pendiente.version}`,
-      detail:
-        estado.fase === 'lista'
-          ? 'Ya está bajada. Cerrá la app cuando quieras: se instala sola y vuelve a abrirse.'
-          : sonando
-            ? 'Se baja cuando pares la música. Después, al cerrar la app se instala sola y vuelve a abrirse.'
-            : 'Se está bajando. Al cerrar la app se instala sola y vuelve a abrirse.',
-      buttons: ['Listo'],
-    })
   } catch (error) {
     /*
      * Sin internet esto falla, y fallar acá es normal: se registra y se sigue.
-     * Solo se muestra si lo pediste vos desde el menú — un cartel de error que
-     * aparece solo porque el wifi se cayó es ruido, no información.
+     * El estado de error solo se publica si lo pediste vos — que la pantalla
+     * diga «no se pudo» porque el wifi se cayó a las 4am es ruido.
      */
     registrar('falló la búsqueda:', error)
-    avisar({ fase: 'error', mensaje: String(error) })
-    if (manual) {
-      await dialog.showMessageBox({
-        type: 'warning',
-        message: 'No se pudo buscar la actualización',
-        detail: String(error),
-        buttons: ['Listo'],
-      })
-    }
+    if (manual) avisar({ fase: 'error', mensaje: String(error) })
   }
 }
 
@@ -249,18 +282,27 @@ export function arrancarActualizador(): void {
     if (estado.fase === 'lista' && estado.version === info.version) return
 
     pendiente = info
-    registrar('hay', info.version)
+    notasPendientes = leerNotas(info.releaseNotes)
+    registrar('hay', info.version, notasPendientes ? `— ${notasPendientes.titulo}` : '')
     if (sonando) {
-      avisar({ fase: 'esperando-silencio', version: info.version })
+      avisar({ fase: 'esperando-silencio', version: info.version, notas: notasPendientes })
     } else {
-      avisar({ fase: 'bajando', version: info.version, porcentaje: 0 })
+      avisar({
+        fase: 'bajando',
+        version: info.version,
+        notas: notasPendientes,
+        porcentaje: 0,
+        bajados: 0,
+        total: 0,
+      })
       bajar()
     }
   })
 
   autoUpdater.on('update-not-available', () => {
     pendiente = null
-    avisar({ fase: 'sin-novedad' })
+    notasPendientes = null
+    avisar({ fase: 'sin-novedad', version: app.getVersion() })
   })
 
   autoUpdater.on('download-progress', (progreso) => {
@@ -268,14 +310,17 @@ export function arrancarActualizador(): void {
     avisar({
       fase: 'bajando',
       version: pendiente.version,
+      notas: notasPendientes,
       porcentaje: Math.round(progreso.percent),
+      bajados: progreso.transferred,
+      total: progreso.total,
     })
   })
 
   autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
     bajando = false
     registrar('lista', info.version, '— se instala al cerrar')
-    avisar({ fase: 'lista', version: info.version })
+    avisar({ fase: 'lista', version: info.version, notas: notasPendientes })
   })
 
   autoUpdater.on('error', (error) => {
@@ -287,6 +332,7 @@ export function arrancarActualizador(): void {
   const motivo = porQueNoCorre()
   if (motivo) {
     registrar('apagado:', motivo)
+    estado = { fase: 'apagado', motivo }
     return
   }
 

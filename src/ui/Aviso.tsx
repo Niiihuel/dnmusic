@@ -10,10 +10,20 @@ import {
   withTiming,
 } from 'react-native-reanimated'
 import { limpiarAviso, useAviso } from '../state/aviso'
+import { useHayAvisoActualizacion } from '../state/actualizacion'
 import { GlassAnimado, HAY_VIDRIO } from './Glass'
 import { usePiso } from '../state/shell'
 
 /** Cuánto se queda. Un error da más tiempo de lectura que un «Guardado». */
+/**
+ * Cuánto sube el aviso cuando la píldora de actualización está abajo.
+ *
+ * Las dos cosas viven en el mismo rincón, y la de actualización se queda hasta
+ * que la despachen: sin esto, un «Guardado» le caería justo encima. Es la altura
+ * de la píldora más el aire entre las dos.
+ */
+const SOBRE_ACTUALIZACION = 64
+
 const DURACION_MS = 2200
 const DURACION_MALO_MS = 3600
 const ENTRADA_MS = 220
@@ -34,7 +44,11 @@ const SALIDA_MS = 180
  */
 export function Aviso() {
   const { texto, turno, malo } = useAviso()
-  const piso = usePiso(12)
+  /* Un booleano y no el objeto: al toast solo le importa si la píldora está
+     abajo para correrse. Suscrito al estado crudo, se redibujaría en cada tick
+     de progreso de una descarga que ni siquiera está mostrando. */
+  const hayActualizacion = useHayAvisoActualizacion()
+  const piso = usePiso(12) + (hayActualizacion ? SOBRE_ACTUALIZACION : 0)
 
   const p = useSharedValue(0)
 
