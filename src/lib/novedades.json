@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.5.0",
+    "fecha": "27 de agosto de 2026",
+    "titulo": "Cada portada pone su color, y la música salta de un aparato a otro",
+    "cambios": [
+      "La portada arma filas con tus géneros arriba del catálogo: entrás y ya hay tandas de lo que te gusta, sin depender de una cuenta de YouTube.",
+      "Podés mandar la música a otro dispositivo y traerla de vuelta, estilo Spotify Connect: la elegís desde «Escuchar en…» en el menú del reproductor, y arriba te dice en qué aparato está sonando.",
+      "Las cabeceras de listas, álbumes y artistas se tiñen con el color de su portada — cada una se siente distinta apenas la abrís.",
+      "Compartir lo que suena en una historia quedó más lindo: la carátula grande, una barra de reproducción y el sello de la app. Aparece igual cuando sacás una captura de pantalla.",
+      "Traer una lista de Spotify: la pantalla quedó más prolija, y en el iPhone ya no se cierra la app al terminar.",
+      "Al crear la cuenta, la barra de reproducción deja de asomar de fondo mientras elegís tus gustos."
+    ]
+  },
+  {
     "version": "1.4.0",
     "fecha": "27 de agosto de 2026",
     "titulo": "Listas enteras, un login más limpio y el reproductor más prolijo",
