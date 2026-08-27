@@ -32,6 +32,7 @@ import {
   MicVocal,
   Ellipsis,
   ImagePlus,
+  MonitorSmartphone,
   Music,
   Pause,
   Pencil,
@@ -109,6 +110,7 @@ export const IconClose = make(X)
 export const IconPlay = makeFilled(Play)
 export const IconPause = makeFilled(Pause)
 export const IconMusic = make(Music)
+export const IconDispositivo = make(MonitorSmartphone)
 export const IconCheck = make(Check)
 export const IconChevronUp = make(ChevronUp)
 export const IconChevronDown = make(ChevronDown)

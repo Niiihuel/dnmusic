@@ -5,6 +5,7 @@ import {
   fetchEscuchaEstado,
   publicarEscucha,
   suscribirEscucha,
+  type DispositivoPresente,
   type ColaEscucha,
   type Escucha,
   type EscuchaEstado,
@@ -18,6 +19,7 @@ import {
   registerEscucha,
   reportProgress,
   subscribePlayback,
+  resumePlayback,
 } from './playback'
 import { hayJam } from './jam'
 import { createStore, useStore } from './store'
@@ -60,7 +62,7 @@ type Estado = {
    * primera sincronización: en esa ventana se asume que el dueño está — la
    * duda no puede arrancar audio local por encima de una escucha que sí suena.
    */
-  presentes: string[] | null
+  presentes: DispositivoPresente[] | null
   /** Reloj del servidor menos reloj local, medido como en el Jam. */
   offsetMs: number
   deviceId: string | null
@@ -68,6 +70,8 @@ type Estado = {
   espejo: boolean
   /** El traspaso preguntando; null sin modal a la vista. */
   pendiente: Pendiente | null
+  /** El selector de dispositivos, abierto o cerrado. */
+  selectorAbierto: boolean
 }
 
 const store = createStore<Estado>({
@@ -77,6 +81,7 @@ const store = createStore<Estado>({
   deviceId: null,
   espejo: false,
   pendiente: null,
+  selectorAbierto: false,
 })
 
 /* Los eventos gruesos se juntan, mismo criterio que el refetch del Jam. */
@@ -89,6 +94,8 @@ const PUBLICAR_MS = 300
 const SEEK_UMBRAL_MS = 3000
 
 let desuscribir: Unsubscribe | null = null
+/** Enviar el «tomá vos» a un aparato: lo arma el canal en `iniciarEscucha`. */
+let mandarAImpl: ((destino: string) => void) | null = null
 let soltarPlayback: (() => void) | null = null
 let refetchTimer: ReturnType<typeof setTimeout> | null = null
 let publicarTimer: ReturnType<typeof setTimeout> | null = null
@@ -129,7 +136,7 @@ function posicionVisible(e: Escucha, offsetMs: number): number {
 function duenoPresente(s: Estado): boolean {
   if (!s.escucha) return false
   if (s.presentes === null) return true
-  return s.presentes.includes(s.escucha.deviceId)
+  return s.presentes.some((d) => d.deviceId === s.escucha!.deviceId)
 }
 
 /** La escucha está sonando de verdad en otro aparato conectado. */
@@ -307,9 +314,9 @@ function aplicarFila(fila: Escucha) {
   ajustarTicker()
 }
 
-function aplicarPresencia(ids: string[]) {
+function aplicarPresencia(dispositivos: DispositivoPresente[]) {
   const antes = duenoPresente(store.get())
-  store.set({ presentes: ids })
+  store.set({ presentes: dispositivos })
   const s = store.get()
   const ahora = duenoPresente(s)
   /*
@@ -371,12 +378,18 @@ export async function iniciarEscucha(): Promise<void> {
   const v = ++version
   uid = userId
   store.set({ deviceId })
-  desuscribir = suscribirEscucha(userId, deviceId, {
+  const sub = suscribirEscucha(userId, deviceId, {
     onFila: (fila) => {
       if (v === version) aplicarFila(fila)
     },
-    onPresentes: (ids) => {
-      if (v === version) aplicarPresencia(ids)
+    onPresentes: (dispositivos) => {
+      if (v === version) aplicarPresencia(dispositivos)
+    },
+    // Otro aparato eligió que la música se venga a este: se toma sin preguntar.
+    // El pedido lo mandó una persona tocando el selector, así que no hay a quién
+    // consultar de este lado.
+    onTomar: () => {
+      if (v === version) tomarLocal()
     },
     // Entre que el canal se pidió y quedó suscripto pudo pasar de todo: un
     // estado completo tapa la ventana. Mismo criterio que el Jam y el chat.
@@ -384,6 +397,8 @@ export async function iniciarEscucha(): Promise<void> {
       if (v === version) programarRefetch()
     },
   })
+  desuscribir = sub.desuscribir
+  mandarAImpl = sub.mandarA
   soltarPlayback = subscribePlayback(alCambiarPlayback)
   await refrescar()
 }
@@ -394,6 +409,7 @@ export function desconectarEscucha() {
   uid = null
   desuscribir?.()
   desuscribir = null
+  mandarAImpl = null
   soltarPlayback?.()
   soltarPlayback = null
   if (refetchTimer) {
@@ -592,6 +608,52 @@ export function confirmarTraspaso() {
   pendiente.continuar()
 }
 
+/* ── El selector de dispositivos ──────────────────────────────────────────── */
+
+/**
+ * Traer la música a **este** aparato porque otro lo pidió por el canal.
+ *
+ * Es el traspaso, pero sin modal: del otro lado alguien eligió este dispositivo
+ * en el selector, así que no hay nada que preguntar. Como espejo ya se tiene la
+ * cola reflejada y la posición, alcanza con dejar de reflejar y reanudar: el
+ * `resumePlayback` arranca el audio acá y, al cambiar el estado, se publica la
+ * escucha con este `deviceId` —reclamando el lock—, con lo que el aparato que
+ * venía sonando pasa a ser el espejo. Es el mismo mecanismo del traspaso a
+ * mano, disparado desde afuera.
+ */
+function tomarLocal() {
+  const s = store.get()
+  if (!s.escucha || s.escucha.deviceId === s.deviceId) return
+  store.set({ espejo: false, pendiente: null })
+  ajustarTicker()
+  resumePlayback()
+}
+
+/**
+ * Mandar la música a otro aparato de la cuenta (Spotify Connect al revés: en
+ * vez de traerla, se la pasás). El otro la toma solo (ver `tomarLocal`).
+ *
+ * No hace nada si el destino es este mismo aparato —para eso está reanudar—, ni
+ * si el canal todavía no está armado.
+ */
+export function mandarEscuchaA(deviceId: string) {
+  if (deviceId === store.get().deviceId) return
+  mandarAImpl?.(deviceId)
+}
+
+/** «Traer acá» desde el selector: el equivalente local de tocar tu dispositivo. */
+export function traerEscuchaAca() {
+  tomarLocal()
+}
+
+export function abrirSelectorDispositivos() {
+  store.set({ selectorAbierto: true })
+}
+
+export function cerrarSelectorDispositivos() {
+  store.set({ selectorAbierto: false })
+}
+
 /** «Seguir allá»: no pasa nada — que es exactamente lo que se pidió. */
 export function cancelarTraspaso() {
   store.set({ pendiente: null })
@@ -612,3 +674,24 @@ export const useEscuchaEspejoNombre = () =>
     s.espejo && s.escucha ? s.escucha.deviceNombre || 'otro dispositivo' : null,
   )
 export const useTraspasoPendiente = () => useStore(store, (s) => s.pendiente)
+export const useSelectorDispositivos = () => useStore(store, (s) => s.selectorAbierto)
+
+/**
+ * Los dispositivos de la cuenta conectados ahora, para el selector.
+ *
+ * Tres hooks primitivos en vez de uno que arme un objeto: un selector que
+ * devolviera `{ lista, actual, ... }` nuevo en cada lectura haría re-render sin
+ * fin —`useSyncExternalStore` lo leería como cambio constante—. Así cada uno
+ * devuelve una referencia estable (la lista tal como está en el store, o un
+ * string) y el menú compone la vista.
+ */
+export const useDispositivos = (): DispositivoPresente[] =>
+  useStore(store, (s) => s.presentes ?? VACIO)
+/** El id de este aparato, para marcarse a sí mismo en el selector. */
+export const useEsteDispositivo = () => useStore(store, (s) => s.deviceId)
+/** El aparato que reproduce ahora mismo (dueño del lock), o null. */
+export const useDispositivoQueSuena = () =>
+  useStore(store, (s) => s.escucha?.deviceId ?? null)
+
+/** Una lista vacía **estable**: devolver `[]` nuevo cada vez rompería el hook. */
+const VACIO: DispositivoPresente[] = []

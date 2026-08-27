@@ -28,6 +28,7 @@ import { reconectarJam } from '../src/state/jam'
 import { iniciarEscucha } from '../src/state/escucha'
 import { cargarMeGusta } from '../src/state/gustos'
 import { Traspaso } from '../src/ui/Traspaso'
+import { SelectorDispositivos } from '../src/ui/SelectorDispositivos'
 import { startSession, useMyProfile, useUser } from '../src/state/session'
 import { usePush } from '../src/state/push'
 import { emailToUsername } from '../src/services/auth'
@@ -148,6 +149,7 @@ function Chrome() {
   const sinReproductor =
     enEditor ||
     segmentos[0] === 'ajustes' ||
+    segmentos[0] === 'onboarding' ||
     (segmentos[0] === 'profile' && segmentos[1] === 'editar')
   /*
    * Dónde estás parado, para la fila plegada.
@@ -768,6 +770,9 @@ function Chrome() {
           cuenta y alguien tocó el transporte acá. Puede saltar desde
           cualquier pantalla, así que vive en el mismo lugar que el aviso. */}
       <Traspaso />
+      {/* El selector de dispositivos (Spotify Connect), abierto desde el menú del
+          reproductor. Vive acá arriba porque la música suena desde cualquier lado. */}
+      <SelectorDispositivos />
 
       {/* El velo y, encima, la zona que cierra: con el panel abierto, tocar la
           app lo cierra en vez de accionar lo que haya debajo del dedo. */}

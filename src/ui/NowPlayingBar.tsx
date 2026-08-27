@@ -21,7 +21,7 @@ import {
   usePlaybackState,
 } from '../state/playback'
 import { crearJamActual, salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
-import { useEscuchaEspejoNombre } from '../state/escucha'
+import { abrirSelectorDispositivos, useEscuchaEspejoNombre } from '../state/escucha'
 import { BORDE_REFERENTE, Glass, HAY_VIDRIO } from './Glass'
 import { compartirHistoria } from './CompartirHistoria'
 import { Menu, type MenuItem } from './Menu'
@@ -33,6 +33,7 @@ import {
   IconClose,
   IconMusic,
   IconNext,
+  IconDispositivo,
   IconPause,
   IconPlay,
   IconPrevious,
@@ -77,6 +78,52 @@ export const PANEL_PX = 1120
  *
  * El estado vive en `state/playback`, que es de donde lee todo lo que muestra.
  */
+/**
+ * La línea de estado de la barra: quién canta, un error, o —lo nuevo— en qué
+ * aparato está sonando.
+ *
+ * Cuando la escucha vive en otro dispositivo de la cuenta, en vez de un
+ * subtítulo gris fácil de pasar por alto va un aviso con el ícono de un
+ * dispositivo y el texto en blanco: se lee como lo que es —esto suena en otro
+ * lado— sin robar protagonismo, al modo de la barrita de Spotify Connect. Para
+ * traerla acá alcanza con tocar el play, que ya dispara el traspaso.
+ *
+ * Es una función y no un componente para poder devolver un `Text` o una fila
+ * con ícono según el caso, y caer justo donde antes iba el subtítulo.
+ */
+function lineaEstado({
+  espejoEn,
+  error,
+  artist,
+}: {
+  espejoEn: string | null
+  error: string | null
+  artist: string
+}) {
+  if (error) {
+    return (
+      <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+        {error}
+      </Text>
+    )
+  }
+  if (espejoEn) {
+    return (
+      <View className="flex-row items-center gap-1">
+        <IconDispositivo size={12} color={ICON_COLOR.foreground} />
+        <Text className="text-foreground text-[11px]" numberOfLines={1}>
+          Sonando en «{espejoEn}»
+        </Text>
+      </View>
+    )
+  }
+  return (
+    <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+      {artist}
+    </Text>
+  )
+}
+
 export function NowPlayingBar({
   oculto = false,
   compacta = false,
@@ -204,6 +251,14 @@ export function NowPlayingBar({
       icon: <IconCola size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'list.bullet',
     },
+    {
+      // Spotify Connect: mover la música entre los aparatos de la cuenta. El
+      // selector lo dibuja `SelectorDispositivos`, montado en el layout.
+      label: 'Escuchar en…',
+      onPress: abrirSelectorDispositivos,
+      icon: <IconDispositivo size={15} color={ICON_COLOR.muted} />,
+      sfSymbol: 'laptopcomputer.and.iphone',
+    },
     /*
      * El aleatorio, **solo en el teléfono**.
      *
@@ -330,9 +385,7 @@ export function NowPlayingBar({
               <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
                 {current.title}
               </Text>
-              <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-                {error ?? (espejoEn ? `Sonando en «${espejoEn}»` : current.artist)}
-              </Text>
+              {lineaEstado({ espejoEn, error, artist: current.artist })}
             </View>
           </Pressable>
 
@@ -425,9 +478,7 @@ export function NowPlayingBar({
           <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
             {current.title}
           </Text>
-          <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-            {error ?? (espejoEn ? `Sonando en «${espejoEn}»` : current.artist)}
-          </Text>
+          {lineaEstado({ espejoEn, error, artist: current.artist })}
         </View>
         {/* El corazón, pegado a lo que suena: es un juicio sobre la canción,
             no un control de transporte — por eso va acá y no con el play. */}
@@ -577,9 +628,7 @@ export function NowPlayingBar({
               <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
                 {current.title}
               </Text>
-              <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-                {error ?? (espejoEn ? `Sonando en «${espejoEn}»` : current.artist)}
-              </Text>
+              {lineaEstado({ espejoEn, error, artist: current.artist })}
             </View>
             {/* El corazón, junto a lo que suena — misma regla que en la
                 franja sin vidrio. */}

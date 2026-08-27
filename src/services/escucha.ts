@@ -1,5 +1,6 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { getSupabase } from '../lib/supabase'
+import { nombreDispositivo } from '../lib/dispositivo'
 import type { PlaylistTrack } from './playlists'
 
 export type { PlaylistTrack }
@@ -218,17 +219,42 @@ export type Unsubscribe = () => void
  * diciendo que sonaba y se cerró» — sin ella el espejo mostraría una barra
  * corriendo contra un aparato apagado.
  */
+/** Un dispositivo presente: su id y el nombre con que se anunció. */
+export type DispositivoPresente = { deviceId: string; nombre: string }
+
+/**
+ * Lo que el canal deja mandar a un aparato puntual: «tomá vos la reproducción».
+ *
+ * Es lo que convierte la escucha de *pull* a *push*: en vez de ir al otro
+ * aparato y traer la música, desde acá se le pide que la tome él. El `broadcast`
+ * del canal alcanza —es efímero y no necesita fila en la base—, y cada
+ * dispositivo se queda solo con el mensaje que lo nombra a él.
+ */
+export type Handoff = { destino: string }
+
 export function suscribirEscucha(
   userId: string,
   deviceId: string,
   hooks: {
     onFila: (escucha: Escucha) => void
-    onPresentes: (deviceIds: string[]) => void
+    onPresentes: (dispositivos: DispositivoPresente[]) => void
+    /** Otro aparato pidió que **este** tome la reproducción. */
+    onTomar: () => void
     /** El canal quedó suscripto: repedir el estado completo. */
     onListo: () => void
   },
-): Unsubscribe {
+): { desuscribir: Unsubscribe; mandarA: (destino: string) => void } {
   const supabase = getSupabase()
+
+  /* La presencia de cada key trae la metadata que se publicó con `track`; de
+     ahí sale el nombre. Se toma el primer registro de cada key —un aparato es
+     una sola presencia—. */
+  const leerPresentes = (ch: RealtimeChannel): DispositivoPresente[] =>
+    Object.entries(ch.presenceState<{ nombre?: string }>()).map(([id, metas]) => ({
+      deviceId: id,
+      nombre: metas[0]?.nombre || 'otro dispositivo',
+    }))
+
   let channel: RealtimeChannel | null = supabase
     .channel(`escucha:${userId}`, { config: { presence: { key: deviceId } } })
     .on(
@@ -240,17 +266,27 @@ export function suscribirEscucha(
       },
     )
     .on('presence', { event: 'sync' }, () => {
-      if (channel) hooks.onPresentes(Object.keys(channel.presenceState()))
+      if (channel) hooks.onPresentes(leerPresentes(channel))
+    })
+    .on('broadcast', { event: 'tomar' }, ({ payload }) => {
+      // Solo actúa el aparato nombrado: el mismo mensaje lo reciben todos.
+      if ((payload as Handoff)?.destino === deviceId) hooks.onTomar()
     })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        void channel?.track({ en: Date.now() })
+        // El nombre viaja en la presencia: es lo que ve el selector del otro lado.
+        void channel?.track({ en: Date.now(), nombre: nombreDispositivo() })
         hooks.onListo()
       }
     })
 
-  return () => {
-    if (channel) void supabase.removeChannel(channel)
-    channel = null
+  return {
+    desuscribir: () => {
+      if (channel) void supabase.removeChannel(channel)
+      channel = null
+    },
+    mandarA: (destino: string) => {
+      void channel?.send({ type: 'broadcast', event: 'tomar', payload: { destino } })
+    },
   }
 }
