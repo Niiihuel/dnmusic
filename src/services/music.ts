@@ -1,4 +1,5 @@
 import { getSupabase } from '../lib/supabase'
+import { hayResolutorABordo, resolverYAportar } from './motor/resolutorABordo'
 
 /**
  * Búsqueda de canciones, audio y letra sincronizada.
@@ -324,16 +325,24 @@ export async function resolveSong(track: TrackResult, signal?: AbortSignal): Pro
 }
 
 /**
- * El resolutor de a bordo de la app de escritorio, si esta sesión corre ahí.
+ * El resolutor de a bordo de esta sesión, si lo hay.
  *
- * Cuando la IP del servidor está en la reja anti-bot de YouTube —le pasa a
- * las IPs de datacenter por temporadas—, Electron puede bajar el audio con la
- * IP residencial de la compu y aportárselo al servidor, que lo verifica con
- * ffprobe y lo guarda en Storage **para todos**: la canción que resolvió un
- * escritorio le suena después a la web y al teléfono desde el caché.
+ * Cuando la IP del servidor está en la reja anti-bot de YouTube —le pasa a las
+ * IPs de datacenter por temporadas—, el dispositivo puede bajar el audio con
+ * **su propia IP** y aportárselo al servidor, que lo verifica con ffprobe y lo
+ * guarda en Storage para todos: la canción que resolvió uno le suena después a
+ * cualquiera desde el caché.
  *
- * El navegador no puede hacer lo mismo: hablar con YouTube desde una página
- * lo frena CORS. Por eso el puente existe solo en el escritorio.
+ * Hay dos, y se prueban en ese orden:
+ *
+ *   1. **El escritorio**, por el puente de Electron. Es el más barato: la
+ *      resolución corre en el proceso principal, con Node entero.
+ *   2. **El teléfono**, por el motor del WebView (`src/services/motor/`). Vino
+ *      después y por un motivo concreto: quien solo tiene un iPhone dependía de
+ *      que alguien más prendiera una compu, y eso no es una app que funcione.
+ *
+ * El navegador no tiene ninguno: hablar con InnerTube desde una página lo frena
+ * CORS, que es exactamente lo que una app nativa no sufre.
  */
 function resolutorDeAca():
   | ((opciones: {
@@ -345,9 +354,10 @@ function resolutorDeAca():
     }) => Promise<{ path: string; artworkPath: string | null; durationMs: number | null }>)
   | undefined {
   const puente = (globalThis as { dnmusicEscritorio?: { resolver?: unknown } }).dnmusicEscritorio
-  return typeof puente?.resolver === 'function'
-    ? (puente.resolver as ReturnType<typeof resolutorDeAca>)
-    : undefined
+  if (typeof puente?.resolver === 'function') {
+    return puente.resolver as ReturnType<typeof resolutorDeAca>
+  }
+  return hayResolutorABordo() ? resolverYAportar : undefined
 }
 
 /** El viaje a `/resolve` pelado, que comparten resolver y recuperar. */
