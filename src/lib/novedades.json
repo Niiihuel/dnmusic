@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.7.0",
+    "fecha": "28 de agosto de 2026",
+    "titulo": "El chat deja de verse vacío, y volver atrás se siente como debe",
+    "cambios": [
+      "Mientras el chat carga ahora se ve que está cargando, en vez de decirte que la conversación está vacía cuando en realidad tiene mensajes.",
+      "Arreglado lo de los mensajes que a veces no aparecían: si se corta la conexión —la app al fondo, el wifi que pasa a datos— al volver se traen los que llegaron mientras tanto.",
+      "Volver a la app ya no te saca de la conversación que estabas leyendo ni te deja la bandeja vacía.",
+      "Un corte de un segundo ya no deja el chat tapado con un cartel de error: apenas vuelven los mensajes, se acomoda solo.",
+      "En el iPhone, volver atrás arrastrando desde el borde ahora se ve: la pantalla sigue al dedo y la anterior entra por detrás, como en cualquier app del sistema."
+    ]
+  },
+  {
     "version": "1.6.0",
     "fecha": "27 de agosto de 2026",
     "titulo": "Buscá adentro de tus listas, sumá amigos al Jam y una app más prolija de punta a punta",
