@@ -282,6 +282,44 @@ async function autorizado(req: import('node:http').IncomingMessage): Promise<boo
   }
 }
 
+/**
+ * Resolver una canción a Storage y devolver su ficha. Es el corazón de
+ * `/resolve`, afuera del handler para que el camino con progreso lo comparta
+ * sin copiarlo. `onProgreso` (0..1) es el avance de la descarga; sin él, todo
+ * funciona igual que antes.
+ */
+async function resolverCancion(
+  db: NonNullable<typeof supabase>,
+  body: { videoId: string; artworkUrl?: string; durationMs?: number },
+  onProgreso?: (pct: number) => void,
+) {
+  const { videoId } = body
+  const path = `${videoId}.m4a`
+  const artworkP = cacheImage(db, body.artworkUrl, videoId)
+  const { data: existing } = await db.storage.from(BUCKET).list('', { search: path })
+  if (existing?.some((f) => f.name === path)) {
+    const durationMs =
+      body.durationMs && body.durationMs > 0 ? body.durationMs : await medirDuracionMs(db, path)
+    return { path, artworkPath: await artworkP, cached: true, durationMs }
+  }
+  const audio = await resolveAudio(videoId, onProgreso)
+  const destino = `${videoId}.${audio.ext}`
+  const { error } = await db.storage
+    .from(BUCKET)
+    .upload(destino, audio.bytes, { contentType: audio.mimeType, upsert: true })
+  if (error) throw new Error(`No se pudo guardar: ${error.message}`)
+  return {
+    path: destino,
+    artworkPath: await artworkP,
+    cached: false,
+    title: audio.title,
+    artist: audio.artist,
+    durationMs: audio.durationMs,
+    bitrate: audio.bitrate,
+    bytes: audio.bytes.length,
+  }
+}
+
 const server = createServer(async (req, res) => {
   /* El atajo del pedido: ya sabe a quién le contesta, así que la cabecera de
      CORS sale bien sin que cada `return` tenga que acordarse de pasarla. */
@@ -644,71 +682,70 @@ const server = createServer(async (req, res) => {
       if (!videoId) return json(400, { error: 'Falta videoId' })
       if (!supabase) return json(500, { error: 'Storage no configurado' })
 
-      /*
-       * El nombre canónico es `.m4a`.
-       *
-       * Lo guardado antes eran `.webm` (Opus): sonaba en el navegador y en el
-       * iPhone no sonaba nada, porque iOS no decodifica ese contenedor. Se
-       * busca primero el m4a; si solo existe el webm viejo, se vuelve a
-       * resolver para reemplazarlo por uno que suene en los dos lados.
-       */
-      const path = `${videoId}.m4a`
-
-      /*
-       * La carátula la manda el cliente, que ya la tiene de la búsqueda.
-       *
-       * Podría sacarse de `getBasicInfo`, pero eso es un viaje a YouTube — y
-       * justamente el camino rápido de acá abajo existe para no hacerlo cuando
-       * la canción ya está guardada.
-       */
-      /*
-       * En paralelo con el audio, no antes: son viajes independientes, y
-       * hacerla primero le sumaba su latencia entera a todo — incluso al
-       * camino cacheado, que no toca YouTube. `cacheImage` nunca tira, así
-       * que la promesa suelta no deja un rechazo sin dueño.
-       */
-      const artworkP = cacheImage(supabase, body.artworkUrl, videoId)
-
-      // Si ya se resolvió antes, no se vuelve a tocar YouTube.
-      const { data: existing } = await supabase.storage.from(BUCKET).list('', { search: path })
-      if (existing?.some((f) => f.name === path)) {
-        /*
-         * La duración también en el camino cacheado.
-         *
-         * Antes no venía, y el cliente caía a la que trajera el resultado de
-         * búsqueda — que en las canciones de la portada es **cero**. Ese cero
-         * viajaba a la lista, al Jam y a la barra: «0:00» de total, la barra
-         * de posición muerta. Si el cliente ya sabe la duración se le devuelve
-         * la suya; si no la sabe nadie, se mide del archivo guardado, que para
-         * eso está.
-         */
-        const durationMs =
-          body.durationMs && body.durationMs > 0
-            ? body.durationMs
-            : await medirDuracionMs(supabase, path)
-        return json(200, { path, artworkPath: await artworkP, cached: true, durationMs })
+      try {
+        return json(
+          200,
+          await resolverCancion(supabase, {
+            videoId,
+            artworkUrl: body.artworkUrl,
+            durationMs: body.durationMs,
+          }),
+        )
+      } catch (e) {
+        return json(500, { error: (e as Error).message })
       }
+    }
 
-      const audio = await resolveAudio(videoId)
-      // Si YouTube no ofreciera mp4 para este video, se guarda lo que haya con
-      // su extensión real: al menos suena en la web.
-      const destino = `${videoId}.${audio.ext}`
-      const { error } = await supabase.storage
-        .from(BUCKET)
-        .upload(destino, audio.bytes, { contentType: audio.mimeType, upsert: true })
-      if (error) return json(500, { error: `No se pudo guardar: ${error.message}` })
+    /*
+     * POST /resolve/progreso {videoId} — lo mismo que /resolve, pero **contando
+     * en voz alta**.
+     *
+     * La resolución es un viaje largo (bajar el tema de YouTube, remuxar,
+     * subir) que /resolve contesta de una sola vez: el cliente ve una rueda
+     * girando y no sabe si carga o si el server se cayó. Acá la respuesta va
+     * saliendo por chunks, una línea JSON por vez —`{"pct":0.42}`— y termina
+     * con `{"resultado": …}` (lo mismo que devuelve /resolve) o `{"error": …}`.
+     *
+     * NDJSON y no SSE porque del otro lado hay React Native: en iOS el fetch no
+     * deja leer el cuerpo de a poco, pero un XHR con `onprogress` sí ve crecer
+     * el texto. Una línea por evento es todo lo que hace falta. Si el cliente
+     * no puede con el stream, siempre le queda /resolve.
+     */
+    if (url.pathname === '/resolve/progreso' && req.method === 'POST') {
+      const body = (await readJson(req)) as {
+        videoId?: string
+        artworkUrl?: string
+        durationMs?: number
+      }
+      const videoId = body.videoId
+      if (!videoId) return json(400, { error: 'Falta videoId' })
+      if (!supabase) return json(500, { error: 'Storage no configurado' })
 
-      return json(200, {
-        // Se devuelve lo que realmente se guardó, no el nombre que se buscó.
-        path: destino,
-        artworkPath: await artworkP,
-        cached: false,
-        title: audio.title,
-        artist: audio.artist,
-        durationMs: audio.durationMs,
-        bitrate: audio.bitrate,
-        bytes: audio.bytes.length,
+      res.writeHead(200, {
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        ...cors(req),
       })
+      const escribir = (obj: unknown) => res.write(JSON.stringify(obj) + '\n')
+      /* El progreso cae si el cliente cortó: escribir en un socket muerto tira. */
+      let vivo = true
+      req.on('close', () => {
+        vivo = false
+      })
+      try {
+        const resultado = await resolverCancion(
+          supabase,
+          { videoId, artworkUrl: body.artworkUrl, durationMs: body.durationMs },
+          (pct) => {
+            if (vivo) escribir({ pct })
+          },
+        )
+        if (vivo) escribir({ resultado })
+      } catch (e) {
+        if (vivo) escribir({ error: (e as Error).message })
+      }
+      res.end()
+      return
     }
 
     /*

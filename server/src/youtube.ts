@@ -604,7 +604,11 @@ function motivoParaLaApp(razones: string[]): string {
   return 'No se pudo obtener el audio de esta canción.'
 }
 
-export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
+export async function resolveAudio(
+  videoId: string,
+  /** Avisa el avance de la **descarga** (0..1). El remux y la subida van aparte. */
+  onProgreso?: (pct: number) => void,
+): Promise<ResolvedAudio> {
   // La misma sesión de punta a punta: la que firmó los formatos es la única
   // cuyo reproductor los sabe descifrar.
   let yt = await getClient()
@@ -780,15 +784,26 @@ export async function resolveAudio(videoId: string): Promise<ResolvedAudio> {
     const PARALELO = 4
     const resto: Buffer[] = new Array<Buffer>(desde.length)
     let puntero = 0
+    // El primero ya está; el avance se cuenta sobre los pedazos terminados.
+    const pedazos = desde.length + 1
+    let listos = 1
+    onProgreso?.(listos / pedazos)
     await Promise.all(
       Array.from({ length: Math.min(PARALELO, desde.length) }, async () => {
         while (puntero < desde.length) {
           const i = puntero++
           resto[i] = (await pedir(desde[i])).buf
+          listos++
+          // Nunca 100% antes de tiempo: falta remuxar y subir; eso lo cierra
+          // la línea final del stream.
+          onProgreso?.(Math.min(0.98, listos / pedazos))
         }
       }),
     )
     chunks.push(...resto)
+  } else {
+    // Un solo pedazo (o sin largo conocido): a mitad de camino y listo.
+    onProgreso?.(0.5)
   }
 
   const crudo = Buffer.concat(chunks)

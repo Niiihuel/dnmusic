@@ -1,5 +1,6 @@
-import { ActivityIndicator, View } from 'react-native'
+import { ActivityIndicator, Text, View } from 'react-native'
 import { PlayingBars } from './PlayingBars'
+import { useProgresoResolucion } from '../state/resolucion'
 import { ICON_COLOR, IconPause, IconPlay } from './icons'
 
 /**
@@ -21,6 +22,23 @@ import { ICON_COLOR, IconPause, IconPlay } from './icons'
  * desmontándose: si el nodo donde empezó la pulsación desaparece antes de
  * soltar, el navegador no emite el `click` y el toque se pierde.
  */
+/**
+ * Lo que se muestra mientras una canción se **prepara por primera vez**: el
+ * porcentaje si el servidor lo está contando (`state/resolucion`), y la rueda
+ * de siempre mientras todavía no llegó ningún número (o contra un server viejo
+ * que no lo manda). Un número que sube dice «está pasando algo»; una rueda a
+ * secas no dice si carga o si el server se cayó.
+ */
+export function IndicadorPreparando({ color = ICON_COLOR.foreground }: { color?: string }) {
+  const pct = useProgresoResolucion()
+  if (pct == null) return <ActivityIndicator size="small" color={color} />
+  return (
+    <Text style={{ color, fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
+      {Math.round(pct * 100)}%
+    </Text>
+  )
+}
+
 export function EstadoTapa({
   /** El audio se está resolviendo. La primera vez tarda unos segundos. */
   busy = false,
@@ -50,7 +68,7 @@ export function EstadoTapa({
       }}
     >
       {busy ? (
-        <ActivityIndicator size="small" color={ICON_COLOR.foreground} />
+        <IndicadorPreparando />
       ) : sounding && !hovered ? (
         <PlayingBars playing={playing} size={13} />
       ) : sounding && playing ? (

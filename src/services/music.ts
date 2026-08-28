@@ -1,5 +1,6 @@
 import { getSupabase } from '../lib/supabase'
 import { hayResolutorABordo, resolverYAportar } from './motor/resolutorABordo'
+import { iniciarResolucion, progresoResolucion, terminarResolucion } from '../state/resolucion'
 
 /**
  * Búsqueda de canciones, audio y letra sincronizada.
@@ -342,15 +343,29 @@ export async function resolveSong(track: TrackResult, signal?: AbortSignal): Pro
   // depender del CDN de Google, que la corta con 429 cada tanto. La duración
   // también, si se sabe: el camino cacheado la devuelve tal cual y solo mide el
   // archivo cuando no la sabe nadie (portada: viene en cero).
-  const data = await pedirResolve(
-    { videoId: track.videoId, artworkUrl: track.artworkUrl, durationMs: track.durationMs || undefined },
-    signal,
-  )
-  return {
-    path: data.path,
-    artworkPath: data.artworkPath ?? null,
-    url: await signedUrl(data.path),
-    durationMs: data.durationMs ?? track.durationMs,
+  //
+  // El avance de la resolución va al store (`state/resolucion`) para que la
+  // tapa de la fila muestre un porcentaje en vez de una rueda. Se apaga sí o sí
+  // al terminar —salga bien, falle o se cancele—.
+  iniciarResolucion(track.videoId)
+  try {
+    const data = await pedirResolve(
+      {
+        videoId: track.videoId,
+        artworkUrl: track.artworkUrl,
+        durationMs: track.durationMs || undefined,
+      },
+      signal,
+      (pct) => progresoResolucion(track.videoId, pct),
+    )
+    return {
+      path: data.path,
+      artworkPath: data.artworkPath ?? null,
+      url: await signedUrl(data.path),
+      durationMs: data.durationMs ?? track.durationMs,
+    }
+  } finally {
+    terminarResolucion(track.videoId)
   }
 }
 
@@ -394,9 +409,10 @@ function resolutorDeAca():
 async function pedirResolve(
   body: { videoId: string; artworkUrl?: string; durationMs?: number },
   signal?: AbortSignal,
+  onProgreso?: (pct: number) => void,
 ): Promise<{ path: string; artworkPath?: string | null; durationMs?: number }> {
   try {
-    return await pedirResolveAlServidor(body, signal)
+    return await pedirResolveAlServidor(body, signal, onProgreso)
   } catch (e) {
     /*
      * El servidor no pudo: si esto es el escritorio, se intenta de a bordo.
@@ -426,10 +442,107 @@ async function pedirResolve(
   }
 }
 
+/**
+ * `/resolve/progreso` leído de a poco, para pintar el porcentaje.
+ *
+ * Va por XHR y no por fetch a propósito: en iOS el fetch de React Native no
+ * deja leer el cuerpo mientras llega, pero un XHR ve crecer `responseText` con
+ * cada chunk. El server manda una línea JSON por evento (NDJSON): `{pct}`
+ * mientras baja y `{resultado}` (o `{error}`) al final.
+ */
+function pedirResolveConProgreso(
+  body: { videoId: string; artworkUrl?: string; durationMs?: number },
+  onProgreso: (pct: number) => void,
+  signal?: AbortSignal,
+): Promise<{ path: string; artworkPath?: string | null; durationMs?: number }> {
+  return new Promise((resolver, rechazar) => {
+    void getSupabase()
+      .auth.getSession()
+      .then(({ data }) => {
+        const token = data.session?.access_token
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', `${MUSIC_API}/resolve/progreso`)
+        xhr.setRequestHeader('Content-Type', 'application/json')
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+        let visto = 0
+        let buffer = ''
+        let resultado: { path: string; artworkPath?: string | null; durationMs?: number } | null =
+          null
+        let error: string | null = null
+
+        const procesar = () => {
+          const texto = xhr.responseText
+          buffer += texto.slice(visto)
+          visto = texto.length
+          let corte: number
+          while ((corte = buffer.indexOf('\n')) >= 0) {
+            const linea = buffer.slice(0, corte).trim()
+            buffer = buffer.slice(corte + 1)
+            if (!linea) continue
+            try {
+              const obj = JSON.parse(linea) as {
+                pct?: number
+                resultado?: { path?: string; artworkPath?: string | null; durationMs?: number }
+                error?: string
+              }
+              if (typeof obj.pct === 'number') onProgreso(Math.max(0, Math.min(1, obj.pct)))
+              else if (obj.resultado?.path)
+                resultado = {
+                  path: obj.resultado.path,
+                  artworkPath: obj.resultado.artworkPath ?? null,
+                  durationMs: obj.resultado.durationMs,
+                }
+              else if (typeof obj.error === 'string') error = obj.error
+            } catch {
+              // Una línea a medias de un chunk: se ignora, vuelve entera después.
+            }
+          }
+        }
+
+        xhr.onprogress = procesar
+        xhr.onload = () => {
+          procesar()
+          if (resultado) resolver(resultado)
+          else rechazar(new Error(error ?? `No se pudo preparar la canción (${xhr.status})`))
+        }
+        xhr.onerror = () => rechazar(new Error('No se pudo preparar la canción.'))
+        xhr.onabort = () => {
+          const e = new Error('Cancelado')
+          e.name = 'AbortError'
+          rechazar(e)
+        }
+        if (signal) {
+          if (signal.aborted) {
+            xhr.abort()
+            return
+          }
+          signal.addEventListener('abort', () => xhr.abort(), { once: true })
+        }
+        xhr.send(JSON.stringify(body))
+      })
+      .catch(rechazar)
+  })
+}
+
 async function pedirResolveAlServidor(
   body: { videoId: string; artworkUrl?: string; durationMs?: number },
   signal?: AbortSignal,
+  onProgreso?: (pct: number) => void,
 ): Promise<{ path: string; artworkPath?: string | null; durationMs?: number }> {
+  /*
+   * Con quien quiere ver el avance, primero el camino que lo cuenta
+   * (`/resolve/progreso`). Si ese server es viejo y no lo tiene, o el stream se
+   * corta, cae al `/resolve` de siempre —sin número, pero funciona igual—. Un
+   * corte a propósito (abort) no se disimula: se propaga.
+   */
+  if (onProgreso) {
+    try {
+      return await pedirResolveConProgreso(body, onProgreso, signal)
+    } catch (e) {
+      if (signal?.aborted) throw e
+    }
+  }
   const res = await fetchMusica(`${MUSIC_API}/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

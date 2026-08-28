@@ -1,13 +1,12 @@
 import { useState, type ReactNode } from 'react'
 import {
-  ActivityIndicator,
   Image,
   Pressable,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native'
-import { EstadoTapa } from './CoverState'
+import { EstadoTapa, IndicadorPreparando } from './CoverState'
 import { MantenerApretado, type MenuItem } from './Menu'
 import { PlayingBars } from './PlayingBars'
 import { formatClock } from './SeekBar'
@@ -172,7 +171,7 @@ export function TrackRow({
         </View>
         {busy ? (
           <View pointerEvents="none" style={{ position: 'absolute' }}>
-            <ActivityIndicator size="small" color={ICON_COLOR.muted} />
+            <IndicadorPreparando color={ICON_COLOR.muted} />
           </View>
         ) : null}
         </View>
