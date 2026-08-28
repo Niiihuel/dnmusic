@@ -9,6 +9,7 @@ import {
 } from './actualizador'
 import { ORIGEN, raizWeb, registrarEsquema, servirWeb } from './protocolo'
 import { resolverYAportar, type Aporte } from './resolutor'
+import { descargarArchivos } from './descargas'
 
 /**
  * dnmusic para escritorio.
@@ -283,6 +284,11 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on('actualizacion:buscar', () => void buscarAhora(true))
     ipcMain.on('actualizacion:instalar', () => void instalarYReabrir())
     ipcMain.handle('resolver:aportar', (_evento, opciones) => resolverDesdeAca(opciones))
+    ipcMain.handle('descarga:lista', (_evento, opciones) =>
+      descargarArchivos(ventanaPrincipal, opciones, (avance) =>
+        ventanaPrincipal?.webContents.send('descarga:progreso', avance),
+      ),
+    )
 
     armarMenu()
     ventanaPrincipal = crearVentana()

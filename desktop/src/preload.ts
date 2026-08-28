@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { EstadoActualizacion } from './actualizador'
 import type { Aporte } from './resolutor'
+import type { ResultadoDescarga } from './descargas'
 
 /**
  * Lo único que el bundle web puede ver del escritorio.
@@ -42,6 +43,32 @@ const puente = {
     artworkUrl?: string
     durationMs?: number
   }): Promise<Aporte> => ipcRenderer.invoke('resolver:aportar', opciones),
+
+  /**
+   * Bajar una lista entera de canciones a una carpeta del disco.
+   *
+   * El renderer manda las URLs ya firmadas y el nombre de cada archivo; el
+   * proceso principal abre el diálogo de carpeta, baja los bytes y los escribe
+   * (ver desktop/src/descargas.ts). `alDescargar` avisa el avance para pintar
+   * un «12 de 40» sin bloquear.
+   */
+  descargas: {
+    guardarLista: (opciones: {
+      archivos: { url: string; nombre: string }[]
+      carpetaSugerida?: string
+    }): Promise<ResultadoDescarga> => ipcRenderer.invoke('descarga:lista', opciones),
+
+    alDescargar: (
+      escuchar: (avance: { hechos: number; total: number; nombre: string }) => void,
+    ): (() => void) => {
+      const oyente = (
+        _: IpcRendererEvent,
+        avance: { hechos: number; total: number; nombre: string },
+      ) => escuchar(avance)
+      ipcRenderer.on('descarga:progreso', oyente)
+      return () => ipcRenderer.removeListener('descarga:progreso', oyente)
+    },
+  },
 
   actualizacion: {
     estado: (): Promise<EstadoActualizacion> => ipcRenderer.invoke('actualizacion:estado'),

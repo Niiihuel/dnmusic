@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, Pressable, Text, TextInput, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import {
@@ -10,6 +10,8 @@ import {
   type Visibilidad,
 } from '../services/playlists'
 import type { TrackResult } from '../services/music'
+import { signedUrl } from '../services/music'
+import { avisar } from '../state/aviso'
 import { Sugerencias } from './Sugerencias'
 import {
   playAt,
@@ -25,6 +27,7 @@ import {
   useWantPlay,
 } from '../state/playback'
 import { usePiso, useTecho } from '../state/shell'
+import { useJam } from '../state/jam'
 import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { useColapso } from './useColapso'
@@ -33,6 +36,7 @@ import { CollectionHeader, CollectionTitle, Insignia, useAngosto, useCoverSize }
 import { TECLADO_FISICO } from '../lib/teclado'
 import { compartirLista } from '../lib/compartirLista'
 import { useColorPortada } from '../lib/colorPortada'
+import { SearchField } from './SearchField'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
 import { Vacio } from './Vacio'
@@ -44,6 +48,7 @@ import {
   ICON_COLOR,
   IconClose,
   IconDownload,
+  IconDisk,
   IconDownloaded,
   IconGlobe,
   IconImage,
@@ -53,6 +58,7 @@ import {
   IconPencil,
   IconPlay,
   IconPlus,
+  IconSearch,
   IconShare,
   IconShuffle,
   IconTrash,
@@ -79,6 +85,26 @@ import {
  * redondo de reproducir y la tabla de canciones vienen de Spotify; los grises
  * y el acento blanco, de nuestro `docs/DESIGN.md`.
  */
+/**
+ * El puente del escritorio para bajar la lista al disco. La app no importa nada
+ * de `desktop/`: si no está, no estamos en la app de PC (o es una vieja sin la
+ * función), y el botón no se muestra. Ver `state/actualizacion`, mismo criterio.
+ */
+type PuenteDescargas = {
+  guardarLista: (opciones: {
+    archivos: { url: string; nombre: string }[]
+    carpetaSugerida?: string
+  }) => Promise<{ cancelado?: boolean; carpeta?: string; guardados?: number; fallidos?: number }>
+  alDescargar: (
+    escuchar: (avance: { hechos: number; total: number; nombre: string }) => void,
+  ) => () => void
+}
+function puenteDescargas(): PuenteDescargas | undefined {
+  return (globalThis as { dnmusicEscritorio?: { descargas?: PuenteDescargas } }).dnmusicEscritorio
+    ?.descargas
+}
+const HAY_DESCARGA_ESCRITORIO = puenteDescargas() != null
+
 export function PlaylistView({
   playlist,
   reloadToken,
@@ -214,6 +240,8 @@ export function PlaylistView({
   // Con algo encolado a mano sonando, ninguna fila de la lista es la que suena.
   const onManual = useManualPlaying()
   const isMine = soundingId === playlist.id && !onManual
+  /* Con un Jam andando, tocar una fila cambia lo que suena para todos. */
+  const hayJam = useJam() != null
 
   /**
    * Si esta fila es la que está sonando.
@@ -256,12 +284,22 @@ export function PlaylistView({
 
   /** Tocar una fila: manda esta lista a la barra desde esa canción. */
   function play(at: number) {
+    if (!tracks?.[at]) return
+    /* En un Jam, tocar una fila va **siempre** por la cola compartida
+       (`playQueue` la enruta al Jam): cambia lo que suena para todos. El resto
+       de los caminos —`playAt`, o el atajo de «misma canción → pausa»— son de
+       la reproducción local y acá metían al Jam en un estado que no era: el
+       host tocaba una canción y no pasaba nada. */
+    if (hayJam) {
+      playQueue(tracks, at, { id: playlist.id, name: playlist.name })
+      return
+    }
     if (isMine) playAt(at)
     /* Ya suena esta misma canción, pero venida de otro lado: tocarla pausa o
        sigue, como en el buscador. Volver a encolar la lista la reiniciaría
        desde cero y no hay nada en la pantalla que anticipe ese salto. */
-    else if (tracks?.[at] && soundingTrack?.videoId === tracks[at].videoId) togglePlayback()
-    else if (tracks) playQueue(tracks, at, { id: playlist.id, name: playlist.name })
+    else if (soundingTrack?.videoId === tracks[at].videoId) togglePlayback()
+    else playQueue(tracks, at, { id: playlist.id, name: playlist.name })
   }
 
   /** Lo que ofrece una canción de esta lista, para el botón y para el gesto. */
@@ -314,6 +352,81 @@ export function PlaylistView({
     await addShowcase(me, 'lista', { playlistId: playlist.id }).catch(() =>
       setError('No se pudo fijar la lista.'),
     )
+  }
+
+  const [buscando, setBuscando] = useState(false)
+  const [filtro, setFiltro] = useState('')
+  const q = filtro.trim().toLowerCase()
+  /* Buscar adentro de la lista: filtra por título y artista sin pedir nada
+     —las canciones ya están—. El índice real se guarda aparte para que tocar
+     una fila filtrada haga sonar la que es y la numere donde va. */
+  const visibles = useMemo(
+    () =>
+      !q || !tracks
+        ? (tracks ?? [])
+        : tracks.filter((t) => `${t.title} ${t.artist}`.toLowerCase().includes(q)),
+    [tracks, q],
+  )
+  const indiceReal = useMemo(() => {
+    const m = new Map<string, number>()
+    ;(tracks ?? []).forEach((t, i) => m.set(t.id, i))
+    return m
+  }, [tracks])
+  function alternarBuscar() {
+    setBuscando((b) => {
+      if (b) setFiltro('')
+      return !b
+    })
+  }
+
+  /* Bajar la lista entera al disco, solo en la app de PC (`HAY_DESCARGA_ESCRITORIO`).
+     null = quieta; el objeto lleva el «12 de 40» para pintar el avance. */
+  const [guardando, setGuardando] = useState<{ hechos: number; total: number } | null>(null)
+  async function guardarTodoEnDisco() {
+    const api = puenteDescargas()
+    const lista = (tracks ?? []).filter((t) => t.audioPath)
+    if (!api || guardando || !lista.length) return
+    setGuardando({ hechos: 0, total: lista.length })
+    const dejarDeEscuchar = api.alDescargar((a) =>
+      setGuardando({ hechos: a.hechos, total: a.total }),
+    )
+    try {
+      /* Las URLs se firman acá —el renderer tiene la sesión—; una que falle no
+         voltea la tanda, se saltea. El número adelante conserva el orden de la
+         lista en la carpeta. */
+      const firmadas = await Promise.all(
+        lista.map(async (t, i) => {
+          try {
+            const url = await signedUrl(t.audioPath)
+            return {
+              url,
+              nombre: `${String(i + 1).padStart(2, '0')} · ${t.artist} - ${t.title}.m4a`,
+            }
+          } catch {
+            return null
+          }
+        }),
+      )
+      const archivos = firmadas.filter((a): a is { url: string; nombre: string } => a !== null)
+      if (!archivos.length) {
+        avisar('No se pudo preparar ninguna canción para bajar.', true)
+        return
+      }
+      const r = await api.guardarLista({ archivos, carpetaSugerida: playlist.name })
+      if (r.cancelado) return
+      const guardados = r.guardados ?? 0
+      const fallidos = r.fallidos ?? 0
+      avisar(
+        fallidos
+          ? `Guardé ${guardados} de ${guardados + fallidos}. Algunas no se pudieron bajar.`
+          : `Guardé ${guardados} ${guardados === 1 ? 'canción' : 'canciones'} en la carpeta que elegiste.`,
+      )
+    } catch {
+      avisar('No se pudo descargar la lista.', true)
+    } finally {
+      dejarDeEscuchar()
+      setGuardando(null)
+    }
   }
 
   const total = tracks?.length ?? 0
@@ -479,7 +592,7 @@ export function PlaylistView({
     <Panel className="flex-1">
       <View className="min-h-0 flex-1">
         <FlatList
-          data={tracks ?? []}
+          data={visibles}
           keyExtractor={(t) => t.id}
           className="min-h-0 flex-1"
           contentContainerClassName="gap-1"
@@ -508,6 +621,12 @@ export function PlaylistView({
               onPlay={() => (total > 0 ? play(isMine ? soundingIndex : 0) : undefined)}
               onPickCover={onPickCover}
               onRename={() => setRenaming(playlist.id)}
+              buscando={buscando}
+              filtro={filtro}
+              onBuscar={alternarBuscar}
+              onFiltro={setFiltro}
+              onGuardarTodo={HAY_DESCARGA_ESCRITORIO ? guardarTodoEnDisco : undefined}
+              guardando={guardando}
             >
               {error ? (
                 <View className="px-6 pb-3">
@@ -540,6 +659,13 @@ export function PlaylistView({
               <View className="px-6">
                 <SkeletonList rows={5} />
               </View>
+            ) : q ? (
+              <Vacio
+                compacto
+                icono={<IconSearch size={20} color={ICON_COLOR.muted} />}
+                titulo="Sin resultados"
+                detalle={`No encontramos «${filtro.trim()}» en esta lista.`}
+              />
             ) : (
               /*
                * La lista vacía manda al buscador de arriba, que es el único de
@@ -559,16 +685,20 @@ export function PlaylistView({
               />
             )
           }
-          renderItem={({ item, index }) => (
+          renderItem={({ item, index }) => {
+            /* El índice de la lista filtrada no sirve para tocar ni numerar:
+               se traduce al de la lista entera, que es la cola de verdad. */
+            const real = indiceReal.get(item.id) ?? index
+            return (
             <TrackRow
-              index={index}
+              index={real}
               title={item.title}
               artist={item.artist}
               artwork={artworkSource(item.artworkPath, item.artworkUrl, 96)}
               durationMs={item.durationMs}
-              sounding={isSounding(item, index)}
-              playing={isSounding(item, index) && soundingPlay}
-              onPlay={() => play(index)}
+              sounding={isSounding(item, real)}
+              playing={isSounding(item, real) && soundingPlay}
+              onPlay={() => play(real)}
               /* La misma lista por los dos caminos: los tres puntos y el
                  mantener apretado. Armarla acá una sola vez es lo que evita que
                  con el tiempo ofrezcan cosas distintas. */
@@ -587,7 +717,8 @@ export function PlaylistView({
                 </>
               }
             />
-          )}
+            )
+          }}
         />
       </View>
     </Panel>
@@ -610,6 +741,12 @@ function Header({
   onPlay,
   onPickCover,
   onRename,
+  buscando,
+  filtro,
+  onBuscar,
+  onFiltro,
+  onGuardarTodo,
+  guardando,
   children,
 }: {
   playlist: Playlist
@@ -629,6 +766,15 @@ function Header({
   onDescarga: () => void
   onPlay: () => void
   onPickCover: () => void
+  /** El campo de búsqueda de la lista está abierto. */
+  buscando: boolean
+  filtro: string
+  /** Abrir o cerrar la búsqueda (al cerrar, limpia el filtro). */
+  onBuscar: () => void
+  onFiltro: (v: string) => void
+  /** Bajar la lista al disco (solo en la app de PC); sin esto no hay botón. */
+  onGuardarTodo?: () => void
+  guardando: { hechos: number; total: number } | null
   children: React.ReactNode
 }) {
   /* El aleatorio es global —una sola cola suena a la vez— así que se lee del
@@ -742,11 +888,74 @@ function Header({
                 }
               />
             </Pressable>
+            {/*
+             * Descargar la lista al disco: solo en la app de PC. Mientras baja
+             * muestra «12/40» en vez del ícono —un número que avanza dice que
+             * pasa algo, mejor que un disco quieto—. Ver `desktop/src/descargas`.
+             */}
+            {onGuardarTodo ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  guardando
+                    ? `Descargando, ${guardando.hechos} de ${guardando.total}`
+                    : 'Descargar la lista al disco'
+                }
+                onPress={onGuardarTodo}
+                disabled={total === 0 || guardando !== null}
+                className="h-11 min-w-11 items-center justify-center rounded-full px-2 active:bg-muted"
+              >
+                {guardando ? (
+                  <Text className="text-foreground text-[11px] font-semibold tabular-nums">
+                    {guardando.hechos}/{guardando.total}
+                  </Text>
+                ) : (
+                  <IconDisk size={19} color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.foreground} />
+                )}
+              </Pressable>
+            ) : null}
+            {/*
+             * Buscar adentro de la lista, al lado de los otros controles de la
+             * lista. Filtra las filas que ya están, sin ir al servidor —el de
+             * arriba es para sumar canciones nuevas; este, para encontrar una
+             * en una lista larga—. Encendido es el blanco de `primary`, apagado
+             * el gris de los inactivos (`docs/DESIGN.md`).
+             */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={buscando ? 'Cerrar la búsqueda' : 'Buscar en la lista'}
+              accessibilityState={{ selected: buscando }}
+              onPress={onBuscar}
+              disabled={total === 0}
+              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+            >
+              <IconSearch
+                size={19}
+                color={
+                  total === 0
+                    ? ICON_COLOR.muted
+                    : buscando
+                      ? ICON_COLOR.foreground
+                      : ICON_COLOR.muted
+                }
+              />
+            </Pressable>
             <BotonDescarga total={total} bajado={bajado} onPress={onDescarga} />
             <Menu items={menu} label={`Opciones de ${playlist.name}`} size={17} />
           </>
         }
       />
+
+      {buscando ? (
+        <View className="mx-6 mb-2">
+          <SearchField
+            value={filtro}
+            onChangeText={onFiltro}
+            placeholder="Buscar en esta lista"
+            autoFocus
+          />
+        </View>
+      ) : null}
 
       {children}
     </View>
