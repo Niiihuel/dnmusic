@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Stack, usePathname, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
+import * as SplashScreen from 'expo-splash-screen'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { SplashAnimado } from '../src/ui/SplashAnimado'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ActivityIndicator,
@@ -92,13 +94,24 @@ const DRAWER_MS = 260
  */
 const DRAWER_RADIO = 44
 
+/* Que el splash nativo no se baje solo: lo baja el `SplashAnimado`, que lo
+   continúa en movimiento. En web es inofensivo (no hay splash nativo). */
+void SplashScreen.preventAutoHideAsync().catch(() => {})
+
 export default function RootLayout() {
   // GestureHandlerRootView es obligatorio para que el arrastre de la ventana
   // de selección en la onda funcione — sin él los gestos no llegan nunca.
+  const [splashListo, setSplashListo] = useState(false)
+  /* Apenas monta el árbol, se baja el splash nativo: atrás ya está el
+     `SplashAnimado`, que toma la posta sin que se vea el corte. */
+  useEffect(() => {
+    void SplashScreen.hideAsync().catch(() => {})
+  }, [])
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="light" />
       <Chrome />
+      {splashListo ? null : <SplashAnimado onDone={() => setSplashListo(true)} />}
     </GestureHandlerRootView>
   )
 }
