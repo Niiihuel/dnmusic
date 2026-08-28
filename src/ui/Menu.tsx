@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ActionSheetIOS,
   Animated,
@@ -16,6 +16,9 @@ import {
 import type { SFSymbol } from 'sf-symbols-typescript'
 import { BORDE_REFERENTE, ES_WEB, Glass } from './Glass'
 import { ICON_COLOR, IconChevronRight, IconMore } from './icons'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { TECLADO_FISICO } from '../lib/teclado'
+import { useConTooltip } from './Tooltip'
 
 export type MenuItem = {
   label: string
@@ -263,16 +266,15 @@ function animContenido(cerrando: boolean): Record<string, string> | undefined {
  * Reemplaza a la cruz de cerrar: una cruz solo puede hacer una cosa, y sobre lo
  * que suena hay varias razonables.
  */
-export function Menu({
-  items,
-  label = 'Más opciones',
-  size = 15,
-  trigger,
-  triggerSymbol,
-  triggerText,
-}: {
+type MenuProps = {
   items: MenuItem[]
   label?: string
+  /**
+   * El rótulo al pasar el cursor. Corto a propósito y **distinto** de `label`:
+   * la etiqueta accesible dice «Opciones de <la canción>» —que es lo correcto
+   * para escuchar— y un título de canción largo no entra en un rótulo.
+   */
+  tooltip?: string
   size?: number
   /** Reemplaza los tres puntos por otra cosa, manteniendo el comportamiento. */
   trigger?: ReactNode
@@ -285,8 +287,48 @@ export function Menu({
    */
   triggerSymbol?: SFSymbol
   triggerText?: string
-}) {
+  /**
+   * Sin botón propio: el menú existe **solo** para abrirse desde el mango.
+   *
+   * Es lo que necesita el click derecho de una fila — la fila ya tiene sus tres
+   * puntos, y lo que hace falta es una segunda puerta a la misma lista, no un
+   * segundo botón. Sin disparador tampoco va el menú nativo de iOS: ese se
+   * dibuja **anclado a su botón**, y acá no hay ninguno.
+   */
+  sinDisparador?: boolean
+  /**
+   * Abierto en un punto de la pantalla, desde afuera. Es el **click derecho**.
+   *
+   * Va como estado y no como un mango imperativo a propósito: dónde está el
+   * menú es algo que se ve, así que es de quien dibuja. `null` es cerrado.
+   */
+  abiertoEn?: { x: number; y: number } | null
+  /** Avisar que hay que soltar el punto de arriba. */
+  onCerrarPunto?: () => void
+}
+
+export function Menu({
+  items,
+  label = 'Más opciones',
+  tooltip = 'Opciones',
+  size = 15,
+  trigger,
+  triggerSymbol,
+  triggerText,
+  sinDisparador = false,
+  abiertoEn = null,
+  onCerrarPunto,
+}: MenuProps) {
   const [open, setOpen] = useState(false)
+  /*
+   * Si el menú se abrió con el click derecho.
+   *
+   * Cambia **de qué lado se alinea**: los tres puntos suelen estar contra el
+   * borde derecho de una fila, así que el panel cuelga hacia la izquierda; un
+   * menú del cursor, en cambio, nace donde está la punta de la flecha y se
+   * abre hacia la derecha, como en cualquier escritorio.
+   */
+  const [desdeCursor, setDesdeCursor] = useState(false)
   /*
    * El panel saliendo, para animar la ida antes de desmontar. Solo web: el
    * menú se despide con el mismo material con el que llegó — desaparecer de
@@ -311,6 +353,16 @@ export function Menu({
     }).start()
   }, [open, entrada])
   const [anchor, setAnchor] = useState({ x: 0, y: 0, w: 0, h: 0 })
+  /*
+   * Abierto y desde dónde, **derivado**: si vino un punto de afuera manda ese,
+   * y si no, el disparador propio. Sin efectos de por medio — un efecto que
+   * copiara la prop a un estado encadenaría un dibujado de más y podría quedar
+   * un cuadro atrasado justo cuando el menú tiene que aparecer.
+   */
+  const porPunto = abiertoEn != null
+  const abierto = open || porPunto
+  const ancla = abiertoEn ? { x: abiertoEn.x, y: abiertoEn.y, w: 0, h: 0 } : anchor
+  const enCursor = porPunto || desdeCursor
   /** Índice de la fila cuyo submenú está abierto; null sin ninguno. */
   const [sub, setSub] = useState<number | null>(null)
   /* El submenú entra con la misma curva, desde su fila. Android; web va por CSS. */
@@ -325,6 +377,8 @@ export function Menu({
     }).start()
   }, [sub, entradaSub])
   const ref = useRef<RNView>(null)
+  const tip = useConTooltip(tooltip)
+
   const window = useWindowDimensions()
 
   const usable = items.filter((item) => !item.disabled)
@@ -356,7 +410,7 @@ export function Menu({
    * Las deshabilitadas ni se ofrecen, como antes: una opción que no responde es
    * peor que una ausente.
    */
-  if (nativo && !trigger) {
+  if (nativo && !trigger && !sinDisparador) {
     const { Host, Menu: MenuNativo, Button, Image, Label } = nativo
     return (
       <Host
@@ -460,6 +514,7 @@ export function Menu({
     ref.current?.measureInWindow((x, y, w, h) => {
       setAnchor({ x, y, w, h })
       setSub(null)
+      setDesdeCursor(false)
       setOpen(true)
     })
   }
@@ -474,11 +529,11 @@ export function Menu({
    * largos el borde superior se iba de la pantalla: quedaban opciones
    * inalcanzables, sin ninguna señal de que estaban ahí.
    */
-  const roomAbove = anchor.y - GAP - MARGIN
-  const roomBelow = window.height - (anchor.y + anchor.h) - GAP - MARGIN
+  const roomAbove = ancla.y - GAP - MARGIN
+  const roomBelow = window.height - (ancla.y + ancla.h) - GAP - MARGIN
   const above = roomAbove >= idealH || roomAbove > roomBelow
   const menuH = Math.min(idealH, Math.max(above ? roomAbove : roomBelow, ROW_H * 2))
-  const top = above ? anchor.y - menuH - GAP : anchor.y + anchor.h + GAP
+  const top = above ? ancla.y - menuH - GAP : ancla.y + ancla.h + GAP
 
   /*
    * Alineado a la derecha del disparador —los tres puntos suelen estar contra
@@ -487,7 +542,7 @@ export function Menu({
    * biblioteca.
    */
   const left = Math.min(
-    Math.max(MARGIN, anchor.x + anchor.w - MENU_W),
+    Math.max(MARGIN, enCursor ? ancla.x : ancla.x + ancla.w - MENU_W),
     Math.max(MARGIN, window.width - MENU_W - MARGIN),
   )
 
@@ -510,6 +565,11 @@ export function Menu({
   )
 
   const cerrar = () => {
+    /* Si lo abrió un punto —click derecho o pulsación larga— quien lo guarda
+       tiene que soltarlo, o el menú volvería a nacer abierto en el mismo
+       lugar. Va **después** de la despedida y no antes: soltarlo primero lo
+       desmonta en el acto y se pierde la animación de salida. */
+    const soltar = () => onCerrarPunto?.()
     /*
      * En web el desmontaje espera a la despedida: `cerrando` pone a todo el
      * panel los keyframes de salida y recién al terminar se cierra el Modal.
@@ -522,17 +582,21 @@ export function Menu({
         setOpen(false)
         setSub(null)
         setCerrando(false)
+        soltar()
       }, CIERRA_MS)
       return
     }
     setOpen(false)
     setSub(null)
+    soltar()
   }
 
   return (
     <>
+      {sinDisparador ? null : (
       <Pressable
         ref={ref}
+        {...tip.gestos}
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityState={{ expanded: open }}
@@ -546,13 +610,14 @@ export function Menu({
       >
         {trigger ?? <IconMore size={size} color={ICON_COLOR.muted} />}
       </Pressable>
+      )}
 
       {/* Sin fade en web: ese fundido es una opacidad animada sobre TODO el
           modal, y con un ancestro fundiéndose el backdrop-filter del vidrio
           no dibuja nada — el blur caía de golpe al final, disparejo. La
           entrada la hace el panel solo (ver `vidrioAnimado`). */}
       <Modal
-        visible={open}
+        visible={abierto}
         transparent
         animationType={ES_WEB ? 'none' : 'fade'}
         onRequestClose={cerrar}
@@ -738,23 +803,61 @@ export function Menu({
 }
 
 /**
- * Mantener apretado sobre algo para ver sus opciones. **Hoy no hace nada.**
+ * Mantener apretado sobre algo para ver sus opciones: el menú, donde está el dedo.
  *
- * El gesto nativo existe —`ContextMenu` de `@expo/ui`— pero exige envolver cada
- * disparador en un `<Host>` de SwiftUI. Sin él, React Native aborta al montar:
+ * Es el gesto equivalente al click derecho, del lado del toque. En el teléfono
+ * lo natural sobre una fila es apretarla, no apuntarle a un ícono de 36px
+ * contra el borde — y hasta ahora esto era un envoltorio vacío, así que ese
+ * gesto no hacía nada en ninguna pantalla.
  *
- *   A SwiftUI view "UIBaseView<ContextMenuProps, ContextMenu>" is being mounted
- *   inside a standard UIView. Double check that in JSX you have wrapped your
- *   component with `<Host>` from '@expo/ui/swift-ui'.
+ * **No usa el menú nativo, y es a propósito.** `ContextMenu` de `@expo/ui`
+ * exige envolver cada disparador en un `<Host>` de SwiftUI, y el disparador acá
+ * es *una fila de una lista*: sería un contenedor de SwiftUI por fila, adentro
+ * de un `FlatList` que las recicla. Ese costo es el que había que evitar. El
+ * gesto de abajo es JS puro y el panel es el mismo que dibuja el click derecho,
+ * así que no hay nada nativo por fila.
  *
- * Y ahí está el problema: el disparador es **una fila de una lista**, así que
- * sería un contenedor de SwiftUI por cada fila, dentro de un `FlatList` que las
- * recicla. Es exactamente el costo que había que evitar, y por eso esto queda
- * como envoltorio inerte en vez de con el `Host` puesto: prefiero el gesto
- * ausente antes que una lista que se arrastra o que revienta al desplazar.
+ * Los números salen de las plataformas: **500ms** es el umbral de iOS
+ * (`minimumPressDuration`) y de Android (`DEFAULT_LONG_PRESS_TIMEOUT`), así que
+ * el gesto se siente como el del sistema. Los **10px** de tolerancia son lo que
+ * le cede el paso al scroll: cualquier desplazamiento real se pasa de ahí y el
+ * apretón se cancela, que es la regla que hace que la lista siga siendo una
+ * lista. Y queda lejos de los 130ms del arrastre para reordenar la cola, que
+ * además vive en otra manija.
  *
- * Los tres puntos siguen dando todas las opciones, que es lo que hacía falta.
+ * Solo con el dedo: con mouse ya está el click derecho, y tener las dos puertas
+ * abiertas a la vez sobre el mismo nodo serían dos menús compitiendo.
  */
-export function MantenerApretado({ children }: { items: MenuItem[]; children: ReactNode }) {
-  return <>{children}</>
+export function MantenerApretado({ items, children }: { items: MenuItem[]; children: ReactNode }) {
+  const [punto, setPunto] = useState<{ x: number; y: number } | null>(null)
+
+  const gesto = useMemo(
+    () =>
+      Gesture.LongPress()
+        .enabled(!TECLADO_FISICO && items.length > 0)
+        .minDuration(500)
+        .maxDistance(10)
+        .shouldCancelWhenOutside(true)
+        /* El panel se abre en coordenadas de ventana, que es lo que espera
+           `abiertoEn`: `absoluteX/Y` ya vienen así, sin medir nada. */
+        .runOnJS(true)
+        .onStart((e) => setPunto({ x: e.absoluteX, y: e.absoluteY })),
+    [items.length],
+  )
+
+  return (
+    <GestureDetector gesture={gesto}>
+      <View>
+        {children}
+        {punto ? (
+          <Menu
+            items={items}
+            sinDisparador
+            abiertoEn={punto}
+            onCerrarPunto={() => setPunto(null)}
+          />
+        ) : null}
+      </View>
+    </GestureDetector>
+  )
 }

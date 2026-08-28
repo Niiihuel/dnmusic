@@ -24,6 +24,8 @@ import {
 import { crearJamActual, salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
 import { abrirSelectorDispositivos, useEscuchaEspejoNombre } from '../state/escucha'
 import { BORDE_REFERENTE, ES_WEB, Glass, HAY_VIDRIO } from './Glass'
+import { useConTooltip } from './Tooltip'
+import { useClicDerecho } from './useClicDerecho'
 import { compartirHistoria } from './CompartirHistoria'
 import { Menu, type MenuItem } from './Menu'
 import { SeekBar, formatClock } from './SeekBar'
@@ -174,6 +176,10 @@ export function NowPlayingBar({
    */
   const colapsada = useColapsada()
   const [sobre, setSobre] = useState(false)
+  /* Click derecho sobre el reproductor: las mismas opciones que los tres
+     puntos, que acá son el conjunto más rico de la app (Jam, la cola, en qué
+     aparato suena). Es lo que hacen los reproductores de escritorio. */
+  const clicBarra = useClicDerecho()
 
   // Lo encolado a mano manda sobre la lista mientras dure.
   const current = manual ?? (index >= 0 ? (tracks[index] ?? null) : null)
@@ -642,7 +648,7 @@ export function NowPlayingBar({
           boxShadow: `0 10px 28px rgba(0,0,0,0.5), ${BORDE_REFERENTE}`,
         }}
       >
-        <View className="flex-row items-center gap-3 py-2 pl-3 pr-2">
+        <View className="flex-row items-center gap-3 py-2 pl-3 pr-2" {...clicBarra.gestos}>
           {/* Qué suena. Es también el toque que abre la lista de origen. */}
           <View className="min-w-0 flex-1 flex-row items-center gap-3">
             {artwork ? (
@@ -720,6 +726,16 @@ export function NowPlayingBar({
           )}
 
           <View className="flex-row items-center justify-end gap-1">
+            {/* Sin botón propio: es la otra puerta al menú de al lado. Se monta
+                recién al abrirse, para no dejar una pieza colgada sin usar. */}
+            {clicBarra.punto ? (
+              <Menu
+                items={menu}
+                sinDisparador
+                abiertoEn={clicBarra.punto}
+                onCerrarPunto={clicBarra.cerrar}
+              />
+            ) : null}
             {conVistas ? (
               <>
                 <Toggle
@@ -797,8 +813,10 @@ function Toggle({
   onPress: () => void
   icon: (props: { size?: number; color?: string }) => React.ReactElement
 }) {
+  const tip = useConTooltip(label)
   return (
     <Pressable
+      {...tip.gestos}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected: active }}

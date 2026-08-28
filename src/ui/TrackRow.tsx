@@ -7,7 +7,8 @@ import {
   View,
 } from 'react-native'
 import { EstadoTapa, IndicadorPreparando } from './CoverState'
-import { MantenerApretado, type MenuItem } from './Menu'
+import { MantenerApretado, Menu, type MenuItem } from './Menu'
+import { useClicDerecho } from './useClicDerecho'
 import { PlayingBars } from './PlayingBars'
 import { formatClock } from './SeekBar'
 import { ICON_COLOR, IconMusic, IconPause, IconPlay } from './icons'
@@ -112,10 +113,13 @@ export function TrackRow({
     onHover?.(on)
   }
 
+  const clic = useClicDerecho()
+
   const fila = (
     <View
       onPointerEnter={() => marcarHover(true)}
       onPointerLeave={() => marcarHover(false)}
+      {...clic.gestos}
       className={`flex-row items-center rounded-lg px-2 ${suelto ? 'gap-3 py-2' : 'gap-4 py-2'} ${
         inset ? (suelto ? 'mx-3' : 'mx-6') : ''
       } ${hovered ? 'bg-muted' : sounding ? 'bg-card' : ''}`}
@@ -252,6 +256,15 @@ export function TrackRow({
       >
         {trailing}
       </View>
+
+      {/*
+       * El menú del click derecho: la **misma** lista que los tres puntos, sin
+       * un botón propio. Se abre donde está el cursor (ver `useClicDerecho`);
+       * con el dedo no existe, y ahí la puerta siguen siendo los tres puntos.
+       */}
+      {clic.punto && menu?.length ? (
+        <Menu items={menu} sinDisparador abiertoEn={clic.punto} onCerrarPunto={clic.cerrar} />
+      ) : null}
     </View>
   )
 
