@@ -1,4 +1,12 @@
-import { Image, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
@@ -62,6 +70,25 @@ function fraseDelEstado(estado: EstadoActualizacion): string {
       return `Acá no se actualiza sola: ${estado.motivo}.`
     default:
       return estado.version ? `Versión ${estado.version}` : ''
+  }
+}
+
+/**
+ * Qué dice el botón en cada momento. Es la misma frase para la vista y para
+ * quien la escucha con el lector de pantalla, que antes decían cosas distintas:
+ * la etiqueta se quedaba en «Buscar actualizaciones» mientras el botón ya
+ * estaba bajando.
+ */
+function rotuloBoton(estado: EstadoActualizacion): string {
+  switch (estado.fase) {
+    case 'buscando':
+      return 'Buscando…'
+    case 'bajando':
+      return `Bajando ${Math.round(estado.porcentaje)}%`
+    case 'lista':
+      return 'Reiniciar e instalar'
+    default:
+      return 'Buscar actualizaciones'
   }
 }
 
@@ -142,21 +169,32 @@ function Actualizador() {
         ) : null}
 
         {estado.fase === 'apagado' ? null : (
+          /*
+           * El botón dice **qué** está pasando, no que algo pasa.
+           *
+           * Decía «En eso…» para las dos esperas —buscar y bajar—, que son
+           * distintas: una tarda un segundo y la otra puede tardar minutos.
+           * Bajando muestra el porcentaje, por lo mismo que el botón de
+           * descarga de una lista: una rueda girando dice «esperá» sin decir
+           * cuánto, y el número es lo que deja decidir si vale la pena mirar.
+           * La rueda queda igual, al lado, porque es lo que dice que sigue vivo.
+           */
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={lista ? 'Reiniciar e instalar' : 'Buscar actualizaciones'}
+            accessibilityLabel={rotuloBoton(estado)}
             disabled={ocupado}
             onPress={lista ? instalarActualizacion : buscarActualizacion}
-            className={`self-start rounded-full px-4 py-2 ${
+            className={`flex-row items-center gap-2 self-start rounded-full px-4 py-2 ${
               ocupado ? 'bg-muted' : 'bg-primary active:opacity-80'
             }`}
           >
+            {ocupado ? <ActivityIndicator size="small" color={ICON_COLOR.muted} /> : null}
             <Text
               className={`text-[13px] font-semibold ${
                 ocupado ? 'text-muted-foreground' : 'text-primary-foreground'
-              }`}
+              } ${estado.fase === 'bajando' ? 'tabular-nums' : ''}`}
             >
-              {lista ? 'Reiniciar e instalar' : ocupado ? 'En eso…' : 'Buscar actualizaciones'}
+              {rotuloBoton(estado)}
             </Text>
           </Pressable>
         )}
