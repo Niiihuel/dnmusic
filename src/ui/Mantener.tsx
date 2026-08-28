@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Pressable, Text, View } from 'react-native'
+import { IconoAjuste } from './Ajustes'
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -115,7 +116,7 @@ export function FilaSostener({
         ]}
       />
 
-      {icono ? <View className="w-6 items-center">{icono}</View> : null}
+      {icono ? <IconoAjuste>{icono}</IconoAjuste> : null}
 
       <View
         className={`min-w-0 flex-1 gap-0.5 py-3.5 ${ultima ? '' : 'border-b border-muted'}`}

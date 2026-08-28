@@ -4,10 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { FilaAjuste, FilaInterruptor, GrupoAjustes } from '../../src/ui/Ajustes'
 import { FilaSostener } from '../../src/ui/Mantener'
+import { Avatar } from '../../src/ui/Avatar'
 import {
   ICON_COLOR,
   IconBack,
   IconBan,
+  IconChevronRight,
   IconClock,
   IconDisc,
   IconDisk,
@@ -27,7 +29,7 @@ import {
 import { setAutoplay, useAjustes } from '../../src/state/ajustes'
 import { programarApagado, useDormirMin } from '../../src/state/playback'
 import { borrarHistorial } from '../../src/services/plays'
-import { endSession } from '../../src/state/session'
+import { endSession, useMyProfile } from '../../src/state/session'
 import { avisar } from '../../src/state/aviso'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { usePiso } from '../../src/state/shell'
@@ -62,6 +64,8 @@ export default function Ajustes() {
   const router = useRouter()
   const { autoplay } = useAjustes()
   const dormirMin = useDormirMin()
+  const perfil = useMyProfile()
+  const nombre = perfil?.displayName?.trim() || perfil?.username || 'Tu cuenta'
 
   const { items } = useDescargas()
   const bajadas = cuantasListas(items)
@@ -104,6 +108,30 @@ export default function Ajustes() {
             contentContainerStyle={{ paddingBottom: piso }}
           >
             <View className="w-full gap-6" style={{ maxWidth: suelto ? undefined : CAP }}>
+              {/*
+               * Arriba de todo, quién sos: la tarjeta de cuenta, como el Apple
+               * ID en Ajustes de iOS. Es la puerta a editar el perfil —foto,
+               * nombre, bio— y de paso le pone cara a la pantalla. Toda la
+               * identidad de la app entra por acá.
+               */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Editar tu perfil"
+                onPress={() => router.push('/profile')}
+                className="flex-row items-center gap-3.5 rounded-2xl bg-card p-3 active:bg-muted"
+              >
+                <Avatar name={nombre} path={perfil?.avatarPath} size={54} />
+                <View className="min-w-0 flex-1">
+                  <Text className="text-foreground text-[17px] font-semibold" numberOfLines={1}>
+                    {nombre}
+                  </Text>
+                  <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+                    {perfil?.username ? `@${perfil.username} · Editá tu perfil` : 'Editá tu perfil'}
+                  </Text>
+                </View>
+                <IconChevronRight size={18} color={ICON_COLOR.muted} />
+              </Pressable>
+
               {/*
                * El aleatorio y el repetir **no están acá**, y es a propósito.
                *
@@ -223,7 +251,23 @@ export default function Ajustes() {
                * algo que **no se puede recuperar** —las descargas sí— y lo único
                * que le importa a las recomendaciones.
                */}
-              <GrupoAjustes titulo="Tus datos">
+              {/*
+               * Privacidad y datos, juntos: quién no querés ver (Bloqueados) y
+               * lo que la app guardó de vos (el historial). Los dos son «lo tuyo
+               * del lado de adentro»; separarlos en dos bloques era partir la
+               * misma idea. Borrar el historial no tiene vuelta, así que se
+               * sostiene, y va último del bloque.
+               */}
+              <GrupoAjustes titulo="Privacidad y datos">
+                {/* La puerta de salida del bloqueo: el perfil de un bloqueado ya
+                    no se puede abrir, así que se deshace desde esta lista. */}
+                <FilaAjuste
+                  rotulo="Bloqueados"
+                  valor=""
+                  vacio=""
+                  icono={<IconBan size={17} color={ICON_COLOR.muted} />}
+                  onPress={() => router.push('/ajustes/bloqueados')}
+                />
                 <FilaSostener
                   rotulo="Borrar historial de escucha"
                   detalle="Las recomendaciones vuelven a empezar de cero. No se puede deshacer."
@@ -234,22 +278,12 @@ export default function Ajustes() {
               </GrupoAjustes>
 
               {/*
-               * Cerrar sesión vive acá y no en el panel lateral: es la única
-               * acción de la app que te saca en vez de llevarte, y en el panel
-               * convivía —a un toque de distancia— con crear una lista.
-               * Sostenida, porque volver a entrar pide la contraseña.
+               * Cerrar sesión, sola y al fondo: es la única acción que te saca
+               * en vez de llevarte, así que va aislada del resto —nada al lado
+               * que se toque por error—. Sostenida, porque volver a entrar pide
+               * la contraseña.
                */}
               <GrupoAjustes titulo="Tu cuenta">
-                {/* La puerta de salida del bloqueo vive acá: el perfil de un
-                    bloqueado ya no se puede abrir, así que se deshace desde
-                    esta lista. */}
-                <FilaAjuste
-                  rotulo="Bloqueados"
-                  valor=""
-                  vacio=""
-                  icono={<IconBan size={17} color={ICON_COLOR.muted} />}
-                  onPress={() => router.push('/ajustes/bloqueados')}
-                />
                 <FilaSostener
                   rotulo="Cerrar sesión"
                   detalle="Vas a volver a la pantalla de entrada."

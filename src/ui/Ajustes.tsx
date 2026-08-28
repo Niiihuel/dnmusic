@@ -9,6 +9,23 @@ import { BORDE_REFERENTE, Glass, HAY_VIDRIO } from './Glass'
 import { ICON_COLOR, IconChevronRight } from './icons'
 
 /**
+ * El ícono de una fila, en su placa redondeada.
+ *
+ * Es el detalle que hace que la lista se lea como los Ajustes de un sistema y
+ * no como texto suelto: cada fila abre con una placa del mismo tamaño, y el
+ * ícono descansa adentro. La placa es `muted` sobre la tarjeta `card` —una
+ * superficie apenas más clara—, que es separar por luminancia como pide
+ * `docs/DESIGN.md`, sin un solo borde ni color.
+ */
+export function IconoAjuste({ children }: { children: ReactNode }) {
+  return (
+    <View className="h-[30px] w-[30px] items-center justify-center rounded-[8px] bg-muted">
+      {children}
+    </View>
+  )
+}
+
+/**
  * Una lista agrupada, al modo de Ajustes de iOS.
  *
  * El patrón se llama *inset grouped list*: bloques redondeados de filas, cada
@@ -76,7 +93,7 @@ export function FilaAjuste({
       onPress={onPress}
       className="flex-row items-center gap-3 px-4 active:bg-muted"
     >
-      {icono ? <View className="w-6 items-center">{icono}</View> : null}
+      {icono ? <IconoAjuste>{icono}</IconoAjuste> : null}
 
       {/* La separación va adentro y no en el contenedor: así la línea arranca
           después del ícono, como en Ajustes, en vez de cortar el bloque entero. */}
@@ -134,7 +151,7 @@ export function FilaInterruptor({
       onPress={() => onCambiar(!activo)}
       className="flex-row items-center gap-3 px-4 active:bg-muted"
     >
-      {icono ? <View className="w-6 items-center">{icono}</View> : null}
+      {icono ? <IconoAjuste>{icono}</IconoAjuste> : null}
 
       <View
         className={`min-w-0 flex-1 flex-row items-center gap-3 py-3.5 ${

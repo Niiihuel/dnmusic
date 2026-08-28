@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
+import { Image, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
@@ -15,6 +15,8 @@ import {
 } from '../../src/state/actualizacion'
 import { usePiso } from '../../src/state/shell'
 import { volver } from '../../src/lib/volver'
+
+const LOGO = require('../../assets/icon.png')
 
 /** Debajo de esto la app es pestañas y el contenido va de borde a borde. */
 const SHELL_PX = 780
@@ -192,15 +194,42 @@ export default function Novedades() {
             contentContainerStyle={{ paddingBottom: piso }}
           >
             <View className="w-full gap-6" style={{ maxWidth: suelto ? undefined : CAP }}>
+              {/*
+               * El arranque de la pantalla: la app con su cara y su versión.
+               * La placa redondeada sobre `card` es la misma familia de las
+               * placas de los íconos de Ajustes —separación por luminancia, sin
+               * bordes ni color (`docs/DESIGN.md`)—.
+               */}
+              <View className="items-center gap-3 pb-1 pt-2">
+                <View className="h-[74px] w-[74px] items-center justify-center rounded-[20px] bg-card">
+                  <Image source={LOGO} style={{ width: 46, height: 46 }} resizeMode="contain" />
+                </View>
+                <View className="items-center gap-1">
+                  <Text className="text-foreground text-[20px] font-bold">dnmusic</Text>
+                  {NOVEDADES[0] ? (
+                    <Text className="text-muted-foreground text-[13px]">
+                      Versión {NOVEDADES[0].version}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+
               <Actualizador />
 
-              {NOVEDADES.map((novedad) => (
+              {NOVEDADES.map((novedad, i) => (
                 <View key={novedad.version} className="gap-2">
-                  <View className="flex-row items-baseline justify-between px-4">
+                  <View className="flex-row items-center justify-between px-4">
                     <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
                       {novedad.fecha}
                     </Text>
-                    <Text className="text-muted-foreground text-[11px]">{novedad.version}</Text>
+                    <View className="flex-row items-center gap-2">
+                      {i === 0 ? (
+                        <Text className="overflow-hidden rounded-full bg-primary px-2 py-0.5 text-primary-foreground text-[10px] font-bold uppercase tracking-[0.6px]">
+                          Actual
+                        </Text>
+                      ) : null}
+                      <Text className="text-muted-foreground text-[11px]">{novedad.version}</Text>
+                    </View>
                   </View>
                   <View className="gap-3 rounded-2xl bg-card p-4">
                     <Text className="text-foreground text-[15px] font-semibold">
