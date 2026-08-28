@@ -1,5 +1,6 @@
 import { Platform, Share } from 'react-native'
 import { avisar } from '../state/aviso'
+import { copiarAlPortapapeles } from './portapapeles'
 
 /**
  * El link de una lista pública.
@@ -52,18 +53,16 @@ export async function invitarAColaborar(id: string, nombre: string): Promise<voi
  * tocarlo.
  */
 async function ofrecer(enlace: string, mensaje: string): Promise<void> {
-  if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+  // Copiar siempre, con el respaldo del textarea para el escritorio —donde
+  // `navigator.clipboard` puede no estar—; ver `lib/portapapeles`.
+  const copiado = await copiarAlPortapapeles(enlace)
+  if (Platform.OS !== 'web') {
     try {
-      await navigator.clipboard.writeText(enlace)
-      avisar('Link copiado. Mandáselo a quien quieras.')
+      await Share.share({ message: mensaje })
       return
     } catch {
-      // Sin permiso de portapapeles: cae a la hoja de compartir.
+      // Hoja cancelada: el link ya quedó copiado.
     }
   }
-  try {
-    await Share.share({ message: mensaje })
-  } catch {
-    avisar(`Compartí el link ${enlace}`)
-  }
+  avisar(copiado ? 'Link copiado. Mandáselo a quien quieras.' : `Compartí el link ${enlace}`)
 }

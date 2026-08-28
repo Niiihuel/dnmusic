@@ -1,5 +1,6 @@
 import { Platform, Share } from 'react-native'
 import { avisar } from '../state/aviso'
+import { copiarAlPortapapeles } from './portapapeles'
 
 /**
  * El link que se comparte para entrar a un Jam. La misma URL entra por web y
@@ -21,6 +22,23 @@ export function linkDeJam(code: string): string {
 }
 
 /**
+ * El código de un Jam a partir de lo que la persona pegó: el link entero
+ * (`…/jam/ABC123`) o el código suelto. Devuelve null si no parece uno.
+ *
+ * Se perdona mayúsculas, espacios y el link porque acá se escribe **a mano** —
+ * el que entra tipea lo que le pasaron por chat—. El servidor igual valida
+ * (`unirse_jam` hace `upper(btrim(...))`), así que un código raro no rompe: la
+ * pantalla del código dirá que ese Jam no existe.
+ */
+export function codigoDeJam(entrada: string): string | null {
+  const t = entrada.trim()
+  if (!t) return null
+  const m = t.match(/jam\/([^/?#\s]+)/i)
+  const code = (m ? m[1] : t).trim().toUpperCase()
+  return /^[A-Z0-9]{4,10}$/.test(code) ? code : null
+}
+
+/**
  * Ofrecer el link por el gesto nativo de cada lado: la hoja de compartir en
  * el teléfono, el portapapeles en el navegador — que no tiene hoja. Si ninguno
  * de los dos camina (web sin https, escritorio pelado), el código dicho con
@@ -28,18 +46,22 @@ export function linkDeJam(code: string): string {
  */
 export async function invitarAlJam(code: string): Promise<void> {
   const url = linkDeJam(code)
-  if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+  // El link se copia siempre, en todos lados: era lo que fallaba —en el
+  // escritorio `navigator.clipboard` no está y se caía a la hoja de compartir,
+  // que en web no existe, y el link nunca llegaba a ningún lado—.
+  const copiado = await copiarAlPortapapeles(url)
+  if (Platform.OS !== 'web') {
+    // En el teléfono, además, la hoja nativa para mandarlo por donde sea.
     try {
-      await navigator.clipboard.writeText(url)
-      avisar('Link copiado. Mandáselo a quien quieras.')
+      await Share.share({ message: `Escuchemos juntos en dnmusic: ${url}` })
       return
     } catch {
-      // Sin permiso de portapapeles: cae a los otros caminos.
+      // Hoja cancelada: no importa, el link ya quedó en el portapapeles.
     }
   }
-  try {
-    await Share.share({ message: `Escuchemos juntos en dnmusic: ${url}` })
-  } catch {
-    avisar(`Compartí el código ${code} o el link ${url}`)
-  }
+  avisar(
+    copiado
+      ? 'Link copiado. Mandáselo a quien quieras.'
+      : `Compartí el código ${code} o el link ${url}`,
+  )
 }
