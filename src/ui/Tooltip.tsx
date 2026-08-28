@@ -86,11 +86,24 @@ export function useConTooltip(texto?: string) {
   return { gestos }
 }
 
-/** Aire entre el botón y el rótulo. */
-const SEPARACION = 8
+/**
+ * Aire entre el botón y el rótulo.
+ *
+ * Poco a propósito: el rótulo tiene que leerse **pegado a lo que nombra**. Con
+ * más aire deja de pertenecerle al botón y se lee como un cartel suelto, sobre
+ * todo en una fila de íconos donde el de al lado está a pocos píxeles.
+ */
+const SEPARACION = 6
 /** Margen mínimo contra el borde de la ventana. */
 const MARGEN = 8
-/** Alto aproximado del rótulo, para decidir si entra arriba. */
+/**
+ * Alto aproximado, **solo** para decidir si entra arriba o va abajo.
+ *
+ * Para colocarlo no se usa: arriba se ancla por el borde de abajo (`bottom`),
+ * que no necesita saber cuánto mide. Antes se restaba esta estimación al `top`,
+ * y como estimaba de más el rótulo quedaba flotando más arriba de lo pedido —
+ * el aire real terminaba siendo mayor que el que dice `SEPARACION`.
+ */
 const ALTO = 28
 /** Ancho máximo: si no entra, el texto era demasiado largo para un tooltip. */
 const ANCHO_MAX = 260
@@ -131,7 +144,11 @@ export function Tooltip() {
 function Rotulo({ tip }: { tip: { texto: string; x: number; y: number; w: number; h: number } }) {
   const { width, height } = useVentana()
   const arriba = tip.y - SEPARACION - ALTO >= MARGEN || tip.y > height / 2
-  const top = arriba ? tip.y - SEPARACION - ALTO : tip.y + tip.h + SEPARACION
+  /* Arriba se ancla por abajo y abajo por arriba: en los dos casos el borde
+     que mira al botón queda exactamente a `SEPARACION`, sin estimar nada. */
+  const vertical = arriba
+    ? { bottom: height - tip.y + SEPARACION }
+    : { top: tip.y + tip.h + SEPARACION }
   /* Centrado sobre el botón y metido para adentro si se saliera. El ancho real
      lo pone el texto; el centro se calcula sobre el máximo y se acota. */
   const centro = tip.x + tip.w / 2
@@ -142,7 +159,7 @@ function Rotulo({ tip }: { tip: { texto: string; x: number; y: number; w: number
       onPointerLeave={soltarTooltip}
       style={{
         position: 'absolute',
-        top,
+        ...vertical,
         left: Math.max(MARGEN, Math.min(centro - ANCHO_MAX / 2, width - ANCHO_MAX - MARGEN)),
         width: ANCHO_MAX,
         alignItems: centro < ANCHO_MAX / 2 + MARGEN ? 'flex-start' : 'center',
