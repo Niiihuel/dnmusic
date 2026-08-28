@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.6.0",
+    "fecha": "27 de agosto de 2026",
+    "titulo": "Buscá adentro de tus listas, sumá amigos al Jam y una app más prolija de punta a punta",
+    "cambios": [
+      "Buscador adentro de cada lista: con la lupa de la cabecera filtrás por título o artista y encontrás esa canción sin recorrer doscientas.",
+      "Al Jam ahora entrás con un código —o pegando el link— sin depender de que el link abra la app, y podés invitar a un amigo eligiéndolo de tus contactos: le llega la invitación al chat.",
+      "El link del Jam y el de una lista ahora se copian de verdad en la computadora, que era donde el botón no hacía nada. Y el código del Jam se copia tocándolo.",
+      "La primera vez que preparás una canción ya no ves una rueda girando sin más: te muestra el porcentaje mientras la baja, así sabés que está avanzando.",
+      "Traer de Spotify: el botón de traer quedó fijo abajo, así confirmás sin bajar hasta el final de la lista.",
+      "Escribir en el buscador dejó de trabar la pantalla: ahora podés tipear seguido sin que se atore letra por letra.",
+      "En la computadora podés bajar una lista entera al disco, eligiendo la carpeta, y el reproductor se hace chiquito mientras recorrés para no taparte los costados.",
+      "La app abre con su propia presentación, y Ajustes y Novedades quedaron más ordenados y con mejor cara."
+    ]
+  },
+  {
     "version": "1.5.0",
     "fecha": "27 de agosto de 2026",
     "titulo": "Cada portada pone su color, y la música salta de un aparato a otro",
