@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.7.3",
+    "fecha": "28 de agosto de 2026",
+    "titulo": "Una canción ya no se cae por un tropiezo suelto",
+    "cambios": [
+      "Cuando YouTube cortaba la bajada a mitad de camino —pasa solo, sobre todo si ponés la misma canción dos veces seguidas—, la canción quedaba como si no se pudiera reproducir. Ahora se reintenta sola y termina de bajar.",
+      "El botón de actualizar dice qué está haciendo: «Buscando…» o «Bajando 42%», en vez de un «En eso…» que servía para las dos cosas."
+    ]
+  },
+  {
     "version": "1.7.2",
     "fecha": "28 de agosto de 2026",
     "titulo": "Las canciones que no se podían poner en la computadora, ahora sí",
