@@ -16,9 +16,13 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native'
 import Animated, {
+  Easing,
   runOnJS,
   useAnimatedKeyboard,
   useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
   type SharedValue,
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -42,6 +46,8 @@ import {
   refreshConversations,
   respondToRequest,
   selectConversation,
+  useCargandoConversaciones,
+  useCargandoMensajes,
   useContact,
   useContactRequests,
   useConversations,
@@ -235,6 +241,8 @@ type Vista =
 
 export default function Home() {
   const messages = useMessages()
+  const cargandoMensajes = useCargandoMensajes()
+  const cargandoConversaciones = useCargandoConversaciones()
   const conversations = useConversations()
   const requests = useContactRequests()
   /* El globito del botón de conversaciones: solicitudes más no leídos. */
@@ -770,21 +778,13 @@ export default function Home() {
    */
   useEffect(() => {
     const term = conversationQuery.trim()
-    /* Vacío: se apagan los resultados de una. Antes esto lo hacía un oído del
-       store en cada tecla —cuatro setStates letra por letra—; ahora vive acá,
-       sobre la consulta asentada, que es lo único que de verdad cambió. */
-    if (!term) {
-      setTrackResults([])
-      setArtistResults([])
-      setSearchResults([])
-      setSearchError(null)
-      setSearchingContacts(false)
-      return
-    }
+    /* Vacío no se busca. Apagar los resultados es cosa del campo —pasa cuando
+       alguien borra, que es un evento— y no de este efecto: tocar estado acá
+       encadena renders de más. */
+    if (!term) return
 
     /* `conversationQuery` ya llega con el debounce del store, así que acá no
        hace falta otro reloj: apenas la mano frena, se busca. */
-    setSearchingContacts(true)
     const controller = new AbortController()
     if (music) {
       searchMusic(term, controller.signal)
@@ -1443,18 +1443,70 @@ export default function Home() {
     if (at > 0) goBack()
   }, [music, chatAbierto, at, goBack])
 
+  /* Hay a dónde volver: sin esto el gesto arrastraría el panel para devolverlo
+     al mismo lugar, que se lee como que la app se trabó. */
+  const puedeVolverGesto = (!music && chatAbierto) || at > 0
+
+  /*
+   * Cuánto corrió el panel, en píxeles. Es lo que hacía falta para que el
+   * gesto **se vea**: antes solo se miraba el final del arrastre y el cambio
+   * era un salto seco — el dedo no movía nada.
+   */
+  const arrastreX = useSharedValue(0)
+
+  /*
+   * El pop de iOS, con los números del original.
+   *
+   * Están tomados de `forHorizontalIOS` de react-navigation (el interpolador
+   * que usa el stack de iOS): la que se va viaja hasta el ancho de la pantalla,
+   * y la que queda debajo entra desde **-30% del ancho** — ese desfasaje es lo
+   * que da la sensación de profundidad, y sin él la pantalla nueva aparecería
+   * de golpe ya puesta.
+   *
+   * Acá no hay dos pantallas montadas —el historial del panel del medio es una
+   * pila de `Vista`, no rutas— así que se hace en dos tiempos sobre el mismo
+   * panel: sale hacia la derecha, se cambia el contenido y el nuevo entra desde
+   * el parallax. Visto de afuera es el mismo movimiento.
+   */
   const gestoVolver = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(suelto)
+        .enabled(suelto && puedeVolverGesto)
         .hitSlop({ left: 0, width: 28 })
         .activeOffsetX(20)
         .failOffsetY([-20, 20])
+        .onUpdate((e) => {
+          /* El panel sigue al dedo. Hacia la izquierda no va: volver es un
+             movimiento en un solo sentido, y dejarlo ir para el otro lado
+             despegaría el panel de su lugar sin que eso signifique nada. */
+          arrastreX.value = Math.max(0, e.translationX)
+        })
         .onEnd((e) => {
-          if (e.translationX > 60 || e.velocityX > 800) runOnJS(volverPorGesto)()
+          const suelta = e.translationX > 60 || e.velocityX > 800
+          if (!suelta) {
+            // No alcanzó: vuelve a su lugar, sin rebote.
+            arrastreX.value = withSpring(0, { damping: 26, stiffness: 240, mass: 0.8, overshootClamping: true })
+            return
+          }
+          arrastreX.value = withTiming(
+            width,
+            { duration: 180, easing: Easing.out(Easing.cubic) },
+            (fin) => {
+              'worklet'
+              if (!fin) return
+              runOnJS(volverPorGesto)()
+              // Y el que queda entra desde el parallax, como el de abajo en iOS.
+              arrastreX.value = -width * 0.3
+              arrastreX.value = withTiming(0, { duration: 240, easing: Easing.out(Easing.cubic) })
+            },
+          )
         }),
-    [suelto, volverPorGesto],
+    [suelto, puedeVolverGesto, volverPorGesto, arrastreX, width],
   )
+
+  const estiloArrastre = useAnimatedStyle(() => ({
+    transform: [{ translateX: arrastreX.value }],
+  }))
 
   const selected =
     messages.find((message) => message.id === selectedId) ?? messages[messages.length - 1] ?? null
@@ -1600,6 +1652,25 @@ export default function Home() {
 
   function changeGlobalSearch(value: string) {
     setTermino(value)
+    /*
+     * Lo que pasa al escribir se decide **acá**, en el evento, y no en un
+     * efecto: es la respuesta a un gesto concreto.
+     *
+     * Con algo escrito, «buscando» se enciende ya —el campo muestra su rueda
+     * desde la primera tecla, aunque la consulta todavía no se haya asentado—.
+     * Al vaciar, los resultados se apagan en el acto: son de una búsqueda que
+     * ya no existe. Volver a poner el mismo valor no redibuja nada, así que
+     * esto no es un setState por tecla.
+     */
+    if (value.trim()) {
+      setSearchingContacts(true)
+      return
+    }
+    setTrackResults([])
+    setArtistResults([])
+    setSearchResults([])
+    setSearchError(null)
+    setSearchingContacts(false)
   }
 
   function chooseGlobalResult(result: ContactResult) {
@@ -2058,6 +2129,7 @@ export default function Home() {
                     <ConversationSidebar
                       conversations={visibleConversations}
                       requests={requests}
+                      cargando={cargandoConversaciones}
                       onRespond={(solicitud, aceptar) => void responderSolicitud(solicitud, aceptar)}
                       filtered={conversationQuery.trim().length > 0}
                       activePairId={activePairId}
@@ -2088,7 +2160,13 @@ export default function Home() {
               teléfono (`enabled(suelto)`): en escritorio el borde izquierdo es
               de la biblioteca. */}
           <GestureDetector gesture={gestoVolver}>
-          <View className="min-h-0 flex-1">
+          {/* El panel del medio se mueve con el gesto de volver: la sombra al
+              filo izquierdo lo lee como una tarjeta que se corre sobre lo que
+              hay detrás, que es lo que hace el stack de iOS. */}
+          <Animated.View
+            className="min-h-0 flex-1"
+            style={[estiloArrastre, { boxShadow: '-8px 0 24px rgba(0,0,0,0.5)' }]}
+          >
           {caraCentro && pistaSonando ? (
             /*
              * La letra o el disco **toman el panel del medio**, como en
@@ -2343,6 +2421,7 @@ export default function Home() {
               <ConversationSidebar
                 conversations={visibleConversations}
                 requests={requests}
+                cargando={cargandoConversaciones}
                 onRespond={(solicitud, aceptar) => void responderSolicitud(solicitud, aceptar)}
                 filtered={conversationQuery.trim().length > 0}
                 activePairId={activePairId}
@@ -2404,7 +2483,7 @@ export default function Home() {
                             {contact ? contactTitle(contact) : contactName}
                           </Text>
                           <Text className="text-muted-foreground text-xs">
-                            {messageCountLabel(messages.length)}
+                            {cargandoMensajes ? 'Cargando…' : messageCountLabel(messages.length)}
                           </Text>
                         </View>
                       </Pressable>
@@ -2444,7 +2523,19 @@ export default function Home() {
                            abre un hueco muerto. */
                         paddingBottom: pisoChat + (draft.song ? 168 : 92),
                       }}
-                      ListEmptyComponent={<EmptyThread contactName={contactName} />}
+                      ListEmptyComponent={
+                        /* Cargando no es lo mismo que vacío: mientras el hilo
+                           viene, el esqueleto dice «esto se está llenando». Antes
+                           se leía «Conversación nueva» sobre un chat que sí tenía
+                           mensajes, y era lo que se veía vacío. */
+                        cargandoMensajes ? (
+                          <View className="px-4 py-6">
+                            <SkeletonList rows={4} />
+                          </View>
+                        ) : (
+                          <EmptyThread contactName={contactName} />
+                        )
+                      }
                       renderItem={({ item }) => (
                         <ChatBubble
                           message={item}
@@ -2675,7 +2766,7 @@ export default function Home() {
               )}
             </Panel>
           )}
-          </View>
+          </Animated.View>
           </GestureDetector>
 
           {showDetail ? (
@@ -2862,6 +2953,7 @@ function HeaderButton({
 function ConversationSidebar({
   conversations,
   requests,
+  cargando = false,
   filtered,
   activePairId,
   hovered,
@@ -2879,6 +2971,8 @@ function ConversationSidebar({
   conversations: Conversation[]
   /** Solicitudes que esperan respuesta; con alguna, la sección va arriba. */
   requests: ContactRequest[]
+  /** La bandeja todavía viene: esqueleto en vez de «no hay conversaciones». */
+  cargando?: boolean
   /** Hay una búsqueda escrita: cambia qué decir cuando la lista está vacía. */
   filtered: boolean
   activePairId: string | null
@@ -2998,7 +3092,14 @@ function ConversationSidebar({
              sección «Más gente» ya es la respuesta a lo que se escribió. */
           /* Una cuenta recién creada no tiene conversaciones, y decirle que
              "no coinciden" da a entender que filtró algo que no filtró. */
-          filtered && (cuentas.length || buscandoCuentas) ? null : (
+          filtered && (cuentas.length || buscandoCuentas) ? null : cargando ? (
+            /* La bandeja todavía viene: un esqueleto y no «todavía no hay
+               conversaciones», que es una afirmación sobre algo que no sabemos
+               —y la primera que se leía al abrir la app con red lenta. */
+            <View className="pt-1">
+              <SkeletonList rows={5} />
+            </View>
+          ) : (
             <Vacio
               icono={<IconInbox size={22} color={ICON_COLOR.muted} />}
               titulo={filtered ? 'Sin resultados' : 'Todavía no hay conversaciones'}
