@@ -195,6 +195,8 @@ export function subscribeToInbox(
   onError?: (error: Error) => void,
 ): () => void {
   const supabase = getSupabase()
+  /* El primer SUBSCRIBED no relee: la carga inicial ya la hizo quien llamó. */
+  let primera = true
   let channel: RealtimeChannel | null = supabase
     .channel(`inbox:${uid}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, onChange)
@@ -234,7 +236,15 @@ export function subscribeToInbox(
     .subscribe((status) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         onError?.(new Error('Se perdió la actualización de conversaciones.'))
+        return
       }
+      /* Al reengancharse, releer la bandeja: mientras el socket estuvo caído
+         nadie avisó de los mensajes que llegaron, y la lista se quedaba con
+         los últimos de antes del corte. `onChange` es justamente «volvé a
+         pedir la lista». Mismo criterio que el hilo (`services/messages`), el
+         Jam y la escucha. */
+      if (status === 'SUBSCRIBED' && !primera) onChange()
+      if (status === 'SUBSCRIBED') primera = false
     })
 
   return () => {

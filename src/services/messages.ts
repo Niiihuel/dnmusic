@@ -23,20 +23,26 @@ export type Unsubscribe = () => void
 
 export function subscribeToMessages(
   pairId: string,
-  onChange: (messages: Message[]) => void,
+  /** `hidratado` dice si ya pasó la carga completa, no solo si llegó algo. */
+  onChange: (messages: Message[], hidratado: boolean) => void,
   onError?: (error: Error) => void,
 ): Unsubscribe {
   const supabase = getSupabase()
   const byId = new Map<string, Message>()
   let cancelled = false
   let channel: RealtimeChannel | null = null
+  /* Si ya pasó el SELECT completo. Hasta entonces, lo que hay en el mapa es lo
+     que se coló por el canal: no alcanza para decir «el hilo está vacío». */
+  let hidratado = false
+  /* El primer SUBSCRIBED es el de siempre: la carga inicial ya va aparte. */
+  let primera = true
 
   const emit = () => {
     if (cancelled) return
     const sorted = [...byId.values()].sort(
       (a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0),
     )
-    onChange(sorted)
+    onChange(sorted, hidratado)
   }
 
   const upsert = (row: unknown) => {
@@ -67,27 +73,52 @@ export function subscribeToMessages(
     .subscribe((status) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         onError?.(new Error('Se perdió la conexión en tiempo real con el jardín.'))
-      }
-    })
-
-  void supabase
-    .from('messages')
-    .select(SELECT_COLUMNS)
-    .eq('pair_id', pairId)
-    .order('created_at', { ascending: true })
-    .then(({ data, error }) => {
-      if (cancelled) return
-      if (error) {
-        onError?.(new Error(error.message))
         return
       }
-      // Sin pisar lo que ya haya llegado por realtime mientras cargaba.
-      for (const row of data ?? []) {
-        const message = messageFromRow(row)
-        if (message && !byId.has(message.id)) byId.set(message.id, message)
+      /*
+       * Al (re)suscribirse, el estado completo tapa la ventana.
+       *
+       * El socket se cae solo —la app al fondo, el wifi que pasa a datos, la
+       * compu que duerme— y el cliente de realtime se reconecta y se vuelve a
+       * unir al tema **sin** pasar de nuevo por acá. Todo lo que se mandó
+       * durante ese hueco no estaba en ningún lado: no llegó por el canal
+       * (estaba caído) y el SELECT ya había corrido una sola vez, al principio.
+       * Eran los mensajes que «a veces no cargan» hasta salir y volver a entrar.
+       *
+       * Es el mismo criterio del Jam y de la escucha (ver `services/jam`), que
+       * ya lo hacían; el chat era el único que no, aunque los comentarios de al
+       * lado dieran por hecho que sí.
+       */
+      if (status !== 'SUBSCRIBED') return
+      if (primera) {
+        primera = false
+        return
       }
-      emit()
+      void cargar()
     })
+
+  /* La carga completa. Corre al arrancar y otra vez en cada reenganche. */
+  const cargar = async () => {
+    const { data, error } = await supabase
+      .from('messages')
+      .select(SELECT_COLUMNS)
+      .eq('pair_id', pairId)
+      .order('created_at', { ascending: true })
+    if (cancelled) return
+    if (error) {
+      onError?.(new Error(error.message))
+      return
+    }
+    // Sin pisar lo que ya haya llegado por realtime mientras cargaba.
+    for (const row of data ?? []) {
+      const message = messageFromRow(row)
+      if (message && !byId.has(message.id)) byId.set(message.id, message)
+    }
+    hidratado = true
+    emit()
+  }
+
+  void cargar()
 
   return () => {
     cancelled = true

@@ -87,7 +87,14 @@ function listenToConversation(pairId: string, contact: Contact) {
   })
   unsubscribeMessages = subscribeToMessages(
     pairId,
-    (messages) => store.set({ messages, isLoadingMessages: false }),
+    /* `hidratado` es «ya llegó la carga completa», no «llegó algo»: el canal se
+       suscribe antes del SELECT, así que un mensaje suelto puede llegar primero
+       y con él el esqueleto se iría dejando ver un hilo de una sola línea.
+       Y `error: null` porque unos mensajes frescos son la prueba de que lo que
+       había fallado ya se arregló — si no, un corte de un segundo dejaba el
+       hilo tapado por el error hasta cambiar de conversación. */
+    (messages, hidratado) =>
+      store.set({ messages, isLoadingMessages: !hidratado, error: null }),
     (error) =>
       store.set({
         error: `No se pudo conectar la conversación: ${error.message}`,
@@ -311,8 +318,24 @@ export function startSession() {
     return
   }
   unsubscribeAuth = subscribeToAuth((user) => {
+    const antes = store.get().user
     store.set({ user })
     if (user) {
+      /*
+       * La misma cuenta que ya está activa **no se vuelve a activar**.
+       *
+       * `onAuthStateChange` no avisa solo cuando alguien entra: también emite
+       * `TOKEN_REFRESHED` —cada vez que supabase-js renueva el token, por reloj
+       * y al volver la app al frente— y `USER_UPDATED`. Cada uno de esos
+       * eventos rehacía la cuenta entera: cortaba el canal de mensajes, vaciaba
+       * la bandeja y el hilo, iba de nuevo a la red y terminaba abriendo la
+       * **primera** conversación en vez de la que estabas leyendo.
+       *
+       * Visto desde afuera era esto: volvés a la app después de un rato y el
+       * chat aparece vacío, o saltás solo a otra conversación. Y si esa ida a
+       * la red fallaba, quedaba vacío hasta reiniciar.
+       */
+      if (antes?.id === user.id && unsubscribeInbox) return
       void activateAccount(user.id)
     } else {
       accountVersion++
@@ -376,6 +399,19 @@ export const usePendientesChats = () =>
 export const usePairId = () => useStore(store, (state) => state.pairId)
 export const useContact = () => useStore(store, (state) => state.contact)
 export const useMessages = () => useStore(store, (state) => state.messages)
+/**
+ * Si el hilo todavía está cargando, para poder mostrar un esqueleto en vez de
+ * «Conversación nueva».
+ *
+ * `messages` arranca en `[]`, así que la lista sola no distingue «todavía no
+ * llegó» de «no hay ninguno»: mientras cargaba, el chat decía que era una
+ * conversación nueva y se veía vacío. El store ya lo sabía —esta bandera
+ * existía y no la leía nadie—; ahora sale.
+ */
+export const useCargandoMensajes = () => useStore(store, (state) => state.isLoadingMessages)
+/** Lo mismo para la bandeja: sin esto, la lista dice «no hay conversaciones». */
+export const useCargandoConversaciones = () =>
+  useStore(store, (state) => state.isLoadingConversations)
 export const useSessionError = () => useStore(store, (state) => state.error)
 export const useIsBooting = () =>
   useStore(
