@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.8.3",
+    "fecha": "28 de agosto de 2026",
+    "titulo": "El volumen siempre a mano, y la app te cuenta qué cambió",
+    "cambios": [
+      "En la computadora, la perilla de volumen ya no desaparece: antes se iba cuando achicabas la ventana o plegabas el reproductor, y ahí no quedaba ninguna forma de bajar la música sin volver a agrandar todo. Ahora está siempre, un poco más corta cuando hay menos lugar.",
+      "Al abrir una versión nueva, una tarjeta te cuenta qué trae. Aparece una sola vez y se va con un toque; el historial completo sigue estando en Ajustes → Novedades."
+    ]
+  },
+  {
     "version": "1.8.2",
     "fecha": "28 de agosto de 2026",
     "titulo": "Tocar una canción vuelve a poner esa canción",

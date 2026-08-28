@@ -616,15 +616,16 @@ export function NowPlayingBar({
    * leerse como una pieza apoyada y no como una franja del sistema.
    *
    * En una fila no entra todo en cualquier ancho, así que la píldora suelta
-   * lastre por etapas: primero las vistas y el volumen (que siguen en el panel
-   * y en el menú), después la barra de posición, que deja en su lugar el
-   * reloj. El play sigue siendo lo más brillante — el acento de siempre.
+   * lastre por etapas: primero las vistas (que siguen en el panel y en el
+   * menú), después la barra de posición, que deja en su lugar el reloj. El
+   * volumen no es lastre y nunca se suelta: en escritorio es la única perilla
+   * que hay. El play sigue siendo lo más brillante — el acento de siempre.
    */
   /*
-   * Compacta: lo mínimo para saber qué suena y frenarlo — tapa, título y el
-   * transporte—. Todo lo demás (posición, vistas, volumen, aleatorio, repetir)
-   * espera a que vuelvas. Es la misma idea del plegado de iOS llevada a la
-   * píldora: no desaparece, **ocupa menos**.
+   * Compacta: lo mínimo para saber qué suena, frenarlo y bajarle el volumen
+   * —tapa, título, transporte y la perilla—. Todo lo demás (posición, vistas,
+   * aleatorio, repetir) espera a que vuelvas. Es la misma idea del plegado de
+   * iOS llevada a la píldora: no desaparece, **ocupa menos**.
    *
    * Solo en web/escritorio: en nativo el vidrio se aplica una sola vez y
    * cambiarle el tamaño lo apagaría para siempre (ver `ui/Cascara`). En web el
@@ -761,9 +762,13 @@ export function NowPlayingBar({
                   }}
                   icon={IconUsers}
                 />
-                <Volume value={volume} onChange={setVolume} />
               </>
             ) : null}
+            {/* El volumen **no se va nunca**: en escritorio no hay botones de
+                hardware que lo suban, así que soltarlo como lastre dejaba a la
+                ventana angosta —y a la píldora colapsada— sin ninguna forma de
+                bajar la música. Encogido, pero siempre a la vista. */}
+            <Volume value={volume} onChange={setVolume} angosto={compacto || !conVistas} />
             <Menu items={menu} label={`Opciones de ${current.title}`} size={17} />
           </View>
         </View>
@@ -788,7 +793,7 @@ function AnchoPildora({
   /* El ancho va animado y no de un salto: la píldora se encoge hacia el centro
      como una pieza que se acomoda. Sin rebote, como el resto del sistema. */
   const p = useDerivedValue(() => withSpring(compacto ? 1 : 0, RESORTE_ANCHO), [compacto])
-  const ancho = useAnimatedStyle(() => ({ maxWidth: 1080 - p.value * (1080 - 420) }))
+  const ancho = useAnimatedStyle(() => ({ maxWidth: 1080 - p.value * (1080 - 520) }))
 
   return (
     <Animated.View
@@ -838,12 +843,20 @@ function Toggle({
  * ícono corta el sonido y lo devuelve donde estaba, como en cualquier
  * reproductor.
  */
-function Volume({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function Volume({
+  value,
+  onChange,
+  angosto = false,
+}: {
+  value: number
+  onChange: (v: number) => void
+  angosto?: boolean
+}) {
   const [before, setBefore] = useState(1)
   const muted = value === 0
 
   return (
-    <View className="flex-row items-center gap-1.5">
+    <View className={angosto ? 'flex-row items-center gap-1' : 'flex-row items-center gap-1.5'}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={muted ? 'Devolver el sonido' : 'Silenciar'}
@@ -854,7 +867,11 @@ function Volume({ value, onChange }: { value: number; onChange: (v: number) => v
             onChange(0)
           }
         }}
-        className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
+        className={
+          angosto
+            ? 'h-8 w-8 items-center justify-center rounded-full active:bg-muted'
+            : 'h-9 w-9 items-center justify-center rounded-full active:bg-muted'
+        }
       >
         {muted ? (
           <IconVolumeOff size={16} color={ICON_COLOR.muted} />
@@ -862,7 +879,9 @@ function Volume({ value, onChange }: { value: number; onChange: (v: number) => v
           <IconVolume size={16} color={ICON_COLOR.muted} />
         )}
       </Pressable>
-      <View style={{ width: 88 }}>
+      {/* Angosta la línea es más corta, pero sigue siendo la misma barra
+          arrastrable: lo que se pierde es recorrido, no el control. */}
+      <View style={{ width: angosto ? 60 : 88 }}>
         <SeekBar
           label="volumen"
           progress={value}

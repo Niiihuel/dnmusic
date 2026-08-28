@@ -25,6 +25,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { restaurarVolumen, restorePlayback, usePlaybackTrack } from '../src/state/playback'
+import { cargarNovedadesVistas } from '../src/state/novedadesVistas'
 import { cargarAjustes } from '../src/state/ajustes'
 import { cargarDescargas } from '../src/state/descargas'
 import { reconectarJam } from '../src/state/jam'
@@ -62,6 +63,7 @@ import { MotorAudio } from '../src/ui/MotorAudio'
 import { MotorWebView } from '../src/services/motor/MotorWebView'
 import { CompartirHistoria } from '../src/ui/CompartirHistoria'
 import { AvisoActualizacion } from '../src/ui/AvisoActualizacion'
+import { NovedadesAlAbrir } from '../src/ui/NovedadesAlAbrir'
 import { FilaChat } from '../src/ui/TabBar'
 import { Cascara } from '../src/ui/Cascara'
 import '../global.css'
@@ -781,6 +783,15 @@ function Chrome() {
        * con el puente simulado. Ver `src/ui/AvisoActualizacion.tsx`.
        */}
       <AvisoActualizacion />
+      {/*
+       * Qué trajo la versión que acabás de abrir, la primera vez que la abrís.
+       *
+       * Mismo lugar en la pila que el aviso y por la misma razón: se apoya
+       * sobre lo que haya —abrir la app te deja en la portada, pero un link
+       * compartido te deja en una lista— y tiene que quedar por encima de la
+       * pantalla de turno para poder recibir el toque. Ver `NovedadesAlAbrir`.
+       */}
+      <NovedadesAlAbrir />
       {/* La oferta de compartir tras una captura de pantalla: mismo lugar en
           la pila que el aviso, por la misma razón. Ver `AvisoCaptura`. */}
       <AvisoCaptura />
@@ -892,6 +903,10 @@ function SessionGate() {
     if (!user) return
     void restorePlayback()
     void restaurarVolumen()
+    /* Qué trajo la versión que se está abriendo. Acá adentro y no en el
+       arranque de más arriba porque sobre el login no hay nada que contar:
+       quien todavía no entró no viene de actualizar nada suyo. */
+    void cargarNovedadesVistas()
     void reconectarJam()
     /* La escucha compartida entre los dispositivos de la cuenta: se suscribe
        a la fila propia y reconcilia — si la música quedó en otro aparato,
