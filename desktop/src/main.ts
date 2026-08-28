@@ -8,7 +8,8 @@ import {
   seguirAudioDe,
 } from './actualizador'
 import { ORIGEN, raizWeb, registrarEsquema, servirWeb } from './protocolo'
-import { resolverYAportar, type Aporte } from './resolutor'
+import { type Aporte } from './resolutor'
+import { cerrarResolutor, resolverEnHijo } from './resolutor-remoto'
 import { descargarArchivos } from './descargas'
 
 /**
@@ -215,7 +216,13 @@ async function resolverDesdeAca(opciones: unknown): Promise<Aporte> {
   }
   if (typeof o.token !== 'string' || !o.token) throw new Error('sin sesión')
   registrar('resolviendo de a bordo:', o.videoId)
-  return resolverYAportar({
+  /*
+   * Va a un proceso hijo en modo Node y no acá: adentro del main de Electron,
+   * BotGuard acuña un PO token degradado y YouTube contesta «This video is
+   * unavailable» en todos los clientes. Está medido; el porqué entero, en
+   * `resolutor-hijo.ts`.
+   */
+  return resolverEnHijo({
     videoId: o.videoId,
     apiBase: o.apiBase,
     token: o.token,
@@ -314,4 +321,6 @@ if (!app.requestSingleInstanceLock()) {
 
   // Windows y Linux: cerrar la ventana es cerrar la app.
   app.on('window-all-closed', () => app.quit())
+  // Y el resolutor se va con la app: sin padre no tiene a quién contestarle.
+  app.on('will-quit', () => cerrarResolutor())
 }
