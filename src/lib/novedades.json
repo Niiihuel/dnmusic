@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.8.2",
+    "fecha": "28 de agosto de 2026",
+    "titulo": "Tocar una canción vuelve a poner esa canción",
+    "cambios": [
+      "Arreglado el bug de las listas: a veces la app marcaba una canción como si estuviera sonando y en realidad sonaba otra, y al tocar esa fila no cambiaba nada. Pasaba al abrir la app, cuando la lista había cambiado desde la última vez.",
+      "El buscador de arriba ahora arranca plegado como un botón más, al lado de atrás y adelante: lo tocás y se despliega hacia el costado. Se cierra solo al salir sin nada escrito, o con Escape.",
+      "Los rótulos de los botones aparecen más pegados al ícono que nombran."
+    ]
+  },
+  {
     "version": "1.8.1",
     "fecha": "28 de agosto de 2026",
     "titulo": "La ventana vuelve a usarse entera",
