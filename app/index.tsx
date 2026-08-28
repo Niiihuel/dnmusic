@@ -1611,6 +1611,11 @@ export default function Home() {
 
   const estiloArrastre = useAnimatedStyle(() => ({
     transform: [{ translateX: arrastreX.value }],
+    /* La sombra del filo solo mientras se mueve: es lo que lee al panel como
+       una tarjeta corriéndose sobre lo que hay detrás. Quieta no describe
+       nada —y sobre negro, `docs/DESIGN.md` avisa que una sombra suelta no se
+       ve o ensucia—. */
+    boxShadow: arrastreX.value === 0 ? 'none' : '-8px 0 24px rgba(0,0,0,0.5)',
   }))
 
   const selected =
@@ -2271,10 +2276,16 @@ export default function Home() {
           {/* El panel del medio se mueve con el gesto de volver: la sombra al
               filo izquierdo lo lee como una tarjeta que se corre sobre lo que
               hay detrás, que es lo que hace el stack de iOS. */}
-          <Animated.View
-            className="min-h-0 flex-1"
-            style={[estiloArrastre, { boxShadow: '-8px 0 24px rgba(0,0,0,0.5)' }]}
-          >
+          {/*
+           * Los estilos van por `style` y **no** por `className`: NativeWind no
+           * procesa clases en componentes de Reanimated, y no avisa —solo deja
+           * de aplicarlas— (ver la trampa documentada en `docs/DESIGN.md`).
+           * Con `flex-1` en la clase, el panel del medio dejaba de estirarse y
+           * los tres paneles no llegaban al borde: quedaba una franja negra
+           * muerta a la derecha, con el reproductor centrado sobre la ventana y
+           * el contenido corrido a la izquierda.
+           */}
+          <Animated.View style={[{ flex: 1, minHeight: 0 }, estiloArrastre]}>
           {caraCentro && pistaSonando ? (
             /*
              * La letra o el disco **toman el panel del medio**, como en
