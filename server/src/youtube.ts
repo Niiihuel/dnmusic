@@ -726,7 +726,7 @@ export async function resolveAudio(
    * guardaba en Storage lo que hubiera llegado, y una canción trunca cacheada
    * es para siempre — el caché de arriba no la vuelve a pedir nunca.
    */
-  const pedir = async (desde: number) => {
+  const pedirUnaVez = async (desde: number) => {
     // googlevideo por la misma salida que firmó la URL: cambiar de IP a mitad
     // de camino es una de las formas clásicas del 403.
     const res = await fetchYt(url, {
@@ -771,6 +771,35 @@ export async function resolveAudio(
       buf: Buffer.from(await res.arrayBuffer()),
       total: range ? Number(range.split('/')[1]) : null,
     }
+  }
+
+  /*
+   * Un pedazo que falla se reintenta; antes mataba la resolución entera.
+   *
+   * El 403 de googlevideo sobre una URL firmada válida es **pasajero**: lo
+   * dispara la ráfaga de rangos de acá arriba y el pedir el mismo video de
+   * nuevo al rato. Medido: el mismo rango sale bien al segundo intento. Sin
+   * esto, ese 403 suelto se veía del otro lado como «esta canción no se puede
+   * poner», y era una que sí se podía. La espera crece porque lo que hay
+   * enfrente es un límite de tasa. Espejo del de `desktop/src/resolutor.ts`.
+   */
+  const ESPERAS_MS = [600, 1800]
+
+  const pedir = async (desde: number) => {
+    let ultimo: unknown
+    for (let intento = 0; intento <= ESPERAS_MS.length; intento++) {
+      if (intento > 0) {
+        await new Promise((listo) => setTimeout(listo, ESPERAS_MS[intento - 1]))
+      }
+      try {
+        return await pedirUnaVez(desde)
+      } catch (e) {
+        ultimo = e
+        // Que quede dicho: si esto aparece seguido, googlevideo está apretando.
+        console.warn(`[resolve] reintento ${intento + 1} del rango ${desde}: ${(e as Error).message}`)
+      }
+    }
+    throw ultimo
   }
 
   const primero = await pedir(0)

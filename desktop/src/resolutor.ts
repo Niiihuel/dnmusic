@@ -319,7 +319,22 @@ export async function resolverYAportar(opciones: {
  *     URL firmada es la forma de que googlevideo corte con 403.
  */
 async function bajarPorRangos(url: string): Promise<Buffer> {
-  const pedir = async (desde: number) => {
+  /*
+   * Un pedazo que falla se reintenta; antes mataba la canción entera.
+   *
+   * googlevideo contesta 403 sobre una URL firmada perfectamente válida cuando
+   * le llegan varios rangos juntos —la ráfaga de a cuatro de acá abajo es
+   * justamente lo que lo dispara— y también cuando el mismo video se vuelve a
+   * pedir al rato. Es **pasajero**: medido, el mismo rango sale bien al segundo
+   * intento. Sin reintento, ese 403 suelto se veía como «esta canción no se
+   * puede poner», y era una canción que sí se podía.
+   *
+   * La espera crece entre intentos porque lo que hay del otro lado es un
+   * límite de tasa: volver a golpear en el acto es pedir el mismo no.
+   */
+  const ESPERAS_MS = [600, 1800]
+
+  const pedirUnaVez = async (desde: number) => {
     const res = await fetchYt(url, {
       /* Con las cabeceras del reproductor de verdad, no un `Range` pelado:
          es el último tramo y el único que mueve bytes. Ver el servidor. */
@@ -337,6 +352,23 @@ async function bajarPorRangos(url: string): Promise<Buffer> {
       buf: Buffer.from(await res.arrayBuffer()),
       total: range ? Number(range.split('/')[1]) : null,
     }
+  }
+
+  const pedir = async (desde: number) => {
+    let ultimo: unknown
+    for (let intento = 0; intento <= ESPERAS_MS.length; intento++) {
+      if (intento > 0) {
+        await new Promise((listo) => setTimeout(listo, ESPERAS_MS[intento - 1]))
+      }
+      try {
+        return await pedirUnaVez(desde)
+      } catch (e) {
+        ultimo = e
+        // Que quede dicho: si esto aparece seguido, googlevideo está apretando.
+        console.warn(`[resolve] reintento ${intento + 1} del rango ${desde}: ${(e as Error).message}`)
+      }
+    }
+    throw ultimo
   }
 
   const primero = await pedir(0)
