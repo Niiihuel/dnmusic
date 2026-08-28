@@ -37,6 +37,7 @@ import { TECLADO_FISICO } from '../lib/teclado'
 import { compartirLista } from '../lib/compartirLista'
 import { useColorPortada } from '../lib/colorPortada'
 import { SearchField } from './SearchField'
+import { useConTooltip } from './Tooltip'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
 import { Vacio } from './Vacio'
@@ -783,6 +784,15 @@ function Header({
   const aleatorio = useShuffle()
   const [overCover, setOverCover] = useState(false)
   const cover = useCoverSize()
+  /* Los rótulos de los controles. Cortos y con la acción: el del disco no puede
+     ser la etiqueta accesible, que dice «Descargando, 12 de 40» — eso está
+     escrito para escucharse, no para leerse al pasar el mouse. */
+  const tipPlay = useConTooltip(playing ? 'Pausar' : 'Reproducir')
+  const tipAzar = useConTooltip(aleatorio ? 'Reproducir en orden' : 'Reproducir al azar')
+  const tipBuscar = useConTooltip(buscando ? 'Cerrar la búsqueda' : 'Buscar en la lista')
+  const tipDisco = useConTooltip(
+    guardando ? `Descargando ${guardando.hechos}/${guardando.total}` : 'Bajar la lista al disco',
+  )
 
   return (
     <View>
@@ -840,6 +850,7 @@ function Header({
         actions={
           <>
             <Pressable
+              {...tipPlay.gestos}
               accessibilityRole="button"
               accessibilityLabel={playing ? 'Pausar' : 'Reproducir la lista'}
               onPress={onPlay}
@@ -870,6 +881,7 @@ function Header({
              * Apagado queda en gris, como cualquier control inactivo.
              */}
             <Pressable
+              {...tipAzar.gestos}
               accessibilityRole="button"
               accessibilityLabel={aleatorio ? 'Reproducir en orden' : 'Reproducir al azar'}
               accessibilityState={{ selected: aleatorio }}
@@ -895,6 +907,7 @@ function Header({
              */}
             {onGuardarTodo ? (
               <Pressable
+                {...tipDisco.gestos}
                 accessibilityRole="button"
                 accessibilityLabel={
                   guardando
@@ -922,6 +935,7 @@ function Header({
              * el gris de los inactivos (`docs/DESIGN.md`).
              */}
             <Pressable
+              {...tipBuscar.gestos}
               accessibilityRole="button"
               accessibilityLabel={buscando ? 'Cerrar la búsqueda' : 'Buscar en la lista'}
               accessibilityState={{ selected: buscando }}
