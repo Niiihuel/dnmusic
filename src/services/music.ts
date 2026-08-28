@@ -410,9 +410,26 @@ function esEscritorio(): boolean {
   return (globalThis as { dnmusicEscritorio?: unknown }).dnmusicEscritorio !== undefined
 }
 
+/**
+ * El mensaje pelado, sin la envoltura que le pone el puente de Electron.
+ *
+ * Un error que cruza el IPC llega con el molde `Error invoking remote method
+ * 'resolver:aportar': Error: …` adelante — cincuenta y cinco caracteres de
+ * ceremonia antes de la primera letra útil—. Con el recorte a ochenta, eso se
+ * comía justo el dato que importa: se leyó en una captura «googlevideo
+ * respondió 4…», con el código de estado cortado al medio, que es el único
+ * número que distingue un 403 de un 429.
+ */
+function pelar(texto: string): string {
+  return texto
+    .replace(/^Error invoking remote method '[^']*':\s*/i, '')
+    .replace(/^(Error|TypeError):\s*/i, '')
+    .trim()
+}
+
 /** Un texto largo, recortado para que entre en un aviso. */
 function recorte(texto: string, largo = 140): string {
-  const limpio = texto.trim().replace(/\s+/g, ' ')
+  const limpio = pelar(texto).replace(/\s+/g, ' ')
   return limpio.length > largo ? `${limpio.slice(0, largo - 1)}…` : limpio
 }
 
@@ -430,7 +447,9 @@ function recorte(texto: string, largo = 140): string {
  * falló, que es lo que distingue «esperá un rato» de «tenés que hacer algo».
  */
 function motivoDeAca(e: unknown): string {
-  const texto = (e as Error)?.message ?? ''
+  /* Pelado antes de clasificar: si no, la envoltura del IPC empuja el motivo
+     real fuera del recorte y además puede hacer fallar los reconocimientos. */
+  const texto = pelar((e as Error)?.message ?? '')
   const aparato = esEscritorio() ? 'esta computadora' : 'este teléfono'
 
   if (/LOGIN_REQUIRED|not a bot|Sin audio desde/i.test(texto)) {
