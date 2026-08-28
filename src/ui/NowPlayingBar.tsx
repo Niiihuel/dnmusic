@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useRouter } from 'expo-router'
+import Animated, { useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated'
 import { ActivityIndicator, Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { artworkSource } from '../lib/artwork'
-import { useTabsVisible } from '../state/shell'
+import { useColapsada, useTabsVisible } from '../state/shell'
 import {
   canOpenPlaylist,
   posicionSV,
@@ -22,7 +23,7 @@ import {
 } from '../state/playback'
 import { crearJamActual, salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
 import { abrirSelectorDispositivos, useEscuchaEspejoNombre } from '../state/escucha'
-import { BORDE_REFERENTE, Glass, HAY_VIDRIO } from './Glass'
+import { BORDE_REFERENTE, ES_WEB, Glass, HAY_VIDRIO } from './Glass'
 import { compartirHistoria } from './CompartirHistoria'
 import { Menu, type MenuItem } from './Menu'
 import { SeekBar, formatClock } from './SeekBar'
@@ -159,6 +160,20 @@ export function NowPlayingBar({
    * «Sonando en tu computadora» es exactamente eso.
    */
   const espejoEn = useEscuchaEspejoNombre()
+  /*
+   * La píldora de escritorio se corre del camino cuando estás recorriendo.
+   *
+   * `colapsada` es el mismo estado que pliega la cáscara en el teléfono —lo
+   * escribe `useColapso` desde las listas, que son las mismas de los dos
+   * lados—: bajando se pliega, subiendo vuelve. Acá no había nadie
+   * escuchándolo, así que la barra tapaba el pie de los paneles laterales
+   * mientras se leía una lista larga.
+   *
+   * Con el puntero encima vuelve entera, sin esperar a que subas: acercarse a
+   * la barra **es** querer usarla. Por eso el estado local del hover.
+   */
+  const colapsada = useColapsada()
+  const [sobre, setSobre] = useState(false)
 
   // Lo encolado a mano manda sobre la lista mientras dure.
   const current = manual ?? (index >= 0 ? (tracks[index] ?? null) : null)
@@ -599,16 +614,29 @@ export function NowPlayingBar({
    * y en el menú), después la barra de posición, que deja en su lugar el
    * reloj. El play sigue siendo lo más brillante — el acento de siempre.
    */
-  const conSeek = width >= 980
-  const conVistas = width >= 1200
+  /*
+   * Compacta: lo mínimo para saber qué suena y frenarlo — tapa, título y el
+   * transporte—. Todo lo demás (posición, vistas, volumen, aleatorio, repetir)
+   * espera a que vuelvas. Es la misma idea del plegado de iOS llevada a la
+   * píldora: no desaparece, **ocupa menos**.
+   *
+   * Solo en web/escritorio: en nativo el vidrio se aplica una sola vez y
+   * cambiarle el tamaño lo apagaría para siempre (ver `ui/Cascara`). En web el
+   * material es `backdrop-filter`, que se redimensiona sin problema — lo único
+   * prohibido ahí es animar opacidad en un ancestro (ver `ui/Glass`), y acá no
+   * se toca ninguna.
+   */
+  const compacto = ES_WEB && colapsada && !sobre
+  const conSeek = width >= 980 && !compacto
+  const conVistas = width >= 1200 && !compacto
 
   return (
     <View className="items-center px-3" style={{ paddingBottom: 12 + insets.bottom }}>
+      <AnchoPildora compacto={compacto} onSobre={setSobre}>
       <Glass
         radius={32}
         style={{
           width: '100%',
-          maxWidth: 1080,
           /* La sombra que la despega del fondo más el filo del referente: el
              anillo y el resplandor interno que la leen como una pieza. */
           boxShadow: `0 10px 28px rgba(0,0,0,0.5), ${BORDE_REFERENTE}`,
@@ -631,14 +659,15 @@ export function NowPlayingBar({
               {lineaEstado({ espejoEn, error, artist: current.artist })}
             </View>
             {/* El corazón, junto a lo que suena — misma regla que en la
-                franja sin vidrio. */}
-            <BotonMeGusta track={current} size={16} lado={36} />
+                franja sin vidrio. Compacta no entra: lo que queda es saber qué
+                suena y poder frenarlo. */}
+            {compacto ? null : <BotonMeGusta track={current} size={16} lado={36} />}
           </View>
 
           {/* El transporte, con aleatorio y repetir rodeando al play como en
               cualquier reproductor. Ver `ui/Transport`. */}
           <View className="flex-row items-center gap-1">
-            <BotonAleatorio size={16} lado={36} />
+            {compacto ? null : <BotonAleatorio size={16} lado={36} />}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Anterior"
@@ -670,7 +699,7 @@ export function NowPlayingBar({
             >
               <IconNext size={17} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />
             </Pressable>
-            <BotonRepetir size={16} lado={36} />
+            {compacto ? null : <BotonRepetir size={16} lado={36} />}
           </View>
 
           {conSeek ? (
@@ -684,7 +713,7 @@ export function NowPlayingBar({
                 posicionMs={posicionSV}
               />
             </View>
-          ) : (
+          ) : compacto ? null : (
             <Text className="text-muted-foreground text-[11px] tabular-nums">
               {formatClock(positionMs)}
             </Text>
@@ -723,7 +752,36 @@ export function NowPlayingBar({
           </View>
         </View>
       </Glass>
+      </AnchoPildora>
     </View>
+  )
+}
+
+/** Lo ancha que está la píldora, animado, y el hover que la trae de vuelta. */
+const RESORTE_ANCHO = { damping: 26, stiffness: 190, mass: 0.9, overshootClamping: true }
+
+function AnchoPildora({
+  compacto,
+  onSobre,
+  children,
+}: {
+  compacto: boolean
+  onSobre: (sobre: boolean) => void
+  children: React.ReactNode
+}) {
+  /* El ancho va animado y no de un salto: la píldora se encoge hacia el centro
+     como una pieza que se acomoda. Sin rebote, como el resto del sistema. */
+  const p = useDerivedValue(() => withSpring(compacto ? 1 : 0, RESORTE_ANCHO), [compacto])
+  const ancho = useAnimatedStyle(() => ({ maxWidth: 1080 - p.value * (1080 - 420) }))
+
+  return (
+    <Animated.View
+      onPointerEnter={() => onSobre(true)}
+      onPointerLeave={() => onSobre(false)}
+      style={[{ width: '100%', alignSelf: 'center' }, ancho]}
+    >
+      {children}
+    </Animated.View>
   )
 }
 

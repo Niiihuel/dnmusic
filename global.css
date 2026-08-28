@@ -94,6 +94,22 @@ html[data-theme='light'] {
   background: transparent;
 }
 
+/*
+ * Sin las flechitas de las puntas.
+ *
+ * Chrome en Linux —y con él Electron— dibuja un botón con una flecha en cada
+ * extremo de la barra. Son de otra época y de otro sistema: quedan pegadas al
+ * borde de la ventana, ensucian el filo de la app y no las usa nadie (se
+ * desplaza con la rueda o arrastrando el pulgar). macOS no las tiene y el
+ * referente tampoco. Sin esto, el `display: none` no alcanza a heredarse: hay
+ * que apagar los cuatro (arriba/abajo, y los dobles de cada punta).
+ */
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 ::-webkit-scrollbar-thumb {
   background-color: rgb(var(--color-border));
   border-radius: 999px;
