@@ -20,7 +20,6 @@ import Animated, {
   runOnJS,
   useAnimatedKeyboard,
   useAnimatedStyle,
-  useDerivedValue,
   useSharedValue,
   withSpring,
   withTiming,
@@ -195,18 +194,6 @@ const DETAIL_PX = 1120
  * teclear redibuja este campo chico y no el árbol entero de la pantalla. Ver
  * `state/busqueda`; misma idea que el campo del layout.
  */
-/**
- * Ancho del buscador plegado.
- *
- * No es 48 —el alto de la píldora— sino 50, que es lo que ocupa el ícono con
- * su aire: 16 de relleno a cada lado y 18 de glifo. En React Native el relleno
- * va **adentro** del ancho, así que a 48 el glifo se comía dos píxeles contra
- * el borde. Con 50 y 48 de alto sigue leyéndose como un redondel.
- */
-const LADO_BUSCADOR = 50
-/** Lo que tarda en abrirse. Corto: es una respuesta al toque, no una escena. */
-const ABRE_BUSCADOR_MS = 240
-
 function CampoBusquedaArriba({
   inputRef,
   onChangeText,
@@ -219,88 +206,14 @@ function CampoBusquedaArriba({
   loading: boolean
 }) {
   const value = useTermino()
-  /*
-   * El buscador arranca **plegado**, como un botón más del encabezado, y se
-   * despliega hacia el costado al tocarlo.
-   *
-   * Antes ocupaba la franja entera del encabezado siempre, aunque no se
-   * estuviera buscando nada: es el elemento más ancho de la barra por algo que
-   * se usa de a ratos. Plegado es un redondel del mismo tamaño que los de al
-   * lado —atrás, adelante, inicio— y la barra queda pareja.
-   *
-   * Es una sola pieza que cambia de ancho, no dos que se intercambian: el
-   * ícono no se mueve de lugar en ningún momento, y lo único que pasa es que
-   * la píldora crece a su derecha. A 48px de ancho, el ícono queda centrado
-   * —16 de aire y 18 de glifo— así que el redondel se ve como un botón de
-   * verdad sin dibujar nada aparte.
-   */
-  const [abierto, setAbierto] = useState(false)
-  /* El ancho disponible se mide: el encabezado lo reparte y no es fijo. */
-  const [libre, setLibre] = useState(0)
-
-  const p = useDerivedValue(
-    () => withTiming(abierto ? 1 : 0, { duration: ABRE_BUSCADOR_MS, easing: Easing.out(Easing.cubic) }),
-    [abierto],
-  )
-  /* Por `style` y no por `className`: NativeWind no procesa clases en
-     componentes de Reanimated (ver la trampa en `docs/DESIGN.md`). */
-  const ancho = useAnimatedStyle(() => ({
-    width: libre > 0 ? LADO_BUSCADOR + p.value * (libre - LADO_BUSCADOR) : LADO_BUSCADOR,
-  }))
-
-  function abrir() {
-    setAbierto(true)
-    abrirBusqueda(placeholder)
-    /* El foco después de arrancar la animación: pedirlo antes hace que el
-       navegador desplace la barra para "mostrar" un campo que todavía mide
-       un botón. */
-    setTimeout(() => inputRef.current?.focus(), ABRE_BUSCADOR_MS / 2)
-  }
-
-  const cerrar = useCallback(() => {
-    setAbierto(false)
-    cerrarBusqueda()
-  }, [])
-
-  /* Escape lo pliega, esté donde esté el cursor: es la salida esperable de
-     cualquier cosa que se despliega. Solo se escucha mientras está abierto. */
-  useEffect(() => {
-    if (!abierto || Platform.OS !== 'web' || typeof window === 'undefined') return
-    const alTeclear = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') cerrar()
-    }
-    window.addEventListener('keydown', alTeclear)
-    return () => window.removeEventListener('keydown', alTeclear)
-  }, [abierto, cerrar])
-
   return (
-    <View className="w-full" onLayout={(e) => setLibre(e.nativeEvent.layout.width)}>
-      <Animated.View style={[{ height: LADO_BUSCADOR, borderRadius: 999, overflow: 'hidden' }, ancho]}>
-        <SearchField
-          inputRef={inputRef}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          loading={loading}
-          /* Al salir del campo sin nada escrito se vuelve a plegar: quedarse
-             abierto y vacío es ocupar la barra por nada. Con algo escrito se
-             queda, que es lo que uno está mirando. */
-          onFocusChange={(enfocado) => {
-            if (!enfocado && !value.trim()) cerrar()
-          }}
-        />
-        {/* Plegado, toda la pieza es el botón que lo abre: el campo de adentro
-            está recortado y no se puede tocar. */}
-        {abierto ? null : (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Buscar"
-            onPress={abrir}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-          />
-        )}
-      </Animated.View>
-    </View>
+    <SearchField
+      inputRef={inputRef}
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      loading={loading}
+    />
   )
 }
 
