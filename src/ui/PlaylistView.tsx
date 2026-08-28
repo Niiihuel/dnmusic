@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, Pressable, Text, TextInput, View } from 'react-native'
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useDerivedValue,
+  withTiming,
+} from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
 import {
   listTracks,
@@ -971,45 +977,99 @@ function Header({
              * en una lista larga—. Encendido es el blanco de `primary`, apagado
              * el gris de los inactivos (`docs/DESIGN.md`).
              */}
-            <Pressable
-              {...tipBuscar.gestos}
-              accessibilityRole="button"
-              accessibilityLabel={buscando ? 'Cerrar la búsqueda' : 'Buscar en la lista'}
-              accessibilityState={{ selected: buscando }}
-              onPress={onBuscar}
-              disabled={total === 0}
-              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-            >
-              <IconSearch
-                size={19}
-                color={
-                  total === 0
-                    ? ICON_COLOR.muted
-                    : buscando
-                      ? ICON_COLOR.foreground
-                      : ICON_COLOR.muted
-                }
-              />
-            </Pressable>
+            <BuscadorDeLista
+              abierto={buscando}
+              filtro={filtro}
+              vacia={total === 0}
+              gestos={tipBuscar.gestos}
+              onAbrir={onBuscar}
+              onFiltro={onFiltro}
+            />
             <BotonDescarga total={total} bajado={bajado} onPress={onDescarga} />
             <Menu items={menu} label={`Opciones de ${playlist.name}`} size={17} />
           </>
         }
       />
 
-      {buscando ? (
-        <View className="mx-6 mb-2">
-          <SearchField
-            value={filtro}
-            onChangeText={onFiltro}
-            placeholder="Buscar en esta lista"
-            autoFocus
-          />
-        </View>
-      ) : null}
-
       {children}
     </View>
+  )
+}
+
+/** Lo que mide plegado: el ícono con su aire, como los botones de al lado. */
+const LADO_LUPA = 44
+/** Lo que mide desplegado. Cómodo para escribir sin comerse la fila entera. */
+const ANCHO_LUPA = 300
+const ABRE_LUPA_MS = 240
+
+/**
+ * La lupa que **se despliega en su lugar**, dentro de la fila de controles.
+ *
+ * Antes abría un campo debajo, de golpe: aparecía una fila nueva entre los
+ * controles y la tabla, y todo lo de abajo pegaba un salto. Ahora es una sola
+ * pieza que cambia de ancho — el ícono no se mueve y el campo crece hacia la
+ * derecha, en la misma altura que reproducir, el azar y los tres puntos.
+ *
+ * El ancho es fijo y no «lo que sobre»: la fila tiene los otros controles a la
+ * derecha y estirarse hasta el final los empujaría de lugar en cada apertura.
+ * Trescientos alcanzan para el nombre de cualquier canción.
+ */
+function BuscadorDeLista({
+  abierto,
+  filtro,
+  vacia,
+  gestos,
+  onAbrir,
+  onFiltro,
+}: {
+  abierto: boolean
+  filtro: string
+  /** La lista no tiene canciones: no hay nada que filtrar. */
+  vacia: boolean
+  /** Los del rótulo al pasar el cursor, mientras está plegada. */
+  gestos: object
+  onAbrir: () => void
+  onFiltro: (v: string) => void
+}) {
+  const p = useDerivedValue(
+    () => withTiming(abierto ? 1 : 0, { duration: ABRE_LUPA_MS, easing: Easing.out(Easing.cubic) }),
+    [abierto],
+  )
+  /* Por `style` y no por `className`: NativeWind no procesa clases en
+     componentes de Reanimated (ver la trampa de `docs/DESIGN.md`). */
+  const ancho = useAnimatedStyle(() => ({
+    width: LADO_LUPA + p.value * (ANCHO_LUPA - LADO_LUPA),
+  }))
+
+  return (
+    <Animated.View
+      style={[{ height: LADO_LUPA, borderRadius: 999, overflow: 'hidden' }, ancho]}
+    >
+      {abierto ? (
+        <SearchField
+          value={filtro}
+          onChangeText={onFiltro}
+          placeholder="Buscar en esta lista"
+          autoFocus
+          /* Al salir sin nada escrito se vuelve a plegar: abierta y vacía solo
+             ocupa lugar. Con algo escrito se queda, que es lo que se mira. */
+          onFocusChange={(enfocado) => {
+            if (!enfocado && !filtro.trim()) onAbrir()
+          }}
+        />
+      ) : (
+        <Pressable
+          {...gestos}
+          accessibilityRole="button"
+          accessibilityLabel="Buscar en la lista"
+          onPress={onAbrir}
+          disabled={vacia}
+          className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+        >
+          <IconSearch size={19} color={vacia ? ICON_COLOR.muted : ICON_COLOR.muted} />
+        </Pressable>
+      )}
+    </Animated.View>
   )
 }
 
