@@ -3,6 +3,7 @@ import { Image, Pressable, ScrollView, Text, View } from 'react-native'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { useKeyboardH, usePiso } from '../state/shell'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
+import { useClicDerecho } from './useClicDerecho'
 import { EstadoTapa } from './CoverState'
 import { SkeletonList } from './Skeleton'
 import { ICON_COLOR, IconMusic, IconPlus, IconUser } from './icons'
@@ -89,7 +90,6 @@ export function SearchDropdown({
   alwaysSelect = false,
   topInset = 0,
 }: Props) {
-  const [hovered, setHovered] = useState<string | null>(null)
   /*
    * Qué está sonando, para que el resultado que ya está puesto no ofrezca
    * reproducir de nuevo: sobre la carátula muestra las barras, y con el cursor
@@ -171,129 +171,20 @@ export function SearchDropdown({
               ))
             : null}
 
-          {results.map((r) => {
-            const over = hovered === r.videoId
-            const isCurrent = current?.videoId === r.videoId
-            const busy = pendingId === r.videoId
-            /*
-             * La fila entera responde a la **pulsación larga**, con el mismo
-             * menú de los tres puntos.
-             *
-             * Es lo que ya hacían las filas de una lista (`TrackRow`) y el
-             * buscador se había quedado afuera: sobre un resultado de búsqueda
-             * mantener apretado no hacía nada, y las mismas acciones estaban a
-             * un blanco de 36px contra el borde derecho. En el teléfono el gesto
-             * natural sobre una fila es apretarla, no apuntarle a un ícono.
-             */
-            const fila = (
-              /*
-               * La fila es un View y no un Pressable: adentro van más botones,
-               * y un Pressable dentro de otro se convierte en web en un
-               * <button> dentro de otro <button>. Lo tocable es la parte de la
-               * izquierda, que ocupa todo lo que sobra.
-               */
-              <View
-                key={r.videoId}
-                onPointerEnter={() => setHovered(r.videoId)}
-                onPointerLeave={() => setHovered(null)}
-                /*
-                 * El cursor se marca solo con el fondo, igual que en las filas
-                 * de una lista: `docs/DESIGN.md` pide separar superficies por
-                 * luminancia y nunca por bordes, y este desplegable no es una
-                 * excepción — la carátula, que se oscurece y muestra el play,
-                 * ya dice de sobra cuál fila se va a accionar.
-                 */
-                className={`flex-row items-center gap-1 rounded-lg pr-1 ${over ? 'bg-muted' : ''}`}
-              >
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={r.title}
-                  // Si ya es la que suena, tocarla pausa o sigue; no la
-                  // reinicia ni la vuelve a resolver. Salvo que este buscador
-                  // exista para elegir, no para escuchar — ver `alwaysSelect`.
-                  onPress={() => (isCurrent && !alwaysSelect ? togglePlayback() : onSelect(r))}
-                  className="min-w-0 flex-1 flex-row items-center gap-3 rounded-lg p-2"
-                >
-                  {/* La carátula se convierte en el botón de reproducir al
-                      pasar el cursor: escuchar antes de decidir es lo primero
-                      que uno quiere hacer con un resultado. */}
-                  <View className="h-11 w-11 overflow-hidden rounded bg-muted">
-                    {r.artworkUrl ? (
-                      /* Por nuestro proxy y no directo al CDN de Google: sin
-                         CORS, Chrome descarta la respuesta entera (ORB) y la
-                         fila queda con un cuadrado vacío. Es el mismo camino
-                         que usan las tapas de la portada. */
-                      <Image
-                        source={{ uri: proxiedImage(artworkUrlAtSize(r.artworkUrl, 96)) }}
-                        className="h-11 w-11"
-                      />
-                    ) : (
-                      <View className="h-11 w-11 items-center justify-center">
-                        <IconMusic size={16} color={ICON_COLOR.muted} />
-                      </View>
-                    )}
-                    {/*
-                     * La capa vive siempre y se muestra por opacidad, nunca
-                     * montándose y desmontándose: si el nodo donde empezó la
-                     * pulsación desaparece antes de soltar, el navegador no
-                     * emite `click` y el toque se pierde.
-                     */}
-                    <EstadoTapa busy={busy} sounding={isCurrent} playing={wantPlay} hovered={over} />
-                  </View>
-                  <View className="min-w-0 flex-1">
-                    <Text className="text-foreground text-[14px]" numberOfLines={1}>
-                      {r.title}
-                    </Text>
-                    <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
-                      {r.artist}
-                    </Text>
-                  </View>
-                  <Text className="text-muted-foreground text-[11px] tabular-nums">
-                    {fmtDur(r.durationMs)}
-                  </Text>
-                </Pressable>
-
-                {/*
-                 * Los tres puntos, **siempre que haya menú**.
-                 *
-                 * Estaban detrás de `over`, que es el hover del cursor. En una
-                 * computadora se entiende: aparecen al apuntar la fila y no
-                 * ensucian la lista. En un teléfono no hay cursor — `over` solo
-                 * se prendía de rebote, con el dedo apoyado, y por eso los tres
-                 * puntos «a veces andaban y a veces no». Una acción que existe
-                 * no puede depender de un evento que en el teléfono no ocurre.
-                 *
-                 * El hueco se reserva igual cuando no hay menú, para que la
-                 * duración y el «+» de todas las filas queden en la misma
-                 * columna.
-                 */}
-                <View className="w-9 items-center">
-                  {menuFor ? (
-                    <Menu items={menuFor(r)} label={`Opciones de ${r.title}`} size={15} />
-                  ) : null}
-                </View>
-                {onQuickAdd ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={quickAddLabel ? `${quickAddLabel}: ${r.title}` : `Agregar ${r.title}`}
-                    onPress={() => onQuickAdd(r)}
-                    /* Sin círculo alrededor: es un ícono y nada más. El aro lo
-                       hacía competir con el botón de reproducir, que es el
-                       único redondo del sistema (ver docs/DESIGN.md). */
-                    className="h-9 w-9 items-center justify-center active:opacity-60"
-                  >
-                    <IconPlus size={17} color={ICON_COLOR.foreground} />
-                  </Pressable>
-                ) : null}
-              </View>
-            )
-            if (!menuFor) return fila
-            return (
-              <MantenerApretado key={r.videoId} items={menuFor(r)}>
-                {fila}
-              </MantenerApretado>
-            )
-          })}
+          {results.map((r) => (
+            <ResultadoFila
+              key={r.videoId}
+              track={r}
+              sounding={current?.videoId === r.videoId}
+              playing={wantPlay}
+              busy={pendingId === r.videoId}
+              alwaysSelect={alwaysSelect}
+              onSelect={onSelect}
+              onQuickAdd={onQuickAdd}
+              quickAddLabel={quickAddLabel}
+              menuFor={menuFor}
+            />
+          ))}
         </ScrollView>
       )}
     </View>
@@ -306,6 +197,160 @@ export function SearchDropdown({
  * Foto redonda y una sola línea: es lo que lo distingue de una canción de un
  * vistazo, sin necesidad de un rótulo que diga «artista».
  */
+/**
+ * Una fila de resultado.
+ *
+ * Vive como componente propio y no dibujada dentro del `map` por una razón
+ * concreta: el click derecho necesita un estado por fila —dónde se abrió el
+ * menú— y eso son hooks, que adentro de un bucle no se pueden llamar. De paso
+ * el hover pasó a ser de la fila: antes lo guardaba el desplegable entero y
+ * mover el mouse redibujaba **todas** las filas, que es el mismo problema que
+ * ya se había arreglado en `TrackRow`.
+ */
+function ResultadoFila({
+  track,
+  sounding,
+  playing,
+  busy,
+  alwaysSelect,
+  onSelect,
+  onQuickAdd,
+  quickAddLabel,
+  menuFor,
+}: {
+  track: TrackResult
+  /** Es la que está puesta en el reproductor. */
+  sounding: boolean
+  playing: boolean
+  /** Se está resolviendo el audio de esta. */
+  busy: boolean
+  alwaysSelect: boolean
+  onSelect: (track: TrackResult) => void
+  onQuickAdd?: (track: TrackResult) => void
+  quickAddLabel?: string
+  menuFor?: (track: TrackResult) => MenuItem[]
+}) {
+  const [over, setOver] = useState(false)
+  const clic = useClicDerecho()
+  /* Una sola vez: antes se armaba dos veces por fila —para los tres puntos y
+     para el gesto— y con el click derecho serían tres. */
+  const items = menuFor?.(track) ?? []
+
+  const fila = (
+
+      /*
+       * La fila es un View y no un Pressable: adentro van más botones,
+       * y un Pressable dentro de otro se convierte en web en un
+       * <button> dentro de otro <button>. Lo tocable es la parte de la
+       * izquierda, que ocupa todo lo que sobra.
+       */
+      <View
+        {...clic.gestos}
+        onPointerEnter={() => setOver(true)}
+        onPointerLeave={() => setOver(false)}
+        /*
+         * El cursor se marca solo con el fondo, igual que en las filas
+         * de una lista: `docs/DESIGN.md` pide separar superficies por
+         * luminancia y nunca por bordes, y este desplegable no es una
+         * excepción — la carátula, que se oscurece y muestra el play,
+         * ya dice de sobra cuál fila se va a accionar.
+         */
+        className={`flex-row items-center gap-1 rounded-lg pr-1 ${over ? 'bg-muted' : ''}`}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={track.title}
+          // Si ya es la que suena, tocarla pausa o sigue; no la
+          // reinicia ni la vuelve a resolver. Salvo que este buscador
+          // exista para elegir, no para escuchar — ver `alwaysSelect`.
+          onPress={() => (sounding && !alwaysSelect ? togglePlayback() : onSelect(track))}
+          className="min-w-0 flex-1 flex-row items-center gap-3 rounded-lg p-2"
+        >
+          {/* La carátula se convierte en el botón de reproducir al
+              pasar el cursor: escuchar antes de decidir es lo primero
+              que uno quiere hacer con un resultado. */}
+          <View className="h-11 w-11 overflow-hidden rounded bg-muted">
+            {track.artworkUrl ? (
+              /* Por nuestro proxy y no directo al CDN de Google: sin
+                 CORS, Chrome descarta la respuesta entera (ORB) y la
+                 fila queda con un cuadrado vacío. Es el mismo camino
+                 que usan las tapas de la portada. */
+              <Image
+                source={{ uri: proxiedImage(artworkUrlAtSize(track.artworkUrl, 96)) }}
+                className="h-11 w-11"
+              />
+            ) : (
+              <View className="h-11 w-11 items-center justify-center">
+                <IconMusic size={16} color={ICON_COLOR.muted} />
+              </View>
+            )}
+            {/*
+             * La capa vive siempre y se muestra por opacidad, nunca
+             * montándose y desmontándose: si el nodo donde empezó la
+             * pulsación desaparece antes de soltar, el navegador no
+             * emite `click` y el toque se pierde.
+             */}
+            <EstadoTapa busy={busy} sounding={sounding} playing={playing} hovered={over} />
+          </View>
+          <View className="min-w-0 flex-1">
+            <Text className="text-foreground text-[14px]" numberOfLines={1}>
+              {track.title}
+            </Text>
+            <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+              {track.artist}
+            </Text>
+          </View>
+          <Text className="text-muted-foreground text-[11px] tabular-nums">
+            {fmtDur(track.durationMs)}
+          </Text>
+        </Pressable>
+
+        {/*
+         * Los tres puntos, **siempre que haya menú**.
+         *
+         * Estaban detrás de `over`, que es el hover del cursor. En una
+         * computadora se entiende: aparecen al apuntar la fila y no
+         * ensucian la lista. En un teléfono no hay cursor — `over` solo
+         * se prendía de rebote, con el dedo apoyado, y por eso los tres
+         * puntos «a veces andaban y a veces no». Una acción que existe
+         * no puede depender de un evento que en el teléfono no ocurre.
+         *
+         * El hueco se reserva igual cuando no hay menú, para que la
+         * duración y el «+» de todas las filas queden en la misma
+         * columna.
+         */}
+        <View className="w-9 items-center">
+          {items.length ? (
+            <Menu items={items} label={`Opciones de ${track.title}`} size={15} />
+          ) : null}
+        </View>
+        {onQuickAdd ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={quickAddLabel ? `${quickAddLabel}: ${track.title}` : `Agregar ${track.title}`}
+            onPress={() => onQuickAdd(track)}
+            /* Sin círculo alrededor: es un ícono y nada más. El aro lo
+               hacía competir con el botón de reproducir, que es el
+               único redondo del sistema (ver docs/DESIGN.md). */
+            className="h-9 w-9 items-center justify-center active:opacity-60"
+          >
+            <IconPlus size={17} color={ICON_COLOR.foreground} />
+          </Pressable>
+        ) : null}
+      
+
+        {/* El menú del click derecho: la misma lista que los tres puntos, sin
+            botón propio. Ver `useClicDerecho`. */}
+        {clic.punto && items.length ? (
+          <Menu items={items} sinDisparador abiertoEn={clic.punto} onCerrarPunto={clic.cerrar} />
+        ) : null}
+      </View>
+  )
+
+  if (!items.length) return fila
+  return <MantenerApretado items={items}>{fila}</MantenerApretado>
+}
+
 function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => void }) {
   const [over, setOver] = useState(false)
   /* Por el proxy y no directo: las fotos de artista viven en `yt3`, que

@@ -12,6 +12,8 @@ import { SkeletonList } from './Skeleton'
 import { AnimatedSidebarTitle } from './SidebarMotion'
 import { BotonVidrio } from './Glass'
 import { Vacio } from './Vacio'
+import { Menu, type MenuItem } from './Menu'
+import { useClicDerecho } from './useClicDerecho'
 import {
   ICON_COLOR,
   IconCollapseRight,
@@ -39,6 +41,7 @@ export function PlaylistLibrary({
   onCreate,
   onOpenGustos,
   onImportar,
+  menuFor,
   error,
 }: {
   playlists: Playlist[] | null
@@ -55,6 +58,14 @@ export function PlaylistLibrary({
   onOpenGustos?: () => void
   /** Abre «Traer de Spotify». Sin esto la fila del pie no se dibuja. */
   onImportar?: () => void
+  /**
+   * Las acciones de una lista, para el click derecho sobre su fila.
+   *
+   * Las arma la pantalla porque dependen de cosas que la biblioteca no conoce
+   * —a dónde navegar, cómo borrar, cómo compartir—. Sin esto, la fila no
+   * ofrece menú y todo sigue como antes.
+   */
+  menuFor?: (playlist: Playlist) => MenuItem[]
   error: string | null
 }) {
   const [busy, setBusy] = useState(false)
@@ -228,63 +239,17 @@ export function PlaylistLibrary({
               </Pressable>
             ) : null
           }
-          renderItem={({ item }) => {
-            const open = item.id === openId
-            return (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: open }}
-                onPress={() => onOpen(item)}
-                className={`flex-row items-center rounded-lg ${
-                  suelto ? 'gap-3 p-2.5' : 'gap-3 p-2'
-                } ${open ? 'bg-muted' : 'active:bg-card'}`}
-              >
-                <PlaylistCover
-                  covers={item.covers}
-                  coverPath={item.coverPath}
-                  size={suelto ? 60 : 48}
-                />
-                <View className="min-w-0 flex-1 gap-0.5">
-                  <Text
-                    /* El que suena va en blanco, que en este sistema es el
-                       acento — el equivalente del verde de Spotify. */
-                    className={`${suelto ? 'text-[16px]' : 'text-[14px]'} ${
-                      item.id === soundingId
-                        ? 'text-foreground font-semibold'
-                        : 'text-foreground'
-                    }`}
-                    numberOfLines={1}
-                  >
-                    {item.name}
-                  </Text>
-                  <View className="flex-row items-center gap-1.5">
-                    {/* El mundito antes del texto: publicada es una condición
-                        de la lista, y saberlo de un vistazo en la biblioteca
-                        evita tener que abrirlas una por una para acordarse de
-                        cuál compartiste. */}
-                    {item.visibilidad === 'publica' ? (
-                      <IconGlobe size={11} color={ICON_COLOR.muted} />
-                    ) : null}
-                    <Text
-                      className={`text-muted-foreground min-w-0 shrink ${
-                        suelto ? 'text-[13px]' : 'text-[12px]'
-                      }`}
-                      numberOfLines={1}
-                    >
-                      Lista · {item.tracks} {item.tracks === 1 ? 'canción' : 'canciones'}
-                    </Text>
-                  </View>
-                </View>
-                {/* El ecualizador y no un punto: es la misma marca que ya usa
-                    la fila de una canción y la tapa del reproductor, y en una
-                    interfaz sin colores el movimiento es lo único que distingue
-                    «esto suena» de un rato para el otro. En pausa las barras se
-                    quedan quietas y bajas, así que sigue diciendo cuál es sin
-                    mentir que está sonando. Ver `PlayingBars`. */}
-                {item.id === soundingId ? <PlayingBars playing={suena} size={12} /> : null}
-              </Pressable>
-            )
-          }}
+          renderItem={({ item }) => (
+            <FilaLista
+              playlist={item}
+              abierta={item.id === openId}
+              sonando={item.id === soundingId}
+              playing={suena}
+              suelto={suelto}
+              onOpen={onOpen}
+              menu={menuFor?.(item)}
+            />
+          )}
         />
       )}
     </Panel>
@@ -309,6 +274,100 @@ export function PlaylistRail({ playlists }: { playlists: Playlist[] | null }) {
       {playlists.map((p) => (
         <PlaylistCover key={p.id} covers={p.covers} coverPath={p.coverPath} size={44} />
       ))}
+    </View>
+  )
+}
+
+/**
+ * Una fila de la biblioteca.
+ *
+ * Componente propio y no dibujada dentro de `renderItem` porque el click
+ * derecho necesita estado por fila —dónde se abrió el menú— y eso son hooks,
+ * que en un bucle no se pueden llamar.
+ *
+ * El menú va **envolviendo** al `Pressable` y no adentro: un `Menu` dentro de
+ * un `Pressable` termina en web como un `<button>` dentro de otro, que es
+ * exactamente lo que evitan las filas del buscador y las de una lista.
+ */
+function FilaLista({
+  playlist,
+  abierta,
+  sonando,
+  playing,
+  suelto,
+  onOpen,
+  menu,
+}: {
+  playlist: Playlist
+  /** Es la que se está mirando en el centro. */
+  abierta: boolean
+  /** Es la que está sonando, que puede no ser la que se mira. */
+  sonando: boolean
+  playing: boolean
+  suelto: boolean
+  onOpen: (playlist: Playlist) => void
+  /** Ya armado por quien tiene las acciones; sin esto no hay click derecho. */
+  menu?: MenuItem[]
+}) {
+  const clic = useClicDerecho()
+
+  return (
+    <View {...clic.gestos}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected: abierta }}
+        onPress={() => onOpen(playlist)}
+        className={`flex-row items-center rounded-lg ${
+          suelto ? 'gap-3 p-2.5' : 'gap-3 p-2'
+        } ${abierta ? 'bg-muted' : 'active:bg-card'}`}
+      >
+        <PlaylistCover
+          covers={playlist.covers}
+          coverPath={playlist.coverPath}
+          size={suelto ? 60 : 48}
+        />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text
+            /* El que suena va en blanco, que en este sistema es el
+               acento — el equivalente del verde de Spotify. */
+            className={`${suelto ? 'text-[16px]' : 'text-[14px]'} ${
+              sonando
+                ? 'text-foreground font-semibold'
+                : 'text-foreground'
+            }`}
+            numberOfLines={1}
+          >
+            {playlist.name}
+          </Text>
+          <View className="flex-row items-center gap-1.5">
+            {/* El mundito antes del texto: publicada es una condición
+                de la lista, y saberlo de un vistazo en la biblioteca
+                evita tener que abrirlas una por una para acordarse de
+                cuál compartiste. */}
+            {playlist.visibilidad === 'publica' ? (
+              <IconGlobe size={11} color={ICON_COLOR.muted} />
+            ) : null}
+            <Text
+              className={`text-muted-foreground min-w-0 shrink ${
+                suelto ? 'text-[13px]' : 'text-[12px]'
+              }`}
+              numberOfLines={1}
+            >
+              Lista · {playlist.tracks} {playlist.tracks === 1 ? 'canción' : 'canciones'}
+            </Text>
+          </View>
+        </View>
+        {/* El ecualizador y no un punto: es la misma marca que ya usa
+            la fila de una canción y la tapa del reproductor, y en una
+            interfaz sin colores el movimiento es lo único que distingue
+            «esto suena» de un rato para el otro. En pausa las barras se
+            quedan quietas y bajas, así que sigue diciendo cuál es sin
+            mentir que está sonando. Ver `PlayingBars`. */}
+        {sonando ? <PlayingBars playing={playing} size={12} /> : null}
+      </Pressable>
+      {clic.punto && menu?.length ? (
+        <Menu items={menu} sinDisparador abiertoEn={clic.punto} onCerrarPunto={clic.cerrar} />
+      ) : null}
     </View>
   )
 }

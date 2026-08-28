@@ -18,7 +18,7 @@ import { Panel } from './Panel'
 import { SkeletonList } from './Skeleton'
 import { formatLength } from './SeekBar'
 import { TrackColumnHeader, TrackRow } from './TrackRow'
-import type { MenuItem } from './Menu'
+import { Menu, type MenuItem } from './Menu'
 import { Vacio } from './Vacio'
 import {
   ICON_COLOR,
@@ -203,7 +203,22 @@ export function MeGustaView({
                 sounding={esta}
                 playing={esta && soundingPlay}
                 onPlay={() => play(index)}
+                /* La misma lista por los dos caminos, como en el resto de la
+                   app: el gesto y el botón no pueden ofrecer cosas distintas. */
                 menu={opcionesDe(item)}
+                /*
+                 * Los tres puntos **faltaban**: estas filas armaban su menú y
+                 * no había forma de abrirlo en ningún lado —ni botón, ni gesto—
+                 * así que «ir al artista» o «quitar de tus me gusta» existían
+                 * sin puerta. Es la misma fila que en una lista; ofrece lo mismo.
+                 */
+                trailing={
+                  <Menu
+                    items={opcionesDe(item)}
+                    label={`Opciones de ${item.title}`}
+                    size={14}
+                  />
+                }
               />
             )
           }}

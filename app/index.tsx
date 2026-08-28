@@ -160,6 +160,8 @@ import {
   IconCollapseLeft,
   IconCollapseRight,
   IconClose,
+  IconGlobe,
+  IconImage,
   IconDisc,
   IconInbox,
   IconHeart,
@@ -173,9 +175,14 @@ import {
   IconQueue,
   IconSearch,
   IconSend,
+  IconLock,
+  IconShare,
   IconSliders,
+  IconTrash,
   IconUser,
+  IconUsers,
 } from '../src/ui/icons'
+import { compartirLista } from '../src/lib/compartirLista'
 
 const SIDEBAR_PX = 780
 const DETAIL_PX = 1120
@@ -1228,6 +1235,104 @@ export default function Home() {
    * vista. La fila dice qué se puede hacer, una sola vez; el submenú dice
    * dónde. «Nueva lista» vive adentro, primera: es una lista más a donde ir.
    */
+  /**
+   * Lo que ofrece una lista **desde la biblioteca**, para el click derecho.
+   *
+   * Es el mismo conjunto que el de los tres puntos de la lista abierta, menos
+   * lo que allá depende de estar adentro: renombrar (que se edita en la propia
+   * cabecera) y «cerrar la lista», que desde el costado no significa nada. A
+   * cambio entra «Abrir», que es lo que uno quiere de una fila del costado.
+   *
+   * Todo lo demás ya existía acá y solo pasa a tomar la lista por parámetro en
+   * vez de la abierta — de ahí que no haga falta cablear nada nuevo.
+   */
+  function menuForPlaylist(p: Playlist): MenuItem[] {
+    return [
+      {
+        label: 'Abrir la lista',
+        onPress: () => go({ kind: 'playlist', id: p.id }),
+        icon: <IconMusic size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'music.note.list',
+      },
+      ...(p.mia
+        ? [
+            {
+              label: 'Cambiar la portada',
+              onPress: () => void pickCover(p),
+              icon: <IconImage size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'photo' as const,
+            },
+            {
+              label: p.visibilidad === 'publica' ? 'Hacer privada' : 'Hacer pública',
+              onPress: async () => {
+                const visibilidad = p.visibilidad === 'publica' ? 'privada' : 'publica'
+                await setPlaylistVisibility(p.id, visibilidad)
+                await loadPlaylists()
+                avisar(
+                  visibilidad === 'publica'
+                    ? 'Lista pública. Ya podés compartir el link.'
+                    : 'Lista privada de nuevo. El link dejó de andar.',
+                )
+              },
+              icon:
+                p.visibilidad === 'publica' ? (
+                  <IconLock size={15} color={ICON_COLOR.muted} />
+                ) : (
+                  <IconGlobe size={15} color={ICON_COLOR.muted} />
+                ),
+              sfSymbol: (p.visibilidad === 'publica' ? 'lock' : 'globe') as 'lock' | 'globe',
+            },
+          ]
+        : []),
+      ...(p.visibilidad === 'publica'
+        ? [
+            {
+              label: 'Compartir el link',
+              onPress: () => void compartirLista(p.id, p.name),
+              icon: <IconShare size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'square.and.arrow.up' as const,
+            },
+          ]
+        : []),
+      ...(p.colaborativa
+        ? [
+            {
+              label: p.mia ? 'Gente de la lista' : 'Quiénes la escriben',
+              onPress: () =>
+                router.push({
+                  pathname: '/lista/personas',
+                  params: { id: p.id, nombre: p.name },
+                }),
+              icon: <IconUsers size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'person.2' as const,
+            },
+          ]
+        : []),
+      /* Elegir un archivo pide un sistema de archivos a mano: solo en la web. */
+      ...(Platform.OS === 'web' && p.mia
+        ? [
+            {
+              label: 'Agregar un archivo de audio',
+              onPress: () => void subirArchivoALista(p),
+              icon: <IconPlus size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'square.and.arrow.down' as const,
+            },
+          ]
+        : []),
+      ...(p.mia
+        ? [
+            {
+              label: 'Borrar la lista',
+              onPress: () => void removePlaylist(p),
+              destructive: true,
+              icon: <IconTrash size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'trash' as const,
+            },
+          ]
+        : []),
+    ]
+  }
+
   function menuForTrack(track: TrackResult, omitPlaylistId?: string): MenuItem[] {
     /* La lista que estás mirando no se ofrece: la canción ya está adentro.
        Va anotado: sin el tipo, `sfSymbol` sale del `.map` como `string` a
@@ -2123,6 +2228,9 @@ export default function Home() {
                       onCreate={vivo ? createAndOpen : async () => undefined}
                       onOpenGustos={vivo ? () => go({ kind: 'gustos' }) : () => undefined}
                       onImportar={vivo ? () => router.push('/importar') : () => undefined}
+                      /* Como el resto: en la vista previa del panel plegado no
+                         se ofrece nada, que es lo que hace `vivo`. */
+                      menuFor={vivo ? menuForPlaylist : undefined}
                       error={playlistError}
                     />
                   ) : (
@@ -2308,6 +2416,7 @@ export default function Home() {
               onCreate={createAndOpen}
               onOpenGustos={() => go({ kind: 'gustos' })}
               onImportar={() => router.push('/importar')}
+              menuFor={menuForPlaylist}
               error={playlistError}
             />
           ) : music && view.kind === 'gustos' ? (
