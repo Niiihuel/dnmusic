@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.8.0",
+    "fecha": "28 de agosto de 2026",
+    "titulo": "Los botones dicen qué hacen, y las cosas se abren con el click derecho",
+    "cambios": [
+      "En la computadora, dejar el cursor sobre un botón de ícono ahora te dice qué hace. Y si recorrés una barra de botones, los siguientes aparecen al toque en vez de hacerte esperar en cada uno.",
+      "Click derecho sobre una canción, sobre una lista del costado o sobre el reproductor: se abre el menú donde está el cursor, con las mismas opciones que los tres puntos.",
+      "En el teléfono, mantener apretada una canción abre ese mismo menú — antes el gesto no hacía nada y las opciones estaban solo en un ícono chiquito del borde.",
+      "Las canciones de «Tus me gusta» ya tienen sus tres puntos: armaban su menú y no había forma de abrirlo en ningún lado.",
+      "Las listas del panel del costado ahora ofrecen sus acciones sin tener que entrar: abrirla, cambiar la portada, hacerla pública, compartir el link o borrarla."
+    ]
+  },
+  {
     "version": "1.7.3",
     "fecha": "28 de agosto de 2026",
     "titulo": "Una canción ya no se cae por un tropiezo suelto",
