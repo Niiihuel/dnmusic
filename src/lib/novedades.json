@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.7.2",
+    "fecha": "28 de agosto de 2026",
+    "titulo": "Las canciones que no se podían poner en la computadora, ahora sí",
+    "cambios": [
+      "Arreglado lo de «YouTube no está entregando el audio» en la app de escritorio: la app pedía las canciones de una forma que YouTube tomaba por un robot, y ahora las pide como corresponde. Las que no se podían poner, se ponen.",
+      "Cuando algo igual falla, el mensaje muestra el detalle completo en vez de cortarlo justo donde estaba el dato que importaba."
+    ]
+  },
+  {
     "version": "1.7.1",
     "fecha": "28 de agosto de 2026",
     "titulo": "Cuando una canción no se puede poner, ahora te dice por qué",
