@@ -15,6 +15,7 @@ import {
 import { Avatar } from '../../src/ui/Avatar'
 import { BotonSostener } from '../../src/ui/BotonSostener'
 import { ColaJam } from '../../src/ui/ColaJam'
+import { EntrarConCodigo } from '../../src/ui/EntrarJam'
 import { BotonVidrio } from '../../src/ui/Glass'
 import { Hoja } from '../../src/ui/Hoja'
 import { ICON_COLOR, IconPlus, IconSliders, IconUsers } from '../../src/ui/icons'
@@ -74,6 +75,7 @@ export default function JamSheet() {
             </Text>
           </Pressable>
         )}
+        {conexion === 'conectando' ? null : <EntrarConCodigo />}
         <Pressable
           accessibilityRole="button"
           onPress={() => volver(router, '/')}

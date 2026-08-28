@@ -2,6 +2,8 @@ import { Pressable, ScrollView, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import QRCode from 'react-native-qrcode-svg'
 import { invitarAlJam, linkDeJam } from '../../src/lib/invitarJam'
+import { copiarAlPortapapeles } from '../../src/lib/portapapeles'
+import { avisar } from '../../src/state/aviso'
 import { volver } from '../../src/lib/volver'
 import {
   expulsarMiembro,
@@ -15,6 +17,7 @@ import { Avatar } from '../../src/ui/Avatar'
 import { ES_WEB } from '../../src/ui/Glass'
 import { Hoja } from '../../src/ui/Hoja'
 import { ICON_COLOR, IconClose, IconShare } from '../../src/ui/icons'
+import { MandarJamAmigo } from '../../src/ui/MandarJamAmigo'
 
 /**
  * Invitar y ver quiénes están: la segunda hoja de la pila del Jam.
@@ -88,13 +91,30 @@ export default function PersonasJam() {
         </Text>
       </Pressable>
 
-      <View className="items-center gap-1">
+      {/* O, sin salir de la app, elegir a un amigo y mandarle el link al chat. */}
+      <MandarJamAmigo code={jam.code} />
+
+      <View className="items-center gap-2">
         <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
           O dictales el código
         </Text>
-        <Text className="text-foreground text-[28px] font-extrabold tracking-[6px]">
-          {jam.code}
-        </Text>
+        {/* El código en su placa, y tocarla lo copia: dictarlo es un camino,
+            pero cuando quien lo recibe está del otro lado de un chat, copiarlo
+            suelto es más corto que copiar el link entero. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Copiar el código ${jam.code}`}
+          onPress={() =>
+            void copiarAlPortapapeles(jam.code).then((ok) =>
+              avisar(ok ? 'Código copiado.' : `El código es ${jam.code}`),
+            )
+          }
+          className="rounded-2xl bg-card px-6 py-3 active:bg-muted"
+        >
+          <Text className="text-foreground text-[28px] font-extrabold tracking-[6px]">
+            {jam.code}
+          </Text>
+        </Pressable>
       </View>
 
       <View className="items-center gap-2">

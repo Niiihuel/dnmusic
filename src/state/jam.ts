@@ -499,7 +499,12 @@ export function tocarColaEnJam(tracks: PlaylistTrack[], desde: number) {
     .slice(Math.max(0, desde))
     .filter((t) => t.audioPath)
     .slice(0, 300)
-  if (!canciones.length) return
+  if (!canciones.length) {
+    // Ninguna tenía audio para poner: no se rompe nada, pero no callarse —así
+    // «no pasó nada» al tocar una fila tiene una razón visible.
+    avisar('Esas canciones todavía no están listas para el Jam.')
+    return
+  }
   void jamTocarCola(s.jam.id, canciones).catch((e) => {
     avisar(`No se pudo poner la lista: ${mensajeError(e)}`, true)
     programarRefetch()

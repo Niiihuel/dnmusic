@@ -20,6 +20,8 @@ import { Avatar } from './Avatar'
 import { GrupoAjustes, FilaInterruptor } from './Ajustes'
 import { BotonSostener } from './BotonSostener'
 import { ColaJam } from './ColaJam'
+import { EntrarConCodigo } from './EntrarJam'
+import { MandarJamAmigo } from './MandarJamAmigo'
 import { ICON_COLOR, IconClose, IconShare, IconUsers } from './icons'
 
 /**
@@ -83,6 +85,7 @@ export function JamBody() {
           cualquiera con el link puede sumar canciones.
         </Text>
         {conexion === 'conectando' ? null : (
+          <>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Iniciar un Jam"
@@ -98,6 +101,11 @@ export function JamBody() {
               {creando ? 'Creando…' : 'Iniciar un Jam'}
             </Text>
           </Pressable>
+          {/* Y la puerta para entrar al Jam de otro sin depender de que el
+              link abra: se pega el código o el link y se cae en la misma
+              pantalla de siempre. */}
+          <EntrarConCodigo />
+          </>
         )}
       </View>
     )
@@ -106,6 +114,7 @@ export function JamBody() {
   const enVivo = new Set(presentes)
 
   return (
+    <View className="min-h-0 flex-1">
     <ScrollView
       className="min-h-0 flex-1"
       scrollEnabled={!arrastrando}
@@ -120,7 +129,7 @@ export function JamBody() {
        * del panel — «Salir del Jam» quedaba abajo del reproductor y no había
        * forma de tocarlo.
        */
-      contentContainerStyle={{ paddingBottom: piso }}
+      contentContainerStyle={{ paddingBottom: 12 }}
     >
       {/* Quiénes. El puntito es presencia: sin puntito está en el Jam pero
           con la app cerrada o sin señal. */}
@@ -182,6 +191,9 @@ export function JamBody() {
             Invitar con un link
           </Text>
         </Pressable>
+
+        {/* O elegir a un amigo y mandarle el link al chat, sin copiar nada. */}
+        <MandarJamAmigo code={jam.code} />
       </View>
 
       {/* La fila compartida: lo que suena y lo que viene, con quién puso cada
@@ -232,15 +244,24 @@ export function JamBody() {
         </GrupoAjustes>
       )}
 
-      <BotonSostener
-        rotulo={soyHost ? 'Terminar el Jam' : 'Salir del Jam'}
-        pista={
-          soyHost
-            ? 'Mantené apretado para terminar el Jam. Se termina para todos.'
-            : 'Mantené apretado para salir del Jam.'
-        }
-        onCompletar={salirDelJam}
-      />
     </ScrollView>
+      {/*
+       * Terminar/Salir vive **fijo abajo**, fuera del scroll: era el último
+       * hijo de la lista y quedaba abajo de la cola y de los permisos —había
+       * que recorrer todo para encontrarlo—. Sostener sigue siendo el gesto;
+       * el `piso` lo despega del reproductor que flota encima.
+       */}
+      <View className="px-4 pt-2" style={{ paddingBottom: piso }}>
+        <BotonSostener
+          rotulo={soyHost ? 'Terminar el Jam' : 'Salir del Jam'}
+          pista={
+            soyHost
+              ? 'Mantené apretado para terminar el Jam. Se termina para todos.'
+              : 'Mantené apretado para salir del Jam.'
+          }
+          onCompletar={salirDelJam}
+        />
+      </View>
+    </View>
   )
 }
