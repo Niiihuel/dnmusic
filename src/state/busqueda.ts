@@ -19,6 +19,18 @@ import { createStore, useStore } from './store'
 type Busqueda = {
   termino: string
   /**
+   * El término ya asentado: lo que se busca **de verdad**, un toque después de
+   * dejar de teclear.
+   *
+   * `termino` cambia con cada tecla —lo escucha el campo, que tiene que dibujar
+   * lo que se escribe al toque—; `consulta` cambia recién cuando la mano frena.
+   * La pantalla grande (la que arma resultados, filtra chats y se redibuja
+   * entera) mira **esta** y no la otra: así teclear no la re-renderiza letra por
+   * letra. El debounce vive acá y no en la pantalla porque el campo es uno para
+   * toda la app.
+   */
+  consulta: string
+  /**
    * El campo está en uso: con el cursor puesto o con algo escrito.
    *
    * Es lo que decide que la barra de pestañas se repliegue en el botón de
@@ -32,9 +44,36 @@ type Busqueda = {
 
 const store = createStore<Busqueda>({
   termino: '',
+  consulta: '',
   activo: false,
   pista: 'Buscar',
 })
+
+/** Cuánto espera la consulta a que la mano frene. */
+const DEBOUNCE_CONSULTA_MS = 250
+let temporizador: ReturnType<typeof setTimeout> | null = null
+
+/*
+ * Asentar el término en `consulta`, un toque después de la última tecla.
+ *
+ * Vaciar es **inmediato**: borrar tiene que apagar los resultados ya, no
+ * dentro de un cuarto de segundo. Cada tecla cancela el reloj anterior, así
+ * que solo la última dispara.
+ */
+function asentar(termino: string) {
+  if (temporizador) {
+    clearTimeout(temporizador)
+    temporizador = null
+  }
+  if (!termino.trim()) {
+    store.set({ consulta: '' })
+    return
+  }
+  temporizador = setTimeout(() => {
+    temporizador = null
+    if (store.get().termino === termino) store.set({ consulta: termino })
+  }, DEBOUNCE_CONSULTA_MS)
+}
 
 /*
  * Qué hacer con lo que se escribe.
@@ -51,6 +90,7 @@ export function registerBusquedaHandler(handler: ((termino: string) => void) | n
 
 export function setTermino(termino: string) {
   store.set({ termino })
+  asentar(termino)
   onTermino?.(termino)
 }
 
@@ -71,10 +111,16 @@ export function abrirBusqueda(pista: string) {
  * momento en que uno no los está mirando.
  */
 export function cerrarBusqueda() {
-  store.set({ termino: '', activo: false })
+  if (temporizador) {
+    clearTimeout(temporizador)
+    temporizador = null
+  }
+  store.set({ termino: '', consulta: '', activo: false })
   onTermino?.('')
 }
 
 export const useTermino = () => useStore(store, (s) => s.termino)
+/** La consulta asentada (con debounce). La mira la pantalla que arma resultados. */
+export const useConsulta = () => useStore(store, (s) => s.consulta)
 export const useBuscando = () => useStore(store, (s) => s.activo)
 export const usePista = () => useStore(store, (s) => s.pista)

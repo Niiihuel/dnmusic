@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import {
   ActivityIndicator,
   AppState,
@@ -101,8 +102,8 @@ import {
 import {
   abrirBusqueda,
   cerrarBusqueda,
-  registerBusquedaHandler,
   setTermino,
+  useConsulta,
   useTermino,
 } from '../src/state/busqueda'
 import {
@@ -172,7 +173,36 @@ import {
 
 const SIDEBAR_PX = 780
 const DETAIL_PX = 1120
-const GLOBAL_SEARCH_DEBOUNCE_MS = 250
+/**
+ * El campo de búsqueda de arriba, como hoja propia.
+ *
+ * Lee el término **inmediato** del store para dibujar cada tecla al toque,
+ * mientras la pantalla grande mira la consulta asentada (con debounce). Así
+ * teclear redibuja este campo chico y no el árbol entero de la pantalla. Ver
+ * `state/busqueda`; misma idea que el campo del layout.
+ */
+function CampoBusquedaArriba({
+  inputRef,
+  onChangeText,
+  placeholder,
+  loading,
+}: {
+  inputRef: RefObject<TextInput | null>
+  onChangeText: (v: string) => void
+  placeholder: string
+  loading: boolean
+}) {
+  const value = useTermino()
+  return (
+    <SearchField
+      inputRef={inputRef}
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      loading={loading}
+    />
+  )
+}
 
 /** Una colección de YouTube: un álbum o una lista ajena. */
 type Coleccion = {
@@ -595,7 +625,10 @@ export default function Home() {
   }, [mirandoElHilo, activePairId, messages, myUid])
   /* Lo escrito vive en `state/busqueda`: el campo lo dibuja el layout, en la
      misma fila que las pestañas, y desde otro árbol. */
-  const conversationQuery = useTermino()
+  /* La pantalla mira la consulta **asentada**, no lo que se teclea: así una
+     tecla no la re-renderiza entera. El campo de arriba, que sí necesita lo
+     inmediato, es su propia hoja (`CampoBusquedaArriba`). */
+  const conversationQuery = useConsulta()
 
 
   /** Relee la biblioteca; la lista abierta se refresca con lo que llega. */
@@ -737,34 +770,43 @@ export default function Home() {
    */
   useEffect(() => {
     const term = conversationQuery.trim()
-    if (!term) return
+    /* Vacío: se apagan los resultados de una. Antes esto lo hacía un oído del
+       store en cada tecla —cuatro setStates letra por letra—; ahora vive acá,
+       sobre la consulta asentada, que es lo único que de verdad cambió. */
+    if (!term) {
+      setTrackResults([])
+      setArtistResults([])
+      setSearchResults([])
+      setSearchError(null)
+      setSearchingContacts(false)
+      return
+    }
 
+    /* `conversationQuery` ya llega con el debounce del store, así que acá no
+       hace falta otro reloj: apenas la mano frena, se busca. */
+    setSearchingContacts(true)
     const controller = new AbortController()
-    const timer = setTimeout(() => {
-      if (music) {
-        searchMusic(term, controller.signal)
-          .then(({ tracks, artists }) => {
-            setTrackResults(tracks)
-            setArtistResults(artists)
-            setSearchError(
-              tracks.length || artists.length ? null : 'No encontré esa canción ni ese artista.',
-            )
-            setSearchingContacts(false)
-          })
-          .catch((cause: unknown) => {
-            if ((cause as Error).name === 'AbortError') return
-            setSearchError('No se pudo buscar.')
-            setSearchingContacts(false)
-          })
-        return
-      }
+    if (music) {
+      searchMusic(term, controller.signal)
+        .then(({ tracks, artists }) => {
+          setTrackResults(tracks)
+          setArtistResults(artists)
+          setSearchError(
+            tracks.length || artists.length ? null : 'No encontré esa canción ni ese artista.',
+          )
+          setSearchingContacts(false)
+        })
+        .catch((cause: unknown) => {
+          if ((cause as Error).name === 'AbortError') return
+          setSearchError('No se pudo buscar.')
+          setSearchingContacts(false)
+        })
+    } else {
       searchContacts(term, controller.signal)
         .then((contacts) => {
           setSearchResults(contacts)
           /* Tres mensajes distintos para tres situaciones distintas: no
-             escribiste lo suficiente, no hay nadie así, o encontré. Antes
-             «no encontré» aparecía también con el campo vacío, que era
-             contestar una pregunta que nadie hizo. */
+             escribiste lo suficiente, no hay nadie así, o encontré. */
           setSearchError(
             contacts.length
               ? null
@@ -779,12 +821,9 @@ export default function Home() {
           setSearchError('No se pudieron buscar las cuentas.')
           setSearchingContacts(false)
         })
-    }, GLOBAL_SEARCH_DEBOUNCE_MS)
-
-    return () => {
-      clearTimeout(timer)
-      controller.abort()
     }
+
+    return () => controller.abort()
   }, [conversationQuery, music])
 
   // Con música por defecto, la biblioteca se pide de entrada.
@@ -1559,26 +1598,6 @@ export default function Home() {
     }
   }
 
-  /**
-   * Lo escrito cambió: se tiran los resultados viejos.
-   *
-   * Se registra como el oído del store en vez de llamarse desde el campo: el
-   * campo vive en el layout y solo sabe escribir el término. Y no puede
-   * escribirlo desde acá adentro —`setTermino` avisa a este mismo handler— o
-   * se llamarían en círculo.
-   */
-  const limpiarResultados = useCallback((value: string) => {
-    setSearchResults([])
-    setTrackResults([])
-    setSearchError(null)
-    setSearchingContacts(value.trim().length > 0)
-  }, [])
-
-  useEffect(() => {
-    registerBusquedaHandler(limpiarResultados)
-    return () => registerBusquedaHandler(null)
-  }, [limpiarResultados])
-
   function changeGlobalSearch(value: string) {
     setTermino(value)
   }
@@ -1806,9 +1825,8 @@ export default function Home() {
                   para flotar sobre una ventana grande— no entraba. En chats se
                   queda, porque ahí filtra la lista de conversaciones. */}
               {buscadorArriba ? (
-              <SearchField
+              <CampoBusquedaArriba
                 inputRef={searchRef}
-                value={conversationQuery}
                 onChangeText={changeGlobalSearch}
                 placeholder={
                   music
