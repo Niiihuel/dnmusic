@@ -405,6 +405,52 @@ function resolutorDeAca():
   return hayResolutorABordo() ? resolverYAportar : undefined
 }
 
+/** Si esta sesión corre adentro de la app de escritorio. */
+function esEscritorio(): boolean {
+  return (globalThis as { dnmusicEscritorio?: unknown }).dnmusicEscritorio !== undefined
+}
+
+/** Un texto largo, recortado para que entre en un aviso. */
+function recorte(texto: string, largo = 140): string {
+  const limpio = texto.trim().replace(/\s+/g, ' ')
+  return limpio.length > largo ? `${limpio.slice(0, largo - 1)}…` : limpio
+}
+
+/**
+ * Por qué no pudo **este aparato**, dicho para quien lo está leyendo.
+ *
+ * Cuando el servidor no puede, el plan B es resolver acá con la IP propia. Si
+ * ese también falla, hasta ahora viajaba el mensaje **del servidor**: se leía
+ * «YouTube no está entregando el audio», que es cierto a medias y sobre todo
+ * esconde lo único accionable — que el intento local también se cayó, y por
+ * qué—. El detalle entero sigue yendo al log; acá va una frase.
+ *
+ * Mismo criterio que `motivoParaLaApp` en el servidor: una sola frase, sin
+ * nombres de clientes ni volcados. La diferencia es que esta **dice dónde**
+ * falló, que es lo que distingue «esperá un rato» de «tenés que hacer algo».
+ */
+function motivoDeAca(e: unknown): string {
+  const texto = (e as Error)?.message ?? ''
+  const aparato = esEscritorio() ? 'esta computadora' : 'este teléfono'
+
+  if (/LOGIN_REQUIRED|not a bot|Sin audio desde/i.test(texto)) {
+    return `Ni el servidor ni ${aparato} pudieron sacarla de YouTube ahora mismo. Suele ser pasajero: probá en un rato.`
+  }
+  if (/El aporte falló \(401\)|No autorizado/i.test(texto)) {
+    return 'Tu sesión venció mientras se preparaba la canción. Salí y volvé a entrar.'
+  }
+  if (/El aporte falló/i.test(texto)) {
+    return `${aparato === 'esta computadora' ? 'Esta computadora' : 'Este teléfono'} la bajó, pero el servidor no la aceptó (${recorte(texto, 80)}).`
+  }
+  if (/googlevideo|Descarga inconsistente|No se descargó audio/i.test(texto)) {
+    return `YouTube cortó la descarga desde ${aparato} (${recorte(texto, 80)}). Probá de nuevo.`
+  }
+  if (/no ofreció audio AAC/i.test(texto)) {
+    return 'YouTube no ofrece para esta canción un formato que podamos guardar.'
+  }
+  return `${aparato === 'esta computadora' ? 'Esta computadora' : 'Este teléfono'} tampoco pudo: ${recorte(texto)}`
+}
+
 /** El viaje a `/resolve` pelado, que comparten resolver y recuperar. */
 async function pedirResolve(
   body: { videoId: string; artworkUrl?: string; durationMs?: number },
@@ -415,16 +461,40 @@ async function pedirResolve(
     return await pedirResolveAlServidor(body, signal, onProgreso)
   } catch (e) {
     /*
-     * El servidor no pudo: si esto es el escritorio, se intenta de a bordo.
+     * El servidor no pudo: si hay resolutor de a bordo, se intenta acá.
      *
      * Solo con un videoId con forma de YouTube —las canciones propias no
-     * tienen a dónde ir a buscarse— y nunca sobre un pedido cancelado. Si el
-     * plan B también falla, viaja el error **del servidor**: está en el idioma
-     * de la app, mientras que el de a bordo es técnico y no le dice nada a
-     * quien solo quería escuchar.
+     * tienen a dónde ir a buscarse— y nunca sobre un pedido cancelado.
+     *
+     * Si el plan B **también** falla, lo que viaja es su motivo y no el del
+     * servidor. Antes salía el del servidor, y era engañoso: decía «YouTube no
+     * está entregando el audio» —la reja contra la IP del datacenter— cuando lo
+     * que de verdad había pasado es que el intento con la IP de casa, que es el
+     * que existe justamente para esquivar esa reja, se cayó por otra cosa. El
+     * texto técnico entero queda en el log; a la pantalla va una frase que dice
+     * dónde falló (ver `motivoDeAca`).
      */
     const resolver = resolutorDeAca()
-    if (!resolver || signal?.aborted || !/^[\w-]{11}$/.test(body.videoId)) throw e
+    if (signal?.aborted || !/^[\w-]{11}$/.test(body.videoId)) throw e
+
+    if (!resolver) {
+      /*
+       * Adentro del escritorio y sin resolutor: es una versión vieja.
+       *
+       * El puente existe (por eso sabemos que estamos en la app de PC) pero no
+       * expone `resolver`, así que esta app **no tiene** plan B: depende
+       * enteramente de que la IP del servidor no esté en la reja de YouTube.
+       * Decirlo es lo único accionable —actualizar—, y era invisible: se veía
+       * el mismo mensaje del servidor que ve la web.
+       */
+      if (esEscritorio()) {
+        throw new Error(
+          'Esta versión del escritorio no puede resolver por su cuenta. Actualizá la app y probá de nuevo.',
+        )
+      }
+      throw e
+    }
+
     const { data } = await getSupabase().auth.getSession()
     const token = data.session?.access_token
     if (!token) throw e
@@ -436,8 +506,10 @@ async function pedirResolve(
         durationMs: aporte.durationMs ?? undefined,
       }
     } catch (deAca) {
+      /* El detalle técnico entero al log —es lo que sirve para diagnosticar—;
+         a la pantalla, la frase que dice **dónde** se cayó. */
       console.warn(`[resolve] el plan B de a bordo tampoco pudo: ${(deAca as Error).message}`)
-      throw e
+      throw new Error(motivoDeAca(deAca))
     }
   }
 }
