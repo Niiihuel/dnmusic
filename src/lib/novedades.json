@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.8.1",
+    "fecha": "28 de agosto de 2026",
+    "titulo": "La ventana vuelve a usarse entera",
+    "cambios": [
+      "En la computadora había quedado una franja negra muerta a la derecha: los paneles no llegaban al borde y todo se veía corrido hacia la izquierda, con el reproductor descentrado. Ya ocupan la ventana entera otra vez."
+    ]
+  },
+  {
     "version": "1.8.0",
     "fecha": "28 de agosto de 2026",
     "titulo": "Los botones dicen qué hacen, y las cosas se abren con el click derecho",
