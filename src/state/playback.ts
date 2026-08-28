@@ -1504,7 +1504,15 @@ export function syncQueue(originId: string, tracks: PlaylistTrack[]) {
 
   const current = state.index >= 0 ? state.tracks[state.index] : null
   if (!current) {
-    store.set({ tracks })
+    /*
+     * No hay canción en el índice guardado: la cola quedó más corta que él.
+     *
+     * Se reemplaza la cola **y se suelta el índice**. Dejarlo puesto era el
+     * agujero: la cola nueva entraba y el índice viejo pasaba a señalar otra
+     * canción, así que la lista marcaba una fila que no tenía nada que ver con
+     * lo que sonaba. Sin índice no se marca nada, que es lo cierto.
+     */
+    store.set({ tracks, index: -1 })
     return
   }
 

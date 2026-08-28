@@ -14,6 +14,7 @@ import { signedUrl } from '../services/music'
 import { avisar } from '../state/aviso'
 import { Sugerencias } from './Sugerencias'
 import {
+  getPlaybackState,
   playAt,
   playQueue,
   toggleShuffle,
@@ -253,8 +254,17 @@ export function PlaylistView({
    * fila se quedaba muda mientras el tema sonaba, que es justamente el momento
    * en que uno mira la lista para ver dónde está parado.
    */
+  /*
+   * Sonando pide las dos cosas: la posición **y** que sea la misma canción.
+   *
+   * Con solo la posición, una cola desalineada marcaba la fila equivocada — que
+   * es peor que no marcar ninguna: dice algo falso sobre lo que está pasando.
+   * Pedir también el video hace que, ante la duda, no se marque nada.
+   */
   const isSounding = (track: PlaylistTrack, index: number) =>
-    isMine ? soundingIndex === index : soundingTrack?.videoId === track.videoId
+    isMine
+      ? soundingIndex === index && soundingTrack?.videoId === track.videoId
+      : soundingTrack?.videoId === track.videoId
 
   const refresh = useCallback(async () => {
     const next = await listTracks(playlist.id)
@@ -269,7 +279,24 @@ export function PlaylistView({
     const id = playlist.id
     const token = reloadToken
     listTracks(id)
-      .then((t) => alive && setLoaded({ playlistId: id, token, tracks: t }))
+      .then((t) => {
+        if (!alive) return
+        setLoaded({ playlistId: id, token, tracks: t })
+        /*
+         * Y se reconcilia la cola con lo que se acaba de leer.
+         *
+         * La fila marcada como sonando se decide por **posición**
+         * (`soundingIndex === index`), así que la cola del reproductor y la
+         * lista que se dibuja tienen que ser el mismo array. Al abrir la app,
+         * `restorePlayback` devuelve la cola guardada de la sesión anterior con
+         * el mismo origen, y si la lista cambió desde entonces las dos
+         * numeraciones dejan de coincidir: se marcaba una fila y sonaba otra, y
+         * tocar la marcada se leía como «tocaste la que ya suena» y solo
+         * pausaba. `syncQueue` reubica el índice por id — antes solo corría al
+         * borrar una canción, que es el único momento en que alguien lo llamaba.
+         */
+        syncQueue(id, t)
+      })
       .catch(() => alive && setError('No se pudieron cargar las canciones.'))
     return () => {
       alive = false
@@ -295,7 +322,17 @@ export function PlaylistView({
       playQueue(tracks, at, { id: playlist.id, name: playlist.name })
       return
     }
-    if (isMine) playAt(at)
+    if (isMine) {
+      /*
+       * `playAt` indexa la cola del reproductor, no esta lista. Si en esa
+       * posición hay otra canción, la cola no es esta lista por más que el
+       * origen coincida: se rehace desde lo que se está viendo, que es lo que
+       * la persona tocó. Sin esto, tocar una fila reproducía otra —o, si
+       * caía justo en el índice actual, solo pausaba.
+       */
+      if (getPlaybackState().tracks[at]?.id === tracks[at].id) playAt(at)
+      else playQueue(tracks, at, { id: playlist.id, name: playlist.name })
+    }
     /* Ya suena esta misma canción, pero venida de otro lado: tocarla pausa o
        sigue, como en el buscador. Volver a encolar la lista la reiniciaría
        desde cero y no hay nada en la pantalla que anticipe ese salto. */
