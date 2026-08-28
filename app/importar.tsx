@@ -285,11 +285,13 @@ export default function Importar() {
               suelto={suelto}
             />
           ) : fase === 'revision' ? (
+            <View className="min-h-0 flex-1">
             <FlatList
+              className="min-h-0 flex-1"
               data={resultados}
               keyExtractor={(_, i) => String(i)}
               contentContainerClassName={suelto ? 'px-3 pt-3' : 'p-5'}
-              contentContainerStyle={{ paddingBottom: piso }}
+              contentContainerStyle={{ paddingBottom: 16 }}
               ListHeaderComponent={
                 <Centrado suelto={suelto}>
                   <Resumen
@@ -313,19 +315,33 @@ export default function Importar() {
                   />
                 </Centrado>
               )}
-              ListFooterComponent={
-                <Centrado suelto={suelto}>
-                  <View className="gap-3 pt-6">
+              ListFooterComponent={<View style={{ height: 8 }} />}
+            />
+            {/*
+             * La barra de traer va **fija abajo**, fuera del scroll: con una
+             * playlist larga, el botón vivía al final de la lista y había que
+             * recorrer todas las canciones para llegar. Quien no quiere revisar
+             * nada aprieta acá de una — las dudosas ya vienen con su mejor match
+             * elegido, así que «Traer» es también «saltear la revisión».
+             */}
+            <View
+              className="border-t border-muted px-4 pt-3"
+              style={{ paddingBottom: suelto ? 12 : piso }}
+            >
+              <Centrado suelto={suelto}>
+                <View className="flex-row items-center gap-3">
+                  <View className="flex-1">
                     <PrimaryButton
                       label={aTraer === 1 ? 'Traer 1 canción' : `Traer ${aTraer} canciones`}
                       onPress={() => void confirmar()}
                       disabled={aTraer === 0}
                     />
-                    <GhostButton label="Cancelar" onPress={() => setFase('entrada')} />
                   </View>
-                </Centrado>
-              }
-            />
+                  <GhostButton label="Cancelar" onPress={() => setFase('entrada')} />
+                </View>
+              </Centrado>
+            </View>
+            </View>
           ) : (
             <Trabajando
               fase={fase}
