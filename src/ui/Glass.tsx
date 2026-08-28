@@ -2,6 +2,7 @@ import type { PropsWithChildren, ReactNode } from 'react'
 import { Platform, Pressable, View, type ViewStyle } from 'react-native'
 import Animated from 'react-native-reanimated'
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect'
+import { useConTooltip } from './Tooltip'
 
 /**
  * En web el vidrio no lo dibuja el módulo nativo sino CSS: `backdrop-filter`
@@ -214,6 +215,7 @@ export function BotonVidrio({
   onPress,
   disabled = false,
   label,
+  tooltip,
   radius = 999,
   tint,
   style,
@@ -222,12 +224,21 @@ export function BotonVidrio({
   onPress: () => void
   disabled?: boolean
   label: string
+  /**
+   * Lo que dice el rótulo al dejarle el cursor encima. Por defecto, `label`.
+   *
+   * Se puede dar aparte porque no siempre sirven los dos textos: la etiqueta
+   * accesible a veces lleva el nombre de la canción o cómo se cancela, y un
+   * rótulo tiene que ser corto. Ver `ui/Tooltip`.
+   */
+  tooltip?: string
   radius?: number
   /** El acento: lo vuelve la acción principal. Uno por pantalla. */
   tint?: string
   style?: ViewStyle
   children: ReactNode
 }) {
+  const tip = useConTooltip(disabled ? undefined : (tooltip ?? label))
   return (
     <Glass
       radius={radius}
@@ -235,6 +246,7 @@ export function BotonVidrio({
       style={[{ overflow: 'hidden' }, style ?? {}, disabled ? { opacity: 0.4 } : {}]}
     >
       <Pressable
+        {...tip.gestos}
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityState={{ disabled }}

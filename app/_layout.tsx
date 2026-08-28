@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar'
 import * as SplashScreen from 'expo-splash-screen'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SplashAnimado } from '../src/ui/SplashAnimado'
+import { Tooltip } from '../src/ui/Tooltip'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ActivityIndicator,
@@ -765,6 +766,10 @@ function Chrome() {
       {/* El aviso va **fuera** de la cáscara y por encima de ella: se apoya
           sobre lo que haya, y no tiene que moverse con el teclado ni plegarse
           con la barra. */}
+      {/* El rótulo de los botones de solo ícono. Como el aviso: lo pide
+          cualquiera y se dibuja acá, una sola vez y encima de todo. Solo con
+          mouse — ver `ui/Tooltip`. */}
+      <Tooltip />
       <Aviso />
       {/*
        * «Hay una versión nueva y ya está bajada», solo en el escritorio.

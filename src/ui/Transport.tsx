@@ -1,6 +1,7 @@
 import { Pressable } from 'react-native'
 import { toggleRepetir, toggleShuffle, useRepetir, useShuffle } from '../state/playback'
 import { ICON_COLOR, IconRepeat, IconRepeatOne, IconShuffle } from './icons'
+import { useConTooltip } from './Tooltip'
 
 /**
  * Aleatorio y repetir, los dos botones que rodean al play.
@@ -24,11 +25,14 @@ import { ICON_COLOR, IconRepeat, IconRepeatOne, IconShuffle } from './icons'
  */
 export function BotonAleatorio({ size = 20, lado = 44 }: { size?: number; lado?: number }) {
   const activo = useShuffle()
+  const rotulo = activo ? 'Reproducir en orden' : 'Reproducir al azar'
+  const tip = useConTooltip(rotulo)
 
   return (
     <Pressable
+      {...tip.gestos}
       accessibilityRole="button"
-      accessibilityLabel={activo ? 'Reproducir en orden' : 'Reproducir al azar'}
+      accessibilityLabel={rotulo}
       accessibilityState={{ selected: activo }}
       onPress={toggleShuffle}
       style={{ width: lado, height: lado }}
@@ -52,17 +56,19 @@ export function BotonRepetir({ size = 20, lado = 44 }: { size?: number; lado?: n
   const repetir = useRepetir()
   const activo = repetir !== 'no'
   const Icono = repetir === 'una' ? IconRepeatOne : IconRepeat
+  const rotulo =
+    repetir === 'no'
+      ? 'Repetir: apagado'
+      : repetir === 'lista'
+        ? 'Repetir: la lista entera'
+        : 'Repetir: esta canción'
+  const tip = useConTooltip(rotulo)
 
   return (
     <Pressable
+      {...tip.gestos}
       accessibilityRole="button"
-      accessibilityLabel={
-        repetir === 'no'
-          ? 'Repetir: apagado'
-          : repetir === 'lista'
-            ? 'Repetir: la lista entera'
-            : 'Repetir: esta canción'
-      }
+      accessibilityLabel={rotulo}
       accessibilityState={{ selected: activo }}
       onPress={toggleRepetir}
       style={{ width: lado, height: lado }}

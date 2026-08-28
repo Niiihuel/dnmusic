@@ -2,6 +2,7 @@ import { Pressable } from 'react-native'
 import type { PlaylistTrack } from '../services/playlists'
 import { alternarMeGusta, useEsGustada } from '../state/gustos'
 import { ICON_COLOR, IconHeart, IconHeartFilled } from './icons'
+import { useConTooltip } from './Tooltip'
 
 /**
  * El corazón: marcar la canción que suena como me gusta.
@@ -28,9 +29,12 @@ export function BotonMeGusta({
   lado?: number
 }) {
   const gustada = useEsGustada(track?.videoId)
+  /* Antes del `return null`: los hooks no se llaman a medias. */
+  const tip = useConTooltip(gustada ? 'Quitar de tus me gusta' : 'Me gusta')
   if (!track) return null
   return (
     <Pressable
+      {...tip.gestos}
       accessibilityRole="button"
       accessibilityLabel={gustada ? 'Quitar de tus me gusta' : 'Me gusta'}
       accessibilityState={{ selected: gustada }}
