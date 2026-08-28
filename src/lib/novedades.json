@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.7.1",
+    "fecha": "28 de agosto de 2026",
+    "titulo": "Cuando una canción no se puede poner, ahora te dice por qué",
+    "cambios": [
+      "Si una canción no se puede preparar, el mensaje dice qué pasó de verdad y dónde falló, en vez del cartel genérico de siempre: si conviene esperar un rato, si tenés que volver a entrar, o si hay que actualizar la app."
+    ]
+  },
+  {
     "version": "1.7.0",
     "fecha": "28 de agosto de 2026",
     "titulo": "El chat deja de verse vacío, y volver atrás se siente como debe",
