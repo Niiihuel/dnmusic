@@ -1,4 +1,6 @@
 import { createServer } from 'node:http'
+import { pathToFileURL } from 'node:url'
+import { waitUntil } from '@vercel/functions'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createClient } from '@supabase/supabase-js'
@@ -18,12 +20,13 @@ import {
   search,
   searchArtists,
 } from './youtube.js'
-import { isLang, translate } from './translate.js'
-import { leerCanciones, leerLista } from './spotify.js'
 import { emparejarLote } from './emparejar.js'
 import { notificarMensaje, notificarSolicitud } from './push.js'
 import { cacheImage } from './artwork.js'
+import { RUTAS_LIVIANAS, manejarLiviana } from './livianas.js'
+import { comoRequest, volcar } from './puente.js'
 import { subirPropia } from './propia.js'
+import { FFPROBE } from './binarios.js'
 
 /**
  * Servicio de resolución de música.
@@ -43,6 +46,15 @@ import { subirPropia } from './propia.js'
  *   POST /spotify/canciones   → canciones sueltas por id (listas de +100)
  *   POST /emparejar {pistas}  → de esos nombres, la canción de YouTube Music
  *
+ * Cinco de esas —`/img`, `/translate`, `/spotify`, `/spotify/canciones` y
+ * `/artwork`— viven en `livianas.ts` porque arrancan livianas y las sirve una
+ * función aparte. Acá se siguen atendiendo, delegadas. El porqué está escrito
+ * en `livianas.ts`.
+ *
+ * En producción todo esto corre en Vercel: `manejador` —el mismo de más
+ * abajo— es lo que invoca `../api/todo.ts`. Este `createServer` quedó para
+ * desarrollo, que es donde se levanta el contenedor.
+ *
  * El audio se guarda en Supabase Storage y la app lo reproduce desde ahí. Así el
  * contacto con YouTube ocurre una vez por canción y no en cada reproducción: es
  * más rápido para quien escucha, y las flores ya enviadas siguen sonando aunque
@@ -50,6 +62,31 @@ import { subirPropia } from './propia.js'
  */
 
 const ejecutar = promisify(execFile)
+
+/**
+ * Trabajo que sigue después de contestar.
+ *
+ * En el contenedor alcanzaba con lanzar la promesa y no esperarla: el proceso
+ * sigue vivo y la termina cuando puede. En una función no: Vercel la congela
+ * apenas sale la respuesta, y lo que quedó a medias no se retoma. Se vio con la
+ * cuarentena de `/propia`, que quedó sin borrar, y hubiera pasado peor con el
+ * archivado de `/peaks` —la onda no se guardaba nunca y se recalculaba entera
+ * en cada pedido, que es justo el gasto que ese archivo existe para evitar.
+ *
+ * `waitUntil` es la forma que da la plataforma de decir «esto va después de la
+ * respuesta pero antes de dormirte». Fuera de Vercel no existe, y ahí el
+ * comportamiento es el de siempre.
+ */
+function enSegundoPlano(tarea: Promise<unknown>): void {
+  const p = tarea.catch(() => {})
+  try {
+    waitUntil(p)
+  } catch {
+    /* Sin contexto de función (el contenedor, o una prueba): queda lanzada, que
+       es exactamente lo que se hacía antes. */
+  }
+}
+
 
 /**
  * La duración de un audio ya guardado, medida del archivo mismo.
@@ -66,7 +103,7 @@ async function medirDuracionMs(
   try {
     const { data } = await storage.storage.from(BUCKET).createSignedUrl(path, 60)
     if (!data?.signedUrl) return undefined
-    const { stdout } = await ejecutar('ffprobe', [
+    const { stdout } = await ejecutar(FFPROBE, [
       '-v', 'error',
       '-show_entries', 'format=duration',
       '-of', 'csv=p=0',
@@ -188,54 +225,6 @@ function responder(
 }
 
 /**
- * Hosts de imagen que el proxy acepta.
- *
- * Es una lista blanca y no un proxy abierto: sin esto, cualquiera con la URL
- * del servicio podría usarlo para pedir lo que quiera desde nuestra IP.
- */
-const IMAGE_HOSTS = /^([a-z0-9-]+\.)?(googleusercontent\.com|ytimg\.com|ggpht\.com)$/
-
-/**
- * Devuelve una carátula remota con nuestros encabezados.
- *
- * Las tapas de la portada viven en `yt3.googleusercontent.com`, que responde
- * sin CORS y por eso Chrome las descarta enteras (ORB): se ven cuadros negros
- * donde debería haber discos. Copiarlas a Storage como hacemos con el audio
- * sería absurdo para una vitrina que cambia todos los días y que casi nadie
- * mira dos veces, así que se pasan de largo con un `Cache-Control` largo para
- * que el navegador se las quede.
- */
-async function proxyImage(
-  res: import('node:http').ServerResponse,
-  raw: string,
-  req: import('node:http').IncomingMessage,
-) {
-  let target: URL
-  try {
-    target = new URL(raw)
-  } catch {
-    return responder(res, 400, { error: 'URL inválida' }, req)
-  }
-  if (target.protocol !== 'https:' || !IMAGE_HOSTS.test(target.hostname)) {
-    return responder(res, 403, { error: 'Host no permitido' }, req)
-  }
-
-  const upstream = await fetch(target)
-  if (!upstream.ok || !upstream.body)
-    return responder(res, 502, { error: 'No se pudo traer la imagen' }, req)
-
-  const type = upstream.headers.get('content-type') ?? ''
-  if (!type.startsWith('image/')) return responder(res, 415, { error: 'Eso no es una imagen' }, req)
-
-  res.writeHead(200, {
-    'Content-Type': type,
-    'Cache-Control': 'public, max-age=604800, immutable',
-    ...cors(req),
-  })
-  res.end(Buffer.from(await upstream.arrayBuffer()))
-}
-
-/**
  * Quién puede pedirle algo a este servicio.
  *
  * El servicio es público —tiene una URL en internet— y hace dos cosas caras:
@@ -267,6 +256,30 @@ async function quienEs(req: import('node:http').IncomingMessage): Promise<string
   } catch {
     return 'desconocido'
   }
+}
+
+/**
+ * Dónde espera un archivo subido hasta que el servidor lo aprueba.
+ *
+ * Lleva el id de quien lo sube para que dos personas aportando la misma
+ * canción a la vez no se pisen el archivo a medio subir, y para que confirmar
+ * solo pueda alcanzar lo propio.
+ */
+function rutaDeCuarentena(uid: string, videoId: string): string {
+  return `aportes/${uid}/${videoId}.m4a`
+}
+
+/**
+ * La cuarentena de una canción propia.
+ *
+ * El nombre se lava —solo letras, números, punto y guión— porque va a parar a
+ * una clave de Storage y viene tal cual del disco de quien sube: puede traer
+ * barras, espacios o acentos. El original no se pierde, viaja aparte y es el
+ * que lee `subirPropia` para sacar la extensión y las etiquetas.
+ */
+function rutaDePropia(uid: string, nombre: string): string {
+  const limpio = nombre.replace(/[^\w.-]/g, '_').slice(-120)
+  return `propias/${uid}/${limpio}`
 }
 
 async function autorizado(req: import('node:http').IncomingMessage): Promise<boolean> {
@@ -320,7 +333,23 @@ async function resolverCancion(
   }
 }
 
-const server = createServer(async (req, res) => {
+/**
+ * El servicio entero, como un manejador de `node:http`.
+ *
+ * Estaba escrito adentro del `createServer`, y sale de ahí por una razón: es
+ * **la misma firma** que invoca una función de Vercel. `(IncomingMessage,
+ * ServerResponse)` es lo que le llega a `api/todo.ts`, así que exportarlo
+ * alcanza para que el contenedor y la función corran exactamente el mismo
+ * código, sin una segunda implementación que se vaya despegando de esta.
+ *
+ * Es el mismo truco que ya hacía `livianas.ts`, al revés: aquello se escribió
+ * contra `Request`/`Response` y `puente.ts` traduce; esto se queda en la
+ * interfaz de Node, que es la que las dos puntas hablan de verdad.
+ */
+export const manejador = async (
+  req: import('node:http').IncomingMessage,
+  res: import('node:http').ServerResponse,
+) => {
   /* El atajo del pedido: ya sabe a quién le contesta, así que la cabecera de
      CORS sale bien sin que cada `return` tenga que acordarse de pasarla. */
   const json = (status: number, body: unknown) => responder(res, status, body, req)
@@ -367,18 +396,26 @@ const server = createServer(async (req, res) => {
     }
 
     /*
-     * Todo lo demás pide sesión, con **dos excepciones**.
+     * Las rutas que no hablan con YouTube viven en `livianas.ts`, porque las
+     * sirve también una función de Vercel (ver `../api`). Acá se delegan en vez
+     * de estar escritas dos veces: el que manda es ese archivo, y este
+     * contenedor las sigue atendiendo para que un cliente viejo —o el de
+     * desarrollo, que apunta todo a `:8787`— no se quede sin ellas.
      *
-     * `/health` queda abierto porque es lo que mira Railway para saber si el
-     * contenedor está vivo, y no tiene sesión que ofrecer ni dato que filtrar.
-     *
-     * `/img` queda abierto porque **no puede llevar cabecera**: su respuesta se
-     * consume como `<Image source={{ uri }}>`, y ahí no hay forma de mandar un
-     * `Authorization`. No queda desprotegido del todo: `IMAGE_HOSTS` lo limita a
-     * los hosts de carátulas de Google, así que es un proxy de imágenes acotado
-     * y no uno abierto. Es lo más barato que expone el servicio.
+     * Va **antes** de la comprobación de sesión porque `manejarLiviana` trae la
+     * suya, incluida la excepción de `/img`.
      */
-    if (url.pathname !== '/img' && !(await autorizado(req))) {
+    if (RUTAS_LIVIANAS.has(url.pathname)) {
+      const respuesta = await manejarLiviana(await comoRequest(req, url))
+      if (respuesta) return volcar(res, respuesta)
+    }
+
+    /*
+     * Todo lo demás pide sesión, con una excepción: `/health` queda abierto
+     * porque es lo que se mira desde afuera para saber si el servicio está
+     * sano, y no tiene sesión que ofrecer ni dato que filtrar.
+     */
+    if (!(await autorizado(req))) {
       return json(401, { error: 'No autorizado' })
     }
 
@@ -450,21 +487,14 @@ const server = createServer(async (req, res) => {
        * calculada y quien la pidió no tiene por qué esperar a que se guarde. Si
        * no se pudo guardar, la próxima vez se calcula de nuevo y listo.
        */
-      void supabase.storage
-        .from(BUCKET)
-        .upload(ruta, JSON.stringify(onda), {
+      enSegundoPlano(
+        supabase.storage.from(BUCKET).upload(ruta, JSON.stringify(onda), {
           contentType: 'application/json',
           upsert: true,
-        })
-        .catch(() => {})
+        }),
+      )
 
       return json(200, onda)
-    }
-
-    if (url.pathname === '/img' && req.method === 'GET') {
-      const u = url.searchParams.get('u')
-      if (!u) return json(400, { error: 'Falta el parámetro u' })
-      return proxyImage(res, u, req)
     }
 
     if (url.pathname === '/home' && req.method === 'GET') {
@@ -515,49 +545,6 @@ const server = createServer(async (req, res) => {
     }
 
     /*
-     * Las canciones de una lista de Spotify, por su enlace.
-     *
-     * Va por el server y no por el cliente por dos razones: la página de embed
-     * no manda cabeceras de CORS —el navegador no la puede leer— y desde el
-     * teléfono tampoco hay forma de poner un User-Agent creíble. Acá además
-     * queda un solo lugar donde arreglar el parseo el día que Spotify cambie la
-     * página.
-     */
-    if (url.pathname === '/spotify' && req.method === 'GET') {
-      const enlace = url.searchParams.get('url')?.trim()
-      if (!enlace) return json(400, { error: 'Falta el parámetro url' })
-      try {
-        return json(200, await leerLista(enlace))
-      } catch (e) {
-        // El texto de estos errores está escrito para mostrarse tal cual: dicen
-        // qué hacer («ponela pública un momento»), no qué falló por dentro.
-        return json(422, { error: e instanceof Error ? e.message : 'No se pudo leer la lista' })
-      }
-    }
-
-    /*
-     * Canciones sueltas de Spotify, por sus ids.
-     *
-     * Es la salida al tope de 100 de la página de una lista, y también a las
-     * privadas: seleccionar todo y copiar en Spotify deja un link por canción,
-     * y cada uno tiene su propio embed. El cliente manda de a tandas para poder
-     * mostrar avance.
-     */
-    if (url.pathname === '/spotify/canciones' && req.method === 'POST') {
-      const body = (await readJson(req)) as { ids?: unknown }
-      const ids = body.ids
-      if (!Array.isArray(ids) || !ids.length) return json(400, { error: 'Faltan ids' })
-      if (ids.length > 100) return json(413, { error: 'Demasiadas canciones en una tanda' })
-
-      const limpios = ids
-        .filter((id): id is string => typeof id === 'string')
-        .filter((id) => /^[A-Za-z0-9]{22}$/.test(id))
-      if (!limpios.length) return json(400, { error: 'Ningún id válido' })
-
-      return json(200, { pistas: await leerCanciones(limpios) })
-    }
-
-    /*
      * De nombres de Spotify a canciones de YouTube Music.
      *
      * Se pide por lotes chicos y no la lista entera de una: así el cliente
@@ -585,35 +572,6 @@ const server = createServer(async (req, res) => {
       return json(200, { emparejados: await emparejarLote(limpias) })
     }
 
-    if (url.pathname === '/translate' && req.method === 'POST') {
-      const body = (await readJson(req)) as { texts?: unknown; to?: unknown }
-      const to = String(body.to ?? '')
-      const texts = body.texts
-      if (!isLang(to)) return json(400, { error: 'Idioma no permitido' })
-      if (!Array.isArray(texts) || texts.some((t) => typeof t !== 'string')) {
-        return json(400, { error: 'Falta texts' })
-      }
-      // Un tope por las dudas: una letra no pasa de un par de cientos de líneas.
-      if (texts.length > 400) return json(413, { error: 'Demasiadas líneas' })
-
-      return json(200, { texts: await translate(texts as string[], to) })
-    }
-
-    /*
-     * Copia solo la carátula, sin tocar el audio.
-     *
-     * Es para los mensajes anteriores al caché: guardaron una URL del CDN de
-     * Google, que responde 429 cada tanto y deja el disco sin imagen. Pasar por
-     * /resolve funcionaría pero arrastra la comprobación del audio; acá alcanza
-     * con la imagen, y es idempotente.
-     */
-    if (url.pathname === '/artwork' && req.method === 'POST') {
-      const body = (await readJson(req)) as { videoId?: string; url?: string }
-      if (!body.videoId || !body.url) return json(400, { error: 'Faltan videoId y url' })
-      if (!supabase) return json(500, { error: 'Storage no configurado' })
-      return json(200, { path: await cacheImage(supabase, body.url, body.videoId) })
-    }
-
     /*
      * Un cliente con IP residencial aporta el audio que este servidor no pudo
      * bajar — la resolución comunitaria contra la reja anti-bot de datacenter.
@@ -624,6 +582,125 @@ const server = createServer(async (req, res) => {
      * espera, y lo remuxea estricto. Quién lo aportó queda en el log: en una
      * app de conocidos alcanza con poder mirar, pero hay que poder mirar.
      */
+    /*
+     * Las dos mitades de un aporte que **no pasa por acá**.
+     *
+     * `/aportar` recibe los bytes en el cuerpo, y eso tiene un techo: una
+     * función de Vercel en el plan gratis corta el pedido en 4.5 MB, y una
+     * canción de cinco minutos pesa más que eso. El contenedor no tenía ese
+     * límite, así que la mudanza lo trajo de regalo.
+     *
+     * La salida es no mandarlos: el cliente sube el archivo **derecho a
+     * Supabase Storage**, con una URL firmada de un solo uso que le da este
+     * servidor, y después pide que se confirme. Los bytes nunca cruzan Vercel,
+     * que además de saltear el techo es más rápido y no gasta ni ancho de banda
+     * ni segundos de función.
+     *
+     * La verificación no se relaja en nada: lo que se sube cae en una ruta de
+     * **cuarentena** (`aportes/<usuario>/…`) que la app no reproduce nunca —
+     * reproduce `<videoId>.m4a`, y ese nombre lo escribe solamente el servidor,
+     * después de que ffprobe y ffmpeg dijeron que sí. Un archivo que no pasa la
+     * prueba se queda en cuarentena y se borra.
+     *
+     * La ruta la **deriva el servidor** del token de quien pide, y no viene en
+     * el cuerpo: si el cliente pudiera elegirla, «confirmá esta ruta» sería
+     * pedirle al servidor que promueva a nombre canónico cualquier objeto del
+     * bucket. Derivada, un cliente solo puede confirmar lo suyo.
+     */
+    if (url.pathname === '/aportar/url' && req.method === 'POST') {
+      if (!supabase) return json(500, { error: 'Storage no configurado' })
+      const body = (await readJson(req)) as { videoId?: string }
+      const videoId = body.videoId ?? ''
+      if (!/^[\w-]{11}$/.test(videoId)) return json(400, { error: 'videoId inválido' })
+
+      /* Si ya está, no hay nada que subir: el cliente se ahorra los megas. */
+      const destino = `${videoId}.m4a`
+      const { data: existe } = await supabase.storage.from(BUCKET).list('', { search: destino })
+      if (existe?.some((f) => f.name === destino)) {
+        return json(200, { cached: true, path: destino })
+      }
+
+      const ruta = rutaDeCuarentena(await quienEs(req), videoId)
+      /* `upsert` para que un reintento no rebote contra su propio intento
+         anterior: es la cuarentena de esta persona para esta canción, y lo que
+         vale es el último. */
+      const { data, error } = await supabase.storage
+        .from(BUCKET)
+        .createSignedUploadUrl(ruta, { upsert: true })
+      if (error || !data?.signedUrl) {
+        return json(500, { error: `No se pudo preparar la subida: ${error?.message ?? 'sin URL'}` })
+      }
+      return json(200, { cached: false, ruta, url: data.signedUrl, maxBytes: APORTE_MAX_BYTES })
+    }
+
+    if (url.pathname === '/aportar/confirmar' && req.method === 'POST') {
+      if (!supabase) return json(500, { error: 'Storage no configurado' })
+      const body = (await readJson(req)) as {
+        videoId?: string
+        durationMs?: number
+        artworkUrl?: string
+      }
+      const videoId = body.videoId ?? ''
+      if (!/^[\w-]{11}$/.test(videoId)) return json(400, { error: 'videoId inválido' })
+
+      const destino = `${videoId}.m4a`
+      const ruta = rutaDeCuarentena(await quienEs(req), videoId)
+      const artworkP = cacheImage(supabase, body.artworkUrl, videoId)
+      const limpiar = () => enSegundoPlano(supabase.storage.from(BUCKET).remove([ruta]))
+
+      /* Idempotente, igual que `/aportar`: si otro lo aportó mientras este
+         cliente subía, vale lo guardado y la cuarentena se tira. */
+      const { data: existe } = await supabase.storage.from(BUCKET).list('', { search: destino })
+      if (existe?.some((f) => f.name === destino)) {
+        limpiar()
+        return json(200, {
+          path: destino,
+          artworkPath: await artworkP,
+          cached: true,
+          durationMs: body.durationMs ?? null,
+        })
+      }
+
+      const { data: bajado, error: eBajar } = await supabase.storage.from(BUCKET).download(ruta)
+      if (eBajar || !bajado) {
+        return json(404, { error: 'No llegó ningún archivo para confirmar' })
+      }
+      const crudo = Buffer.from(await bajado.arrayBuffer())
+      if (crudo.length > APORTE_MAX_BYTES) {
+        limpiar()
+        return json(413, { error: 'El aporte no puede pasar de 40 MB' })
+      }
+      if (crudo.length < 100_000) {
+        limpiar()
+        return json(422, { error: 'Demasiado chico para ser una canción' })
+      }
+
+      try {
+        const listo = await prepararAporte(crudo, body.durationMs ?? null)
+        const { error } = await supabase.storage
+          .from(BUCKET)
+          .upload(destino, listo.bytes, { contentType: 'audio/mp4', upsert: false })
+        if (error && !/already exists|duplicate/i.test(error.message)) {
+          return json(500, { error: `No se pudo guardar: ${error.message}` })
+        }
+        console.log(
+          `[aporta] ${videoId} (${listo.bytes.length}b, ${listo.durationMs}ms) por ${await quienEs(req)}`,
+        )
+        return json(200, {
+          path: destino,
+          artworkPath: await artworkP,
+          cached: false,
+          durationMs: listo.durationMs,
+        })
+      } catch (e) {
+        console.warn(`[aporta] ${videoId} rechazado: ${(e as Error).message}`)
+        return json(422, { error: 'El audio aportado no pasó la verificación.' })
+      } finally {
+        /* Pase lo que pase, la cuarentena no se queda ocupando el bucket. */
+        limpiar()
+      }
+    }
+
     if (url.pathname === '/aportar' && req.method === 'POST') {
       if (!supabase) return json(500, { error: 'Storage no configurado' })
       const videoId = url.searchParams.get('videoId') ?? ''
@@ -755,6 +832,58 @@ const server = createServer(async (req, res) => {
      * la app que no viene de YouTube: se valida con ffprobe, se leen etiquetas
      * y tapa embebida, y se guarda tal cual (ver `propia.ts`).
      */
+    /*
+     * Una canción del disco, por el mismo camino que un aporte y por el mismo
+     * motivo: un FLAC largo son ochenta megas y el cuerpo de una función corta
+     * mucho antes. Sube derecho a Storage y después se confirma.
+     *
+     * La cuarentena va aparte de la del aporte (`propias/…`) porque lo que se
+     * verifica es otra cosa: acá no hay catálogo contra el cual comparar, se
+     * mira que sea audio reproducible y se leen sus etiquetas (ver `propia.ts`).
+     */
+    if (url.pathname === '/propia/url' && req.method === 'POST') {
+      if (!supabase) return json(500, { error: 'Storage no configurado' })
+      const body = (await readJson(req)) as { nombre?: string }
+      const nombre = (body.nombre ?? '').trim()
+      if (!nombre) return json(400, { error: 'Falta el nombre del archivo' })
+
+      const ruta = rutaDePropia(await quienEs(req), nombre)
+      const { data, error } = await supabase.storage
+        .from(BUCKET)
+        .createSignedUploadUrl(ruta, { upsert: true })
+      if (error || !data?.signedUrl) {
+        return json(500, { error: `No se pudo preparar la subida: ${error?.message ?? 'sin URL'}` })
+      }
+      return json(200, { ruta, url: data.signedUrl, maxBytes: PROPIA_MAX_BYTES })
+    }
+
+    if (url.pathname === '/propia/confirmar' && req.method === 'POST') {
+      if (!supabase) return json(500, { error: 'Storage no configurado' })
+      const body = (await readJson(req)) as { nombre?: string }
+      const nombre = (body.nombre ?? '').trim()
+      if (!nombre) return json(400, { error: 'Falta el nombre del archivo' })
+
+      const ruta = rutaDePropia(await quienEs(req), nombre)
+      const limpiar = () => enSegundoPlano(supabase.storage.from(BUCKET).remove([ruta]))
+
+      const { data: bajado, error: eBajar } = await supabase.storage.from(BUCKET).download(ruta)
+      if (eBajar || !bajado) return json(404, { error: 'No llegó ningún archivo.' })
+      const bytes = Buffer.from(await bajado.arrayBuffer())
+      if (bytes.length > PROPIA_MAX_BYTES) {
+        limpiar()
+        return json(413, { error: 'El archivo es demasiado grande (80 MB como mucho).' })
+      }
+      if (!bytes.length) {
+        limpiar()
+        return json(400, { error: 'No llegó ningún archivo.' })
+      }
+      try {
+        return json(200, await subirPropia(supabase, BUCKET, bytes, nombre))
+      } finally {
+        limpiar()
+      }
+    }
+
     if (url.pathname === '/propia' && req.method === 'POST') {
       if (!supabase) return json(500, { error: 'Storage no configurado' })
       const nombre = url.searchParams.get('nombre') ?? 'audio'
@@ -774,7 +903,9 @@ const server = createServer(async (req, res) => {
     console.error('[flora-music]', e)
     return json(502, { error: (e as Error).message })
   }
-})
+}
+
+const server = createServer(manejador)
 
 /*
  * Se devuelve solo el `path`, nunca una URL.
@@ -822,4 +953,17 @@ function readJson(req: import('node:http').IncomingMessage): Promise<unknown> {
   })
 }
 
-server.listen(PORT, () => console.log(`[flora-music] escuchando en :${PORT}`))
+/*
+ * Escuchar un puerto solo cuando **esto** es el programa que se arrancó.
+ *
+ * En el contenedor el arranque es `node dist/index.js` y hay que escuchar. En
+ * Vercel este archivo lo *importa* `api/todo.ts`, y ahí abrir un puerto no
+ * sirve para nada: la plataforma invoca al manejador directo. Sin esta guarda,
+ * cada instancia de la función levantaría un servidor que nadie va a visitar.
+ */
+const esElPrograma =
+  Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href
+
+if (esElPrograma) {
+  server.listen(PORT, () => console.log(`[flora-music] escuchando en :${PORT}`))
+}

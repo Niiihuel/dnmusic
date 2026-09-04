@@ -2530,6 +2530,8 @@ export default function Home() {
                   },
                 })
               }
+              onOpenArtist={(id, name) => go({ kind: 'artist', id, name })}
+              onOpenGustos={() => go({ kind: 'gustos' })}
               onPlaySong={(item) => void playSearchResult(homeItemAsResult(item))}
               menuForSong={(item) => menuForTrack(homeItemAsResult(item))}
               pendingId={addingTrack}

@@ -88,3 +88,35 @@ habría que reemplazarla por el embed de Spotify o el IFrame de YouTube.
 Ver `SongSnippet` en `src/models/message.ts`. Se guarda dentro del documento del
 mensaje, en el campo `song`. Las reglas de Firestore usan `hasAll` (no
 `hasOnly`) en el `create`, así que el campo extra no requiere tocarlas.
+
+## El inicio es de cada persona
+
+La portada de YouTube Music es la misma para todo el mundo, y hasta acá era
+casi todo el inicio. Ahora el inicio se arma desde **tu historial** (`plays`,
+que desde la migración `escuchas_con_tapa` guarda también la tapa y la
+colección que sonaba), en este orden y como en Spotify:
+
+1. El saludo por la hora, con tu nombre.
+2. La grilla de accesos: las colecciones que **usaste** últimamente —tus
+   listas, tus mixes, la radio— más «Tus me gusta». No son las listas que
+   tenés sino las que sonaron; salen de `origenesRecientes`.
+3. «Seguir escuchando»: lo último que sonó, sin repetir (`ultimasEscuchas`).
+4. «Hecho para vos»: la radio y los mixes de siempre.
+5. «Tus artistas»: los que más tiempo sonaron (`artistasRecientes`), con la
+   tapa de la canción suya que más escuchaste como cara.
+6. «Porque escuchaste X»: los parecidos de tu más escuchado, que publica
+   YouTube en su ficha («Fans might also like»). Ninguna inferencia propia.
+7. Las filas de tus géneros y, al final, la portada de YouTube Music.
+
+**Todo carga de una vez.** `useInicio` (en `src/ui/HomeFeed.tsx`) lanza los
+nueve pedidos en paralelo, espera a todos —con un tope de doce segundos por
+pedido, después del cual esa fila va vacía— y recién entonces dibuja la
+portada entera. Antes cada fila aparecía cuando llegaba y la pantalla se
+armaba a saltos. Cada sección se calla si no tiene con qué: una cuenta nueva ve
+el saludo y la portada.
+
+**Todo tiene tapa.** Los mixes toman la carátula de tus corazones y tus
+listas, y si el artista entró solo por tiempo escuchado, la del historial
+(`conTapa`). Las escuchas viejas se rellenaron con la copia del bucket
+`artwork` en la misma migración. Y `proxiedImage` deja pasar directo lo que no
+es de Google: una tapa de nuestro Storage no necesita el proxy.

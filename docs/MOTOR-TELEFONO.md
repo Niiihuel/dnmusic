@@ -5,7 +5,7 @@ servidor**.
 
 ## Por qué existe
 
-YouTube le niega el audio a las IPs de datacenter: a la de Railway le contesta
+YouTube le niega el audio a las IPs de datacenter: a la del servidor le contesta
 `Sign in to confirm you're not a bot` mientras cualquier IP de casa resuelve sin
 drama. La salida que había era comunitaria — la app de escritorio baja el tema
 con la IP de esa compu y lo aporta al bucket, y a partir de ahí le suena a

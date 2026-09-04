@@ -32,6 +32,7 @@ import {
   type LyricLine,
 } from '../../src/services/music'
 import { contactLabel } from '../../src/services/contacts'
+import { formatMessageDate } from '../../src/ui/MessageCard'
 import {
   ICON_COLOR,
   IconClose,
@@ -275,12 +276,7 @@ export default function MessageStory() {
             </Text>
             {message.createdAt ? (
               <Text className="text-muted-foreground text-[11px]">
-                {new Intl.DateTimeFormat('es-AR', {
-                  day: 'numeric',
-                  month: 'long',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                }).format(message.createdAt)}
+                {formatMessageDate(message.createdAt, true)}
               </Text>
             ) : null}
           </View>

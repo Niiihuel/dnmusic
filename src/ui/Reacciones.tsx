@@ -44,7 +44,7 @@ function Tapa({ uri, size }: { uri: string | null; size: number }) {
  * lo que se dice sobre una canción — que está buena, que sorprende, que
  * emociona, que da risa, que es un temazo, que la conocés.
  */
-const EMOJIS = ['🔥', '💜', '😭', '😂', '🎧', '👀'] as const
+export const EMOJIS = ['🔥', '💜', '😭', '😂', '🎧', '👀'] as const
 
 /**
  * Qué está escuchando esta persona, con los emojis para decírselo.

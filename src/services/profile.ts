@@ -1,4 +1,5 @@
 import { getSupabase } from '../lib/supabase'
+import { temaDe, type Tema } from '../lib/tema'
 
 /**
  * Perfil propio: usuario, nombre visible y foto.
@@ -51,6 +52,11 @@ export type Profile = {
   bannerEncuadre: Encuadre | null
   /** El marco dibujado alrededor de la foto; null = ninguno. Ver `ui/Marco`. */
   marco: string | null
+  /**
+   * El tema del mosaico entero: lo heredan las vitrinas que no eligen el
+   * suyo. `null` es el vidrio de siempre. Ver `lib/tema`.
+   */
+  tema: Tema | null
 }
 
 /**
@@ -63,8 +69,13 @@ export type Profile = {
  * `escala` 1 es «cubrir», que es como se dibujaba antes de que esto existiera;
  * `x` e `y` corren la imagen en fracciones del lado del recuadro. Con `null`
  * entero se dibuja cubriendo y centrado, o sea: lo de siempre.
+ *
+ * `rotacion` va en grados y es **opcional**: ausente vale 0, así todo encuadre
+ * guardado antes de que existiera se sigue leyendo igual y no hay que migrar
+ * nada. Gira la imagen sobre su propio centro, después de agrandarla y
+ * correrla; es la última capa de la misma cuenta (`ui/Encuadre`).
  */
-export type Encuadre = { x: number; y: number; escala: number }
+export type Encuadre = { x: number; y: number; escala: number; rotacion?: number }
 
 type ProfileRow = {
   user_id?: unknown
@@ -78,6 +89,7 @@ type ProfileRow = {
   avatar_encuadre?: unknown
   banner_encuadre?: unknown
   marco?: unknown
+  tema?: unknown
 }
 
 /** Un encuadre del jsonb, o null. Un número raro lo descarta entero: medio
@@ -85,10 +97,14 @@ type ProfileRow = {
 function encuadreDe(v: unknown): Encuadre | null {
   const r = v as Record<string, unknown> | null
   if (!r || typeof r !== 'object') return null
-  const { x, y, escala } = r
+  const { x, y, escala, rotacion } = r
   if (typeof x !== 'number' || typeof y !== 'number' || typeof escala !== 'number') return null
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(escala)) return null
-  return { x, y, escala }
+  /* La rotación solo viaja si es un número de verdad y distinto de cero: un
+     encuadre sin girar se guarda con los tres números de siempre. */
+  return typeof rotacion === 'number' && Number.isFinite(rotacion) && rotacion !== 0
+    ? { x, y, escala, rotacion }
+    : { x, y, escala }
 }
 
 function profileFromRow(row: ProfileRow | null | undefined): Profile | null {
@@ -105,6 +121,7 @@ function profileFromRow(row: ProfileRow | null | undefined): Profile | null {
     avatarEncuadre: encuadreDe(row.avatar_encuadre),
     bannerEncuadre: encuadreDe(row.banner_encuadre),
     marco: typeof row.marco === 'string' && row.marco ? row.marco : null,
+    tema: temaDe(row.tema),
   }
 }
 
@@ -136,6 +153,8 @@ export async function saveMyProfile(changes: {
   bannerEncuadre?: Encuadre | null
   /** La cadena vacía lo saca, como el resto de los textos de esta función. */
   marco?: string
+  /** `null` vuelve al vidrio; no mandarlo lo deja. Viaja como los encuadres. */
+  tema?: Tema | null
 }): Promise<Profile> {
   const { data, error } = await getSupabase().rpc('update_my_profile', {
     p_username: changes.username ?? null,
@@ -153,6 +172,7 @@ export async function saveMyProfile(changes: {
     p_avatar_encuadre: encuadreParaLaBase(changes.avatarEncuadre),
     p_banner_encuadre: encuadreParaLaBase(changes.bannerEncuadre),
     p_marco: changes.marco ?? null,
+    p_tema: changes.tema === undefined ? null : changes.tema === null ? 'BORRAR' : changes.tema,
   })
   if (error) throw error
   const profile = profileFromRow(Array.isArray(data) ? data[0] : data)

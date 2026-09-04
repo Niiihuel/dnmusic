@@ -1,4 +1,5 @@
 import { getSupabase } from '../lib/supabase'
+import type { PlaybackOrigin } from '../state/playback'
 
 /**
  * El historial de escuchas.
@@ -9,6 +10,12 @@ import { getSupabase } from '../lib/supabase'
  *
  * Nadie lee el historial de otro; lo que se comparte son los agregados. Un
  * perfil público no convierte tu historial en público.
+ *
+ * Desde el inicio personalizado el historial también **se dibuja**: «Seguir
+ * escuchando», «Volver a escuchar» y «Tus artistas» salen de acá. Por eso cada
+ * fila guarda además la tapa y la colección que sonaba (ver la migración
+ * `escuchas_con_tapa`): es lo que hace que el inicio de cada persona sea el
+ * suyo, sin ningún modelo en el medio — el mismo criterio que la radio.
  */
 
 /**
@@ -25,6 +32,10 @@ export type Escucha = {
   title: string
   artist: string
   artistId?: string | null
+  artworkUrl?: string | null
+  artworkPath?: string | null
+  /** La colección que sonaba: una lista, un mix, la radio. `null` si era suelta. */
+  origen?: PlaybackOrigin | null
   /** Milisegundos efectivamente escuchados. */
   ms: number
 }
@@ -50,9 +61,159 @@ export async function anotarEscucha(escucha: Escucha): Promise<void> {
       title: escucha.title,
       artist: escucha.artist,
       artist_id: escucha.artistId ?? null,
+      artwork_url: escucha.artworkUrl || null,
+      artwork_path: escucha.artworkPath || null,
+      origen_id: escucha.origen?.id ?? null,
+      origen_nombre: escucha.origen?.name ?? null,
       ms: Math.round(escucha.ms),
     })
     .then(undefined, () => undefined)
+}
+
+/** Una fila del historial propio, tal como se dibuja. */
+export type EscuchaReciente = {
+  videoId: string
+  title: string
+  artist: string
+  artistId: string | null
+  artworkUrl: string | null
+  artworkPath: string | null
+  /** Cuándo fue la última vez. */
+  at: string
+}
+
+type FilaPlay = {
+  video_id: string
+  title: string
+  artist: string
+  artist_id: string | null
+  artwork_url: string | null
+  artwork_path: string | null
+  origen_id: string | null
+  origen_nombre: string | null
+  ms: number
+  at: string
+}
+
+/**
+ * Las últimas filas del historial propio, crudas y en orden.
+ *
+ * Una sola consulta para todo lo que el inicio deriva de acá —canciones,
+ * colecciones, artistas—: son tres preguntas sobre las mismas ~150 filas, y
+ * hacer tres viajes por lo mismo sería pagar tres veces la latencia.
+ */
+async function ultimasFilas(limite = 150): Promise<FilaPlay[]> {
+  const { data } = await getSupabase().auth.getUser()
+  const me = data.user?.id
+  if (!me) return []
+  const { data: filas, error } = await getSupabase()
+    .from('plays')
+    .select('video_id, title, artist, artist_id, artwork_url, artwork_path, origen_id, origen_nombre, ms, at')
+    .eq('owner_id', me)
+    .order('at', { ascending: false })
+    .limit(limite)
+  if (error) throw error
+  return (filas ?? []) as FilaPlay[]
+}
+
+/**
+ * Lo que escuchaste últimamente, sin repetir canción y de la más reciente a
+ * la más vieja. Es «Seguir escuchando» y la lista del buscador del perfil.
+ */
+export async function ultimasEscuchas(cuantas = 12): Promise<EscuchaReciente[]> {
+  const vistas = new Set<string>()
+  const out: EscuchaReciente[] = []
+  for (const f of await ultimasFilas()) {
+    if (vistas.has(f.video_id)) continue
+    vistas.add(f.video_id)
+    out.push({
+      videoId: f.video_id,
+      title: f.title,
+      artist: f.artist,
+      artistId: f.artist_id,
+      artworkUrl: f.artwork_url,
+      artworkPath: f.artwork_path,
+      at: f.at,
+    })
+    if (out.length >= cuantas) break
+  }
+  return out
+}
+
+/** Una colección que sonó: de qué era y una tapa de una canción suya. */
+export type OrigenReciente = {
+  id: string
+  nombre: string
+  artworkUrl: string | null
+  artworkPath: string | null
+}
+
+/**
+ * Las colecciones que sonaron últimamente —listas, mixes, la radio—, una vez
+ * cada una. Es «Volver a escuchar»: lo que Spotify pone en la grilla de
+ * arriba, que no son las listas que tenés sino las que **usás**.
+ */
+export async function origenesRecientes(cuantos = 8): Promise<OrigenReciente[]> {
+  const vistos = new Set<string>()
+  const out: OrigenReciente[] = []
+  for (const f of await ultimasFilas()) {
+    if (!f.origen_id || vistos.has(f.origen_id)) continue
+    vistos.add(f.origen_id)
+    out.push({
+      id: f.origen_id,
+      nombre: f.origen_nombre ?? '',
+      artworkUrl: f.artwork_url,
+      artworkPath: f.artwork_path,
+    })
+    if (out.length >= cuantos) break
+  }
+  return out
+}
+
+/** Un artista tuyo, por cuánto lo escuchaste en estas semanas. */
+export type ArtistaReciente = {
+  artistId: string
+  nombre: string
+  ms: number
+  /** La tapa de la canción suya que más sonó: es la cara que le conocés. */
+  artworkUrl: string | null
+  artworkPath: string | null
+}
+
+/**
+ * Los artistas que más escuchaste en las últimas filas, del más al menos.
+ *
+ * Es «Tus artistas», y el ancla de «Porque escuchaste…». Se suma tiempo real
+ * y no cantidad de veces, como todo el historial: diez canciones salteadas a
+ * los treinta segundos no pueden pesar más que un disco escuchado entero.
+ */
+export async function artistasRecientes(cuantos = 8): Promise<ArtistaReciente[]> {
+  const porArtista = new Map<string, ArtistaReciente & { tapaMs: number }>()
+  for (const f of await ultimasFilas()) {
+    if (!f.artist_id) continue
+    const previo = porArtista.get(f.artist_id)
+    if (previo) {
+      previo.ms += f.ms
+      if (f.ms > previo.tapaMs && (f.artwork_url || f.artwork_path)) {
+        previo.tapaMs = f.ms
+        previo.artworkUrl = f.artwork_url
+        previo.artworkPath = f.artwork_path
+      }
+    } else {
+      porArtista.set(f.artist_id, {
+        artistId: f.artist_id,
+        nombre: f.artist,
+        ms: f.ms,
+        artworkUrl: f.artwork_url,
+        artworkPath: f.artwork_path,
+        tapaMs: f.ms,
+      })
+    }
+  }
+  return [...porArtista.values()]
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, cuantos)
+    .map(({ tapaMs: _tapaMs, ...a }) => a)
 }
 
 export type EstadisticasPerfil = {

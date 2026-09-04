@@ -82,7 +82,7 @@ export function Hoja({
   const ancho = useWindowDimensions().width >= ESCRITORIO_PX
   if (!ES_WEB) return <>{children}</>
   if (ancho) return <Modal medida={medida}>{children}</Modal>
-  return <Sabana>{children}</Sabana>
+  return <Sabana medida={medida}>{children}</Sabana>
 }
 
 /**
@@ -184,8 +184,13 @@ function Modal({ children, medida }: { children: ReactNode; medida: MedidaHoja }
  * velo la oscurece a medida que sube, y tocar la franja descubierta la guarda
  * por donde vino. Apiladas, cada una trae su propio velo — lo de atrás se
  * oscurece un paso más por nivel, como los sheets de UIKit.
+ *
+ * **Con `medida="contenido"` mide lo que trae adentro**, como el
+ * `fitToContents` de iOS: una hoja de tres opciones no tiene por qué taparlo
+ * todo, y la franja de app que queda a la vista es lo que la hace leerse como
+ * una hoja y no como otra pantalla. La llena sigue midiendo hasta el tope.
  */
-function Sabana({ children }: { children: ReactNode }) {
+function Sabana({ children, medida }: { children: ReactNode; medida: MedidaHoja }) {
   const router = useRouter()
   const { height } = useWindowDimensions()
   /*
@@ -243,7 +248,9 @@ function Sabana({ children }: { children: ReactNode }) {
             left: 0,
             right: 0,
             bottom: 0,
-            top: tope,
+            /* Llena: de un tope fijo hasta abajo. A medida: crece desde abajo
+               con su contenido y no pasa del mismo tope. */
+            ...(medida === 'llena' ? { top: tope } : { maxHeight: height - tope }),
             borderTopLeftRadius: 24,
             borderTopRightRadius: 24,
             overflow: 'hidden',

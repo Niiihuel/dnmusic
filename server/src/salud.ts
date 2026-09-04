@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 /**
  * Health check del servicio.
  *
- * `/health` es lo que mira Railway para saber si el contenedor está vivo, y un
+ * `/health` es lo que se mira para saber si el servicio está sano, y un
  * `{ ok: true }` pelado no decía nada: el proceso podía estar corriendo con la
  * base inalcanzable y seguir «sano». El chequeo vive en una función aparte para
  * que se pueda llamar desde una prueba sin levantar el HTTP entero.
@@ -46,7 +46,7 @@ async function versionActual(): Promise<string> {
  * y pasa por PostgREST **y** Postgres, que es exactamente lo que puede romperse.
  *
  * Con timeout corto a propósito: un health check que cuelga es peor que uno que
- * contesta «mal» — Railway reinicia ante lo segundo, ante lo primero no hace
+ * contesta «mal» — un orquestador reinicia ante lo segundo, ante lo primero no hace
  * nada mientras el servicio sigue muerto por dentro.
  */
 export async function chequearSalud(

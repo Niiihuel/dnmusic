@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { mintSessionToken, mintVideoToken, tokensSinRespaldo } from './potoken.js'
 import { UA_NAVEGADOR, fetchYt } from './salida.js'
+import { FFMPEG, FFPROBE } from './binarios.js'
 
 const run = promisify(execFile)
 
@@ -33,7 +34,7 @@ async function remux(bytes: Buffer): Promise<Buffer> {
     const entrada = join(dir, 'in.m4a')
     const salida = join(dir, 'out.m4a')
     await writeFile(entrada, bytes)
-    await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', entrada, '-c', 'copy', '-movflags', '+faststart', salida])
+    await run(FFMPEG, ['-y', '-loglevel', 'error', '-i', entrada, '-c', 'copy', '-movflags', '+faststart', salida])
     return await readFile(salida)
   } catch {
     return bytes
@@ -86,7 +87,7 @@ let clientPromise: Promise<Innertube> | null = null
 /**
  * Cookie de una sesión de YouTube, opcional (`YT_COOKIE` en el entorno).
  *
- * Es la salida contra el anti-bot de datacenter: a la IP de Railway, YouTube
+ * Es la salida contra el anti-bot de datacenter: a una IP de datacenter, YouTube
  * le responde `LOGIN_REQUIRED — Sign in to confirm you're not a bot` a
  * **todos** los clientes, con o sin PO token — la IP entera está marcada, y
  * ningún truco de cliente lo destraba. Con una sesión iniciada, el pedido vale
@@ -95,7 +96,7 @@ let clientPromise: Promise<Innertube> | null = null
  * Cómo conseguirla: entrar a music.youtube.com con una cuenta **de descarte**
  * (no la personal: YouTube puede marcarla), DevTools → Network → cualquier
  * pedido a music.youtube.com → copiar la cabecera `cookie` entera y pegarla en
- * la variable `YT_COOKIE` del servicio en Railway.
+ * la variable `YT_COOKIE` del servicio desplegado.
  */
 const YT_COOKIE = process.env.YT_COOKIE
 
@@ -105,7 +106,7 @@ const YT_COOKIE = process.env.YT_COOKIE
  * La sesión lleva un PO token **congelado al crearla**, y el integrity token
  * del que sale vence a las ~12 horas. El cache de acá era para siempre, y esa
  * diferencia era EL bug de producción: el servidor local se reinicia a cada
- * rato y nunca lo ve, pero en Railway el proceso vive días — a las doce horas
+ * rato y nunca lo ve, pero en un contenedor el proceso vive días — a las doce horas
  * el token moría, YouTube respondía `LOGIN_REQUIRED` a todo, y cada /resolve
  * fallaba con «Sin formatos de audio» hasta el siguiente redeploy. Seis horas
  * deja margen de sobra.
@@ -179,6 +180,33 @@ async function refrescarVersionDeMusica(yt: Innertube): Promise<void> {
   }
 }
 
+/**
+ * El PO token de la sesión, o nada.
+ *
+ * Antes se acuñaba con un `await` pelado, así que si BotGuard no podía —jsdom
+ * ausente, el challenge caído— la excepción se llevaba puesta la creación del
+ * cliente, y con ella la búsqueda, la portada y los álbumes. Nada de eso
+ * necesita el token: está medido contra el despliegue de Vercel, donde jsdom
+ * no carga y los metadatos salen igual.
+ *
+ * Que falte no es gratis: sin token de sesión, `/resolve` le pide el audio a
+ * YouTube sin prueba de origen y lo más probable es que le contesten
+ * `LOGIN_REQUIRED`. Pero esa es exactamente la respuesta que ya da desde una
+ * IP de datacenter **con** token —medido: los siete clientes rebotan, incluidos
+ * iOS y ANDROID_VR, que ni pasan por BotGuard—, así que perder el token no
+ * cambia el final: cambia quién se entera. Con esto el error que llega es el de
+ * YouTube, que `motivoParaLaApp` sabe traducir a una frase, y no un
+ * `JSDOM is not a constructor` en la cara de quien tocó play.
+ */
+async function tokenDeSesion(visitorData: string): Promise<string | undefined> {
+  try {
+    return await mintSessionToken(visitorData)
+  } catch (e) {
+    console.warn(`[resolve] sesión sin PO token: ${(e as Error).message}`)
+    return undefined
+  }
+}
+
 async function getClient(): Promise<Innertube> {
   if (clientPromise && Date.now() < clientExpiraEn) return clientPromise
   ensurePlatform()
@@ -200,7 +228,7 @@ async function getClient(): Promise<Innertube> {
 
     const yt = await Innertube.create({
       client_type: ClientType.MUSIC,
-      po_token: await mintSessionToken(visitorData),
+      po_token: await tokenDeSesion(visitorData),
       visitor_data: visitorData,
       cookie: YT_COOKIE,
       retrieve_player: true,
@@ -384,7 +412,7 @@ export async function peaks(
     ? ['-ss', (tramo.desdeMs / 1000).toFixed(3), '-t', (tramo.durMs / 1000).toFixed(3)]
     : []
   const { stdout } = await run(
-    'ffmpeg',
+    FFMPEG,
     [
       '-loglevel', 'error',
       ...recorte,
@@ -486,13 +514,19 @@ const CHUNK_BYTES = 1 << 20
  * audio.
  *
  * Con MUSIC solo alcanzaba en desarrollo y no en producción: a la IP de un
- * datacenter (Railway), YouTube le responde al cliente MUSIC **sin
- * `streaming_data`** —su anti-bot— y todos los /resolve morían con «Sin
- * formatos de audio». En la app eso era «no puedo escuchar ni agregar ninguna
+ * datacenter, YouTube le responde al cliente MUSIC **sin `streaming_data`**
+ * —su anti-bot— y todos los /resolve morían con «Sin formatos de audio». En la app eso era «no puedo escuchar ni agregar ninguna
  * recomendación» y el autoplay mudo al final de la lista, mientras que lo ya
  * cacheado en Storage seguía sonando como si nada. Los clientes de TV, iOS y
  * VR pasan por otras rejas y alguno suele sobrevivir; el recorrido con caída
  * es lo mismo que hacen yt-dlp y zuno.
+ *
+ * Desde el despliegue ya no sobrevive ninguno. Medido contra Vercel: los siete
+ * contestan «Sign in to confirm you're not a bot», iOS y ANDROID_VR incluidos,
+ * que ni siquiera pasan por BotGuard. Por eso la caída sigue escrita —desde
+ * una IP de casa alguno gana, y es lo que hace el resolutor del escritorio y
+ * el del teléfono— pero en el servidor desplegado la lista se recorre entera
+ * para terminar contando por qué no se pudo.
  */
 const CLIENTES_RESOLVE = [
   'YTMUSIC',
@@ -883,7 +917,7 @@ export async function prepararAporte(
     const entrada = join(dir, 'in.m4a')
     await writeFile(entrada, crudo)
 
-    const { stdout } = await run('ffprobe', [
+    const { stdout } = await run(FFPROBE, [
       '-v', 'error',
       '-show_entries', 'format=format_name,duration:stream=codec_type,codec_name',
       '-of', 'json',
@@ -916,7 +950,7 @@ export async function prepararAporte(
     }
 
     const salida = join(dir, 'out.m4a')
-    await run('ffmpeg', [
+    await run(FFMPEG, [
       '-y', '-loglevel', 'error',
       '-i', entrada,
       '-c', 'copy', '-movflags', '+faststart',

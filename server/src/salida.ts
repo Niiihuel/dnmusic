@@ -5,9 +5,10 @@ import { ProxyAgent, type Dispatcher } from 'undici'
  * Por dónde sale el tráfico hacia YouTube, y con qué cara.
  *
  * El anti-bot de YouTube es una reja de **reputación de IP**: a la IP de un
- * datacenter (Railway) le contesta `LOGIN_REQUIRED — Sign in to confirm
- * you're not a bot` a todos los clientes, con o sin PO token — está medido y
- * documentado en `youtube.ts`. Las apps que no lo sufren (zuno, cualquier
+ * datacenter le contesta `LOGIN_REQUIRED — Sign in to confirm you're not a
+ * bot` a todos los clientes, con o sin PO token — está medido y documentado en
+ * `youtube.ts`. Medido en Railway primero y en Vercel después, con los siete
+ * clientes rebotando en las dos: no es de un proveedor, es del vecindario. Las apps que no lo sufren (zuno, cualquier
  * reproductor de escritorio) no lo esquivan con código: sus pedidos salen de
  * la IP residencial de quien las usa.
  *

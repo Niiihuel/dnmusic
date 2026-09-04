@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { FFMPEG, FFPROBE } from './binarios.js'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
@@ -6,6 +7,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
+
 
 /*
  * Solo lo que se usa del cliente de Supabase, estructural: atarse al tipo
@@ -75,7 +77,7 @@ export async function subirPropia(
     const entrada = join(dir, `in.${ext}`)
     await writeFile(entrada, bytes)
 
-    const { stdout } = await run('ffprobe', [
+    const { stdout } = await run(FFPROBE, [
       '-v', 'error',
       '-show_entries', 'format=duration:format_tags=title,artist',
       '-of', 'json',
@@ -109,7 +111,7 @@ export async function subirPropia(
     let artworkPath: string | null = null
     try {
       const tapa = join(dir, 'tapa.jpg')
-      await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', entrada, '-an', '-frames:v', '1', tapa])
+      await run(FFMPEG, ['-y', '-loglevel', 'error', '-i', entrada, '-an', '-frames:v', '1', tapa])
       const jpg = await readFile(tapa)
       if (jpg.length) {
         const destino = `propia-${id}.jpg`

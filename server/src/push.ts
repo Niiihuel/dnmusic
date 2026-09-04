@@ -13,7 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * estilo del resto del proyecto, donde cada puerta es una función.
  *
  * Por qué acá y no en un Edge Function: este servidor ya existe, ya tiene la
- * service_role y ya se despliega con `railway up`; un runtime más era una
+ * service_role y ya se despliega junto con el resto; un runtime más era una
  * pieza más que mantener para exactamente el mismo fetch.
  */
 

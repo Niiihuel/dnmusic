@@ -1563,6 +1563,10 @@ export const useManualPlaying = () => useStore(store, (state) => state.manual !=
 export const useUpNextCount = () => useStore(store, (state) => state.upNext.length)
 export const usePlaybackIndex = () => useStore(store, (state) => state.index)
 export const usePlaybackOriginId = () => useStore(store, (state) => state.origin?.id ?? null)
+/** El origen de lo que suena, leído una vez: lo anota el historial al cambiar de tema. */
+export function playbackOrigin(): PlaybackOrigin | null {
+  return store.get().origin
+}
 export const useWantPlay = () => useStore(store, (state) => state.wantPlay)
 
 /**

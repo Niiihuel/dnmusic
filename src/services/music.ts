@@ -16,6 +16,28 @@ import { iniciarResolucion, progresoResolucion, terminarResolucion } from '../st
  */
 
 const MUSIC_API = process.env.EXPO_PUBLIC_MUSIC_API ?? 'http://localhost:8787'
+
+/**
+ * El servicio de música, ahora entero en Vercel.
+ *
+ * Vivió en un contenedor de Railway, y por un tiempo partido: las rutas que no
+ * hablan con YouTube (`/img`, `/translate`, `/spotify`, `/artwork`) se habían
+ * mudado a una función de Vercel y el resto se quedaba allá, así que hubo una
+ * segunda variable para apuntar a cada mitad. Ya no: es un solo origen y una
+ * sola variable.
+ *
+ * El reparto sigue existiendo, pero del lado del servidor y sin que a esto le
+ * importe: son dos funciones detrás de las mismas rutas —una chica para el
+ * proxy de carátulas, que es la de más volumen y se cachea en el CDN, y otra
+ * con youtubei.js y ffmpeg para todo lo demás—. Ver `server/api/`.
+ *
+ * Lo que **no** se mudó es el audio: bajarlo de YouTube desde una IP de
+ * datacenter no funciona, ni en Railway ni en Vercel —los siete clientes
+ * contestan «Sign in to confirm you're not a bot», incluidos los que ni pasan
+ * por BotGuard—. Eso lo resuelve cada aparato con su propia IP y lo aporta al
+ * caché de todos (ver `resolutorDeAca`, más abajo).
+ */
+
 const BUCKET = 'songs'
 
 /**
@@ -143,8 +165,17 @@ export async function fetchArtist(
  */
 export function proxiedImage(url: string): string {
   if (!url) return ''
+  /* Solo lo de Google pasa por el proxy: es el único CDN que corta sin CORS.
+     Una tapa de nuestro Storage —las del historial, las de las listas— se
+     dibuja directo; pasarla por la función era un viaje de más y, con el
+     servicio caído, un cuadrado gris donde había una imagen perfectamente
+     accesible. */
+  if (!SIN_CORS.test(url)) return url
   return `${MUSIC_API}/img?u=${encodeURIComponent(url)}`
 }
+
+/** Los CDN de Google, que responden sin CORS y por eso van por el proxy. */
+const SIN_CORS = /googleusercontent\.com|ggpht\.com|ytimg\.com/
 
 export type HomeItem = {
   /** Qué es: define a dónde lleva al tocarlo. */
@@ -698,10 +729,38 @@ export type PropiaSubida = {
  * sale de YouTube Music — sale de la compu de quien escucha.
  */
 export async function subirCancionPropia(archivo: Blob, nombre: string): Promise<PropiaSubida> {
-  const res = await fetchMusica(`${MUSIC_API}/propia?nombre=${encodeURIComponent(nombre)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/octet-stream' },
+  /*
+   * El archivo sube derecho a Storage, no por el servicio.
+   *
+   * Iba en el cuerpo de un POST a `/propia`, y desde que el servicio es una
+   * función eso tiene techo: el plan gratis corta el pedido en 4.5 MB y acá el
+   * tope es ochenta. El servidor firma una URL de un solo uso, el navegador
+   * sube contra Storage, y recién después el servidor baja el archivo, lo pasa
+   * por ffprobe y le lee las etiquetas — que es lo que siempre hizo, desde el
+   * otro lado.
+   */
+  const permiso = await (async () => {
+    const res = await fetchMusica(`${MUSIC_API}/propia/url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre }),
+    })
+    const d = (await res.json()) as { url?: string; error?: string }
+    if (!res.ok || !d.url) throw new Error(d.error ?? `No se pudo subir (${res.status})`)
+    return d.url
+  })()
+
+  const subida = await fetch(permiso, {
+    method: 'PUT',
+    headers: { 'Content-Type': archivo.type || 'application/octet-stream' },
     body: archivo,
+  })
+  if (!subida.ok) throw new Error(`No se pudo subir el archivo (${subida.status})`)
+
+  const res = await fetchMusica(`${MUSIC_API}/propia/confirmar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre }),
   })
   const data = (await res.json()) as Partial<PropiaSubida> & { error?: string }
   if (!res.ok || data.error || !data.path) {

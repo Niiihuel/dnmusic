@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
-import { Image, Text, View } from 'react-native'
+import { Image, Modal, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { Gesture, GestureDetector, State } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withSequence,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useVideoPlayer, VideoView } from 'expo-video'
 import {
+  anchosDe,
+  countShowcases,
   esVideo,
   ilustracionUrl,
   listShowcases,
@@ -21,7 +25,13 @@ import {
   type Showcase,
   type ShowcaseAncho,
 } from '../services/showcases'
+import type { Tema } from '../lib/tema'
 import { listPlaylists, listPublicPlaylists, type Playlist } from '../services/playlists'
+import {
+  reaccionarAVitrina,
+  reaccionesDeVitrinas,
+  type ReaccionesVitrina,
+} from '../services/reacciones'
 import { useSnippetPlayer } from '../state/player'
 import { avisar } from '../state/aviso'
 import { mensajeError } from '../lib/mensajeError'
@@ -29,11 +39,12 @@ import { fetchStats, type EstadisticasPerfil } from '../services/plays'
 import { useMyProfile } from '../state/session'
 import type { Encuadre } from '../services/profile'
 import { Avatar } from './Avatar'
-import { ES_WEB } from './Glass'
-import { ICON_COLOR, IconManija } from './icons'
+import { ES_WEB, Glass } from './Glass'
 import { estiloEncuadrado } from './Encuadre'
 import { Marco } from './Marco'
-import { Vitrina } from './Vitrina'
+import { Confirmar } from './Confirmar'
+import { EMOJIS } from './Reacciones'
+import { Vitrina, type Redimension } from './Vitrina'
 
 /**
  * El fondo del perfil: la imagen entera, detrás de todo.
@@ -198,13 +209,10 @@ function FondoImagen({ uri, encuadre }: { uri: string; encuadre: Encuadre | null
         <Image
           source={{ uri }}
           resizeMode="cover"
-          style={{
-            ...estiloEncuadrado(caja.w, encuadre),
-            /* El alto se recalcula aparte: el recuadro del fondo es apaisado y
-               `estiloEncuadrado` razona sobre un lado cuadrado. */
-            height: caja.h * encuadre.escala,
-            top: (caja.h - caja.h * encuadre.escala) / 2 + encuadre.y * caja.h,
-          }}
+          /* Con el alto: el recuadro del fondo es apaisado y la cuenta del
+             encuadre necesita la proporción real para saber cuánto acercar
+             una imagen girada. */
+          style={estiloEncuadrado(caja.w, encuadre, caja.h)}
         />
       ) : null}
     </View>
@@ -395,18 +403,27 @@ export function Resumen({
   canciones,
   vitrinas,
   desde,
+  sinEscucha = false,
 }: {
   /** De quién son los números. Los agregados se piden por función. */
   ownerId: string
   listas: number | null
   canciones: number | null
-  vitrinas: number
+  vitrinas: number | null
   desde: string | null
+  /**
+   * Sin los minutos ni el artista: solo los números de la biblioteca.
+   *
+   * En el teléfono la pestaña «Reciente» ya abre con esos dos (ver
+   * `ResumenCorto` en `ui/PestanasPerfil`), y repetirlos al pie de la misma
+   * pestaña era mostrar el mismo dato dos veces en una pantalla.
+   */
+  sinEscucha?: boolean
 }) {
   const [stats, setStats] = useState<EstadisticasPerfil | null>(null)
 
   useEffect(() => {
-    if (!ownerId) return
+    if (!ownerId || sinEscucha) return
     let vivo = true
     fetchStats(ownerId)
       .then((e) => vivo && setStats(e))
@@ -414,7 +431,7 @@ export function Resumen({
     return () => {
       vivo = false
     }
-  }, [ownerId])
+  }, [ownerId, sinEscucha])
 
   return (
     <View className="gap-7">
@@ -426,14 +443,18 @@ export function Resumen({
        * honesto: cero minutos es un dato, no un dato faltante. La raya queda
        * para cuando de verdad no sabemos.
        */}
-      <Dato rotulo="Minutos escuchados" valor={stats?.minutos ?? null} destacado />
-      {stats?.artistaTop ? (
-        <Dato
-          rotulo="Más escuchado"
-          valor={stats.artistaTop}
-          detalle={`${stats.minutosArtistaTop} min`}
-        />
-      ) : null}
+      {sinEscucha ? null : (
+        <>
+          <Dato rotulo="Minutos escuchados" valor={stats?.minutos ?? null} destacado />
+          {stats?.artistaTop ? (
+            <Dato
+              rotulo="Más escuchado"
+              valor={stats.artistaTop}
+              detalle={`${stats.minutosArtistaTop} min`}
+            />
+          ) : null}
+        </>
+      )}
       <Dato rotulo="Listas" valor={listas} />
       <Dato rotulo="Canciones guardadas" valor={canciones} />
       <Dato rotulo="Vitrinas" valor={vitrinas} />
@@ -455,7 +476,7 @@ export function Resumen({
  * imagen que haya puesto cada uno, y una foto clara se come un texto blanco. La
  * sombra no se ve como sombra; se ve como que el texto siempre se lee.
  */
-function Dato({
+export function Dato({
   rotulo,
   valor,
   detalle,
@@ -512,37 +533,108 @@ function mesYAno(iso: string): string {
  * Una columna siempre: en el teléfono porque no entra otra cosa, y en
  * escritorio porque la segunda columna ya la ocupa el resumen. Es el reparto de
  * Steam — las vitrinas mandan, los números acompañan.
+ *
+ * Tiene dos modos, y son los del «Space» de Airbuds. Mirando, las tarjetas
+ * responden a lo suyo: se escucha una canción, se abre una lista. **Armando**
+ * —`editando`— la tarjeta entera pasa a ser una pieza: se arrastra para
+ * reordenar, el «−» la saca, el lápiz la abre y la manija de la esquina la
+ * estira. Es el modo de reordenar de la pantalla de inicio del iPhone, y como
+ * ahí, en el perfil propio se entra manteniendo apretada cualquier pieza.
+ *
+ * En el perfil de **otro** el mismo apretón hace otra cosa: abre la fila de
+ * emojis para dejarle una reacción a esa pieza (`reaccionable`). Es el gesto
+ * del Space de Airbuds, y es el mismo gesto a propósito — mantener apretada
+ * una pieza es «quiero hacer algo con esta», y qué se puede hacer depende de
+ * si es tuya.
  */
 export function Vitrinas({
   ownerId,
+  parentId = null,
   recarga,
   onCambio,
   vacio,
-  /** Solo en el perfil propio: sin esto no aparece la cruz de sacar. */
-  propio = true,
+  editando = false,
+  temaGlobal = null,
+  onEditar,
+  onEntrarEdicion,
   onArrastre,
+  reaccionable = false,
+  onAbrirSubspace,
 }: {
   ownerId: string
+  /**
+   * Qué mosaico: el principal del perfil (`null`) o el de adentro de un
+   * sub-space. Todo lo demás —el orden, el tamaño, las reacciones, el modo de
+   * edición— es igual en los dos; es lo que hace que un sub-space sea un
+   * mosaico de verdad y no una versión chica.
+   */
+  parentId?: string | null
   recarga: number
   onCambio: () => void
   /** Qué mostrar cuando no hay ninguna. */
   vacio?: ReactNode
-  propio?: boolean
+  /** Con los controles puestos. Solo en el perfil propio. */
+  editando?: boolean
+  /** El tema del perfil, que heredan las vitrinas sin tema propio. */
+  temaGlobal?: Tema | null
+  /** El lápiz de una tarjeta: abrir su editor. */
+  onEditar?: (showcase: Showcase) => void
+  /**
+   * Mantener apretada una tarjeta, mirando: entrar a armar.
+   *
+   * Solo lo pasa el perfil propio — en el de otro no hay nada que armar.
+   */
+  onEntrarEdicion?: () => void
   /**
    * Un arrastre empezó o terminó: la pantalla que scrollea lo necesita para
    * congelarse — un ScrollView vivo abajo del dedo se pelea con el gesto.
    */
   onArrastre?: (activo: boolean) => void
+  /**
+   * Mantener apretada una pieza abre la fila de emojis para reaccionarle.
+   *
+   * Lo pasa el perfil ajeno. En el propio no tiene efecto aunque venga: a las
+   * piezas de uno no se les reacciona, y ahí el apretón ya entra a armar.
+   */
+  reaccionable?: boolean
+  /** Tocar un sub-space, mirando: abrir su mosaico. Lo pasan los dos perfiles. */
+  onAbrirSubspace?: (showcase: Showcase) => void
 }) {
   const [vitrinas, setVitrinas] = useState<Showcase[] | null>(null)
   const [listas, setListas] = useState<Playlist[] | null>(null)
+  /*
+   * La que está por sacarse, esperando el «¿seguro?», y cuántas piezas tiene
+   * adentro si es un sub-space: se van con ella (la base las borra en
+   * cascada) y el diálogo tiene que decirlo. `null` mientras se cuentan.
+   */
+  const [porSacar, setPorSacar] = useState<{ v: Showcase; hijas: number | null } | null>(null)
   const player = useSnippetPlayer()
 
   useEffect(() => {
     let vivo = true
-    listShowcases(ownerId)
+    listShowcases(ownerId, parentId)
       .then((v) => vivo && setVitrinas(v))
       .catch(() => vivo && setVitrinas([]))
+    return () => {
+      vivo = false
+    }
+  }, [ownerId, parentId, recarga])
+
+  /*
+   * Lo que le dejaron a cada pieza, en un solo viaje para el mosaico entero,
+   * y la pieza que tiene la fila de emojis abierta encima (con su rectángulo
+   * en la ventana, para anclarla). Se piden en el perfil propio también: ahí
+   * se ven, solo que no se puede reaccionar. Si fallan no se dibuja ninguna,
+   * que es lo mismo que si no hubiera — un perfil no se rompe por sus chips.
+   */
+  const [reacciones, setReacciones] = useState<Map<string, ReaccionesVitrina>>(() => new Map())
+  const [abierta, setAbierta] = useState<{ showcase: Showcase; rect: Rect | null } | null>(null)
+
+  useEffect(() => {
+    let vivo = true
+    reaccionesDeVitrinas(ownerId)
+      .then((m) => vivo && setReacciones(m))
+      .catch(() => undefined)
     return () => {
       vivo = false
     }
@@ -553,9 +645,9 @@ export function Vitrinas({
    * perfiles no va a tener una y sería una consulta al pedo.
    *
    * **De quién se piden depende de si el perfil es tuyo**, y eso se decide
-   * comparando el dueño con la sesión — no con `propio`, que significa otra
-   * cosa: si se dibujan los controles de edición. Son dos preguntas distintas
-   * y confundirlas costó un bug feo: tu propio perfil pasa `propio={false}` a
+   * comparando el dueño con la sesión — no con `editando`, que significa otra
+   * cosa: si se dibujan los controles. Son dos preguntas distintas y
+   * confundirlas costó un bug feo: tu propio perfil se mira sin controles a
    * propósito, para verse como lo ve cualquiera, así que tus vitrinas se
    * resolvían contra tus listas **públicas** y una lista privada fijada decía
    * «esta lista ya no existe» en tu propia cara.
@@ -605,22 +697,22 @@ export function Vitrinas({
    * en la nada.
    */
   function soltar(desde: number, tx: number, ty: number) {
-      const propio = rects.current.get(desde)
-      if (!propio) return
-      const cx = propio.x + propio.w / 2 + tx
-      const cy = propio.y + propio.h / 2 + ty
-      let mejor = desde
-      let distancia = Infinity
-      rects.current.forEach((r, i) => {
-        const d = (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2
-        if (d < distancia) {
-          distancia = d
-          mejor = i
-        }
-      })
-      if (mejor !== desde) mover(desde, mejor)
-      onArrastre?.(false)
-    }
+    const propio = rects.current.get(desde)
+    if (!propio) return
+    const cx = propio.x + propio.w / 2 + tx
+    const cy = propio.y + propio.h / 2 + ty
+    let mejor = desde
+    let distancia = Infinity
+    rects.current.forEach((r, i) => {
+      const d = (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2
+      if (d < distancia) {
+        distancia = d
+        mejor = i
+      }
+    })
+    if (mejor !== desde) mover(desde, mejor)
+    onArrastre?.(false)
+  }
 
   function empezarArrastre() {
     medir()
@@ -638,7 +730,6 @@ export function Vitrinas({
     soltar,
     cancelar: cancelarArrastre,
   }
-
 
   if (vitrinas === null) return null
   if (!vitrinas.length) return <>{vacio}</>
@@ -682,6 +773,95 @@ export function Vitrinas({
     })
   }
 
+  /**
+   * La manija se arrastró: hacia la derecha ensancha, hacia abajo agranda,
+   * y en sentido contrario achica. Un paso por arrastre, dentro de lo que el
+   * tipo admite —un encabezado no tiene «grande»—; si no hay a dónde ir, no
+   * pasa nada.
+   */
+  function redimensionar(v: Showcase, direccion: Redimension) {
+    const anchos = anchosDe(v.kind)
+    const i = anchos.indexOf(v.ancho)
+    const crece = direccion === 'ancho' || direccion === 'alto'
+    const siguiente = anchos[i + (crece ? 1 : -1)]
+    if (siguiente && siguiente !== v.ancho) cambiarAncho(v.id, siguiente)
+  }
+
+  function sacar(v: Showcase) {
+    setPorSacar(null)
+    removeShowcase(v.id)
+      .then(onCambio)
+      .catch((e: unknown) => avisar(mensajeError(e), true))
+  }
+
+  /** El «−»: se pregunta antes, y en un sub-space se cuenta qué se lleva. */
+  function pedirSacar(v: Showcase) {
+    if (v.kind !== 'subspace') {
+      setPorSacar({ v, hijas: 0 })
+      return
+    }
+    setPorSacar({ v, hijas: null })
+    countShowcases(ownerId, v.id)
+      .then((n) => setPorSacar((actual) => (actual?.v.id === v.id ? { v, hijas: n } : actual)))
+      .catch(() => setPorSacar((actual) => (actual?.v.id === v.id ? { v, hijas: 0 } : actual)))
+  }
+
+  /* Lo que dice el diálogo: con piezas adentro, que se van también. */
+  const mensajeDeSacar =
+    porSacar && porSacar.hijas
+      ? porSacar.hijas === 1
+        ? 'Esta pieza se va del mosaico, y la pieza que tiene adentro se va con ella. No se deshace.'
+        : `Esta pieza se va del mosaico, y las ${porSacar.hijas} piezas que tiene adentro se van con ella. No se deshace.`
+      : 'Esta pieza se va del mosaico. Se puede volver a agregar, pero no se deshace.'
+
+  /*
+   * Reaccionar: en pantalla al toque, en el servidor después.
+   *
+   * El mismo criterio que reordenar y que cambiar el tamaño: esperar la
+   * respuesta para que aparezca el chip hace que el gesto se sienta roto. Se
+   * recalcula la cuenta a mano —se resta la que tenías, se suma la nueva— y si
+   * el servidor dice que no, se vuelve a lo que había y se avisa.
+   *
+   * Tocar el emoji que ya dejaste lo saca: es el toggle de cualquier
+   * reacción, y sin él no habría forma de arrepentirse.
+   */
+  function reaccionar(v: Showcase, emoji: string) {
+    setAbierta(null)
+    const antes = reacciones.get(v.id) ?? { conteo: {}, mia: null }
+    const proximo = antes.mia === emoji ? null : emoji
+    const conteo = { ...antes.conteo }
+    if (antes.mia) {
+      const n = (conteo[antes.mia] ?? 1) - 1
+      if (n > 0) conteo[antes.mia] = n
+      else delete conteo[antes.mia]
+    }
+    if (proximo) conteo[proximo] = (conteo[proximo] ?? 0) + 1
+    setReacciones((m) => new Map(m).set(v.id, { conteo, mia: proximo }))
+    reaccionarAVitrina(v.id, proximo).catch((e: unknown) => {
+      setReacciones((m) => new Map(m).set(v.id, antes))
+      avisar(mensajeError(e), true)
+    })
+  }
+
+  /* Solo lo que muestra algo se reacciona: un título de sección o un espacio
+     son composición del mosaico, no una pieza a la que decirle 🔥. */
+  const sePuedeReaccionar = reaccionable && !esMio
+  function apretonDe(v: Showcase, i: number): (() => void) | undefined {
+    if (onEntrarEdicion) return onEntrarEdicion
+    if (!sePuedeReaccionar || v.kind === 'espaciador' || v.kind === 'encabezado') return undefined
+    /* La celda se mide en ese instante —el scroll previo la deja en cualquier
+       lado— con la misma ref que usa el arrastre. Sin medida, la fila se abre
+       igual, centrada. */
+    return () => {
+      const ref = refs.current.get(i)
+      if (ref?.measureInWindow) {
+        ref.measureInWindow((x, y, w, h) => setAbierta({ showcase: v, rect: { x, y, w, h } }))
+      } else {
+        setAbierta({ showcase: v, rect: null })
+      }
+    }
+  }
+
   /*
    * De la lista ordenada al mosaico.
    *
@@ -707,68 +887,170 @@ export function Vitrinas({
   }
 
   return (
-    <View className="gap-3">
+    /* Armando, las filas se separan un poco más: los controles de las
+       esquinas viven en ese hueco y necesitan su aire. */
+    <View className={editando ? 'gap-4' : 'gap-3'}>
       {filas.map((fila) => (
-        <View key={fila[0].v.id} className="flex-row gap-3">
+        <View key={fila[0].v.id} className={editando ? 'flex-row gap-4' : 'flex-row gap-3'}>
           {fila.map(({ v, i }) => (
             <CeldaDeMosaico
               key={v.id}
               indice={i}
               mitad={v.ancho === 'mitad'}
               agarre={agarre}
+              editando={editando}
+              onApreton={apretonDe(v, i)}
             >
-        <Vitrina
-          showcase={v}
-          playlists={listas}
-          esMio={esMio}
-          playing={player.currentId === v.id && player.playing}
-          sonando={player.currentId === v.id}
-          posicionMs={player.posicionSV}
-          transcurridoMs={player.positionMs}
-          /*
-           * Escuchar puede fallar —la URL del audio se firma en el momento— y
-           * sin capturarlo quedaba una promesa rechazada suelta: en el teléfono
-           * eso es un recuadro rojo a pantalla completa por no poder reproducir
-           * una tarjeta. Se avisa y se sigue.
-           */
-          onTogglePlay={(id, song) => {
-            player.toggle(id, song).catch((e: unknown) => avisar(mensajeError(e), true))
-          }}
-          onSeek={(id, song, fraccion) => {
-            player.seek(id, song, fraccion).catch((e: unknown) => avisar(mensajeError(e), true))
-          }}
-          onOpenPlaylist={() => undefined}
-          onRemove={
-            propio
-              ? (id) => {
-                  removeShowcase(id)
-                    .then(onCambio)
-                    .catch((e: unknown) => avisar(mensajeError(e), true))
-                }
-              : undefined
-          }
-          /* En las puntas la flecha existe pero apagada: si desapareciera, los
-             botones se correrían de lugar al mover una tarjeta. */
-          manija={
-            propio ? (
-              <ManijaDeCelda
-                indice={i}
-                activa={agarre.activa}
-                dx={agarre.dx}
-                dy={agarre.dy}
-                empezar={agarre.empezar}
-                soltar={agarre.soltar}
-                cancelar={agarre.cancelar}
+              <Vitrina
+                showcase={v}
+                temaGlobal={temaGlobal}
+                playlists={listas}
+                esMio={esMio}
+                reacciones={reacciones.get(v.id) ?? null}
+                playing={player.currentId === v.id && player.playing}
+                sonando={player.currentId === v.id}
+                posicionMs={player.posicionSV}
+                transcurridoMs={player.positionMs}
+                /*
+                 * Escuchar puede fallar —la URL del audio se firma en el
+                 * momento— y sin capturarlo quedaba una promesa rechazada
+                 * suelta: en el teléfono eso es un recuadro rojo a pantalla
+                 * completa por no poder reproducir una tarjeta. Se avisa y se
+                 * sigue.
+                 */
+                onTogglePlay={(id, song) => {
+                  player.toggle(id, song).catch((e: unknown) => avisar(mensajeError(e), true))
+                }}
+                onSeek={(id, song, fraccion) => {
+                  player.seek(id, song, fraccion).catch((e: unknown) => avisar(mensajeError(e), true))
+                }}
+                onOpenPlaylist={() => undefined}
+                onAbrirSubspace={editando ? undefined : onAbrirSubspace}
+                recarga={recarga}
+                editando={editando}
+                onRemove={editando ? () => pedirSacar(v) : undefined}
+                onEditar={editando ? onEditar : undefined}
+                onRedimensionar={editando ? (d) => redimensionar(v, d) : undefined}
+                onAncho={editando ? () => cambiarAncho(v.id, siguienteAncho(v.ancho, v.kind)) : undefined}
               />
-            ) : undefined
-          }
-          onAncho={propio ? () => cambiarAncho(v.id, siguienteAncho(v.ancho)) : undefined}
-        />
             </CeldaDeMosaico>
           ))}
+          {/* Una chica suelta queda a media fila: el hueco al lado la hace
+              verse elegida y no sobrante. Con `flex-1` sola se estiraba. */}
+          {fila.length === 1 && fila[0].v.ancho === 'mitad' ? <View className="flex-1" /> : null}
         </View>
       ))}
+
+      <Confirmar
+        visible={porSacar !== null}
+        titulo={porSacar?.v.kind === 'subspace' ? 'Sacar el sub-space' : 'Sacar del perfil'}
+        mensaje={mensajeDeSacar}
+        rotulo="Sacar"
+        onCancelar={() => setPorSacar(null)}
+        onConfirmar={() => porSacar && sacar(porSacar.v)}
+      />
+
+      {abierta ? (
+        <FilaDeEmojis
+          rect={abierta.rect}
+          mia={reacciones.get(abierta.showcase.id)?.mia ?? null}
+          onElegir={(emoji) => reaccionar(abierta.showcase, emoji)}
+          onCerrar={() => setAbierta(null)}
+        />
+      ) : null}
     </View>
+  )
+}
+
+/* La fila de emojis: seis discos de 44 con 4 de aire, y 6 de relleno. */
+const EMOJI_LADO = 44
+const FILA_ALTO = EMOJI_LADO + 12
+const FILA_ANCHO = EMOJIS.length * EMOJI_LADO + (EMOJIS.length - 1) * 4 + 12
+const FILA_AIRE = 8
+
+/**
+ * La fila de emojis que se abre sobre una pieza ajena al mantenerla apretada.
+ *
+ * Es la de Airbuds y la de cualquier chat: una píldora de vidrio anclada a la
+ * pieza —arriba si hay lugar, abajo si no— con los mismos seis emojis de la
+ * escucha. El que ya dejaste va marcado con el disco blanco, que es como esta
+ * app dice «activo» sin color; tocarlo lo saca.
+ *
+ * Va en un `Modal` por lo mismo que el `Popover`: los paneles recortan lo que
+ * se sale de ellos, y una fila que asoma por encima de una pieza al borde del
+ * panel quedaría cortada. El Modal dibuja encima de todo y las coordenadas
+ * medidas en la ventana son justo las suyas. Tocar afuera cierra.
+ *
+ * Sin rectángulo —una celda que no se pudo medir— la fila se centra en la
+ * pantalla: peor que anclada, mejor que no abrirse.
+ */
+function FilaDeEmojis({
+  rect,
+  mia,
+  onElegir,
+  onCerrar,
+}: {
+  rect: Rect | null
+  mia: string | null
+  onElegir: (emoji: string) => void
+  onCerrar: () => void
+}) {
+  const { width, height } = useWindowDimensions()
+
+  let top: number
+  let left: number
+  if (rect) {
+    const arriba = rect.y - FILA_ALTO - FILA_AIRE >= FILA_AIRE
+    top = arriba ? rect.y - FILA_ALTO - FILA_AIRE : rect.y + rect.h + FILA_AIRE
+    left = rect.x + rect.w / 2 - FILA_ANCHO / 2
+  } else {
+    top = height / 2 - FILA_ALTO / 2
+    left = width / 2 - FILA_ANCHO / 2
+  }
+  left = Math.max(FILA_AIRE, Math.min(left, width - FILA_ANCHO - FILA_AIRE))
+  top = Math.max(FILA_AIRE, Math.min(top, height - FILA_ALTO - FILA_AIRE))
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onCerrar}>
+      {/* El fondo que cierra va como hermano de la fila y no envolviéndola:
+          en web, un Pressable adentro de otro es un <button> dentro de un
+          <button>. Mismo arreglo que el Popover. */}
+      <View className="flex-1">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar la fila de reacciones"
+          onPress={onCerrar}
+          className="absolute inset-0"
+        />
+        <View style={{ position: 'absolute', top, left }}>
+          <Glass
+            radius={FILA_ALTO / 2}
+            style={{ width: FILA_ANCHO, height: FILA_ALTO, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
+          >
+            <View className="flex-1 flex-row items-center justify-center" style={{ gap: 4 }}>
+              {EMOJIS.map((emoji) => {
+                const marcado = mia === emoji
+                return (
+                  <Pressable
+                    key={emoji}
+                    accessibilityRole="button"
+                    accessibilityLabel={marcado ? `Sacar tu ${emoji}` : `Reaccionar con ${emoji}`}
+                    accessibilityState={{ selected: marcado }}
+                    onPress={() => onElegir(emoji)}
+                    className={`items-center justify-center rounded-full ${
+                      marcado ? 'bg-primary' : 'active:bg-muted'
+                    }`}
+                    style={{ width: EMOJI_LADO, height: EMOJI_LADO }}
+                  >
+                    <Text style={{ fontSize: 22, lineHeight: 28 }}>{emoji}</Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+          </Glass>
+        </View>
+      </View>
+    </Modal>
   )
 }
 
@@ -798,80 +1080,91 @@ type Agarre = {
  * encima, y las demás **se apagan un poco** en vez de correrse — con alturas
  * variables y filas de a dos, la corrida en vivo miente más de lo que ayuda, y
  * el reacomodo real se ve al soltar, animado por el re-render.
+ *
+ * Armando, **la tarjeta entera es la manija**: antes había un ícono de tres
+ * líneas en la esquina, y era el único lugar de donde se podía tirar. Con el
+ * contenido quieto (ver `Vitrina`), no hay toques que robar, y agarrar la
+ * pieza de donde sea es lo que uno espera de un mosaico. Y tiembla apenas, como
+ * los widgets del iPhone: es lo que dice «ahora se mueven».
+ *
+ * Mirando, la misma celda escucha el apretón largo: en el perfil propio entra
+ * a armar, en el ajeno abre la fila de emojis. La celda no sabe cuál de las
+ * dos es — solo avisa, y `Vitrinas` decide.
  */
 function CeldaDeMosaico({
   indice,
   mitad,
   agarre,
+  editando,
+  onApreton,
   children,
 }: {
   indice: number
   mitad: boolean
   agarre: Agarre
+  editando: boolean
+  /** Se mantuvo apretada, mirando. */
+  onApreton?: () => void
   children: ReactNode
 }) {
+  /* eslint-disable react-hooks/immutability -- escribir `.value` es la API
+     imperativa de un SharedValue; es el mismo gesto que `EncoladaArrastrable`
+     en la cola, que el analizador acepta con otra forma de llegar al valor. */
+  const temblor = useSharedValue(0)
+  useEffect(() => {
+    if (!editando) {
+      temblor.value = withTiming(0, { duration: 120 })
+      return
+    }
+    /* Las pares y las impares tiemblan a contrafase: en fase, la grilla entera
+       se hamaca como una sola cosa y se ve como un error de render. */
+    const fase = indice % 2 === 0 ? 1 : -1
+    temblor.value = withRepeat(
+      withSequence(
+        withTiming(fase, { duration: 150 }),
+        withTiming(-fase, { duration: 150 }),
+      ),
+      -1,
+      true,
+    )
+  }, [editando, indice, temblor])
+
   const estilo = useAnimatedStyle(() => {
     if (agarre.activa.value === indice) {
       return {
         transform: [
           { translateX: agarre.dx.value },
           { translateY: agarre.dy.value },
-          { scale: 1.03 },
+          { scale: 1.04 },
+          { rotate: '0deg' },
         ],
         zIndex: 20,
         opacity: 1,
       }
     }
     return {
-      transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }],
+      transform: [
+        { translateX: 0 },
+        { translateY: 0 },
+        { scale: 1 },
+        { rotate: `${temblor.value * 0.7}deg` },
+      ],
       zIndex: 0,
       opacity: withTiming(agarre.activa.value >= 0 ? 0.7 : 1, { duration: 160 }),
     }
   })
 
-  return (
-    <View
-      className={mitad ? 'flex-1' : 'w-full'}
-      ref={(r) => {
-        agarre.refs.current.set(indice, r as MedibleRef)
-      }}
-    >
-      <Animated.View style={estilo}>{children}</Animated.View>
-    </View>
-  )
-}
+  const { activa, dx, dy, empezar, soltar, cancelar } = agarre
 
-/**
- * La manija: el único lugar de la tarjeta que arrastra.
- *
- * Desde la manija y no desde la tarjeta entera porque la tarjeta ya tiene
- * toques propios —reproducir, la cruz, el tamaño— y un arrastre que arranca
- * desde cualquier lado se los roba. En web agarra al primer píxel (con mouse
- * no hay scroll que ceder); con dedo espera los 130ms de siempre.
- */
-function ManijaDeCelda({
-  indice,
-  activa,
-  dx,
-  dy,
-  empezar,
-  soltar,
-  cancelar,
-}: {
-  indice: number
-  /* Los SharedValue llegan como props sueltas, igual que en la cola: es la
-     forma en que el gesto puede escribirlos sin pelearse con nadie. */
-  activa: SharedValue<number>
-  dx: SharedValue<number>
-  dy: SharedValue<number>
-  empezar: () => void
-  soltar: (desde: number, tx: number, ty: number) => void
-  cancelar: () => void
-}) {
-  /* eslint-disable react-hooks/immutability -- escribir `.value` es la API
-     imperativa de un SharedValue; es el mismo gesto que `EncoladaArrastrable`
-     en la cola, que el analizador acepta con otra forma de llegar al valor. */
-  const gesto = (ES_WEB ? Gesture.Pan() : Gesture.Pan().activateAfterLongPress(130))
+  /*
+   * El arrastre, solo armando. En web agarra apenas se mueve el cursor (con
+   * mouse no hay scroll que ceder); con dedo espera los 130ms de siempre.
+   * Los botones de las esquinas siguen respondiendo al toque: un Pan no se
+   * activa sin desplazamiento, y la manija de tamaño tiene el suyo, que
+   * arranca antes y gana.
+   */
+  const arrastre = (ES_WEB ? Gesture.Pan().minDistance(12) : Gesture.Pan().activateAfterLongPress(130))
+    .enabled(editando)
     .onStart(() => {
       activa.value = indice
       dx.value = 0
@@ -898,17 +1191,32 @@ function ManijaDeCelda({
     })
   /* eslint-enable react-hooks/immutability */
 
+  /* Mirando: mantener apretado avisa. Los 500ms son los del sistema, y los
+     10px de tolerancia le ceden el paso al scroll. */
+  const apretar = onApreton ?? (() => undefined)
+  const apreton = Gesture.LongPress()
+    .enabled(!editando && !!onApreton)
+    .minDuration(500)
+    .maxDistance(10)
+    .onStart(() => {
+      runOnJS(apretar)()
+    })
+
   return (
-    <GestureDetector gesture={gesto}>
-      <View
-        accessibilityRole="adjustable"
-        accessibilityLabel="Mover en el mosaico"
-        className="h-8 w-8 items-center justify-center"
-        style={ES_WEB ? ({ cursor: 'grab', touchAction: 'none' } as object) : null}
-      >
-        <IconManija size={16} color={ICON_COLOR.muted} />
-      </View>
-    </GestureDetector>
+    <View
+      className={mitad ? 'flex-1' : 'w-full'}
+      ref={(r) => {
+        agarre.refs.current.set(indice, r as MedibleRef)
+      }}
+    >
+      <GestureDetector gesture={Gesture.Race(arrastre, apreton)}>
+        <Animated.View
+          style={[estilo, editando && ES_WEB ? ({ cursor: 'grab', touchAction: 'none' } as object) : null]}
+        >
+          {children}
+        </Animated.View>
+      </GestureDetector>
+    </View>
   )
 }
 
@@ -922,10 +1230,18 @@ function ManijaDeCelda({
  */
 type FilaDeMosaico = { v: Showcase; i: number }[]
 
-/** Cuántas vitrinas hay, para el resumen. Se cuenta aparte, sin dibujarlas. */
-export function useCuantasVitrinas(ownerId: string, recarga: number) {
-  const [n, setN] = useState(0)
+/**
+ * Cuántas vitrinas hay, para el resumen y para la pestaña con la que abre el
+ * perfil. Se cuenta aparte, sin dibujarlas.
+ *
+ * `null` mientras no llegó: la pestaña por defecto es «Space» si hay piezas y
+ * «Reciente» si no, y con un cero que también significara «cargando» el perfil
+ * abriría siempre en «Reciente» y saltaría a «Space» medio segundo después.
+ */
+export function useCuantasVitrinas(ownerId: string, recarga: number): number | null {
+  const [n, setN] = useState<number | null>(null)
   useEffect(() => {
+    if (!ownerId) return
     let vivo = true
     listShowcases(ownerId)
       .then((v) => vivo && setN(v.length))

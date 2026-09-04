@@ -11,8 +11,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
+    "@vercel/functions": "^3.9.5",
     "bgutils-js": "^4.0.3",
     "expo-notifications": "~57.0.11",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
     "jsdom": "^28.0.0",
     "undici": "^8.10.0",
     "youtubei.js": "^17.2.0"

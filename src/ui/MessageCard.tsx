@@ -119,21 +119,30 @@ export function contactInitial(username: string): string {
   return username.trim().charAt(0) || '?'
 }
 
+/*
+ * Los tres formateadores, armados **una vez**.
+ *
+ * Construir un `Intl.DateTimeFormat` es de lo más caro que tiene Intl —hay que
+ * resolver el locale y compilar el patrón— y esto se llama una vez por mensaje
+ * en pantalla, en una lista que se redibuja al escribir. Formatear con uno ya
+ * hecho, en cambio, es barato. Son constantes y no un `useMemo` porque no
+ * dependen de nada del componente: el locale está fijo acá.
+ */
+const FECHA_LARGA = new Intl.DateTimeFormat('es-AR', {
+  day: 'numeric',
+  month: 'long',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+const SOLO_HORA = new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit' })
+const DIA_Y_MES = new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short' })
+
 export function formatMessageDate(date: Date, includeDate = false): string {
-  if (includeDate) {
-    return new Intl.DateTimeFormat('es-AR', {
-      day: 'numeric',
-      month: 'long',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date)
-  }
+  if (includeDate) return FECHA_LARGA.format(date)
 
   const diffH = (Date.now() - date.getTime()) / 3_600_000
-  if (diffH < 24) {
-    return new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit' }).format(date)
-  }
-  return new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short' }).format(date)
+  if (diffH < 24) return SOLO_HORA.format(date)
+  return DIA_Y_MES.format(date)
 }
 
 function formatDate(date: Date): string {

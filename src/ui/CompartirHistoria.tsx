@@ -448,11 +448,16 @@ async function dibujarYDescargar(track: PlaylistTrack) {
 
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
     if (!blob) throw new Error('No se pudo exportar')
+    /* La URL se guarda aparte y se revoca en el tick siguiente. Revocarla en
+       la misma vuelta que el click deja al navegador bajando algo que ya no
+       existe —Chrome suele llegar, otros no—, y leerla de vuelta de `a.href`
+       para revocarla es pedirle al DOM el valor que uno ya tenía. */
+    const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
+    a.href = url
     a.download = `historia-${track.title.replace(/[^\p{L}\p{N} .-]/gu, '').trim() || 'cancion'}.png`
     a.click()
-    URL.revokeObjectURL(a.href)
+    setTimeout(() => URL.revokeObjectURL(url), 0)
     avisar('Historia descargada: subila a Instagram desde ahí.')
   } catch {
     avisar('No se pudo armar la historia.', true)

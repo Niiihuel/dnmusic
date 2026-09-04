@@ -72,6 +72,15 @@ export type PickOptions = {
    * que hay; simplemente no es lo que quiere una foto de perfil.
    */
   cuadrada?: boolean
+  /**
+   * Sacar una foto con la cámara en vez de elegir una de la fototeca.
+   *
+   * Es la otra puerta del selector de «imagen de fondo» de una vitrina. A
+   * diferencia de la fototeca, la cámara **sí pide permiso** —es la app la que
+   * la enciende— y si se negó, el selector devuelve `null` como si se hubiera
+   * cancelado: quien llama no tiene que distinguir los dos casos.
+   */
+  desdeCamara?: boolean
 }
 
 const TYPES = 'image/jpeg,image/png,image/webp,image/gif'
@@ -111,8 +120,17 @@ function mimeDe(nombre: string, delBlob: string): string {
 export async function pickImage({
   cuadrada = false,
   conVideo = false,
+  desdeCamara = false,
 }: PickOptions = {}): Promise<PickedImage | null> {
-  if (Platform.OS === 'web') return pickOnWeb(conVideo)
+  if (Platform.OS === 'web') return pickOnWeb(conVideo, desdeCamara)
+
+  if (desdeCamara) {
+    const permiso = await ImagePicker.requestCameraPermissionsAsync()
+    if (!permiso.granted) return null
+    const foto = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.9 })
+    if (foto.canceled || !foto.assets[0]) return null
+    return desdeAsset(foto.assets[0])
+  }
 
   /*
    * **Sin pedir permiso.**
@@ -135,8 +153,11 @@ export async function pickImage({
     quality: 0.9,
   })
   if (result.canceled || !result.assets[0]) return null
+  return desdeAsset(result.assets[0])
+}
 
-  const asset = result.assets[0]
+/** Lo que devolvió el selector —o la cámara— en la forma que espera la app. */
+async function desdeAsset(asset: ImagePicker.ImagePickerAsset): Promise<PickedImage> {
   /*
    * El selector devuelve una URI local, y Storage necesita bytes. `fetch` sobre
    * un `file://` funciona en React Native y es la forma más corta de leerlos sin
@@ -157,11 +178,14 @@ export async function pickImage({
   }
 }
 
-function pickOnWeb(conVideo: boolean): Promise<PickedImage | null> {
+function pickOnWeb(conVideo: boolean, desdeCamara = false): Promise<PickedImage | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = conVideo ? TYPES_CON_VIDEO : TYPES
+    /* En un teléfono con navegador, `capture` abre la cámara directo; en una
+       compu no hay cámara que abrir y el diálogo de archivos es lo que hay. */
+    if (desdeCamara) input.setAttribute('capture', 'environment')
     input.onchange = () => {
       const file = input.files?.[0]
       if (!file) return resolve(null)

@@ -11,6 +11,7 @@ import {
   completarCancion,
   descartarSinAudio,
   pausaExterna,
+  playbackOrigin,
   reanudacionExterna,
   reanudarTrasInterrupcion,
   registerEngine,
@@ -22,6 +23,7 @@ import {
   reportarPosicionFina,
   usePlaybackState,
   videoIdsRecorridos,
+  type PlaybackOrigin,
 } from '../state/playback'
 import { proximasRecomendadas, type ArtistaEscuchado } from '../services/recomendaciones'
 import { rutaLocal } from '../state/descargas'
@@ -214,9 +216,14 @@ export function MotorAudio() {
   const remember = useCallback((trackId: string, url: string) => {
     setUrls((prev) => {
       const todas = [{ trackId, url }, ...prev.filter((u) => u.trackId !== trackId)]
+      /* Un Set y no `vivas.current.includes(…)` adentro del filtro: aquello
+         recorría la cola entera por cada URL guardada, y las dos crecen juntas
+         —una cola larga es justo cuando hay más URLs—. El Set se arma una vez
+         por llamada y después cada consulta es constante. */
+      const enLaCola = new Set(vivas.current)
       let otras = 0
       return todas.filter((u) => {
-        if (vivas.current.includes(u.trackId)) return true
+        if (enLaCola.has(u.trackId)) return true
         otras += 1
         return otras <= CACHE_URLS
       })
@@ -575,7 +582,11 @@ export function MotorAudio() {
    *
    * Guardando el objeto no hay nada que buscar y no puede confundirse.
    */
-  const escuchado = useRef<{ track: PlaylistTrack | null; ms: number }>({ track: null, ms: 0 })
+  const escuchado = useRef<{ track: PlaylistTrack | null; ms: number; origen: PlaybackOrigin | null }>({
+    track: null,
+    ms: 0,
+    origen: null,
+  })
   useEffect(() => {
     const previo = escuchado.current
     /* Al cambiar de canción se despacha lo de la anterior. En el primer
@@ -586,11 +597,17 @@ export function MotorAudio() {
         title: previo.track.title,
         artist: previo.track.artist,
         artistId: previo.track.artistId,
+        artworkUrl: previo.track.artworkUrl,
+        artworkPath: previo.track.artworkPath,
+        /* La colección que sonaba **al despachar**: es la de la canción que
+           se va, no la nueva, porque el origen cambia junto con la cola y
+           esto corre antes de que la nueva empiece a contar. */
+        origen: previo.origen,
         ms: previo.ms,
       })
     }
     if (previo.track?.id !== current?.id) {
-      escuchado.current = { track: current, ms: 0 }
+      escuchado.current = { track: current, ms: 0, origen: playbackOrigin() }
     }
   }, [current])
 

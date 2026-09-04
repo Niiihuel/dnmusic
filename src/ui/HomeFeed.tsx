@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
-import { artworkUrlAtSize } from '../lib/artwork'
+import { artworkSource, artworkUrlAtSize } from '../lib/artwork'
 import {
+  fetchArtist,
   fetchGenero,
   fetchGeneros,
   fetchHome,
@@ -20,22 +21,32 @@ import {
   usePlaybackTrack,
   useWantPlay,
 } from '../state/playback'
-import { usePiso, useTecho } from '../state/shell'
+import { abrirLista, usePiso, useTecho } from '../state/shell'
 import {
   mezclasPersonales,
   proximasRecomendadas,
   tandaDeMix,
   type MixPersonal,
 } from '../services/recomendaciones'
-import type { PlaylistTrack } from '../services/playlists'
+import { listPlaylists, type Playlist, type PlaylistTrack } from '../services/playlists'
+import {
+  artistasRecientes,
+  origenesRecientes,
+  ultimasEscuchas,
+  type ArtistaReciente,
+  type EscuchaReciente,
+  type OrigenReciente,
+} from '../services/plays'
 import { listarSemillas, type Semilla } from '../services/semillas'
+import { useMyProfile } from '../state/session'
+import { PlaylistCover } from './PlaylistCover'
 import { useColapso } from './useColapso'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
 import { VacioError } from './Vacio'
 import { EstadoTapa } from './CoverState'
 import { Skeleton } from './Skeleton'
-import { ICON_COLOR, IconBack, IconChevronRight, IconMusic, IconPause, IconPlay } from './icons'
+import { ICON_COLOR, IconBack, IconChevronRight, IconHeart, IconMusic, IconPause, IconPlay, IconWave } from './icons'
 
 /** Lado de una tapa en el carrusel, y el tamaño deseable en la grilla. */
 const CARD = 168
@@ -69,6 +80,8 @@ export function HomeFeed({
   onOpenGeneros,
   onOpenAlbum,
   onOpenPlaylist,
+  onOpenArtist,
+  onOpenGustos,
   onPlaySong,
   menuForSong,
   pendingId,
@@ -84,14 +97,24 @@ export function HomeFeed({
   onOpenGeneros?: () => void
   onOpenAlbum: (item: HomeItem) => void
   onOpenPlaylist: (item: HomeItem) => void
+  /** La ficha de un artista: «Tus artistas» y «Porque escuchaste…» llevan ahí. */
+  onOpenArtist?: (artistId: string, nombre: string) => void
+  /** «Tus me gusta», desde la grilla de accesos. */
+  onOpenGustos?: () => void
   onPlaySong: (item: HomeItem) => void
   menuForSong: (item: HomeItem) => MenuItem[]
   pendingId: string | null
 }) {
-  const [sections, setSections] = useState<HomeSection[] | null>(null)
-  /* Los géneros, aparte de las secciones: salen de otra ruta y llegan después
-     — la primera vez el servidor arma las tapas y tarda unos segundos. */
-  const [generos, setGeneros] = useState<Genero[] | null>(null)
+  /*
+   * Todo lo que dibuja la portada, **de una sola vez**.
+   *
+   * Antes cada fila pedía lo suyo y aparecía cuando llegaba: la portada
+   * primero, los géneros unos segundos después, «Hecho para vos» al final —
+   * la pantalla se armaba a saltos y las tapas de los mixes llegaban vacías.
+   * Ahora hay una sola espera, con un esqueleto, y después la portada entera.
+   * Lo que no llegó a tiempo se dibuja igual sin esa fila; nada aparece tarde.
+   */
+  const { inicio, recargar } = useInicio()
   /* Lo que ocupan el reproductor y las pestañas, más el respiro de siempre. */
   const piso = usePiso(24)
   /* Y lo que flota arriba —reloj y encabezado—, con el respiro que ya tenía
@@ -99,48 +122,6 @@ export function HomeFeed({
   const techo = useTecho(24)
   /* Bajando, la cáscara se pliega; subiendo, vuelve. Ver `useColapso`. */
   const colapso = useColapso()
-
-  useEffect(() => {
-    if (sections !== null) return
-    const controller = new AbortController()
-    fetchHome(controller.signal).then(setSections)
-    return () => controller.abort()
-  }, [sections])
-
-  /* Las filas tejidas de los géneros elegidos, arriba de la portada. Salen de
-     las semillas del onboarding —lo que la persona dijo que le gusta— y el
-     servidor las arma con las listas de cada género. Sin semillas, no hay filas
-     y el home es la portada de siempre. */
-  const [misGeneros, setMisGeneros] = useState<HomeSection[] | null>(null)
-  const [semillas, setSemillas] = useState<Semilla[]>([])
-
-  useEffect(() => {
-    if (misGeneros !== null) return
-    let vivo = true
-    void listarSemillas().then((ss) => {
-      if (!vivo) return
-      setSemillas(ss)
-      const soloGeneros = ss.filter((s) => s.kind === 'genero')
-      if (!soloGeneros.length) return setMisGeneros([])
-      fetchHomeGeneros(soloGeneros).then((secs) => vivo && setMisGeneros(secs))
-    })
-    return () => {
-      vivo = false
-    }
-  }, [misGeneros])
-
-  useEffect(() => {
-    if (generos !== null) return
-    const controller = new AbortController()
-    /* Un pedido abortado —el efecto se rehízo por otro render— devuelve `[]`,
-       y grabarlo dejaría la fila escondida para siempre: solo cuenta la
-       respuesta que llegó entera. Con `generos` todavía en null, el próximo
-       render lo vuelve a pedir. */
-    fetchGeneros(controller.signal).then((g) => {
-      if (!controller.signal.aborted) setGeneros(g)
-    })
-    return () => controller.abort()
-  }, [generos])
 
   /* La página de un género, encima de todo: es una parada del historial. */
   if (genero) {
@@ -163,7 +144,7 @@ export function HomeFeed({
     return (
       <Panel className="flex-1">
         <GenerosPage
-          generos={generos}
+          generos={inicio?.generos ?? null}
           onBack={() => onOpenSection(null)}
           onOpen={onOpenGenero}
         />
@@ -171,7 +152,7 @@ export function HomeFeed({
     )
   }
 
-  const abierta = sections?.find((s) => s.title === openSection) ?? null
+  const abierta = inicio?.sections.find((s) => s.title === openSection) ?? null
 
   /*
    * Una sección abierta ocupa el panel entero, en grilla.
@@ -212,22 +193,58 @@ export function HomeFeed({
          * completa. Ahora lo tuyo se muestra igual, y la portada que falla es a
          * lo sumo un renglón chico —o nada, si tenés con qué llenar el inicio.
          */}
-        {sections === null && misGeneros === null ? (
+        {inicio === null ? (
           <Loading />
         ) : (
           <>
+            {/*
+             * El inicio es de cada persona, como el de Spotify: arranca con
+             * el saludo y **lo que usás** —las colecciones que sonaron
+             * últimamente en una grilla, y las canciones donde te quedaste—,
+             * después lo hecho para vos, tus artistas y lo que se desprende
+             * de ellos, y recién al final la portada de YouTube Music, que
+             * es la misma para todo el mundo. Cada sección se calla si no
+             * tiene con qué: una cuenta nueva ve el saludo y la portada.
+             */}
+            <Saludo />
+            <AccesosRapidos
+              origenes={inicio.origenes}
+              listas={inicio.listas}
+              onOpenGustos={onOpenGustos}
+            />
+            <SeguirEscuchando
+              escuchas={inicio.escuchas}
+              onPlaySong={onPlaySong}
+              menuForSong={menuForSong}
+              pendingId={pendingId}
+            />
             {/* «Hecho para vos» habla de quién sos, y va antes de lo que habla
                 del mundo. */}
-            <ParaVos onPlaySong={onPlaySong} menuForSong={menuForSong} pendingId={pendingId} />
+            <ParaVos
+              radio={inicio.radio}
+              mixes={inicio.mixes}
+              onPlaySong={onPlaySong}
+              menuForSong={menuForSong}
+              pendingId={pendingId}
+            />
+            <TusArtistas artistas={inicio.artistas} onOpenArtist={onOpenArtist} />
+            <PorqueEscuchaste
+              ancla={inicio.artistas[0] ?? null}
+              items={inicio.porque}
+              onOpenArtist={onOpenArtist}
+              onOpenAlbum={onOpenAlbum}
+            />
             {/* Lo tuyo: una fila de listas por cada género que elegiste. Tocar
                 «ver todo» abre la página del género, reconstruida desde la
                 semilla. */}
-            {misGeneros?.map((section) => (
+            {inicio.misGeneros.map((section) => (
               <Section
                 key={`mio-${section.title}`}
                 section={section}
                 onOpen={() => {
-                  const semilla = semillas.find((s) => s.kind === 'genero' && s.name === section.title)
+                  const semilla = inicio.semillas.find(
+                    (s: Semilla) => s.kind === 'genero' && s.name === section.title,
+                  )
                   if (semilla && onOpenGenero)
                     onOpenGenero({ params: semilla.ref, name: semilla.name, artworkUrl: semilla.artworkUrl })
                 }}
@@ -240,15 +257,15 @@ export function HomeFeed({
             ))}
             {/* La portada que no llegó solo grita si no hay nada más para
                 mostrar; con filas propias arriba, se calla. */}
-            {sections?.length === 0 && !misGeneros?.length ? (
+            {inicio.sections.length === 0 && !inicio.misGeneros.length ? (
               <VacioError
                 icono={<IconMusic size={22} color={ICON_COLOR.muted} />}
                 titulo="La portada no llegó"
                 detalle="No pude traer las novedades. Tus listas siguen donde siempre."
-                onReintentar={() => setSections(null)}
+                onReintentar={recargar}
               />
             ) : null}
-            {(sections ?? []).map((section, i) => (
+            {inicio.sections.map((section, i) => (
               <Fragment key={section.title}>
                 <Section
                   section={section}
@@ -264,8 +281,8 @@ export function HomeFeed({
                 {/* Los géneros van después del primer carrusel, como el
                     «Explorar por género» de Apple Music: arriba lo nuevo, y
                     enseguida el mapa para el que no busca nada puntual. */}
-                {i === 0 && generos?.length && onOpenGenero && onOpenGeneros ? (
-                  <GenerosRow generos={generos} onOpen={onOpenGenero} onVerTodo={onOpenGeneros} />
+                {i === 0 && inicio.generos.length && onOpenGenero && onOpenGeneros ? (
+                  <GenerosRow generos={inicio.generos} onOpen={onOpenGenero} onVerTodo={onOpenGeneros} />
                 ) : null}
               </Fragment>
             ))}
@@ -934,40 +951,24 @@ const ORIGEN_RADIO = 'radio-personal'
  * un aperitivo de la radio.
  */
 function ParaVos({
+  radio,
+  mixes,
   onPlaySong,
   menuForSong,
   pendingId,
 }: {
+  /** La tanda de tu radio, ya cargada con el resto del inicio. */
+  radio: PlaylistTrack[]
+  mixes: MixPersonal[]
   onPlaySong: (item: HomeItem) => void
   menuForSong: (item: HomeItem) => MenuItem[]
   pendingId: string | null
 }) {
-  /* La tanda global; `null` es «todavía no llegó», `[]` ya sería «no hay». */
-  const [radio, setRadio] = useState<PlaylistTrack[] | null>(null)
-  const [mixes, setMixes] = useState<MixPersonal[] | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      const [tanda, personales] = await Promise.all([
-        proximasRecomendadas(),
-        mezclasPersonales(6),
-      ])
-      /* Un pedido abortado devuelve vacío; solo cuenta si llegó entero. */
-      if (!alive) return
-      if (tanda.length) setRadio(tanda)
-      if (personales.length) setMixes(personales)
-    })()
-    return () => {
-      alive = false
-    }
-  }, [])
-
   const soundingTrack = usePlaybackTrack()
   const wantPlay = useWantPlay()
   const originId = usePlaybackOriginId()
 
-  if (!radio?.length && !mixes?.length) return null
+  if (!radio.length && !mixes.length) return null
 
   const sonandoRadio = originId === ORIGEN_RADIO && !!soundingTrack
   const tocarRadio = () => {
@@ -976,10 +977,10 @@ function ParaVos({
       togglePlayback()
       return
     }
-    if (radio?.length) playQueue(radio, 0, { id: ORIGEN_RADIO, name: 'Tu radio' })
+    if (radio.length) playQueue(radio, 0, { id: ORIGEN_RADIO, name: 'Tu radio' })
   }
 
-  const itemsTanda: HomeItem[] | null = radio?.length
+  const itemsTanda: HomeItem[] | null = radio.length
     ? radio.map((t) => ({
         kind: 'song' as const,
         id: t.videoId,
@@ -1004,7 +1005,7 @@ function ParaVos({
       {/* Radio y mixes comparten carrusel: la tarjeta grande abre la fila y
           los mixes la siguen, como el hero + tiles de Apple Music. */}
       <FadingRow gap={16} padding={24}>
-        {radio?.length ? (
+        {radio.length ? (
           <TarjetaRadio
             tapa={radio[0].artworkUrl ?? ''}
             sonando={sonandoRadio}
@@ -1012,7 +1013,7 @@ function ParaVos({
             onPress={tocarRadio}
           />
         ) : null}
-        {(mixes ?? []).map((mix) => (
+        {mixes.map((mix) => (
           <TarjetaMix key={mix.artist_id} mix={mix} onPress={() => taparMix(mix)} />
         ))}
       </FadingRow>
@@ -1124,5 +1125,421 @@ function TarjetaMix({ mix, onPress }: { mix: MixPersonal; onPress: () => void })
       artistId: null,
       year: null,
     }} width={CARD} onPress={onPress} />
+  )
+}
+
+/* ── Lo tuyo: el inicio que sale del historial ────────────────────────────── */
+
+type Inicio = {
+  sections: HomeSection[]
+  generos: Genero[]
+  semillas: Semilla[]
+  misGeneros: HomeSection[]
+  escuchas: EscuchaReciente[]
+  origenes: OrigenReciente[]
+  artistas: ArtistaReciente[]
+  /** Tus listas, para resolver los orígenes que son una lista propia. */
+  listas: Playlist[]
+  radio: PlaylistTrack[]
+  mixes: MixPersonal[]
+  /** Lo que se desprende de tu artista más escuchado. */
+  porque: HomeItem[]
+}
+
+/** Cuánto se espera, como mucho, a que llegue todo. Después va lo que haya. */
+const ESPERA_MS = 12_000
+
+/** Una promesa, o vacío si tarda de más o falla: nada frena la portada. */
+function oVacio<T>(p: Promise<T>, vacio: T): Promise<T> {
+  return Promise.race([
+    p.catch(() => vacio),
+    new Promise<T>((resolve) => setTimeout(() => resolve(vacio), ESPERA_MS)),
+  ])
+}
+
+/**
+ * Todo lo que dibuja el inicio, leído junto.
+ *
+ * Son nueve pedidos —la portada, los géneros, las semillas y sus filas, tu
+ * historial en tres vistas, tus listas, la radio y los mixes, y los parecidos
+ * de tu artista más escuchado— que antes llegaban cada uno por su lado y hoy
+ * salen en paralelo y se entregan de una sola vez. `null` mientras no está
+ * todo; después, la portada entera. Lo que falló o tardó de más llega vacío y
+ * su fila no se dibuja: el historial es un lujo, la portada un adorno, y
+ * ninguno de los dos puede dejar la pantalla en blanco.
+ */
+function useInicio(): { inicio: Inicio | null; recargar: () => void } {
+  const [inicio, setInicio] = useState<Inicio | null>(null)
+  const [vuelta, setVuelta] = useState(0)
+
+  useEffect(() => {
+    let vivo = true
+    void (async () => {
+      const [sections, generos, semillas, escuchas, origenes, artistas, listas, radio, mixes] =
+        await Promise.all([
+          oVacio(fetchHome(), []),
+          oVacio(fetchGeneros(), []),
+          oVacio(listarSemillas(), []),
+          oVacio(ultimasEscuchas(12), []),
+          oVacio(origenesRecientes(8), []),
+          oVacio(artistasRecientes(8), []),
+          oVacio(listPlaylists(), []),
+          oVacio(proximasRecomendadas(), []),
+          oVacio(mezclasPersonales(6), []),
+        ])
+      /* Dos pedidos dependen de lo anterior: las filas de los géneros
+         elegidos y los parecidos del artista más escuchado. Van juntos. */
+      const soloGeneros = semillas.filter((s) => s.kind === 'genero')
+      const ancla = artistas[0]
+      const [misGeneros, ficha] = await Promise.all([
+        soloGeneros.length ? oVacio(fetchHomeGeneros(soloGeneros), []) : Promise.resolve([]),
+        ancla ? oVacio(fetchArtist(ancla.artistId), null) : Promise.resolve(null),
+      ])
+      const porque = ficha ? (ficha.relacionados.length ? ficha.relacionados : ficha.albums).slice(0, 12) : []
+      if (!vivo) return
+      setInicio({
+        sections,
+        generos,
+        semillas,
+        misGeneros,
+        escuchas,
+        origenes,
+        artistas,
+        listas,
+        radio,
+        mixes: conTapa(mixes, artistas, escuchas),
+        porque,
+      })
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [vuelta])
+
+  /* Recargar vacía primero: así vuelve el esqueleto y no la portada vieja
+     mientras llega la nueva. */
+  const recargar = () => {
+    setInicio(null)
+    setVuelta((n) => n + 1)
+  }
+  return { inicio, recargar }
+}
+
+/**
+ * Los mixes con tapa, sí o sí.
+ *
+ * `mezclasPersonales` toma la primera carátula que encuentra entre tus
+ * corazones y tus listas; si el artista entró solo por tiempo escuchado, no
+ * hay ninguna. El historial sí la tiene —guarda la tapa de cada escucha— y de
+ * ahí se completa. Un mix sin tapa era el cuadrado gris que se veía antes.
+ */
+function conTapa(
+  mixes: MixPersonal[],
+  artistas: ArtistaReciente[],
+  escuchas: EscuchaReciente[],
+): MixPersonal[] {
+  return mixes.map((m) => {
+    if (m.artworkUrl) return m
+    const del =
+      artistas.find((a) => a.artistId === m.artist_id) ??
+      escuchas.find((e) => e.artistId === m.artist_id)
+    const tapa = del ? artworkSource(del.artworkPath, del.artworkUrl, 400) : null
+    return tapa ? { ...m, artworkUrl: tapa } : m
+  })
+}
+
+/**
+ * El saludo, por la hora: es lo primero que dice el inicio de Spotify, y es la
+ * forma más barata de que la pantalla sea de alguien y no de todos. Con el
+ * nombre visible si lo puso; si no, a secas.
+ */
+function Saludo() {
+  const perfil = useMyProfile()
+  const hora = new Date().getHours()
+  const saludo = hora < 6 ? 'Buenas noches' : hora < 13 ? 'Buenos días' : hora < 20 ? 'Buenas tardes' : 'Buenas noches'
+  const nombre = perfil?.displayName?.trim()
+  return (
+    <Text className="px-6 text-foreground text-[26px] font-bold">
+      {nombre ? `${saludo}, ${nombre.split(' ')[0]}` : saludo}
+    </Text>
+  )
+}
+
+/** Lo que una losa de la grilla puede abrir o poner a sonar. */
+type Acceso = {
+  id: string
+  nombre: string
+  tapa: ReactNode
+  onPress: () => void
+}
+
+/**
+ * La grilla de accesos: las colecciones que **usás**, dos por fila.
+ *
+ * Es la grilla de arriba del inicio de Spotify, y su regla es la misma: no son
+ * las listas que tenés sino las que sonaron últimamente, del historial. Entran
+ * tus listas, tus mixes y la radio; «Tus me gusta» va siempre primero porque
+ * es la colección que todo el mundo tiene. Sin historial, la grilla es esa
+ * sola losa —una fila de una— y no se dibuja: una grilla de uno no es grilla.
+ */
+function AccesosRapidos({
+  origenes,
+  listas,
+  onOpenGustos,
+}: {
+  origenes: OrigenReciente[] | null
+  listas: Playlist[] | null
+  onOpenGustos?: () => void
+}) {
+  if (!origenes?.length) return null
+
+  const accesos: Acceso[] = []
+  if (onOpenGustos) {
+    accesos.push({
+      id: 'gustos',
+      nombre: 'Tus me gusta',
+      tapa: (
+        <View className="h-14 w-14 items-center justify-center rounded-l-lg bg-muted">
+          <IconHeart size={20} color={ICON_COLOR.foreground} />
+        </View>
+      ),
+      onPress: onOpenGustos,
+    })
+  }
+  for (const o of origenes) {
+    if (accesos.length >= 6) break
+    if (o.id === 'gustos') continue
+    const lista = listas?.find((l) => l.id === o.id)
+    if (lista) {
+      accesos.push({
+        id: o.id,
+        nombre: lista.name,
+        tapa: <PlaylistCover covers={lista.covers} coverPath={lista.coverPath} size={56} rounded="rounded-l-lg" />,
+        onPress: () => abrirLista(lista.id),
+      })
+      continue
+    }
+    const tapaUri = artworkSource(o.artworkPath, o.artworkUrl, 128)
+    const tapa = tapaUri ? (
+      <Image source={{ uri: tapaUri }} className="h-14 w-14 rounded-l-lg bg-muted" />
+    ) : (
+      <View className="h-14 w-14 items-center justify-center rounded-l-lg bg-muted">
+        <IconWave size={20} color={ICON_COLOR.muted} />
+      </View>
+    )
+    if (o.id.startsWith('mix:')) {
+      const artistId = o.id.slice(4)
+      accesos.push({
+        id: o.id,
+        nombre: o.nombre || 'Mix',
+        tapa,
+        onPress: () => {
+          void tandaDeMix({ artist_id: artistId, artist: o.nombre.replace(/^Mix de /, ''), ms: 1 }).then(
+            (tanda) => tanda.length && playQueue(tanda, 0, { id: o.id, name: o.nombre }),
+          )
+        },
+      })
+    } else if (o.id === ORIGEN_RADIO) {
+      accesos.push({
+        id: o.id,
+        nombre: 'Tu radio',
+        tapa,
+        onPress: () => {
+          void proximasRecomendadas().then(
+            (tanda) => tanda.length && playQueue(tanda, 0, { id: ORIGEN_RADIO, name: 'Tu radio' }),
+          )
+        },
+      })
+    }
+    /* Otros orígenes —una lista que ya borraste, algo de otra versión— no
+       tienen a dónde llevar y no se ofrecen. */
+  }
+  if (accesos.length < 2) return null
+
+  return (
+    <View className="flex-row flex-wrap gap-2 px-6">
+      {accesos.map((a) => (
+        <Losa key={a.id} acceso={a} />
+      ))}
+    </View>
+  )
+}
+
+/** Una losa de la grilla: tapa a la izquierda, nombre al lado. Media fila. */
+function Losa({ acceso }: { acceso: Acceso }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={acceso.nombre}
+      onPress={acceso.onPress}
+      className="h-14 flex-row items-center overflow-hidden rounded-lg bg-card active:opacity-80"
+      style={{ width: '48.5%' }}
+    >
+      {acceso.tapa}
+      <Text className="min-w-0 flex-1 px-3 text-foreground text-[13px] font-semibold" numberOfLines={2}>
+        {acceso.nombre}
+      </Text>
+    </Pressable>
+  )
+}
+
+/** De una escucha del historial a lo que dibuja la portada. */
+function escuchaComoItem(e: EscuchaReciente): HomeItem {
+  return {
+    kind: 'song',
+    id: e.videoId,
+    title: e.title,
+    subtitle: e.artist,
+    artworkUrl: artworkSource(e.artworkPath, e.artworkUrl, 128) ?? '',
+    artistId: e.artistId,
+    year: null,
+  }
+}
+
+/**
+ * «Seguir escuchando»: lo último que sonó, sin repetir. Son las columnas de
+ * canciones de la portada, alimentadas por tu historial y no por el de todos.
+ */
+function SeguirEscuchando({
+  escuchas,
+  onPlaySong,
+  menuForSong,
+  pendingId,
+}: {
+  escuchas: EscuchaReciente[] | null
+  onPlaySong: (item: HomeItem) => void
+  menuForSong: (item: HomeItem) => MenuItem[]
+  pendingId: string | null
+}) {
+  if (!escuchas?.length) return null
+  return (
+    <View className="gap-3">
+      <Text className="px-6 text-foreground text-[19px] font-bold">Seguir escuchando</Text>
+      <FadingRow gap={16} padding={24}>
+        <SongColumns
+          items={escuchas.map(escuchaComoItem)}
+          onPlay={onPlaySong}
+          menuFor={menuForSong}
+          pendingId={pendingId}
+        />
+      </FadingRow>
+    </View>
+  )
+}
+
+/** Lado de la cara de un artista en su fila. Más chico que una tapa: es un redondel. */
+const ARTISTA_LADO = 140
+
+/** Un artista en una fila: la cara redonda y el nombre debajo, centrado. */
+function TarjetaArtista({
+  nombre,
+  tapa,
+  onPress,
+}: {
+  nombre: string
+  tapa: string | null
+  onPress?: () => void
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={nombre}
+      onPress={onPress}
+      disabled={!onPress}
+      className="items-center gap-2 active:opacity-80"
+      style={{ width: ARTISTA_LADO }}
+    >
+      <View
+        className="items-center justify-center overflow-hidden bg-card"
+        style={{ width: ARTISTA_LADO, height: ARTISTA_LADO, borderRadius: ARTISTA_LADO / 2 }}
+      >
+        {tapa ? (
+          <Image
+            source={{ uri: proxiedImage(artworkUrlAtSize(tapa, 320)) }}
+            style={{ width: ARTISTA_LADO, height: ARTISTA_LADO }}
+          />
+        ) : (
+          <IconMusic size={26} color={ICON_COLOR.muted} />
+        )}
+      </View>
+      <Text className="text-center text-foreground text-[13px] font-semibold" numberOfLines={2}>
+        {nombre}
+      </Text>
+    </Pressable>
+  )
+}
+
+/**
+ * «Tus artistas»: los que más sonaron en tu historial reciente, por tiempo
+ * real. La cara es la tapa de la canción suya que más escuchaste — es la que
+ * le conocés, y no depende de que la foto del canal esté en caché.
+ */
+function TusArtistas({
+  artistas,
+  onOpenArtist,
+}: {
+  artistas: ArtistaReciente[] | null
+  onOpenArtist?: (artistId: string, nombre: string) => void
+}) {
+  if (!artistas?.length) return null
+  return (
+    <View className="gap-3">
+      <Text className="px-6 text-foreground text-[19px] font-bold">Tus artistas</Text>
+      <FadingRow gap={16} padding={24}>
+        {artistas.map((a) => (
+          <TarjetaArtista
+            key={a.artistId}
+            nombre={a.nombre}
+            tapa={artworkSource(a.artworkPath, a.artworkUrl, 320)}
+            onPress={onOpenArtist ? () => onOpenArtist(a.artistId, a.nombre) : undefined}
+          />
+        ))}
+      </FadingRow>
+    </View>
+  )
+}
+
+/**
+ * «Porque escuchaste X»: los artistas parecidos a tu más escuchado.
+ *
+ * Es la segunda capa de la radio (ver `services/recomendaciones`) puesta como
+ * fila: el ancla sale de tu historial y los parecidos los publica YouTube en
+ * la ficha del artista como «Fans might also like». Ninguna inferencia propia,
+ * ningún dato tuyo afuera. Si la ficha no trae parecidos, van sus discos.
+ */
+function PorqueEscuchaste({
+  ancla,
+  items,
+  onOpenArtist,
+  onOpenAlbum,
+}: {
+  ancla: ArtistaReciente | null
+  /** Los parecidos, ya cargados con el resto del inicio. */
+  items: HomeItem[]
+  onOpenArtist?: (artistId: string, nombre: string) => void
+  onOpenAlbum: (item: HomeItem) => void
+}) {
+  if (!ancla || !items.length) return null
+
+  return (
+    <View className="gap-3">
+      <Text className="px-6 text-foreground text-[19px] font-bold" numberOfLines={1}>
+        Porque escuchaste {ancla.nombre}
+      </Text>
+      <FadingRow gap={16} padding={24}>
+        {items.map((item) =>
+          item.kind === 'artist' ? (
+            <TarjetaArtista
+              key={item.id}
+              nombre={item.title}
+              tapa={item.artworkUrl || null}
+              onPress={onOpenArtist ? () => onOpenArtist(item.id, item.title) : undefined}
+            />
+          ) : (
+            <Card key={item.id} item={item} onPress={() => onOpenAlbum(item)} />
+          ),
+        )}
+      </FadingRow>
+    </View>
   )
 }

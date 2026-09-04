@@ -105,3 +105,53 @@ export async function reaccionesDe(userId: string, limite = 12): Promise<Reaccio
     ]
   })
 }
+
+/**
+ * Reaccionar a una pieza del perfil de otro — el gesto del Space de Airbuds.
+ *
+ * Es distinto de reaccionar a la escucha, y por eso no comparte tabla: acá no
+ * hay nada que congelar —la vitrina ya es la instantánea— y no se acumula.
+ * Cada persona deja **una** por pieza; volver a tocar reemplaza y `null` la
+ * saca. Lo que se lee sobre la pieza es la cuenta por emoji, como abajo de
+ * una foto: «🔥 3 💜 1». Ver la migración `reacciones_vitrina`.
+ */
+
+/** Lo que le dejaron a una pieza, ya agrupado, y cuál es la de quien mira. */
+export type ReaccionesVitrina = {
+  /** Cuántas personas dejaron cada emoji. */
+  conteo: Record<string, number>
+  /** El emoji que dejaste vos, o `null` si ninguno. */
+  mia: string | null
+}
+
+/** Dejarle un emoji a una pieza, cambiarlo, o sacarlo con `null`. */
+export async function reaccionarAVitrina(showcaseId: string, emoji: string | null): Promise<void> {
+  const { error } = await getSupabase().rpc('reaccionar_vitrina', {
+    p_showcase: showcaseId,
+    p_emoji: emoji ?? '',
+  })
+  if (error) throw error
+}
+
+/**
+ * Las reacciones de todo un mosaico, de una vez.
+ *
+ * Una consulta por perfil y no una por pieza: la base devuelve una fila por
+ * (pieza, emoji) y acá se arma el mapa que `Vitrinas` reparte. Una pieza que
+ * no aparece en el mapa no tiene ninguna.
+ */
+export async function reaccionesDeVitrinas(ownerId: string): Promise<Map<string, ReaccionesVitrina>> {
+  const { data, error } = await getSupabase().rpc('reacciones_de_vitrinas', { p_owner: ownerId })
+  if (error) throw error
+  const mapa = new Map<string, ReaccionesVitrina>()
+  for (const fila of (data ?? []) as Record<string, unknown>[]) {
+    if (typeof fila.showcase_id !== 'string' || typeof fila.emoji !== 'string') continue
+    const cuenta = Number(fila.cuenta)
+    if (!Number.isFinite(cuenta) || cuenta <= 0) continue
+    const de = mapa.get(fila.showcase_id) ?? { conteo: {}, mia: null }
+    de.conteo[fila.emoji] = cuenta
+    if (fila.mia === true) de.mia = fila.emoji
+    mapa.set(fila.showcase_id, de)
+  }
+  return mapa
+}

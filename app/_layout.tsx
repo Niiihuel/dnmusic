@@ -984,6 +984,40 @@ function SessionGate() {
       <Stack.Screen name="profile/editar/index" />
       <Stack.Screen name="profile/editar/musica" />
       <Stack.Screen name="profile/editar/[campo]" />
+      {/* Armar una pieza del mosaico: el editor y el buscador son pantallas
+          apiladas —hay teclado y lista—; la hoja de «+» y la del tema son
+          hojas, como el marco. */}
+      <Stack.Screen name="profile/vitrina" />
+      <Stack.Screen name="profile/elegir" />
+      {/* El mosaico de adentro de un sub-space: una pantalla apilada sobre el
+          perfil, con el mismo modo de edición. Ver `app/profile/subspace`. */}
+      <Stack.Screen name="profile/subspace" />
+      <Stack.Screen
+        name="profile/agregar"
+        options={
+          ES_WEB
+            ? HOJA_WEB
+            : {
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                sheetCornerRadius: 24,
+              }
+        }
+      />
+      <Stack.Screen
+        name="profile/tema"
+        options={
+          ES_WEB
+            ? HOJA_WEB
+            : {
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                sheetCornerRadius: 24,
+              }
+        }
+      />
       {/* Ya no es un diálogo: es una pantalla de la app, con su propio
           sidebar colapsable como el panel principal. */}
       <Stack.Screen name="song" />

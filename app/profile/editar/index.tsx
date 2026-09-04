@@ -5,24 +5,24 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Avatar } from '../../../src/ui/Avatar'
 import { Panel } from '../../../src/ui/Panel'
 import { FilaAjuste, FilaInterruptor, GrupoAjustes } from '../../../src/ui/Ajustes'
-import { Vitrinas } from '../../../src/ui/PerfilPublico'
 import {
   ICON_COLOR,
   IconAt,
   IconBack,
   IconClose,
+  IconGrilla,
   IconImage,
   IconMessage,
-  IconMusic,
   IconUser,
 } from '../../../src/ui/icons'
 import { removeAvatar, saveMyProfile, uploadAvatar } from '../../../src/services/profile'
 import { MARCOS } from '../../../src/ui/Marco'
 import { pickImage } from '../../../src/lib/pickImage'
-import { addShowcase, esVideo, uploadIlustracion } from '../../../src/services/showcases'
+import { esVideo, uploadIlustracion } from '../../../src/services/showcases'
 import { setMyProfile, useMyProfile, useUser } from '../../../src/state/session'
 import { usePiso } from '../../../src/state/shell'
 import { avisar } from '../../../src/state/aviso'
+import { pedirArmado } from '../../../src/state/vitrinaBorrador'
 import { volver } from '../../../src/lib/volver'
 
 /** Ancho al que el editor deja de ser una columna centrada. */
@@ -48,8 +48,6 @@ export default function EditarPerfil() {
 
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  /* Cambia al sacar o mover una vitrina, para que la grilla relea. */
-  const [recarga, setRecarga] = useState(0)
 
   const [subiendoFondo, setSubiendoFondo] = useState(false)
 
@@ -77,37 +75,6 @@ export default function EditarPerfil() {
       avisar('No se pudo subir el fondo', true)
     } finally {
       setSubiendoFondo(false)
-    }
-  }
-
-  /**
-   * Subir una imagen y fijarla como vitrina.
-   *
-   * Nace en **media fila** a propósito. El tipo se había sacado del perfil
-   * porque «una imagen subida es el fondo, no una tarjeta» (ver `0d02e94`) y
-   * una tarjeta grande en el medio le competía. A media fila es una pieza al
-   * lado de una canción, no un segundo fondo. Se puede agrandar después con el
-   * control de la tarjeta, pero hay que pedirlo.
-   */
-  const [subiendoImagen, setSubiendoImagen] = useState(false)
-  /* Mientras se arrastra una vitrina, el scroll se congela: un ScrollView vivo
-     abajo del dedo se pelea con el gesto. Mismo trato que la cola. */
-  const [arrastrando, setArrastrando] = useState(false)
-  async function sumarImagen() {
-    if (!user || subiendoImagen) return
-    setSubiendoImagen(true)
-    try {
-      const elegida = await pickImage()
-      if (!elegida) return
-      const ruta = await uploadIlustracion(user.id, elegida.blob, elegida.fileName, elegida.mime)
-      await addShowcase(user.id, 'imagen', { path: ruta }, 'mitad')
-      setRecarga((n) => n + 1)
-      avisar('Imagen sumada a tu perfil')
-    } catch (e) {
-      setError((e as Error).message)
-      avisar('No se pudo sumar la imagen', true)
-    } finally {
-      setSubiendoImagen(false)
     }
   }
 
@@ -169,7 +136,6 @@ export default function EditarPerfil() {
           <ScrollView
             contentContainerClassName="items-center px-4 pt-6"
             contentContainerStyle={{ paddingBottom: piso }}
-            scrollEnabled={!arrastrando}
           >
             {!profile ? (
               <ActivityIndicator color="#FFFFFF" />
@@ -343,77 +309,27 @@ export default function EditarPerfil() {
                   />
                 </GrupoAjustes>
 
-                <GrupoAjustes titulo="Agregar">
-                  {/* Buscar música vive acá y no en el flujo de mensajes: fijar
-                      algo en tu perfil y mandárselo a alguien son dos
-                      intenciones distintas. */}
+                {/*
+                 * El mosaico se arma **en el perfil**, no acá.
+                 *
+                 * Antes las vitrinas vivían en esta pantalla con sus cruces y
+                 * su manija, sobre gris. Ahora se arman donde se ven —sobre el
+                 * fondo, con el tema puesto— porque cómo queda una pieza
+                 * depende de lo que tiene alrededor. Esta fila vuelve al perfil
+                 * con el modo de edición encendido.
+                 */}
+                <GrupoAjustes titulo="Tu mosaico">
                   <FilaAjuste
-                    rotulo="Música"
-                    vacio="Buscá una canción para fijar"
-                    icono={<IconMusic size={17} color={ICON_COLOR.muted} />}
-                    onPress={() => router.push('/profile/editar/musica')}
+                    rotulo="Armar el mosaico"
+                    vacio="Piezas, temas y orden"
+                    icono={<IconGrilla size={17} color={ICON_COLOR.muted} />}
+                    onPress={() => {
+                      pedirArmado()
+                      volver(router, '/profile')
+                    }}
                     ultima
                   />
                 </GrupoAjustes>
-
-                {/*
-                 * Las vitrinas se acomodan acá, no en el perfil.
-                 *
-                 * En el perfil se ven como las ve cualquiera: sin cruces ni
-                 * flechas encima. Acá aparecen los controles, que es lo que hace
-                 * que las dos pantallas tengan un trabajo cada una.
-                 */}
-                <View className="gap-2">
-                  <View className="flex-row items-center justify-between gap-3 px-4">
-                    <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-                      Tus vitrinas
-                    </Text>
-                    {/*
-                     * Sumar una imagen: la única vitrina que no tiene de dónde
-                     * salir sola.
-                     *
-                     * Una lista se fija desde su menú, un fragmento desde el
-                     * suyo — cada cosa se fija donde vive. Una imagen no vive
-                     * en ningún lado hasta que la subís, así que su puerta
-                     * tiene que estar acá, que es donde se arma el mosaico.
-                     */}
-                    <View className="flex-row items-center gap-2">
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Sumar una imagen al perfil"
-                      disabled={subiendoImagen}
-                      onPress={() => void sumarImagen()}
-                      className="h-9 flex-row items-center gap-2 rounded-full bg-muted px-3.5 active:opacity-70"
-                    >
-                      {subiendoImagen ? (
-                        <ActivityIndicator size="small" color={ICON_COLOR.muted} />
-                      ) : (
-                        <IconImage size={14} color={ICON_COLOR.muted} />
-                      )}
-                      <Text className="text-foreground text-[12px] font-semibold">
-                        {subiendoImagen ? 'Subiendo…' : 'Sumar imagen'}
-                      </Text>
-                    </Pressable>
-                    </View>
-                  </View>
-                  <Vitrinas
-                    ownerId={profile.userId}
-                    recarga={recarga}
-                    onCambio={() => setRecarga((n) => n + 1)}
-                    onArrastre={setArrastrando}
-                    vacio={
-                      <View className="gap-2 rounded-2xl bg-card px-5 py-6">
-                        <Text className="text-foreground text-[15px] font-semibold">
-                          Todavía no fijaste nada
-                        </Text>
-                        <Text className="text-muted-foreground text-[13px] leading-5">
-                          Desde los tres puntos de cualquier canción, lista o fragmento podés
-                          fijarlo en tu perfil.
-                        </Text>
-                      </View>
-                    }
-                  />
-                </View>
               </View>
             )}
           </ScrollView>

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "outputDirectory": "public",
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60
+    },
+    "api/todo.ts": {
+      "maxDuration": 300,
+      "includeFiles": "node_modules/{ffmpeg-static/ffmpeg,ffprobe-static/bin/linux/x64/ffprobe}"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/img",
+      "destination": "/api?ruta=/img"
+    },
+    {
+      "source": "/translate",
+      "destination": "/api?ruta=/translate"
+    },
+    {
+      "source": "/spotify",
+      "destination": "/api?ruta=/spotify"
+    },
+    {
+      "source": "/spotify/canciones",
+      "destination": "/api?ruta=/spotify/canciones"
+    },
+    {
+      "source": "/artwork",
+      "destination": "/api?ruta=/artwork"
+    },
+    {
+      "source": "/health",
+      "destination": "/api/todo?ruta=/health"
+    },
+    {
+      "source": "/push",
+      "destination": "/api/todo?ruta=/push"
+    },
+    {
+      "source": "/search",
+      "destination": "/api/todo?ruta=/search"
+    },
+    {
+      "source": "/artist",
+      "destination": "/api/todo?ruta=/artist"
+    },
+    {
+      "source": "/peaks",
+      "destination": "/api/todo?ruta=/peaks"
+    },
+    {
+      "source": "/home",
+      "destination": "/api/todo?ruta=/home"
+    },
+    {
+      "source": "/home-generos",
+      "destination": "/api/todo?ruta=/home-generos"
+    },
+    {
+      "source": "/generos",
+      "destination": "/api/todo?ruta=/generos"
+    },
+    {
+      "source": "/genero",
+      "destination": "/api/todo?ruta=/genero"
+    },
+    {
+      "source": "/album",
+      "destination": "/api/todo?ruta=/album"
+    },
+    {
+      "source": "/playlist",
+      "destination": "/api/todo?ruta=/playlist"
+    },
+    {
+      "source": "/emparejar",
+      "destination": "/api/todo?ruta=/emparejar"
+    },
+    {
+      "source": "/aportar",
+      "destination": "/api/todo?ruta=/aportar"
+    },
+    {
+      "source": "/aportar/url",
+      "destination": "/api/todo?ruta=/aportar/url"
+    },
+    {
+      "source": "/aportar/confirmar",
+      "destination": "/api/todo?ruta=/aportar/confirmar"
+    },
+    {
+      "source": "/resolve",
+      "destination": "/api/todo?ruta=/resolve"
+    },
+    {
+      "source": "/resolve/progreso",
+      "destination": "/api/todo?ruta=/resolve/progreso"
+    },
+    {
+      "source": "/propia",
+      "destination": "/api/todo?ruta=/propia"
+    },
+    {
+      "source": "/propia/url",
+      "destination": "/api/todo?ruta=/propia/url"
+    },
+    {
+      "source": "/propia/confirmar",
+      "destination": "/api/todo?ruta=/propia/confirmar"
+    }
+  ]
+}

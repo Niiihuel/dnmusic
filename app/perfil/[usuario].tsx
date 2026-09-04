@@ -4,9 +4,20 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { BotonVidrio } from '../../src/ui/Glass'
-import { alturaDeHeroe, FondoPerfil, Identidad, Vitrinas } from '../../src/ui/PerfilPublico'
-import { ListasPerfil } from '../../src/ui/ListasPerfil'
-import { EscuchaConReacciones, ParedDeReacciones } from '../../src/ui/Reacciones'
+import {
+  alturaDeHeroe,
+  FondoPerfil,
+  Identidad,
+  useCuantasVitrinas,
+  Vitrinas,
+} from '../../src/ui/PerfilPublico'
+import {
+  pestanaInicial,
+  PestanasPerfil,
+  Reciente,
+  type PestanaPerfil,
+} from '../../src/ui/PestanasPerfil'
+import { EscuchaConReacciones } from '../../src/ui/Reacciones'
 import { FilaSostener } from '../../src/ui/Mantener'
 import { Vacio } from '../../src/ui/Vacio'
 import { ICON_COLOR, IconBack, IconBan, IconUser } from '../../src/ui/icons'
@@ -20,6 +31,8 @@ import { volver } from '../../src/lib/volver'
 
 const MAX_W = 520
 const ANCHO_PX = 900
+/** Tope de las dos columnas en escritorio, el mismo que en el perfil propio. */
+const CAP_ANCHO = 1100
 
 /**
  * El perfil de otra persona.
@@ -71,6 +84,12 @@ export default function PerfilAjeno() {
      recargar el perfil entero. */
   const [reaccion, setReaccion] = useState(0)
 
+  /* La pestaña elegida con el dedo; `null` deja mandar a `pestanaInicial`:
+     «Space» si tiene piezas, «Reciente» si no. Ver `ui/PestanasPerfil`. */
+  const [elegida, setElegida] = useState<PestanaPerfil | null>(null)
+  const cuantasVitrinas = useCuantasVitrinas(perfil?.userId ?? '', 0)
+  const pestana = elegida ?? pestanaInicial(cuantasVitrinas)
+
   /*
    * Al recuperar el foco se vuelve a pedir el perfil, **sin vaciar lo que se
    * ve**: la respuesta reemplaza cuando llega. Vaciar primero haría parpadear
@@ -116,6 +135,78 @@ export default function PerfilAjeno() {
       avisar(mensajeError(e), true)
     }
   }
+
+  /*
+   * Las tres piezas que reparten las dos pantallas —dos columnas y pestañas—
+   * se arman una sola vez acá, y cada layout las acomoda.
+   */
+
+  /* Mantener apretada una pieza abre la fila de emojis para reaccionarle: es
+     el gesto del Space de Airbuds. Mirándote a vos mismo no, que a lo propio
+     no se le reacciona. */
+  const vitrinas = perfil ? (
+    <Vitrinas
+      ownerId={perfil.userId}
+      recarga={0}
+      onCambio={() => undefined}
+      temaGlobal={perfil.tema}
+      reaccionable={!soyYo}
+      /* El usuario viaja también: la pantalla del sub-space lo necesita para
+         pedir el tema del perfil, que solo se lee por nombre de usuario. */
+      onAbrirSubspace={(v) =>
+        router.push({
+          pathname: '/profile/subspace',
+          params: { owner: perfil.userId, id: v.id, usuario: perfil.username },
+        })
+      }
+      vacio={
+        <View className="items-center px-6 py-8">
+          <Text className="text-muted-foreground text-center text-[13px] leading-5">
+            {soyYo ? 'Todavía no fijaste nada en tu perfil.' : `${nombre} todavía no fijó nada.`}
+          </Text>
+        </View>
+      }
+    />
+  ) : null
+
+  /* Lo que está sonando en su casa, con los emojis al lado, arriba de todo lo
+     reciente: es lo más vivo que tiene un perfil. Se dibuja solo si sos su
+     contacto y hay algo sonando, y nunca mirándote a vos mismo. */
+  const reciente = perfil ? (
+    <Reciente
+      ownerId={perfil.userId}
+      nombre={nombre}
+      propio={soyYo}
+      recarga={reaccion}
+      onAbrirLista={(lista) => router.push(`/lista/${lista.id}`)}
+      escucha={
+        soyYo ? null : (
+          <EscuchaConReacciones
+            ownerId={perfil.userId}
+            nombre={nombre}
+            onReaccion={() => setReaccion((n) => n + 1)}
+          />
+        )
+      }
+    />
+  ) : null
+
+  /* Bloquear vive al fondo del perfil, fuera de las pestañas: es la pantalla
+     de esa persona y es una decisión sobre esa persona, no sobre lo que armó
+     ni sobre lo que escucha. Se sostiene, como todo lo que saca algo de tu
+     vista. Se deshace desde Ajustes → Bloqueados. */
+  const bloqueo =
+    perfil && !soyYo ? (
+      <View className="overflow-hidden rounded-2xl bg-card">
+        <FilaSostener
+          rotulo={`Bloquear a @${perfil.username}`}
+          detalle="No van a poder escribirse ni encontrarse en la búsqueda."
+          icono={<IconBan size={17} color={ICON_COLOR.muted} />}
+          onCompletar={() => void bloquear()}
+          ultima
+        />
+      </View>
+    ) : null
 
   return (
     <SafeAreaView
@@ -191,7 +282,7 @@ export default function PerfilAjeno() {
                 accion={{ rotulo: 'Volver', onPress: () => volver(router, '/') }}
               />
             ) : (
-              <View className="w-full gap-7" style={{ maxWidth: ancho ? 720 : MAX_W }}>
+              <View className="w-full gap-7" style={{ maxWidth: ancho ? CAP_ANCHO : MAX_W }}>
                 {/* Misma banda que en el perfil propio: acostada en escritorio,
                     apilada y centrada en el teléfono. Que las dos pantallas se
                     vean igual es el punto de compartir `Identidad`. */}
@@ -206,63 +297,29 @@ export default function PerfilAjeno() {
                   banda={ancho}
                 />
 
-                {/* Lo que está sonando en su casa, con los emojis al lado: es
-                    lo más vivo que tiene un perfil y por eso va arriba de todo.
-                    Se dibuja solo si sos su contacto y hay algo sonando. */}
-                {soyYo ? null : (
-                  <EscuchaConReacciones
-                    ownerId={perfil.userId}
-                    nombre={nombre}
-                    onReaccion={() => setReaccion((n) => n + 1)}
-                  />
-                )}
-
-                <ParedDeReacciones
-                  ownerId={perfil.userId}
-                  recarga={reaccion}
-                  propio={soyYo}
-                  nombre={nombre}
-                />
-
-                <Vitrinas
-                  ownerId={perfil.userId}
-                  recarga={0}
-                  onCambio={() => undefined}
-                  propio={false}
-                  vacio={
-                    <View className="items-center px-6 py-8">
-                      <Text className="text-muted-foreground text-center text-[13px] leading-5">
-                        {soyYo
-                          ? 'Todavía no fijaste nada en tu perfil.'
-                          : `${nombre} todavía no fijó nada.`}
-                      </Text>
+                {ancho ? (
+                  /* Las dos columnas del perfil propio, con el mismo reparto:
+                     el mosaico a la izquierda y lo reciente a la derecha. Son
+                     las dos pestañas del teléfono, lado a lado. */
+                  <View className="flex-row items-start gap-6">
+                    <View className="min-w-0 flex-1">{vitrinas}</View>
+                    <View className="w-[320px] shrink-0 gap-7">
+                      {reciente}
+                      {bloqueo}
                     </View>
-                  }
-                />
-
-                {/* El estante, debajo de lo destacado: las vitrinas eligen qué
-                    mostrar arriba de todo, y esto es todo lo que publicó. */}
-                <ListasPerfil
-                  ownerId={perfil.userId}
-                  nombre={nombre}
-                  propio={soyYo}
-                  onAbrir={(lista) => router.push(`/lista/${lista.id}`)}
-                />
-
-                {/* Bloquear vive al fondo del perfil: es la pantalla de esa
-                    persona, y es una decisión sobre esa persona. Se sostiene,
-                    como todo lo que saca algo de tu vista. Se deshace desde
-                    Ajustes → Bloqueados. */}
-                {soyYo ? null : (
-                  <View className="overflow-hidden rounded-2xl bg-card">
-                    <FilaSostener
-                      rotulo={`Bloquear a @${perfil.username}`}
-                      detalle="No van a poder escribirse ni encontrarse en la búsqueda."
-                      icono={<IconBan size={17} color={ICON_COLOR.muted} />}
-                      onCompletar={() => void bloquear()}
-                      ultima
-                    />
                   </View>
+                ) : (
+                  <>
+                    <View className="items-center">
+                      <PestanasPerfil activa={pestana} onCambiar={setElegida} />
+                    </View>
+
+                    {/* Mientras no se sabe con cuál abrir, nada: mejor un
+                        instante en blanco que una pestaña que salta. */}
+                    {pestana === 'space' ? vitrinas : pestana === 'reciente' ? reciente : null}
+
+                    {bloqueo}
+                  </>
                 )}
               </View>
             )}

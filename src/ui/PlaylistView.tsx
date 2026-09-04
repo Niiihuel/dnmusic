@@ -417,10 +417,14 @@ export function PlaylistView({
     return m
   }, [tracks])
   function alternarBuscar() {
-    setBuscando((b) => {
-      if (b) setFiltro('')
-      return !b
-    })
+    /* Los dos setters, uno al lado del otro y ninguno adentro del otro.
+       `setFiltro` vivía dentro del updater de `setBuscando`, y un updater
+       tiene que ser puro: React puede correrlo más de una vez, y cada corrida
+       repetía el efecto. Acá no hace falta el updater —esto es un manejador,
+       `buscando` es el de este render— y React agrupa las dos en un solo
+       re-render igual. */
+    if (buscando) setFiltro('')
+    setBuscando(!buscando)
   }
 
   /* Bajar la lista entera al disco, solo en la app de PC (`HAY_DESCARGA_ESCRITORIO`).

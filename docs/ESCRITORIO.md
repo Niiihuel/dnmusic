@@ -47,7 +47,7 @@ cd desktop && npm run empaquetar   # queda en desktop/release/
 El escritorio no es solo una ventana: cuando el `/resolve` del servidor falla,
 **esta compu baja el audio con su propia IP y se lo aporta al bucket común**.
 
-Existe por la reja anti-bot de YouTube contra las IPs de datacenter: Railway
+Existe por la reja anti-bot de YouTube contra las IPs de datacenter: el servidor
 puede pasar días con `LOGIN_REQUIRED` en los siete clientes mientras cualquier
 IP residencial resuelve sin drama — se comprobó el día del apagón, corriendo el
 mismo código en una casa y en Railway a la vez. Con esto, cada usuario de
@@ -65,11 +65,20 @@ El circuito completo, con quién confía en quién:
    `pot`, descarga por rangos. Es un **espejo de `server/src/youtube.ts`**; el
    atajo de los clientes móviles sin token no existe: googlevideo corta con 403
    pasado el primer megabyte también en IPs residenciales.
-3. Los bytes viajan a `POST /aportar` con el JWT del usuario. **El servidor
-   decide qué se guarda**: ffprobe confirma que es AAC en mp4 con la duración
-   que el catálogo esperaba (±7s), ffmpeg lo remuxea estricto, y recién ahí
-   entra a Storage — un cliente malicioso no puede envenenar el caché. El uid
-   del aportante queda en el log.
+3. Los bytes **no pasan por el servicio**: `POST /aportar/url` devuelve una URL
+   firmada de un solo uso, el archivo sube derecho a Supabase Storage con un
+   `PUT`, y después `POST /aportar/confirmar` avisa que está. Va así porque el
+   servicio vive en una función y el cuerpo de un pedido tiene techo —4.5 MB en
+   el plan gratis, menos que una canción de cinco minutos—; de paso es más
+   rápido y no gasta ancho de banda de la función.
+4. **El servidor decide qué se guarda**, igual que antes: lo subido cae en una
+   ruta de cuarentena que la app no reproduce nunca, y solo si ffprobe confirma
+   que es AAC en mp4 con la duración que el catálogo esperaba (±7s) y ffmpeg lo
+   remuxea estricto pasa a `<videoId>.m4a`, que es el único nombre que la app
+   toca y que escribe únicamente el servidor. Un cliente malicioso no puede
+   envenenar el caché, y la ruta de cuarentena la deriva el servidor del token
+   de quien pide —no viene en el cuerpo—, así que confirmar solo alcanza lo
+   propio. El uid del aportante queda en el log.
 
 El navegador no puede hacer lo mismo (hablar con YouTube desde una página lo
 frena CORS); por eso el puente existe solo acá. El teléfono podría, y es la

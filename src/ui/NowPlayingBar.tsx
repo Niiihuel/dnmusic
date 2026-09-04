@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'expo-router'
 import Animated, { useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated'
 import { ActivityIndicator, Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
@@ -852,7 +852,10 @@ function Volume({
   onChange: (v: number) => void
   angosto?: boolean
 }) {
-  const [before, setBefore] = useState(1)
+  /* El volumen de antes de silenciar va en un ref: no se muestra, solo se
+     consulta al devolver el sonido. Como estado, cada clic en el parlante
+     redibujaba la barra de reproducción de más. */
+  const before = useRef(1)
   const muted = value === 0
 
   return (
@@ -861,9 +864,9 @@ function Volume({
         accessibilityRole="button"
         accessibilityLabel={muted ? 'Devolver el sonido' : 'Silenciar'}
         onPress={() => {
-          if (muted) onChange(before || 1)
+          if (muted) onChange(before.current || 1)
           else {
-            setBefore(value)
+            before.current = value
             onChange(0)
           }
         }}

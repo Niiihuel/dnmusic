@@ -1,13 +1,17 @@
+import { artworkSource } from '../lib/artwork'
 import { getSupabase } from '../lib/supabase'
+import { temaDe, type Tema } from '../lib/tema'
 import type { Encuadre } from './profile'
 
 /** Un encuadre del payload, o null. Mismo criterio que en `profile`. */
 function encuadreDe(v: unknown): Encuadre | null {
   const r = v as Record<string, unknown> | null
   if (!r || typeof r !== 'object') return null
-  const { x, y, escala } = r
+  const { x, y, escala, rotacion } = r
   if (typeof x !== 'number' || typeof y !== 'number' || typeof escala !== 'number') return null
-  return { x, y, escala }
+  return typeof rotacion === 'number' && Number.isFinite(rotacion) && rotacion !== 0
+    ? { x, y, escala, rotacion }
+    : { x, y, escala }
 }
 
 /**
@@ -15,7 +19,9 @@ function encuadreDe(v: unknown): Encuadre | null {
  *
  * La idea viene de Steam: el perfil no es una plantilla fija sino una lista
  * ordenada de bloques que quien lo arma elige. Acá los bloques son de música —
- * una canción fijada, un fragmento, una lista, un texto suelto.
+ * una canción fijada, un fragmento, una lista, un texto suelto— más las piezas
+ * de composición que hacen que el mosaico tenga capítulos: un encabezado y un
+ * espacio.
  *
  * Cada tipo guarda cosas distintas, así que el contenido va en un JSON y la
  * validación de su forma vive **acá**, que es el único lugar que escribe en esa
@@ -31,6 +37,24 @@ export type ShowcaseKind =
   | 'artista'
   | 'album'
   | 'letra'
+  | 'encabezado'
+  | 'espaciador'
+  | 'subspace'
+
+/** Cómo se llama cada tipo, para las hojas del editor. */
+export const ROTULO_TIPO: Record<ShowcaseKind, string> = {
+  cancion: 'Canción',
+  fragmento: 'Fragmento',
+  lista: 'Lista',
+  texto: 'Texto',
+  imagen: 'Imagen',
+  artista: 'Artista',
+  album: 'Álbum',
+  letra: 'Letras',
+  encabezado: 'Encabezado de sección',
+  espaciador: 'Espaciador',
+  subspace: 'Sub-space',
+}
 
 /**
  * Cuánto ocupa una vitrina: el modelo de los widgets de iOS.
@@ -44,9 +68,22 @@ export type ShowcaseKind =
  */
 export type ShowcaseAncho = 'entero' | 'mitad' | 'grande'
 
+/**
+ * Los tamaños que admite cada tipo.
+ *
+ * Un encabezado y un espacio no tienen «grande»: son una línea y un hueco, y
+ * el 2×2 les daría el doble de alto a algo que no tiene con qué llenarlo.
+ */
+export function anchosDe(kind: ShowcaseKind): ShowcaseAncho[] {
+  return kind === 'encabezado' || kind === 'espaciador'
+    ? ['mitad', 'entero']
+    : ['mitad', 'entero', 'grande']
+}
+
 /** El tamaño que sigue al tocar el control: chico → mediano → grande → chico. */
-export function siguienteAncho(ancho: ShowcaseAncho): ShowcaseAncho {
-  return ancho === 'mitad' ? 'entero' : ancho === 'entero' ? 'grande' : 'mitad'
+export function siguienteAncho(ancho: ShowcaseAncho, kind: ShowcaseKind = 'cancion'): ShowcaseAncho {
+  const anchos = anchosDe(kind)
+  return anchos[(anchos.indexOf(ancho) + 1) % anchos.length]
 }
 
 /** Una canción fijada, o el fragmento de una. */
@@ -95,65 +132,113 @@ export type ShowcaseAlbum = {
  *
  * El texto viaja congelado, como todo lo demás: la letra se pidió una vez al
  * fijar y la vitrina no depende de que el servicio de letras siga contestando.
+ * La tapa es opcional —los versos fijados desde la letra no la traían— y la
+ * vitrina la dibuja solo si está.
  */
 export type ShowcaseLetra = {
   texto: string
   title: string
   artist: string
+  artworkUrl?: string
 }
 
-type Base = { id: string; ancho: ShowcaseAncho }
+/**
+ * Cómo se viste una vitrina: su tema y la imagen que va detrás.
+ *
+ * Va aparte del contenido, en su propia columna (ver la migración
+ * `space_del_perfil`): elegir otra canción no toca el tema, y cambiar el tema
+ * no toca la canción. `tema` en `null` no es «sin tema»: es «sin opinión», y
+ * entonces la vitrina hereda el del perfil (ver `lib/tema`).
+ */
+export type ShowcaseEstilo = {
+  tema: Tema | null
+  fondo: ShowcaseImagen | null
+}
 
-export type Showcase =
-  | (Base & { kind: 'cancion'; cancion: ShowcaseCancion })
-  | (Base & { kind: 'fragmento'; cancion: ShowcaseCancion })
-  | (Base & { kind: 'lista'; playlistId: string })
-  | (Base & { kind: 'texto'; texto: string })
-  | (Base & { kind: 'imagen'; imagen: ShowcaseImagen })
-  | (Base & { kind: 'artista'; artista: ShowcaseArtista })
-  | (Base & { kind: 'album'; album: ShowcaseAlbum })
-  | (Base & { kind: 'letra'; letra: ShowcaseLetra })
+export const SIN_ESTILO: ShowcaseEstilo = { tema: null, fondo: null }
+
+/** Lo que muestra una vitrina, sin su identidad ni su tamaño. */
+export type ShowcaseContenido =
+  | { kind: 'cancion'; cancion: ShowcaseCancion }
+  | { kind: 'fragmento'; cancion: ShowcaseCancion }
+  | { kind: 'lista'; playlistId: string }
+  | { kind: 'texto'; texto: string }
+  | { kind: 'imagen'; imagen: ShowcaseImagen }
+  | { kind: 'artista'; artista: ShowcaseArtista }
+  | { kind: 'album'; album: ShowcaseAlbum }
+  | { kind: 'letra'; letra: ShowcaseLetra }
+  | { kind: 'encabezado'; titulo: string }
+  | { kind: 'espaciador' }
+  /**
+   * Un mosaico dentro de una pieza: la pieza paga del Space de Airbuds.
+   *
+   * Acá solo vive el título. Las piezas de adentro son vitrinas comunes de la
+   * misma tabla con `parent_id` apuntando a esta (ver la migración
+   * `subspace`); se leen con `listShowcases(owner, id)` y se dibujan con el
+   * mismo `Vitrinas` del perfil.
+   */
+  | { kind: 'subspace'; titulo: string }
+
+type Base = { id: string; ancho: ShowcaseAncho; estilo: ShowcaseEstilo }
+
+export type Showcase = Base & ShowcaseContenido
 
 type Row = {
   id?: unknown
   kind?: unknown
   payload?: unknown
   ancho?: unknown
+  estilo?: unknown
+}
+
+/** El estilo de una fila, o el vacío si no hay o no se entiende. */
+function estiloDe(v: unknown): ShowcaseEstilo {
+  const r = v as Record<string, unknown> | null
+  if (!r || typeof r !== 'object') return SIN_ESTILO
+  const fondo = r.fondo as Record<string, unknown> | null
+  return {
+    tema: temaDe(r.tema),
+    fondo:
+      fondo && typeof fondo === 'object' && typeof fondo.path === 'string' && fondo.path
+        ? { path: fondo.path, encuadre: encuadreDe(fondo.encuadre) }
+        : null,
+  }
 }
 
 /**
- * Una fila cruda, o `null` si no se entiende.
+ * El contenido de una fila, o `null` si no se entiende.
  *
  * Se descarta en silencio en vez de romper la pantalla: el contenido es JSON
  * libre, y una vitrina guardada por una versión más nueva de la app —o a mano—
  * no puede dejar el perfil entero en blanco. Es el mismo criterio que ya usa la
  * cola guardada al restaurarse.
  */
-function showcaseFromRow(row: Row): Showcase | null {
-  if (typeof row.id !== 'string' || typeof row.kind !== 'string') return null
-  const p = (row.payload ?? {}) as Record<string, unknown>
-  /* Ante cualquier cosa rara, entero: es como se dibujaba antes de que el
-     ancho existiera, así que lo desconocido cae en lo de siempre. */
-  const ancho: ShowcaseAncho =
-    row.ancho === 'mitad' ? 'mitad' : row.ancho === 'grande' ? 'grande' : 'entero'
-  const base = { id: row.id, ancho }
+function contenidoDe(kind: string, p: Record<string, unknown>): ShowcaseContenido | null {
+  if (kind === 'texto') {
+    return typeof p.texto === 'string' && p.texto.trim() ? { kind: 'texto', texto: p.texto } : null
+  }
 
-  if (row.kind === 'texto') {
-    return typeof p.texto === 'string' && p.texto.trim()
-      ? { ...base, kind: 'texto', texto: p.texto }
+  if (kind === 'encabezado') {
+    return typeof p.titulo === 'string' && p.titulo.trim()
+      ? { kind: 'encabezado', titulo: p.titulo }
       : null
   }
 
-  if (row.kind === 'lista') {
-    return typeof p.playlistId === 'string'
-      ? { ...base, kind: 'lista', playlistId: p.playlistId }
+  if (kind === 'espaciador') return { kind: 'espaciador' }
+
+  if (kind === 'subspace') {
+    return typeof p.titulo === 'string' && p.titulo.trim()
+      ? { kind: 'subspace', titulo: p.titulo }
       : null
   }
 
-  if (row.kind === 'artista') {
+  if (kind === 'lista') {
+    return typeof p.playlistId === 'string' ? { kind: 'lista', playlistId: p.playlistId } : null
+  }
+
+  if (kind === 'artista') {
     if (typeof p.artistId !== 'string' || typeof p.nombre !== 'string') return null
     return {
-      ...base,
       kind: 'artista',
       artista: {
         artistId: p.artistId,
@@ -163,10 +248,9 @@ function showcaseFromRow(row: Row): Showcase | null {
     }
   }
 
-  if (row.kind === 'album') {
+  if (kind === 'album') {
     if (typeof p.albumId !== 'string' || typeof p.titulo !== 'string') return null
     return {
-      ...base,
       kind: 'album',
       album: {
         albumId: p.albumId,
@@ -177,15 +261,15 @@ function showcaseFromRow(row: Row): Showcase | null {
     }
   }
 
-  if (row.kind === 'letra') {
+  if (kind === 'letra') {
     if (typeof p.texto !== 'string' || !p.texto.trim()) return null
     return {
-      ...base,
       kind: 'letra',
       letra: {
         texto: p.texto,
         title: typeof p.title === 'string' ? p.title : '',
         artist: typeof p.artist === 'string' ? p.artist : '',
+        artworkUrl: typeof p.artworkUrl === 'string' && p.artworkUrl ? p.artworkUrl : undefined,
       },
     }
   }
@@ -193,16 +277,12 @@ function showcaseFromRow(row: Row): Showcase | null {
   /* `ilustracion` es el nombre viejo de lo mismo: quedó en el check de la base
      de cuando esto era «la pieza grande del centro» de Steam. Se lee igual para
      no perder ninguna que haya quedado guardada. */
-  if (row.kind === 'imagen' || row.kind === 'ilustracion') {
+  if (kind === 'imagen' || kind === 'ilustracion') {
     if (typeof p.path !== 'string' || !p.path) return null
-    return {
-      ...base,
-      kind: 'imagen',
-      imagen: { path: p.path, encuadre: encuadreDe(p.encuadre) },
-    }
+    return { kind: 'imagen', imagen: { path: p.path, encuadre: encuadreDe(p.encuadre) } }
   }
 
-  if (row.kind === 'cancion' || row.kind === 'fragmento') {
+  if (kind === 'cancion' || kind === 'fragmento') {
     if (typeof p.videoId !== 'string' || typeof p.audioPath !== 'string') return null
     const cancion: ShowcaseCancion = {
       videoId: p.videoId,
@@ -215,21 +295,163 @@ function showcaseFromRow(row: Row): Showcase | null {
       startMs: typeof p.startMs === 'number' ? p.startMs : undefined,
       endMs: typeof p.endMs === 'number' ? p.endMs : undefined,
     }
-    return { ...base, kind: row.kind, cancion }
+    return { kind, cancion }
   }
 
   return null
 }
 
-/** Las vitrinas de alguien, en su orden. Se leen entre todos. */
-export async function listShowcases(ownerId: string): Promise<Showcase[]> {
-  const { data, error } = await getSupabase()
+function showcaseFromRow(row: Row): Showcase | null {
+  if (typeof row.id !== 'string' || typeof row.kind !== 'string') return null
+  const contenido = contenidoDe(row.kind, (row.payload ?? {}) as Record<string, unknown>)
+  if (!contenido) return null
+  /* Ante cualquier cosa rara, entero: es como se dibujaba antes de que el
+     ancho existiera, así que lo desconocido cae en lo de siempre. Y dentro de
+     lo que su tipo admite: un encabezado guardado como grande baja a entero. */
+  const pedido: ShowcaseAncho =
+    row.ancho === 'mitad' ? 'mitad' : row.ancho === 'grande' ? 'grande' : 'entero'
+  const ancho = anchosDe(contenido.kind).includes(pedido) ? pedido : 'entero'
+  return { id: row.id, ancho, estilo: estiloDe(row.estilo), ...contenido }
+}
+
+/**
+ * Del contenido al JSON que se guarda. Es la inversa de `contenidoDe`, y vive
+ * al lado suyo para que las dos se lean juntas: lo que una escribe la otra lo
+ * tiene que entender.
+ */
+export function payloadDe(contenido: ShowcaseContenido): Record<string, unknown> {
+  switch (contenido.kind) {
+    case 'cancion':
+    case 'fragmento':
+      return { ...contenido.cancion }
+    case 'lista':
+      return { playlistId: contenido.playlistId }
+    case 'texto':
+      return { texto: contenido.texto }
+    case 'imagen':
+      return { ...contenido.imagen }
+    case 'artista':
+      return { ...contenido.artista }
+    case 'album':
+      return { ...contenido.album }
+    case 'letra':
+      return { ...contenido.letra }
+    case 'encabezado':
+    case 'subspace':
+      return { titulo: contenido.titulo }
+    case 'espaciador':
+      return {}
+  }
+}
+
+/**
+ * De dónde sacar la tapa de cada tipo: la carátula, la cara del artista, la
+ * imagen fijada. `null` si no tiene —un texto, un espacio, un sub-space—.
+ *
+ * La usan dos cosas: el tema «de la tapa», que le lee el color, y la vista
+ * previa de un sub-space, que muestra las tapas de sus primeras piezas. Vive
+ * acá y no en la vitrina porque la segunda la necesita antes de dibujar nada.
+ */
+export function tapaDe(v: Showcase): string | null {
+  switch (v.kind) {
+    case 'cancion':
+    case 'fragmento':
+      return artworkSource(v.cancion.artworkPath ?? undefined, v.cancion.artworkUrl, 96)
+    case 'artista':
+      return v.artista.fotoUrl || null
+    case 'album':
+      return v.album.tapaUrl || null
+    case 'letra':
+      return v.letra.artworkUrl ?? null
+    case 'imagen':
+      return ilustracionUrl(v.imagen.path)
+    default:
+      return null
+  }
+}
+
+/** El estilo al JSON de la base. Lo vacío viaja como `{}`, que es el default. */
+function estiloParaLaBase(estilo: ShowcaseEstilo): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (estilo.tema) out.tema = estilo.tema
+  if (estilo.fondo) out.fondo = estilo.fondo
+  return out
+}
+
+/**
+ * Las vitrinas de un mosaico, en su orden. Se leen entre todos.
+ *
+ * Sin `parentId` es el mosaico principal del perfil; con el id de un
+ * sub-space, las piezas que tiene adentro. Son dos consultas con la misma
+ * forma porque son dos mosaicos con la misma forma: lo único que cambia es a
+ * qué pieza pertenecen.
+ */
+export async function listShowcases(ownerId: string, parentId: string | null = null): Promise<Showcase[]> {
+  let consulta = getSupabase()
     .from('profile_showcases')
-    .select('id, kind, payload, ancho')
+    .select('id, kind, payload, ancho, estilo')
     .eq('owner_id', ownerId)
-    .order('position', { ascending: true })
+  /* `null` no se compara con `eq`: en SQL nada es igual a null. */
+  consulta = parentId ? consulta.eq('parent_id', parentId) : consulta.is('parent_id', null)
+  const { data, error } = await consulta.order('position', { ascending: true })
   if (error) throw error
   return (data ?? []).map(showcaseFromRow).filter((s): s is Showcase => s !== null)
+}
+
+/** Una vitrina sola, por id. `null` si no está o no se entiende. */
+export async function fetchShowcase(id: string): Promise<Showcase | null> {
+  const { data, error } = await getSupabase()
+    .from('profile_showcases')
+    .select('id, kind, payload, ancho, estilo')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  return data ? showcaseFromRow(data) : null
+}
+
+/** Cuántas piezas hay dentro de un mosaico, sin traerlas. */
+export async function countShowcases(ownerId: string, parentId: string | null): Promise<number> {
+  let consulta = getSupabase()
+    .from('profile_showcases')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_id', ownerId)
+  consulta = parentId ? consulta.eq('parent_id', parentId) : consulta.is('parent_id', null)
+  const { count, error } = await consulta
+  if (error) throw error
+  return count ?? 0
+}
+
+/** Lo que muestra la tarjeta de un sub-space sobre lo que tiene adentro. */
+export type Miniaturas = {
+  /** Las tapas de sus primeras piezas, hasta cuatro: la grilla de 2×2. */
+  tapas: string[]
+  /** Cuántas piezas hay en total, con o sin tapa. */
+  cuantas: number
+}
+
+/**
+ * La vista previa de un sub-space: las primeras tapas y la cuenta.
+ *
+ * Se piden las piezas de adentro y se sacan las tapas de las que tienen —un
+ * texto o un encabezado no aportan imagen y se saltean—. Va por `parent_id`
+ * solo, sin dueño: la tarjeta que lo pide no sabe de quién es el mosaico, y
+ * la RLS ya decide qué se ve.
+ */
+export async function listMiniaturas(parentId: string): Promise<Miniaturas> {
+  const { data, error } = await getSupabase()
+    .from('profile_showcases')
+    .select('id, kind, payload, ancho, estilo')
+    .eq('parent_id', parentId)
+    .order('position', { ascending: true })
+  if (error) throw error
+  const hijas = (data ?? []).map(showcaseFromRow).filter((s): s is Showcase => s !== null)
+  const tapas: string[] = []
+  for (const h of hijas) {
+    const tapa = tapaDe(h)
+    if (tapa) tapas.push(tapa)
+    if (tapas.length === 4) break
+  }
+  return { tapas, cuantas: hijas.length }
 }
 
 /**
@@ -246,16 +468,41 @@ export async function addShowcase(
   /* Entero salvo que se pida otra cosa: es como se fijaba todo antes de que el
      ancho existiera, así que quien no lo sepa sigue obteniendo lo de siempre. */
   ancho: ShowcaseAncho = 'entero',
+  estilo: ShowcaseEstilo = SIN_ESTILO,
+  /* Dentro de qué sub-space; `null` es el mosaico principal. La posición se
+     cuenta dentro del mismo padre: cada mosaico tiene su propio orden. */
+  parentId: string | null = null,
 ): Promise<void> {
-  const { count, error: countError } = await getSupabase()
-    .from('profile_showcases')
-    .select('id', { count: 'exact', head: true })
-    .eq('owner_id', ownerId)
-  if (countError) throw countError
+  const position = await countShowcases(ownerId, parentId)
 
-  const { error } = await getSupabase()
-    .from('profile_showcases')
-    .insert({ owner_id: ownerId, kind, position: count ?? 0, payload, ancho })
+  const { error } = await getSupabase().from('profile_showcases').insert({
+    owner_id: ownerId,
+    kind,
+    position,
+    payload,
+    ancho,
+    estilo: estiloParaLaBase(estilo),
+    parent_id: parentId,
+  })
+  if (error) throw error
+}
+
+/**
+ * Cambia lo que muestra una vitrina, cómo se viste, o las dos cosas.
+ *
+ * Lo que no se manda queda como está. Es lo que usa el editor de la vitrina
+ * al guardar: puede haber cambiado solo el tema, o solo la canción.
+ */
+export async function updateShowcase(
+  id: string,
+  cambios: { payload?: Record<string, unknown>; estilo?: ShowcaseEstilo; ancho?: ShowcaseAncho },
+): Promise<void> {
+  const patch: Record<string, unknown> = {}
+  if (cambios.payload) patch.payload = cambios.payload
+  if (cambios.estilo) patch.estilo = estiloParaLaBase(cambios.estilo)
+  if (cambios.ancho) patch.ancho = cambios.ancho
+  if (!Object.keys(patch).length) return
+  const { error } = await getSupabase().from('profile_showcases').update(patch).eq('id', id)
   if (error) throw error
 }
 
@@ -308,12 +555,11 @@ export function esVideo(path: string): boolean {
 }
 
 /**
- * Sube una imagen de fondo y devuelve su ruta. Va en la carpeta de su dueño.
+ * Sube una imagen y devuelve su ruta. Va en la carpeta de su dueño.
  *
- * Se llama «ilustración» por el bucket, que es el mismo de siempre. Ya no hay
- * vitrina de ilustración: una imagen subida es **el fondo del perfil** y nada
- * más — tenerla además como tarjeta era la misma imagen en dos lugares, y la
- * tarjeta ganaba siempre porque estaba en la columna del medio.
+ * Se llama «ilustración» por el bucket, que es el mismo de siempre. Sirve para
+ * el fondo del perfil, para una vitrina de imagen y para la imagen que va
+ * detrás de cualquier vitrina: son tres usos del mismo archivo subido.
  */
 export async function uploadIlustracion(
   ownerId: string,

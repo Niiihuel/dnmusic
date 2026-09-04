@@ -115,22 +115,27 @@ async function anclasDeSemillas(): Promise<ArtistaEscuchado[]> {
  *
  * Devuelve vacío ante cualquier tropiezo, igual que las semillas.
  */
-async function anclasDeListas(): Promise<ArtistaEscuchado[]> {
+async function anclasDeListas(): Promise<(ArtistaEscuchado & { artworkUrl?: string })[]> {
   try {
     const listas = await listPlaylists()
-    const porArtista = new Map<string, ArtistaEscuchado>()
+    const porArtista = new Map<string, ArtistaEscuchado & { artworkUrl?: string }>()
     await Promise.all(
       listas.map(async (lista) => {
         const temas = await listTracks(lista.id)
         for (const t of temas) {
           if (!t.artistId) continue
           const previo = porArtista.get(t.artistId)
-          if (previo) previo.ms += Math.max(1, t.durationMs)
-          else
+          if (previo) {
+            previo.ms += Math.max(1, t.durationMs)
+            /* La tapa: la primera que aparezca. Los mixes de «Hecho para vos»
+               la necesitan, y un mix sin tapa era un cuadrado gris. */
+            if (!previo.artworkUrl && t.artworkUrl) previo.artworkUrl = t.artworkUrl
+          } else
             porArtista.set(t.artistId, {
               artist_id: t.artistId,
               artist: t.artist,
               ms: Math.max(1, t.durationMs),
+              artworkUrl: t.artworkUrl || undefined,
             })
         }
       }),
@@ -556,8 +561,10 @@ export async function mezclasPersonales(cuantas = 6): Promise<MixPersonal[]> {
       if (!t.artistId) return
       const peso = Math.max(1, t.durationMs)
       const previo = porArtista.get(t.artistId)
-      if (previo) previo.ancla.ms += peso
-      else
+      if (previo) {
+        previo.ancla.ms += peso
+        if (!previo.artworkUrl && t.artworkUrl) previo.artworkUrl = t.artworkUrl
+      } else
         porArtista.set(t.artistId, {
           ancla: { artist_id: t.artistId, artist: t.artist, ms: peso },
           /* La primera carátula que llega sirve de tapa: es de una canción
@@ -568,7 +575,7 @@ export async function mezclasPersonales(cuantas = 6): Promise<MixPersonal[]> {
 
     for (const g of await listarMeGusta()) sumar(g)
     for (const a of await anclasDeListas())
-      sumar({ artistId: a.artist_id, artist: a.artist, durationMs: a.ms })
+      sumar({ artistId: a.artist_id, artist: a.artist, durationMs: a.ms, artworkUrl: a.artworkUrl })
 
     return [...porArtista.values()]
       .sort((x, y) => y.ancla.ms - x.ancla.ms)

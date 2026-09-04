@@ -327,55 +327,83 @@ export async function resolverYAportar(opciones: {
    * cuanto más cerca del origen esté la declaración, mejor verifica.
    */
   const declararMs = (info.basic_info.duration ?? 0) * 1000 || durationMs || 0
-  const query = new URLSearchParams({ videoId })
-  if (declararMs > 0) query.set('durationMs', String(Math.round(declararMs)))
-  if (artworkUrl) query.set('artworkUrl', artworkUrl)
 
-  return aportar(`${apiBase}/aportar?${query}`, token, videoId, crudo)
+  return aportar(apiBase, token, {
+    videoId,
+    durationMs: declararMs > 0 ? Math.round(declararMs) : undefined,
+    artworkUrl,
+    bytes: crudo,
+  })
 }
 
 /**
- * Sube los bytes por archivo y no por `fetch`.
+ * El aporte, en tres pasos y sin que los bytes crucen el servicio.
  *
- * El `fetch` de React Native no manda un `Uint8Array` como cuerpo —soporta
- * strings, FormData y Blob— y convertir cinco megas a base64 para pasarlos por
- * el puente es memoria y tiempo por nada. `expo-file-system` sube el archivo
- * tal cual desde el lado nativo, que es exactamente lo que hace falta.
+ * Antes los megas iban en el cuerpo de un POST a `/aportar`. Desde que el
+ * servicio vive en una función y no en un contenedor eso tiene techo —el plan
+ * gratis corta el pedido en 4.5 MB, y una canción de cinco minutos pesa más—,
+ * así que el archivo sube **derecho a Supabase Storage** con una URL firmada de
+ * un solo uso y el servidor lo verifica desde allá.
+ *
+ * La subida sigue yendo por archivo y no por `fetch`: el `fetch` de React
+ * Native no manda un `Uint8Array` como cuerpo —soporta strings, FormData y
+ * Blob— y convertir cinco megas a base64 para pasarlos por el puente es memoria
+ * y tiempo por nada. `expo-file-system` lo sube tal cual desde el lado nativo.
+ * Lo único que cambió es a dónde: a Storage, con PUT, en vez de al servicio.
  *
  * El archivo temporal se borra pase lo que pase: es la cache del teléfono.
  */
 async function aportar(
-  url: string,
+  apiBase: string,
   token: string,
-  videoId: string,
-  bytes: Uint8Array,
+  datos: { videoId: string; durationMs?: number; artworkUrl?: string; bytes: Uint8Array },
 ): Promise<Aporte> {
+  const pedir = async (ruta: string, cuerpo: unknown) => {
+    const res = await fetch(`${apiBase}${ruta}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo),
+    })
+    const data = (await res.json().catch(() => null)) as Record<string, unknown> | null
+    if (!res.ok) throw new Error((data?.error as string) ?? `El aporte falló (${res.status})`)
+    return data ?? {}
+  }
+
+  const permiso = (await pedir('/aportar/url', { videoId: datos.videoId })) as {
+    cached?: boolean
+    path?: string
+    url?: string
+  }
+  /* Alguien la aportó mientras este teléfono la bajaba: no hay nada que subir
+     y lo guardado ya sirve. */
+  if (permiso.cached && permiso.path) {
+    return {
+      path: permiso.path,
+      artworkPath: null,
+      cached: true,
+      durationMs: datos.durationMs ?? null,
+    }
+  }
+  if (!permiso.url) throw new Error('El servidor no dio dónde subir el aporte')
+
   const { File, Paths } = fs()
-  const archivo = new File(Paths.cache, `aporte-${videoId}.m4a`)
+  const archivo = new File(Paths.cache, `aporte-${datos.videoId}.m4a`)
   try {
     if (archivo.exists) archivo.delete()
     archivo.create()
-    archivo.write(bytes)
+    archivo.write(datos.bytes)
 
     const res = await archivo
-      .createUploadTask(url, {
-        httpMethod: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'audio/mp4' },
+      .createUploadTask(permiso.url, {
+        httpMethod: 'PUT',
+        headers: { 'Content-Type': 'audio/mp4' },
         mimeType: 'audio/mp4',
       })
       .uploadAsync()
 
-    const data = (() => {
-      try {
-        return JSON.parse(res.body) as Aporte & { error?: string }
-      } catch {
-        return null
-      }
-    })()
-    if (res.status < 200 || res.status >= 300 || !data?.path) {
-      throw new Error(data?.error ?? `El aporte falló (${res.status})`)
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(`El aporte falló al subir (${res.status})`)
     }
-    return data
   } finally {
     try {
       if (archivo.exists) archivo.delete()
@@ -384,6 +412,14 @@ async function aportar(
          bien; el sistema limpia la cache por su cuenta. */
     }
   }
+
+  const listo = (await pedir('/aportar/confirmar', {
+    videoId: datos.videoId,
+    durationMs: datos.durationMs,
+    artworkUrl: datos.artworkUrl,
+  })) as unknown as Aporte
+  if (!listo.path) throw new Error('El servidor no confirmó el aporte')
+  return listo
 }
 
 /**

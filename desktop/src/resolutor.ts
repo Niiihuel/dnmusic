@@ -289,23 +289,79 @@ export async function resolverYAportar(opciones: {
    * cuanto más cerca del origen esté la declaración, mejor verifica.
    */
   const declararMs = (info.basic_info.duration ?? 0) * 1000 || durationMs || 0
-  const query = new URLSearchParams({ videoId })
-  if (declararMs > 0) query.set('durationMs', String(Math.round(declararMs)))
-  if (artworkUrl) query.set('artworkUrl', artworkUrl)
-
-  const res = await fetch(`${apiBase}/aportar?${query}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'audio/mp4',
-    },
-    body: new Uint8Array(crudo),
+  return aportar(apiBase, token, {
+    videoId,
+    durationMs: declararMs > 0 ? Math.round(declararMs) : undefined,
+    artworkUrl,
+    bytes: new Uint8Array(crudo),
   })
-  const data = (await res.json().catch(() => null)) as (Aporte & { error?: string }) | null
-  if (!res.ok || !data?.path) {
-    throw new Error(data?.error ?? `El aporte falló (${res.status})`)
+}
+
+/**
+ * El aporte, en tres pasos y sin que los bytes crucen el servicio.
+ *
+ * Antes iba en el cuerpo de un POST a `/aportar`. Desde que el servicio vive
+ * en una función y no en un contenedor eso tiene techo —el plan gratis corta
+ * el pedido en 4.5 MB, y una canción de cinco minutos pesa más—, así que el
+ * archivo sube **derecho a Supabase Storage** con una URL firmada de un solo
+ * uso, y el servidor lo verifica desde allá.
+ *
+ * `/aportar` sigue existiendo para un cliente viejo, así que esto no rompe a
+ * nadie que no se haya actualizado; simplemente ese camino no sirve para las
+ * canciones grandes.
+ */
+async function aportar(
+  apiBase: string,
+  token: string,
+  datos: {
+    videoId: string
+    durationMs?: number
+    artworkUrl?: string
+    bytes: Uint8Array<ArrayBuffer>
+  },
+): Promise<Aporte> {
+  const pedir = async (ruta: string, cuerpo: unknown) => {
+    const res = await fetch(`${apiBase}${ruta}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo),
+    })
+    const data = (await res.json().catch(() => null)) as Record<string, unknown> | null
+    if (!res.ok) throw new Error((data?.error as string) ?? `El aporte falló (${res.status})`)
+    return data ?? {}
   }
-  return data
+
+  const permiso = (await pedir('/aportar/url', { videoId: datos.videoId })) as {
+    cached?: boolean
+    path?: string
+    url?: string
+  }
+  /* Alguien la aportó mientras esta computadora la bajaba: no hay nada que
+     subir y lo guardado ya sirve. */
+  if (permiso.cached && permiso.path) {
+    return {
+      path: permiso.path,
+      artworkPath: null,
+      cached: true,
+      durationMs: datos.durationMs ?? null,
+    }
+  }
+  if (!permiso.url) throw new Error('El servidor no dio dónde subir el aporte')
+
+  const subida = await fetch(permiso.url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'audio/mp4' },
+    body: datos.bytes,
+  })
+  if (!subida.ok) throw new Error(`El aporte falló al subir (${subida.status})`)
+
+  const listo = (await pedir('/aportar/confirmar', {
+    videoId: datos.videoId,
+    durationMs: datos.durationMs,
+    artworkUrl: datos.artworkUrl,
+  })) as unknown as Aporte
+  if (!listo.path) throw new Error('El servidor no confirmó el aporte')
+  return listo
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 import {
   Pressable,
   ScrollView,
@@ -13,6 +13,31 @@ import { ICON_COLOR, IconChevronLeft, IconChevronRight } from './icons'
 const FADE = 28
 /** Tolerancia para decidir que se llegó a un extremo. */
 const EPS = 2
+
+/**
+ * Un booleano que solo avisa cuando **cambia**.
+ *
+ * Los dos scrolls de este archivo miran en qué extremo están, y lo miraban
+ * llamando al setter en cada evento: con `scrollEventThrottle={16}` eso son
+ * sesenta llamadas por segundo mientras el dedo se mueve, todas con el mismo
+ * valor salvo en los dos instantes en que se toca un borde. React descarta el
+ * re-render cuando el valor no cambió, pero el trabajo de llegar hasta ahí lo
+ * hace igual, y lo hace en el medio del scroll, que es justo cuando no hay
+ * tiempo de sobra.
+ *
+ * Con el valor espejado en un ref, el setter se llama solo en la transición.
+ * En el medio de una lista larga eso es **ninguna** vez.
+ */
+function useBordeEstable(inicial: boolean): [boolean, (v: boolean) => void] {
+  const [valor, setValor] = useState(inicial)
+  const ultimo = useRef(inicial)
+  const poner = useCallback((v: boolean) => {
+    if (ultimo.current === v) return
+    ultimo.current = v
+    setValor(v)
+  }, [])
+  return [valor, poner]
+}
 
 type Props = {
   children: ReactNode
@@ -38,8 +63,8 @@ type Props = {
  * claro, esto hay que parametrizarlo.
  */
 export function FadingScroll({ children, padding = 8, gap = 8 }: Props) {
-  const [atTop, setAtTop] = useState(true)
-  const [atBottom, setAtBottom] = useState(true)
+  const [atTop, setAtTop] = useBordeEstable(true)
+  const [atBottom, setAtBottom] = useBordeEstable(true)
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent
@@ -105,8 +130,8 @@ export function FadingRow({ children, gap = 16, padding = 24 }: Props) {
   const offset = useRef(0)
   const viewport = useRef(0)
   const [hovered, setHovered] = useState(false)
-  const [atStart, setAtStart] = useState(true)
-  const [atEnd, setAtEnd] = useState(true)
+  const [atStart, setAtStart] = useBordeEstable(true)
+  const [atEnd, setAtEnd] = useBordeEstable(true)
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent

@@ -1,5 +1,15 @@
 import {
+  Album,
   AlignJustify,
+  Camera,
+  Heading,
+  LayoutGrid,
+  Minus,
+  MoveDiagonal2,
+  Palette,
+  Quote,
+  SeparatorHorizontal,
+  Type,
   ArrowLeft,
   ArrowRight,
   AtSign,
@@ -18,6 +28,9 @@ import {
   Heart,
   SlidersHorizontal,
   Eye,
+  Focus,
+  RotateCcw,
+  RotateCw,
   EyeOff,
   ExternalLink,
   Globe,
@@ -171,6 +184,21 @@ export const IconUsers = make(UsersRound)
 export const IconShare = make(Share2)
 /** La manija de reordenar: las tres líneas que se agarran para arrastrar una fila. */
 export const IconManija = make(AlignJustify)
+/* Las piezas del editor del mosaico: qué se agrega y cómo se viste. */
+export const IconMinus = make(Minus)
+export const IconPalette = make(Palette)
+export const IconHeading = make(Heading)
+export const IconType = make(Type)
+export const IconCamera = make(Camera)
+export const IconEspacio = make(SeparatorHorizontal)
+export const IconAlbum = make(Album)
+export const IconQuote = make(Quote)
+export const IconGrilla = make(LayoutGrid)
+export const IconRedimensionar = make(MoveDiagonal2)
+/* Encuadrar: el visor con las esquinas, no una tijera — no se recorta nada. */
+export const IconEncuadre = make(Focus)
+export const IconGirarIzq = make(RotateCcw)
+export const IconGirarDer = make(RotateCw)
 export const IconCollapseLeft = make(PanelLeftClose)
 export const IconExpandLeft = make(PanelLeftOpen)
 export const IconCollapseRight = make(PanelRightClose)

@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.9.0",
+    "fecha": "4 de septiembre de 2026",
+    "titulo": "El inicio es tuyo, y el perfil se arma como un mosaico",
+    "cambios": [
+      "El inicio ya no es el mismo para todo el mundo: te saluda por tu nombre, arriba van las listas y los mixes que usaste últimamente, después «Seguir escuchando» con lo último que sonó, tus artistas y una fila de parecidos a tu más escuchado. Todo carga de una vez y con tapa; lo de YouTube Music queda al final.",
+      "El perfil tiene dos pestañas, «Reciente» y «Space». En Space se arma el mosaico en el lugar: mantené apretada una pieza para entrar a editar, arrastrá para ordenar, estirá desde la esquina para cambiar el tamaño, y el «+» de abajo suma canciones, artistas, álbumes, letras, encabezados, textos, imágenes y espacios.",
+      "Cada pieza tiene su tema: lisos, degradados, con textura, «de la tapa» o un color a mano, más una imagen de fondo que se puede encuadrar y girar. El perfil entero tiene un tema que las piezas heredan.",
+      "Un sub-space es una pieza con otro mosaico adentro. Se abre tocándola y se arma igual que el principal.",
+      "En el perfil de otra persona, mantener apretada una pieza deja una reacción con emoji; el dueño la ve sobre la pieza.",
+      "Las hojas cortas ya no ocupan toda la pantalla, y en la computadora los controles de armado van arriba, donde el reproductor no los tapa."
+    ]
+  },
+  {
     "version": "1.8.3",
     "fecha": "28 de agosto de 2026",
     "titulo": "El volumen siempre a mano, y la app te cuenta qué cambió",

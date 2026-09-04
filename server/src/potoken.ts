@@ -1,7 +1,6 @@
 import { BotGuardClient, getChallenge } from 'bgutils-js/botguard'
 import { WebPoMinter } from 'bgutils-js/webpo'
 import { buildURL, getHeaders } from 'bgutils-js/utils'
-import { JSDOM } from 'jsdom'
 import { UA_NAVEGADOR, fetchYt } from './salida.js'
 
 /**
@@ -21,8 +20,32 @@ const TTL_MARGIN_MS = 5 * 60_000
 
 let domReady = false
 
-function ensureDom() {
+/**
+ * El DOM que BotGuard necesita, cargado **cuando hace falta y no antes**.
+ *
+ * jsdom era un `import` de arriba de todo, y eso ataba la suerte de *todo* el
+ * servicio a que jsdom cargue: `youtube.ts` importa este archivo, así que una
+ * búsqueda —que no acuña ningún token— arrastraba jsdom igual.
+ *
+ * En el contenedor da lo mismo. En Vercel no: ahí Node arranca con
+ * `--no-experimental-require-module`, y jsdom 28 es CommonJS que hace
+ * `require()` de `@exodus/bytes`, que es ESM puro. O sea que en Vercel jsdom
+ * **no carga**, y con el import arriba se llevaba puestas la búsqueda, la
+ * portada y los álbumes, que no tienen nada que ver con BotGuard.
+ *
+ * Con el import acá adentro, el que no acuña tokens ni se entera. El que sí
+ * —`/resolve`— se lleva un error claro, y `getClient` sabe seguir sin token
+ * (ver `youtube.ts`): termina pidiéndole a YouTube sin prueba de origen, que
+ * es lo mismo que le pasa hoy al contenedor desde una IP de datacenter.
+ */
+async function ensureDom(): Promise<void> {
   if (domReady) return
+  let JSDOM: typeof import('jsdom').JSDOM
+  try {
+    ;({ JSDOM } = await import('jsdom'))
+  } catch (e) {
+    throw new Error(`no hay DOM para BotGuard acá: ${(e as Error).message}`)
+  }
   const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', {
     url: 'https://www.youtube.com/',
     referrer: 'https://www.youtube.com/',
@@ -96,7 +119,7 @@ export function tokensSinRespaldo(): boolean {
 async function getMinter(): Promise<WebPoMinter> {
   if (cached && Date.now() < cached.expiresAt) return cached.minter
 
-  ensureDom()
+  await ensureDom()
 
   // Por la misma salida que el resto del tráfico a Google: la atestación
   // tiene que ver la misma IP que después va a usar la media, o no ata nada.
