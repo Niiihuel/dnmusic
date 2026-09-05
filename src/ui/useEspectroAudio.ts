@@ -4,7 +4,7 @@ import { Platform } from 'react-native'
 import { crearAnalizador } from '../lib/espectro'
 import { publicarEspectro } from '../state/espectro'
 
-/** Una sola captura por reproductor, limitada a 20 actualizaciones por segundo. */
+/** Una sola captura por reproductor, limitada a 30 actualizaciones por segundo. */
 export function useEspectroAudio(
   player: AudioPlayer,
   videoId: string | undefined,
@@ -18,10 +18,10 @@ export function useEspectroAudio(
     let subscription: { remove(): void } | undefined
     try {
       subscription = player.addListener('audioSampleUpdate', (sample) => {
-        const ahora = Date.now()
-        if (ahora - ultima < 50) return
+        const ahora = performance.now()
+        if (ahora - ultima < 1000 / 30) return
         ultima = ahora
-        publicarEspectro(videoId, analizar(sample.channels))
+        publicarEspectro(videoId, analizar(sample.channels, ahora))
       })
       player.setAudioSamplingEnabled(true)
     } catch {

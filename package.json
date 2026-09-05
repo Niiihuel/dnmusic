@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "private": true,
   "scripts": {
+    "postinstall": "patch-package --error-on-fail",
     "start": "expo start",
     "dev": "expo start --dev-client",
     "web": "expo start --web",
@@ -72,6 +73,7 @@
     "bgutils-js": "^4.0.3",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.1",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   }
 }

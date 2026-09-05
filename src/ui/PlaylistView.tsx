@@ -49,6 +49,7 @@ import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
 import { Vacio } from './Vacio'
 import { PlaylistCover } from './PlaylistCover'
+import { ColaboradoresDeLista } from './ColaboradoresDeLista'
 import { formatLength } from './SeekBar'
 import { SkeletonList } from './Skeleton'
 import { TrackColumnHeader, TrackRow } from './TrackRow'
@@ -122,6 +123,7 @@ export function PlaylistView({
   onPublicar,
   onDelete,
   onVerGente,
+  onColaborar,
   onClose,
   onSearch,
   onSubirArchivo,
@@ -159,6 +161,7 @@ export function PlaylistView({
    * estás yendo ni quiénes se quedan.
    */
   onVerGente?: () => void
+  onColaborar?: () => void
   onClose: () => void
   /**
    * Mandar el cursor al buscador de arriba.
@@ -541,6 +544,16 @@ export function PlaylistView({
           },
         ]
       : []),
+    ...(mia && !playlist.colaborativa && onColaborar
+      ? [
+          {
+            label: 'Hacer colaborativa',
+            onPress: onColaborar,
+            icon: <IconUsers size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'person.2.badge.plus' as const,
+          },
+        ]
+      : []),
     /* La gente, solo si es colaborativa. En una lista común no hay a quién
        mostrar, y la fila sería una promesa vacía. */
     ...(playlist.colaborativa
@@ -664,6 +677,7 @@ export function PlaylistView({
               totalMs={tracks?.reduce((sum, t) => sum + t.durationMs, 0) ?? playlist.totalMs}
               playing={isMine && soundingPlay}
               menu={menu}
+              onVerGente={onVerGente}
               bajado={bajado}
               onDescarga={alternarDescarga}
               onPlay={() => (total > 0 ? play(isMine ? soundingIndex : 0) : undefined)}
@@ -784,6 +798,7 @@ function Header({
   totalMs,
   playing,
   menu,
+  onVerGente,
   bajado,
   onDescarga,
   onPlay,
@@ -809,6 +824,7 @@ function Header({
   totalMs: number
   playing: boolean
   menu: MenuItem[]
+  onVerGente?: () => void
   /** Cuánto de la lista está en el teléfono. Ver `resumenLista`. */
   bajado: ReturnType<typeof resumenLista>
   onDescarga: () => void
@@ -991,6 +1007,13 @@ function Header({
             />
             <BotonDescarga total={total} bajado={bajado} onPress={onDescarga} />
             <Menu items={menu} label={`Opciones de ${playlist.name}`} size={17} />
+            {playlist.colaborativa && onVerGente ? (
+              <ColaboradoresDeLista
+                playlistId={playlist.id}
+                total={playlist.colaboradores + 1}
+                onPress={onVerGente}
+              />
+            ) : null}
           </>
         }
       />

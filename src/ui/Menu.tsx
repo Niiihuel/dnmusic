@@ -307,6 +307,29 @@ type MenuProps = {
   onCerrarPunto?: () => void
 }
 
+export function mostrarOpcionesIOS(items: MenuItem[]) {
+  const mostrar = (opciones: MenuItem[]) => {
+    const destructivas = opciones
+      .map((item, i) => (item.destructive ? i : -1))
+      .filter((i) => i >= 0)
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: [...opciones.map((item) => item.label), 'Cancelar'],
+        cancelButtonIndex: opciones.length,
+        destructiveButtonIndex: destructivas.length ? destructivas : undefined,
+        userInterfaceStyle: 'dark',
+      },
+      (i) => {
+        const item = opciones[i]
+        if (!item) return
+        if (item.items?.length) mostrar(item.items.filter((s) => !s.disabled))
+        else item.onPress?.()
+      },
+    )
+  }
+  mostrar(items.filter((item) => !item.disabled))
+}
+
 export function Menu({
   items,
   label = 'Más opciones',
@@ -343,7 +366,7 @@ export function Menu({
   const [entrada] = useState(() => new Animated.Value(ES_WEB ? 1 : 0))
   const [entradaSub] = useState(() => new Animated.Value(ES_WEB ? 1 : 0))
   useEffect(() => {
-    if (!open || ES_WEB) return
+    if ((!open && !abiertoEn) || ES_WEB) return
     entrada.setValue(0)
     Animated.timing(entrada, {
       toValue: 1,
@@ -351,7 +374,7 @@ export function Menu({
       easing: Easing.bezier(0.22, 1, 0.36, 1),
       useNativeDriver: true,
     }).start()
-  }, [open, entrada])
+  }, [open, abiertoEn, entrada])
   const [anchor, setAnchor] = useState({ x: 0, y: 0, w: 0, h: 0 })
   /*
    * Abierto y desde dónde, **derivado**: si vino un punto de afuera manda ese,
@@ -489,26 +512,7 @@ export function Menu({
       /* Un submenú acá es **otra hoja**: el action sheet no tiene paneles al
          costado, así que elegir la fila con submenú abre una segunda hoja con
          sus opciones. Dos toques, igual que en el menú de verdad. */
-      const mostrar = (opciones: MenuItem[]) => {
-        const destructivas = opciones
-          .map((item, i) => (item.destructive ? i : -1))
-          .filter((i) => i >= 0)
-        ActionSheetIOS.showActionSheetWithOptions(
-          {
-            options: [...opciones.map((item) => item.label), 'Cancelar'],
-            cancelButtonIndex: opciones.length,
-            destructiveButtonIndex: destructivas.length ? destructivas : undefined,
-            userInterfaceStyle: 'dark',
-          },
-          (i) => {
-            const item = opciones[i]
-            if (!item) return
-            if (item.items?.length) mostrar(item.items.filter((s) => !s.disabled))
-            else item.onPress?.()
-          },
-        )
-      }
-      mostrar(usable)
+      mostrarOpcionesIOS(usable)
       return
     }
     ref.current?.measureInWindow((x, y, w, h) => {
@@ -841,8 +845,11 @@ export function MantenerApretado({ items, children }: { items: MenuItem[]; child
         /* El panel se abre en coordenadas de ventana, que es lo que espera
            `abiertoEn`: `absoluteX/Y` ya vienen así, sin medir nada. */
         .runOnJS(true)
-        .onStart((e) => setPunto({ x: e.absoluteX, y: e.absoluteY })),
-    [items.length],
+        .onStart((e) => {
+          if (Platform.OS === 'ios') mostrarOpcionesIOS(items)
+          else setPunto({ x: e.absoluteX, y: e.absoluteY })
+        }),
+    [items],
   )
 
   return (

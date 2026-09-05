@@ -1,6 +1,11 @@
 import { useEffect } from 'react'
 import { View } from 'react-native'
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated'
 import { usePlaybackTrack } from '../state/playback'
 import { useEspectro } from '../state/espectro'
 
@@ -32,9 +37,13 @@ export function PlayingBars({
   )
 }
 function Bar({ height, nivel }: { height: number; nivel: number }) {
-  const alto = useSharedValue(3)
+  const alto = useSharedValue(2)
   useEffect(() => {
-    alto.value = withTiming(3 + (height - 3) * nivel, { duration: 75 })
+    const destino = 2 + (height - 2) * nivel
+    alto.value = withTiming(destino, {
+      duration: destino > alto.value ? 25 : 85,
+      easing: Easing.linear,
+    })
   }, [alto, height, nivel])
   const style = useAnimatedStyle(() => ({ height: alto.value }))
   return (

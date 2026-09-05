@@ -388,6 +388,17 @@ export function coverUrl(path: string | null | undefined): string | null {
 
 /* ── Listas colaborativas ─────────────────────────────────────────────────── */
 
+/** Conserva canciones y visibilidad. RLS permite este cambio solo al dueño. */
+export async function makePlaylistCollaborative(id: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from('playlists')
+    .update({ colaborativa: true, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('id')
+    .single()
+  if (error) throw error
+}
+
 /**
  * Entrar a una lista colaborativa por su link, y devolver su nombre.
  *

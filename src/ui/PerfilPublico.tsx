@@ -1118,15 +1118,18 @@ function CeldaDeMosaico({
   onApreton?: () => void
   children: ReactNode
 }) {
+  // El worklet solo recibe SharedValues. `agarre` también contiene refs a
+  // vistas nativas que deben permanecer en el runtime de React.
+  const { activa, dx, dy, empezar, soltar, cancelar } = agarre
   /* eslint-disable react-hooks/immutability -- escribir `.value` es la API
      imperativa de un SharedValue; es el mismo gesto que `EncoladaArrastrable`
      en la cola, que el analizador acepta con otra forma de llegar al valor. */
   const estilo = useAnimatedStyle(() => {
-    if (agarre.activa.value === indice) {
+    if (activa.value === indice) {
       return {
         transform: [
-          { translateX: agarre.dx.value },
-          { translateY: agarre.dy.value },
+          { translateX: dx.value },
+          { translateY: dy.value },
           { scale: 1.012 },
           { rotate: '0deg' },
         ],
@@ -1137,11 +1140,9 @@ function CeldaDeMosaico({
     return {
       transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }],
       zIndex: 0,
-      opacity: withTiming(agarre.activa.value >= 0 ? 0.9 : 1, { duration: 160 }),
+      opacity: withTiming(activa.value >= 0 ? 0.9 : 1, { duration: 160 }),
     }
   })
-
-  const { activa, dx, dy, empezar, soltar, cancelar } = agarre
 
   /*
    * El arrastre, solo armando. En web agarra apenas se mueve el cursor (con

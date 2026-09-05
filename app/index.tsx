@@ -140,6 +140,7 @@ import {
   listPlaylists,
   renamePlaylist,
   setPlaylistVisibility,
+  makePlaylistCollaborative,
   uploadCover,
   type Playlist,
   type PlaylistTrack,
@@ -943,6 +944,21 @@ export default function Home() {
     router.push({ pathname: '/lista/nueva', params: { sugerido: nombreSugerido() } })
   }
 
+  async function hacerColaborativa(playlist: Playlist) {
+    if (!playlist.mia) return
+    try {
+      await makePlaylistCollaborative(playlist.id)
+      await loadPlaylists()
+      router.push({
+        pathname: '/lista/personas',
+        params: { id: playlist.id, nombre: playlist.name },
+      })
+    } catch (e) {
+      avisar(mensajeError(e), true)
+    }
+  }
+
+
   async function pickCover(playlist: Playlist) {
     if (!user) return
     try {
@@ -1249,6 +1265,16 @@ export default function Home() {
    */
   function menuForPlaylist(p: Playlist): MenuItem[] {
     return [
+      ...(p.mia && !p.colaborativa
+        ? [
+            {
+              label: 'Hacer colaborativa',
+              onPress: () => void hacerColaborativa(p),
+              icon: <IconUsers size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'person.2.badge.plus' as const,
+            },
+          ]
+        : []),
       {
         label: 'Abrir la lista',
         onPress: () => go({ kind: 'playlist', id: p.id }),
@@ -2322,6 +2348,7 @@ export default function Home() {
                 )
               }}
               onDelete={() => void removePlaylist(openPlaylist)}
+              onColaborar={() => void hacerColaborativa(openPlaylist)}
               onVerGente={() =>
                 router.push({
                   pathname: '/lista/personas',

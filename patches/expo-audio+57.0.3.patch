@@ -1,0 +1,80 @@
+diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-audio/ios/AudioPlayer.swift
+index 0742943..7fc3c98 100644
+--- a/node_modules/expo-audio/ios/AudioPlayer.swift
++++ b/node_modules/expo-audio/ios/AudioPlayer.swift
+@@ -50,6 +50,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+ 
+   private var audioProcessor: AudioTapProcessor?
+   private var tapInstalled = false
++  private weak var sampledItem: AVPlayerItem?
+   private var shouldInstallAudioTap = false
+   weak var owningRegistry: AudioComponentRegistry?
+   var onPlaybackComplete: (() -> Void)?
+@@ -125,7 +126,8 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+         shouldInstallAudioTap = true
+       }
+     } else {
+-      uninstallTap()
++      // Keep the audio graph intact across AppState changes. The callback
++      // checks samplingEnabled before allocating frames or sending JS events.
+       shouldInstallAudioTap = false
+     }
+   }
+@@ -246,9 +248,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+     removeQueuedLoopItems()
+     ref.pause()
+ 
+-    if samplingEnabled {
+-      uninstallTap()
+-    }
++    uninstallTap()
+     replacePlayerItem(with: item)
+ 
+     if wasSamplingEnabled {
+@@ -267,9 +267,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+     removeQueuedLoopItems()
+     ref.pause()
+ 
+-    if samplingEnabled {
+-      uninstallTap()
+-    }
++    uninstallTap()
+     let item = AudioUtils.createAVPlayerItem(from: source)
+     replacePlayerItem(with: item)
+ 
+@@ -320,9 +318,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+ 
+   private func teardownPlayer() {
+     removeQueuedLoopItems()
+-    if samplingEnabled {
+-      uninstallTap()
+-    }
++    uninstallTap()
+     if let timeToken {
+       ref.removeTimeObserver(timeToken)
+       self.timeToken = nil
+@@ -358,7 +354,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+       return
+     }
+ 
+-    guard audioProcessor?.isTapInstalled != true else {
++    guard audioProcessor?.isTapInstalled != true || sampledItem !== ref.currentItem else {
+       tapInstalled = true
+       return
+     }
+@@ -370,6 +366,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+     audioProcessor = AudioTapProcessor(player: ref)
+     let success = audioProcessor?.installTap() ?? false
+     tapInstalled = success
++    sampledItem = success ? ref.currentItem : nil
+ 
+     if success {
+       audioProcessor?.sampleBufferCallback = { [weak self] buffer, frameCount, timestamp in
+@@ -400,6 +397,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+ 
+   private func uninstallTap() {
+     tapInstalled = false
++    sampledItem = nil
+     audioProcessor?.uninstallTap()
+     audioProcessor?.sampleBufferCallback = nil
+   }

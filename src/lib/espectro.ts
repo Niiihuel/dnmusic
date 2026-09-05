@@ -3,11 +3,23 @@ export function crearAnalizador() {
   const n = 1024
   const real = new Float64Array(n)
   const imag = new Float64Array(n)
+  // Cada banda conserva una referencia de sus picos recientes. El límite evita
+  // amplificar ruido y la caída lenta conserva los contrastes entre golpes.
+  const pisoReferencia = [-42, -45, -48, -51]
+  const referencia = [...pisoReferencia]
+  const ultimoPico = [-Infinity, -Infinity, -Infinity, -Infinity]
+  let anterior: number | undefined
   const ventana = Float64Array.from(
     { length: n },
     (_, i) => 0.5 * (1 - Math.cos((2 * Math.PI * i) / (n - 1))),
   )
-  return (canales: readonly { frames: readonly number[] }[]): number[] => {
+  return (
+    canales: readonly { frames: readonly number[] }[],
+    ahora = performance.now(),
+  ): number[] => {
+    const segundos =
+      anterior === undefined ? 0 : Math.max(0, Math.min(ahora - anterior, 250)) / 1000
+    anterior = ahora
     let frames = canales[0]?.frames
     let mayor = -1
     for (const canal of canales) {
@@ -63,9 +75,17 @@ export function crearAnalizador() {
       let potencia = 0
       for (let i = desde; i < limites[banda + 1]; i++)
         potencia += (real[i] ** 2 + imag[i] ** 2) / (n * n)
+      if (ahora - ultimoPico[banda] > 250)
+        referencia[banda] = Math.max(pisoReferencia[banda], referencia[banda] - segundos * 3)
       if (potencia < 1e-10) return 0
       const db = 10 * Math.log10(potencia)
-      return Math.max(0, Math.min(1, (db + 65) / 60))
+      if (db >= referencia[banda]) {
+        referencia[banda] = db
+        ultimoPico[banda] = ahora
+      }
+      const puerta = Math.max(0, Math.min(1, (db + 72) / 8))
+      const nivel = Math.max(0, Math.min(1, (db - referencia[banda] + 30) / 32))
+      return puerta * nivel ** 1.6
     })
   }
 }

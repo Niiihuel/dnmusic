@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.9.4",
+    "fecha": "5 de septiembre de 2026",
+    "titulo": "Más fluido al escuchar y explorar.",
+    "cambios": [
+      "Las barras ajustan su sensibilidad al audio de cada banda: suben más con los golpes y bajan más entre sonidos, también en canciones de volumen bajo.",
+      "Respuesta más rápida y mayor recorrido visual, conservando el silencio y sin generar movimientos artificiales.",
+      "En iOS, el análisis de audio se suspende al salir sin desmontar la conexión de sonido del reproductor.",
+      "Mantené apretada una canción para abrir sus opciones. En iOS se muestran en una hoja del sistema.",
+      "La animación del mosaico del perfil transfiere solo los valores de movimiento al hilo de interfaz.",
+      "Convertí una lista existente en colaborativa desde sus opciones. Sus participantes aparecen junto a los controles, con acceso directo para administrar o invitar."
+    ]
+  },
+  {
     "version": "1.9.3",
     "fecha": "4 de septiembre de 2026",
     "titulo": "Tu espacio, con más personalidad.",

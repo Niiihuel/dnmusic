@@ -1,13 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import {
-  Image,
-  Pressable,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native'
+import { Image, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { EstadoTapa, IndicadorPreparando } from './CoverState'
-import { MantenerApretado, Menu, type MenuItem } from './Menu'
+import { mostrarOpcionesIOS, Menu, type MenuItem } from './Menu'
 import { useClicDerecho } from './useClicDerecho'
 import { PlayingBars } from './PlayingBars'
 import { usePlaybackCargada } from '../state/playback'
@@ -123,6 +117,8 @@ export function TrackRow({
   }
 
   const clic = useClicDerecho()
+  const [apreton, setApreton] = useState<{ x: number; y: number } | null>(null)
+  const punto = apreton ?? clic.punto
 
   const fila = (
     <View
@@ -147,6 +143,16 @@ export function TrackRow({
         accessibilityRole="button"
         accessibilityLabel={playing ? 'Pausar' : `Reproducir ${title}`}
         onPress={onPlay}
+        delayLongPress={500}
+        onLongPress={
+          menu?.length
+            ? (e) => {
+                if (Platform.OS === 'ios') mostrarOpcionesIOS(menu)
+                else setApreton({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })
+              }
+            : undefined
+        }
+        accessibilityHint={menu?.length ? 'Mantené apretado para ver las opciones' : undefined}
         className={`min-w-0 flex-1 flex-row items-center ${suelto ? 'gap-3' : 'gap-4'}`}
       >
         {suelto ? null : (
@@ -274,20 +280,22 @@ export function TrackRow({
        * un botón propio. Se abre donde está el cursor (ver `useClicDerecho`);
        * con el dedo no existe, y ahí la puerta siguen siendo los tres puntos.
        */}
-      {clic.punto && menu?.length ? (
-        <Menu items={menu} sinDisparador abiertoEn={clic.punto} onCerrarPunto={clic.cerrar} />
+      {punto && menu?.length ? (
+        <Menu
+          items={menu}
+          sinDisparador
+          abiertoEn={punto}
+          onCerrarPunto={() => {
+            setApreton(null)
+            clic.cerrar()
+          }}
+        />
       ) : null}
     </View>
   )
 
-  /*
-   * El gesto envuelve la fila entera, no solo el título: mantener apretado
-   * sobre la tapa o sobre el artista es el mismo pedido. Sin opciones —una
-   * tabla que no ofrece nada— la fila va pelada y el gesto no existe, en vez de
-   * abrir un menú vacío.
-   */
-  if (!menu?.length) return fila
-  return <MantenerApretado items={menu}>{fila}</MantenerApretado>
+  // Pressable arbitra toque / pulsación larga y cancela el play al abrir opciones.
+  return fila
 }
 
 /**

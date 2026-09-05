@@ -89,7 +89,9 @@ export function CollectionHeader({
             {meta}
           </Text>
         ) : null}
-        {actions ? <View className="flex-row items-center gap-3 pt-1">{actions}</View> : null}
+        {actions ? (
+          <View className="flex-row flex-wrap items-center gap-3 pt-1">{actions}</View>
+        ) : null}
       </View>
     )
   }
@@ -115,7 +117,7 @@ export function CollectionHeader({
         </View>
       </View>
       {actions ? (
-        <View className="flex-row items-center gap-3 px-6 pb-5">{actions}</View>
+        <View className="flex-row flex-wrap items-center gap-3 px-6 pb-5">{actions}</View>
       ) : null}
     </View>
   )
