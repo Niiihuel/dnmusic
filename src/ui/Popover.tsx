@@ -1,8 +1,6 @@
 import { useRef, useState } from 'react'
 import {
-  ActionSheetIOS,
   Modal,
-  Platform,
   Pressable,
   Text,
   View,
@@ -86,41 +84,13 @@ export function Popover<T extends string | number>({
         items={options.map((o) => ({
           label: o.label,
           onPress: () => onChange(o.value),
-          sfSymbol: o.value === value ? 'checkmark' : undefined,
+          selected: o.value === value,
         }))}
       />
     )
   }
 
-  /*
-   * En iOS lo abre el sistema.
-   *
-   * El menú propio se ancla al botón y se despliega hacia arriba o hacia abajo
-   * según haya lugar, que en una pantalla grande alcanza. En un teléfono no: la
-   * lista de idiomas mide más que lo que queda libre y se salía de la pantalla,
-   * con las últimas opciones inalcanzables. El action sheet nativo se encarga
-   * de eso —y de la altura, del desplazamiento y del gesto para cerrarlo— mucho
-   * mejor que cualquier cálculo nuestro.
-   *
-   * La elegida se marca con un ✓ en el propio texto: el action sheet no tiene
-   * estado seleccionado.
-   */
   const openMenu = () => {
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: label,
-          options: [...options.map((o) => (o.value === value ? `✓  ${o.label}` : o.label)), 'Cancelar'],
-          cancelButtonIndex: options.length,
-          userInterfaceStyle: 'dark',
-        },
-        (i) => {
-          const elegida = options[i]
-          if (elegida) onChange(elegida.value)
-        },
-      )
-      return
-    }
     ref.current?.measureInWindow((x, y, w, h) => {
       setAnchor({ x, y, w, h })
       setOpen(true)

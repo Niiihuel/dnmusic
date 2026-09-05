@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { artworkSource, artworkUrlAtSize } from '../lib/artwork'
 import {
@@ -41,7 +41,7 @@ import { listarSemillas, type Semilla } from '../services/semillas'
 import { useMyProfile } from '../state/session'
 import { PlaylistCover } from './PlaylistCover'
 import { useColapso } from './useColapso'
-import { Menu, type MenuItem } from './Menu'
+import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
 import { VacioError } from './Vacio'
 import { EstadoTapa } from './CoverState'
@@ -472,7 +472,7 @@ function SongRow({
   const wantPlay = useWantPlay()
   const isCurrent = current?.videoId === item.id
 
-  return (
+  const fila = (
     <View
       onPointerEnter={() => setOver(true)}
       onPointerLeave={() => setOver(false)}
@@ -485,6 +485,9 @@ function SongRow({
            resolverla y arrancaba de cero, y no había forma de pausar desde
            acá: había que ir hasta la barra de abajo. */
         onPress={() => (isCurrent ? togglePlayback() : onPlay())}
+        onLongPress={Platform.OS === 'ios' && menu.length ? () => {} : undefined}
+        delayLongPress={500}
+        accessibilityHint="Mantené apretado para ver las opciones"
         className="min-w-0 flex-1 flex-row items-center gap-3"
       >
         {/* El puesto, apagado y tabular: el número acompaña, la tapa manda. */}
@@ -515,20 +518,15 @@ function SongRow({
         </View>
       </Pressable>
 
-      {/*
-       * Los tres puntos van **siempre**, no solo con el cursor encima.
-       *
-       * `over` es el hover: en el teléfono no existe, así que las opciones de
-       * una canción de la portada —fijarla, usar su tapa de fondo, sumarla a
-       * una lista— directamente no se podían abrir. Es el mismo bug que ya se
-       * corrigió en los resultados de búsqueda, y con el mantener apretado
-       * inerte (ver `MantenerApretado`), este botón es la única puerta.
-       */}
+      {/* Los tres puntos siguen disponibles para abrir las mismas opciones con un toque. */}
       <View className="w-8 items-center">
         <Menu items={menu} label={`Opciones de ${item.title}`} size={14} />
       </View>
     </View>
   )
+  return Platform.OS === 'ios' && menu.length
+    ? <MantenerApretado items={menu}>{fila}</MantenerApretado>
+    : fila
 }
 
 /* ── Géneros ──────────────────────────────────────────────────────────────── */

@@ -5,10 +5,13 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { volver } from '../../src/lib/volver'
 import {
   crearJamActual,
+  cambiarMiSalida,
+  ponerPermisosJam,
   salirDelJam,
   useConexionJam,
   useJam,
   useMiembrosJam,
+  useMiSalidaJam,
   usePresentesJam,
   useSoyHostJam,
 } from '../../src/state/jam'
@@ -17,6 +20,7 @@ import { ColaJam } from '../../src/ui/ColaJam'
 import { EntrarConCodigo } from '../../src/ui/EntrarJam'
 import { BotonVidrio } from '../../src/ui/Glass'
 import { Hoja } from '../../src/ui/Hoja'
+import { HAY_MENU_NATIVO, Menu } from '../../src/ui/Menu'
 import { ICON_COLOR, IconPlus, IconSliders, IconUsers } from '../../src/ui/icons'
 
 /**
@@ -43,6 +47,7 @@ export default function JamSheet() {
   const presentes = usePresentesJam()
   const conexion = useConexionJam()
   const soyHost = useSoyHostJam()
+  const salida = useMiSalidaJam()
   /* El arrastre de la cola congela el scroll de la hoja: dos gestos verticales
      sobre el mismo dedo es uno de más. */
   const [arrastrando, setArrastrando] = useState(false)
@@ -147,13 +152,25 @@ export default function JamSheet() {
 
             <View className="flex-1" />
 
-            <BotonVidrio
+            {HAY_MENU_NATIVO ? (
+              <Menu
+                label="Opciones del Jam"
+                triggerSymbol="slider.horizontal.3"
+                items={soyHost ? [
+                  { label: 'Agregar y reordenar canciones', sfSymbol: 'text.badge.plus', selected: jam.permisos.agregan, onPress: () => ponerPermisosJam({ agregan: !jam.permisos.agregan }) },
+                  { label: 'Pausar y saltar de posición', sfSymbol: 'playpause', selected: jam.permisos.controlan, onPress: () => ponerPermisosJam({ controlan: !jam.permisos.controlan }) },
+                  { label: 'Cambiar de canción', sfSymbol: 'forward.end', selected: jam.permisos.saltan, onPress: () => ponerPermisosJam({ saltan: !jam.permisos.saltan }) },
+                ] : [
+                  { label: 'Escuchar acá', sfSymbol: 'speaker.wave.2', selected: salida === 'propia', onPress: () => cambiarMiSalida(salida === 'propia' ? 'host' : 'propia') },
+                ]}
+              />
+            ) : <BotonVidrio
               label="Opciones del Jam"
               onPress={() => router.push('/jam/opciones')}
               style={{ height: 36, width: 36 }}
             >
               <IconSliders size={16} color={ICON_COLOR.foreground} />
-            </BotonVidrio>
+            </BotonVidrio>}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={soyHost ? 'Terminar el Jam' : 'Salir del Jam'}

@@ -1,10 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  ActionSheetIOS,
   Animated,
   Easing,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -19,6 +17,8 @@ import { ICON_COLOR, IconChevronRight, IconMore } from './icons'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { TECLADO_FISICO } from '../lib/teclado'
 import { useConTooltip } from './Tooltip'
+import { HAY_MENU_NATIVO, MenuNativo } from './MenuNativo'
+export { HAY_MENU_NATIVO } from './MenuNativo'
 
 export type MenuItem = {
   label: string
@@ -38,6 +38,8 @@ export type MenuItem = {
   /** Se marca como la acción que borra: va al final y separada. */
   destructive?: boolean
   disabled?: boolean
+  /** Selección nativa, con marca del sistema en los selectores. */
+  selected?: boolean
   /**
    * Submenú: estas opciones cuelgan de la fila, como pide la HIG de menús.
    *
@@ -49,46 +51,6 @@ export type MenuItem = {
    */
   items?: MenuItem[]
 }
-
-/**
- * El menú del sistema, si el binario lo trae.
- *
- * `@expo/ui` viene con expo-router, así que en la práctica está siempre — pero
- * se carga dentro de un `try` igual: sus componentes resuelven la vista nativa
- * **al importarse**, y en un binario que no la tenga eso no sería un menú feo,
- * sería la app entera cayéndose al arrancar. Mismo criterio que
- * `remote-commands`.
- */
-function cargarNativo() {
-  if (Platform.OS !== 'ios') return null
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const ui = require('@expo/ui/swift-ui')
-    return ui as {
-      Host: React.ComponentType<{
-        style?: object
-        accessibilityLabel?: string
-        children: ReactNode
-      }>
-      Menu: React.ComponentType<{ label: ReactNode; children: ReactNode }>
-      Button: React.ComponentType<{
-        label?: string
-        systemImage?: SFSymbol
-        role?: 'default' | 'cancel' | 'destructive'
-        onPress?: () => void
-      }>
-      Image: React.ComponentType<{ systemName?: SFSymbol; size?: number; color?: string }>
-      Label: React.ComponentType<{ title?: string; systemImage?: SFSymbol; color?: string }>
-    }
-  } catch {
-    return null
-  }
-}
-
-const nativo = cargarNativo()
-
-/** Si el menú del sistema está disponible. Lo mira `Popover`. */
-export const HAY_MENU_NATIVO = nativo !== null
 
 /* Ancho pensado para la etiqueta más larga que usamos hoy («Nueva lista con
  * esta canción»): más angosto, el texto saltaba de línea y se desbordaba de su
@@ -248,15 +210,8 @@ function animContenido(cerrando: boolean): Record<string, string> | undefined {
  * Menú de acciones colgado de un botón de tres puntos.
  *
  * En iOS es **el menú del sistema** —`UIMenu`, el mismo de Apple Music— y en
- * todo lo demás uno nuestro, anclado a mano. Tres caminos, en este orden:
- *
- * 1. `UIMenu`, que es lo que se ve en el teléfono.
- * 2. El action sheet, si el binario no trae `@expo/ui`.
- * 3. El menú dibujado por nosotros, en web y Android.
- *
- * Los tres reciben la misma lista de `items`: quien lo usa no sabe cuál le
- * tocó, y por eso migrar de uno a otro no obligó a tocar ninguno de los nueve
- * lugares que lo usan.
+ * todo lo demás uno nuestro, anclado a mano. Los dos reciben la misma lista
+ * de `items`, incluidos submenús y acciones destructivas.
  *
  * Es el hermano de `Popover`: comparten la forma de anclarse pero no la
  * semántica. `Popover` elige un valor entre varios y marca el elegido; esto
@@ -278,12 +233,13 @@ type MenuProps = {
   size?: number
   /** Reemplaza los tres puntos por otra cosa, manteniendo el comportamiento. */
   trigger?: ReactNode
+  /** Los disparadores que son filas ocupan el ancho disponible también en iOS. */
+  triggerFullWidth?: boolean
   /**
    * El disparador del menú nativo, cuando no son tres puntos.
    *
-   * Va como símbolo y texto sueltos y no como componente porque **lo dibuja
-   * SwiftUI**: adentro del menú del sistema no entra una vista nuestra. Es la
-   * misma razón por la que los íconos de las opciones son SF Symbols.
+   * SwiftUI dibuja el símbolo y el texto. Los disparadores personalizados
+   * también se admiten, mediante RNHostView.
    */
   triggerSymbol?: SFSymbol
   triggerText?: string
@@ -307,35 +263,13 @@ type MenuProps = {
   onCerrarPunto?: () => void
 }
 
-export function mostrarOpcionesIOS(items: MenuItem[]) {
-  const mostrar = (opciones: MenuItem[]) => {
-    const destructivas = opciones
-      .map((item, i) => (item.destructive ? i : -1))
-      .filter((i) => i >= 0)
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options: [...opciones.map((item) => item.label), 'Cancelar'],
-        cancelButtonIndex: opciones.length,
-        destructiveButtonIndex: destructivas.length ? destructivas : undefined,
-        userInterfaceStyle: 'dark',
-      },
-      (i) => {
-        const item = opciones[i]
-        if (!item) return
-        if (item.items?.length) mostrar(item.items.filter((s) => !s.disabled))
-        else item.onPress?.()
-      },
-    )
-  }
-  mostrar(items.filter((item) => !item.disabled))
-}
-
 export function Menu({
   items,
   label = 'Más opciones',
   tooltip = 'Opciones',
   size = 15,
   trigger,
+  triggerFullWidth = false,
   triggerSymbol,
   triggerText,
   sinDisparador = false,
@@ -417,104 +351,15 @@ export function Menu({
   ).length
   const idealH = usable.length * ROW_H + cortes * DIVISOR_H + PAD * 2
 
-  /*
-   * En iOS, el menú del sistema.
-   *
-   * Es `UIMenu`: el panel anclado al botón, con vidrio y con el ícono de cada
-   * opción a la derecha. Antes acá había un action sheet, que es **otra cosa**
-   * —sube desde abajo, tapa media pantalla y pide un «Cancelar»— y se usa para
-   * decisiones que interrumpen. Estas no interrumpen nada: son las opciones de
-   * una fila, y el lugar donde uno las busca es al lado de la fila.
-   *
-   * El disparador se dibuja del lado nativo, así que un `trigger` nuestro no
-   * puede entrar acá adentro: en ese caso manda el menú de abajo. Hoy no lo usa
-   * nadie, pero la prop existe.
-   *
-   * Las deshabilitadas ni se ofrecen, como antes: una opción que no responde es
-   * peor que una ausente.
-   */
-  if (nativo && !trigger && !sinDisparador) {
-    const { Host, Menu: MenuNativo, Button, Image, Label } = nativo
+  if (HAY_MENU_NATIVO && !sinDisparador) {
     return (
-      <Host
-        style={triggerText ? { height: 36, minWidth: 92 } : { width: 36, height: 36 }}
-        accessibilityLabel={label}
-      >
-        <MenuNativo
-          label={
-            triggerText ? (
-              <Label
-                title={triggerText}
-                systemImage={triggerSymbol ?? 'ellipsis'}
-                color={ICON_COLOR.foreground}
-              />
-            ) : (
-              <Image systemName={triggerSymbol ?? 'ellipsis'} size={size} color={ICON_COLOR.muted} />
-            )
-          }
-        >
-          {usable.map((item) =>
-            item.items?.length ? (
-              /*
-               * Un `Menu` adentro del `Menu`: SwiftUI lo dibuja como submenú,
-               * con el chevron y el panel al costado — exactamente el patrón
-               * de la HIG, puesto por el sistema.
-               */
-              <MenuNativo
-                key={item.label}
-                label={
-                  <Label
-                    title={item.label}
-                    systemImage={item.sfSymbol}
-                    color={ICON_COLOR.foreground}
-                  />
-                }
-              >
-                {item.items
-                  .filter((sub) => !sub.disabled)
-                  .map((sub) => (
-                    <Button
-                      key={sub.label}
-                      label={sub.label}
-                      systemImage={sub.sfSymbol}
-                      role={sub.destructive ? 'destructive' : 'default'}
-                      onPress={sub.onPress}
-                    />
-                  ))}
-              </MenuNativo>
-            ) : (
-              <Button
-                key={item.label}
-                label={item.label}
-                systemImage={item.sfSymbol}
-                /* Rojo y al final, puesto por el sistema. */
-                role={item.destructive ? 'destructive' : 'default'}
-                onPress={item.onPress}
-              />
-            ),
-          )}
-        </MenuNativo>
-      </Host>
+      <MenuNativo items={usable} label={label} size={size} symbol={triggerSymbol} text={triggerText} fullWidth={triggerFullWidth}>
+        {trigger}
+      </MenuNativo>
     )
   }
 
-  /*
-   * El respaldo de iOS, para cuando el menú de arriba no se puede dibujar.
-   *
-   * Todo el cálculo de más abajo —cuánto lugar hay de cada lado, hacia dónde
-   * desplegar, cómo no salirse por los bordes— existe para una ventana de
-   * escritorio. En un teléfono ese menú compite con media pantalla y termina
-   * saliéndose, así que antes que eso va el action sheet: no es la forma que
-   * queremos, pero se ubica solo y se cierra como cualquier app del sistema.
-   */
   const openMenu = () => {
-    if (Platform.OS === 'ios') {
-      /* Un submenú acá es **otra hoja**: el action sheet no tiene paneles al
-         costado, así que elegir la fila con submenú abre una segunda hoja con
-         sus opciones. Dos toques, igual que en el menú de verdad. */
-      mostrarOpcionesIOS(usable)
-      return
-    }
     ref.current?.measureInWindow((x, y, w, h) => {
       setAnchor({ x, y, w, h })
       setSub(null)
@@ -806,39 +651,14 @@ export function Menu({
   )
 }
 
-/**
- * Mantener apretado sobre algo para ver sus opciones: el menú, donde está el dedo.
- *
- * Es el gesto equivalente al click derecho, del lado del toque. En el teléfono
- * lo natural sobre una fila es apretarla, no apuntarle a un ícono de 36px
- * contra el borde — y hasta ahora esto era un envoltorio vacío, así que ese
- * gesto no hacía nada en ninguna pantalla.
- *
- * **No usa el menú nativo, y es a propósito.** `ContextMenu` de `@expo/ui`
- * exige envolver cada disparador en un `<Host>` de SwiftUI, y el disparador acá
- * es *una fila de una lista*: sería un contenedor de SwiftUI por fila, adentro
- * de un `FlatList` que las recicla. Ese costo es el que había que evitar. El
- * gesto de abajo es JS puro y el panel es el mismo que dibuja el click derecho,
- * así que no hay nada nativo por fila.
- *
- * Los números salen de las plataformas: **500ms** es el umbral de iOS
- * (`minimumPressDuration`) y de Android (`DEFAULT_LONG_PRESS_TIMEOUT`), así que
- * el gesto se siente como el del sistema. Los **10px** de tolerancia son lo que
- * le cede el paso al scroll: cualquier desplazamiento real se pasa de ahí y el
- * apretón se cancela, que es la regla que hace que la lista siga siendo una
- * lista. Y queda lejos de los 130ms del arrastre para reordenar la cola, que
- * además vive en otra manija.
- *
- * Solo con el dedo: con mouse ya está el click derecho, y tener las dos puertas
- * abiertas a la vez sobre el mismo nodo serían dos menús compitiendo.
- */
+/** Pulsación larga nativa en iOS; menú anclado propio en las otras plataformas. */
 export function MantenerApretado({ items, children }: { items: MenuItem[]; children: ReactNode }) {
   const [punto, setPunto] = useState<{ x: number; y: number } | null>(null)
 
   const gesto = useMemo(
     () =>
       Gesture.LongPress()
-        .enabled(!TECLADO_FISICO && items.length > 0)
+        .enabled(!HAY_MENU_NATIVO && !TECLADO_FISICO && items.length > 0)
         .minDuration(500)
         .maxDistance(10)
         .shouldCancelWhenOutside(true)
@@ -846,11 +666,14 @@ export function MantenerApretado({ items, children }: { items: MenuItem[]; child
            `abiertoEn`: `absoluteX/Y` ya vienen así, sin medir nada. */
         .runOnJS(true)
         .onStart((e) => {
-          if (Platform.OS === 'ios') mostrarOpcionesIOS(items)
-          else setPunto({ x: e.absoluteX, y: e.absoluteY })
+          setPunto({ x: e.absoluteX, y: e.absoluteY })
         }),
     [items],
   )
+
+  if (HAY_MENU_NATIVO && items.length) {
+    return <MenuNativo items={items} longPress fullWidth>{children}</MenuNativo>
+  }
 
   return (
     <GestureDetector gesture={gesto}>

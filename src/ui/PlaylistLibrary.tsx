@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ActivityIndicator, FlatList, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, FlatList, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import type { Playlist } from '../services/playlists'
 import { useCuantosMeGusta } from '../state/gustos'
 import { useWantPlay } from '../state/playback'
@@ -12,7 +12,7 @@ import { SkeletonList } from './Skeleton'
 import { AnimatedSidebarTitle } from './SidebarMotion'
 import { BotonVidrio } from './Glass'
 import { Vacio } from './Vacio'
-import { Menu, type MenuItem } from './Menu'
+import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { useClicDerecho } from './useClicDerecho'
 import {
   ICON_COLOR,
@@ -311,12 +311,15 @@ function FilaLista({
 }) {
   const clic = useClicDerecho()
 
-  return (
+  const fila = (
     <View {...clic.gestos}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ selected: abierta }}
         onPress={() => onOpen(playlist)}
+        onLongPress={Platform.OS === 'ios' && menu?.length ? () => {} : undefined}
+        delayLongPress={500}
+        accessibilityHint={menu?.length ? 'Mantené apretado para ver las opciones' : undefined}
         className={`flex-row items-center rounded-lg ${
           suelto ? 'gap-3 p-2.5' : 'gap-3 p-2'
         } ${abierta ? 'bg-muted' : 'active:bg-card'}`}
@@ -370,4 +373,7 @@ function FilaLista({
       ) : null}
     </View>
   )
+  return Platform.OS === 'ios' && menu?.length
+    ? <MantenerApretado items={menu}>{fila}</MantenerApretado>
+    : fila
 }

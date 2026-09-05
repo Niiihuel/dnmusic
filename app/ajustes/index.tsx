@@ -6,6 +6,7 @@ import { Panel } from '../../src/ui/Panel'
 import { FilaAjuste, FilaInterruptor, GrupoAjustes } from '../../src/ui/Ajustes'
 import { FilaSostener } from '../../src/ui/Mantener'
 import { Avatar } from '../../src/ui/Avatar'
+import { HAY_MENU_NATIVO, Menu } from '../../src/ui/Menu'
 import {
   ICON_COLOR,
   IconBack,
@@ -124,7 +125,17 @@ export default function Ajustes() {
                 </Text>
               </View>
             </View>
-            <View className="flex-row flex-wrap gap-2">
+            {HAY_MENU_NATIVO ? (
+              <Menu
+                label="Temporizador de reproducción"
+                triggerText="Elegir duración"
+                triggerSymbol="moon.zzz"
+                items={[
+                  ...MINUTOS.map((m) => ({ label: `${m} minutos`, sfSymbol: 'clock' as const, onPress: () => programarApagado(m) })),
+                  { label: 'Cancelar temporizador', sfSymbol: 'xmark.circle', disabled: dormirMin === null, onPress: () => programarApagado(null) },
+                ]}
+              />
+            ) : <View className="flex-row flex-wrap gap-2">
               {MINUTOS.map((m) => (
                 <Pressable
                   key={m}
@@ -147,7 +158,7 @@ export default function Ajustes() {
                   </Text>
                 </Pressable>
               ) : null}
-            </View>
+            </View>}
           </View>
         </GrupoAjustes>
       ),

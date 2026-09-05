@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Image, Pressable, ScrollView, Text, View } from 'react-native'
+import { Image, Platform, Pressable, ScrollView, Text, View } from 'react-native'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { useKeyboardH, usePiso } from '../state/shell'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
@@ -264,6 +264,9 @@ function ResultadoFila({
           // reinicia ni la vuelve a resolver. Salvo que este buscador
           // exista para elegir, no para escuchar — ver `alwaysSelect`.
           onPress={() => (sounding && !alwaysSelect ? togglePlayback() : onSelect(track))}
+          onLongPress={Platform.OS === 'ios' && items.length ? () => {} : undefined}
+          delayLongPress={500}
+          accessibilityHint={items.length ? 'Mantené apretado para ver las opciones' : undefined}
           className="min-w-0 flex-1 flex-row items-center gap-3 rounded-lg p-2"
         >
           {/* La carátula se convierte en el botón de reproducir al

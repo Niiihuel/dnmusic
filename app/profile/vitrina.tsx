@@ -600,6 +600,7 @@ function FilaImagen({
   return (
     <Menu
       label={rotulo}
+      triggerFullWidth
       items={[
         ...(sinNinguno
           ? []

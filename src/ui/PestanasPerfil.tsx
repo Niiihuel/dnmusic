@@ -128,12 +128,14 @@ export function PestanasPerfil({
               accessibilityState={{ selected: on }}
               accessibilityLabel={p.rotulo}
               onPress={() => onCambiar(p.id)}
-              onLayout={(e) =>
+              onLayout={(e) => {
+                // React Native libera el evento al terminar el callback; el
+                // actualizador de estado puede ejecutarse después.
+                const { x: sx, width: sw } = e.nativeEvent.layout
                 setSitios((s) => {
-                  const { x: sx, width: sw } = e.nativeEvent.layout
                   return s[p.id]?.x === sx && s[p.id]?.w === sw ? s : { ...s, [p.id]: { x: sx, w: sw } }
                 })
-              }
+              }}
               className="items-center justify-center rounded-full px-5 active:opacity-70"
               style={{ height: ALTO - AIRE * 2 }}
             >

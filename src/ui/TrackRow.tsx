@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Image, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { EstadoTapa, IndicadorPreparando } from './CoverState'
-import { mostrarOpcionesIOS, Menu, type MenuItem } from './Menu'
+import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { useClicDerecho } from './useClicDerecho'
 import { PlayingBars } from './PlayingBars'
 import { usePlaybackCargada } from '../state/playback'
@@ -147,8 +147,7 @@ export function TrackRow({
         onLongPress={
           menu?.length
             ? (e) => {
-                if (Platform.OS === 'ios') mostrarOpcionesIOS(menu)
-                else setApreton({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })
+                if (Platform.OS !== 'ios') setApreton({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })
               }
             : undefined
         }
@@ -294,8 +293,11 @@ export function TrackRow({
     </View>
   )
 
-  // Pressable arbitra toque / pulsación larga y cancela el play al abrir opciones.
-  return fila
+  // El callback de onLongPress suprime onPress al soltar; en iOS el menú y
+  // su gesto los administra SwiftUI, sin abrir una segunda hoja desde JS.
+  return Platform.OS === 'ios' && menu?.length
+    ? <MantenerApretado items={menu}>{fila}</MantenerApretado>
+    : fila
 }
 
 /**
