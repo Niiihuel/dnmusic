@@ -15,7 +15,7 @@ import { iniciarResolucion, progresoResolucion, terminarResolucion } from '../st
  * letra sincroniza exacto: los tiempos del LRC son de la canción entera.
  */
 
-const MUSIC_API = process.env.EXPO_PUBLIC_MUSIC_API ?? 'http://localhost:8787'
+const MUSIC_API = (process.env.EXPO_PUBLIC_MUSIC_API ?? 'http://localhost:8787').trim().replace(/\/+$/, '')
 
 /**
  * El servicio de música, ahora entero en Vercel.
@@ -510,6 +510,9 @@ function motivoDeAca(e: unknown): string {
   }
   if (/El aporte falló \(401\)|No autorizado/i.test(texto)) {
     return 'Tu sesión venció mientras se preparaba la canción. Salí y volvé a entrar.'
+  }
+  if (/El aporte falló \(404\)/i.test(texto)) {
+    return 'La dirección del servicio de música ya no está disponible. Actualizá la app y probá de nuevo.'
   }
   if (/El aporte falló/i.test(texto)) {
     return `${aparato === 'esta computadora' ? 'Esta computadora' : 'Este teléfono'} la bajó, pero el servidor no la aceptó (${recorte(texto, 80)}).`

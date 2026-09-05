@@ -340,3 +340,16 @@ compila.
 
 Para investigar fallos de YouTube y ejecutar el diagnóstico sin subir audio,
 ver [YOUTUBE-DIAGNOSTICO.md](YOUTUBE-DIAGNOSTICO.md).
+
+### Verificar el servicio antes de publicar
+
+`EXPO_PUBLIC_MUSIC_API` de GitHub Actions debe apuntar a
+`https://dnmusic-api.vercel.app`, igual que el despliegue web. Las variables
+locales y las de Vercel no actualizan ese secret: son configuraciones distintas.
+La 1.9.1 conservó el dominio retirado de Railway, que devolvía 404 incluso después
+de que la computadora descargara el audio. La 1.9.2 corrige la configuración.
+
+El workflow ahora ejecuta `desktop/scripts/verificar-servicio.mjs` antes de
+compilar. Exige salud 200 y respuesta de autenticación 401 JSON en búsqueda y
+las dos rutas de aporte, sin iniciar sesión ni subir archivos. Si una ruta
+apunta a un despliegue inexistente o un rewrite falta, la publicación se corta.

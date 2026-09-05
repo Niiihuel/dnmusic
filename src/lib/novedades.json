@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.9.2",
+    "fecha": "4 de septiembre de 2026",
+    "titulo": "Tu música vuelve a encontrar su camino.",
+    "cambios": [
+      "Corregida la dirección del servicio de música en escritorio: la app seguía buscando y enviando canciones al servidor anterior, que ya no existe.",
+      "Las próximas publicaciones comprueban que la búsqueda y las rutas de aporte estén disponibles antes de generar los instaladores."
+    ]
+  },
+  {
     "version": "1.9.1",
     "fecha": "4 de septiembre de 2026",
     "titulo": "Más a tu manera.",
