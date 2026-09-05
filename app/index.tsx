@@ -1,3 +1,4 @@
+import { InvitacionJam } from '../src/ui/InvitacionJam'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import {
@@ -3464,7 +3465,7 @@ function Detail({
 
       {message.text.length ? (
         <View className="rounded-xl bg-card p-4">
-          <Text className="text-card-foreground text-[16px] leading-6">{message.text}</Text>
+          <InvitacionJam texto={message.text} />
         </View>
       ) : null}
 

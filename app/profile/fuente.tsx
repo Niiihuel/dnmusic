@@ -4,41 +4,38 @@ import { useRouter } from 'expo-router'
 import { estiloDeFuente, FUENTES } from '../../src/lib/fuentes'
 import { volver } from '../../src/lib/volver'
 import { usePiso } from '../../src/state/shell'
-import { actualizarBorrador, useBorrador } from '../../src/state/vitrinaBorrador'
+import { useMyProfile, setMyProfile } from '../../src/state/session'
+import { saveMyProfile } from '../../src/services/profile'
+import { avisar } from '../../src/state/aviso'
+import { mensajeError } from '../../src/lib/mensajeError'
 import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
 import { ICON_COLOR, IconCheck } from '../../src/ui/icons'
 
-/**
- * Elegir la tipografía de una pieza de texto.
- *
- * Cada opción se muestra **con el texto de la pieza**, escrito en esa
- * fuente: una tipografía se elige por cómo queda lo que uno escribió, no por
- * cómo queda «Lorem ipsum». Sin texto todavía, va el nombre de la fuente.
- * Tocar una la pone en el borrador al toque —la vista previa del editor está
- * detrás— y Cancelar devuelve la que había, como la hoja del tema.
- */
+/** Vista previa local; se publica en todo el perfil al aplicar. */
 export default function ElegirFuente() {
   const router = useRouter()
   const piso = usePiso(24)
   const modal = useHojaModal()
-  const borrador = useBorrador()
-
-  const [inicial] = useState<string | null>(borrador?.estilo.fuente ?? null)
-  const [elegida, setElegida] = useState<string | null>(inicial)
-
-  const c = borrador?.contenido
-  const muestra =
-    (c?.kind === 'texto' ? c.texto : c?.kind === 'encabezado' ? c.titulo : c?.kind === 'letra' ? c.letra.texto : c?.kind === 'subspace' ? c.titulo : '')
-      .trim()
-
-  function elegir(id: string | null) {
-    setElegida(id)
-    actualizarBorrador((b) => ({ estilo: { ...b.estilo, fuente: id } }))
-  }
-
+  const perfil = useMyProfile()
+  const [elegida, setElegida] = useState<string | null>(perfil?.fuente ?? null)
+  const [guardando, setGuardando] = useState(false)
+  const muestra = perfil?.displayName || perfil?.username || 'Tu música, tu espacio'
+  const elegir = setElegida
   function cancelar() {
-    actualizarBorrador((b) => ({ estilo: { ...b.estilo, fuente: inicial } }))
-    volver(router, '/profile/vitrina')
+    if (!guardando) volver(router, '/profile')
+  }
+  async function guardar() {
+    if (guardando) return
+    setGuardando(true)
+    try {
+      setMyProfile(await saveMyProfile({ fuente: elegida }))
+      avisar('Tipografía aplicada a todo tu perfil')
+      volver(router, '/profile')
+    } catch (e) {
+      avisar(mensajeError(e), true)
+    } finally {
+      setGuardando(false)
+    }
   }
 
   return (
@@ -55,9 +52,9 @@ export default function ElegirFuente() {
         }}
       >
         <View className="items-center gap-1">
-          <Text className="text-foreground text-[17px] font-bold">La fuente de esta pieza</Text>
+          <Text className="text-foreground text-[17px] font-bold">La tipografía de tu perfil</Text>
           <Text className="text-muted-foreground text-center text-[12px] leading-4">
-            Cada una escribe lo tuyo a su manera.
+            Una misma fuente para tu nombre, biografía, canciones y mosaico.
           </Text>
         </View>
 
@@ -93,10 +90,13 @@ export default function ElegirFuente() {
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            onPress={() => volver(router, '/profile/vitrina')}
+            disabled={guardando}
+            onPress={() => void guardar()}
             className="h-11 min-w-[120px] items-center justify-center rounded-full bg-primary px-6 active:opacity-80"
           >
-            <Text className="text-primary-foreground text-[14px] font-bold">Listo</Text>
+            <Text className="text-primary-foreground text-[14px] font-bold">
+              {guardando ? 'Guardando…' : 'Aplicar al perfil'}
+            </Text>
           </Pressable>
         </View>
       </ScrollView>

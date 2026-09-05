@@ -151,6 +151,7 @@ export type ShowcaseLetra = {
  * entonces la vitrina hereda el del perfil (ver `lib/tema`).
  */
 export type ShowcaseEstilo = {
+  presentacion?: 'portada' | 'reproductor' | 'completa'
   tema: Tema | null
   fondo: ShowcaseImagen | null
   /** La tipografía de las piezas de texto; `null` es la del sistema. Ver `lib/fuentes`. */
@@ -199,6 +200,10 @@ function estiloDe(v: unknown): ShowcaseEstilo {
   if (!r || typeof r !== 'object') return SIN_ESTILO
   const fondo = r.fondo as Record<string, unknown> | null
   return {
+    presentacion:
+      r.presentacion === 'portada' || r.presentacion === 'reproductor'
+        ? r.presentacion
+        : 'completa',
     tema: temaDe(r.tema),
     fondo:
       fondo && typeof fondo === 'object' && typeof fondo.path === 'string' && fondo.path
@@ -376,6 +381,7 @@ export function tapaDe(v: Showcase): string | null {
 /** El estilo al JSON de la base. Lo vacío viaja como `{}`, que es el default. */
 function estiloParaLaBase(estilo: ShowcaseEstilo): Record<string, unknown> {
   const out: Record<string, unknown> = {}
+  if (estilo.presentacion) out.presentacion = estilo.presentacion
   if (estilo.tema) out.tema = estilo.tema
   if (estilo.fondo) out.fondo = estilo.fondo
   if (estilo.fuente) out.fuente = estilo.fuente

@@ -13,7 +13,6 @@ import {
   useSoyHostJam,
 } from '../../src/state/jam'
 import { Avatar } from '../../src/ui/Avatar'
-import { BotonSostener } from '../../src/ui/BotonSostener'
 import { ColaJam } from '../../src/ui/ColaJam'
 import { EntrarConCodigo } from '../../src/ui/EntrarJam'
 import { BotonVidrio } from '../../src/ui/Glass'
@@ -35,9 +34,7 @@ import { ICON_COLOR, IconPlus, IconSliders, IconUsers } from '../../src/ui/icons
  * puerta a invitar, y el resto de la hoja es **la fila** — lo que suena y lo
  * que viene, reordenable arrastrando la manija (ver `ColaJam`).
  *
- * Terminar es sostener, no tocar dos veces: `BotonSostener` se llena mientras
- * el dedo está apoyado y recién al completarse cierra el Jam y baja la hoja.
- * Soltar antes es arrepentirse gratis.
+ * Terminar y salir responden a un solo toque.
  */
 export default function JamSheet() {
   const router = useRouter()
@@ -56,34 +53,34 @@ export default function JamSheet() {
   if (!jam) {
     return (
       <Hoja>
-      <SafeAreaView
-        edges={['bottom']}
-        className="flex-1 items-center justify-center gap-4 bg-background"
-      >
-        <IconUsers size={26} color={ICON_COLOR.muted} />
-        <Text className="text-muted-foreground text-[13px]">
-          {conexion === 'conectando' ? 'Conectando…' : 'No estás en ningún Jam.'}
-        </Text>
-        {conexion === 'conectando' ? null : (
+        <SafeAreaView
+          edges={['bottom']}
+          className="flex-1 items-center justify-center gap-4 bg-background"
+        >
+          <IconUsers size={26} color={ICON_COLOR.muted} />
+          <Text className="text-muted-foreground text-[13px]">
+            {conexion === 'conectando' ? 'Conectando…' : 'No estás en ningún Jam.'}
+          </Text>
+          {conexion === 'conectando' ? null : (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void crearJamActual()}
+              className="rounded-full bg-primary px-5 py-2.5 active:opacity-80"
+            >
+              <Text className="text-primary-foreground text-[13px] font-semibold">
+                Iniciar un Jam
+              </Text>
+            </Pressable>
+          )}
+          {conexion === 'conectando' ? null : <EntrarConCodigo />}
           <Pressable
             accessibilityRole="button"
-            onPress={() => void crearJamActual()}
-            className="rounded-full bg-primary px-5 py-2.5 active:opacity-80"
+            onPress={() => volver(router, '/')}
+            className="rounded-full bg-muted px-5 py-2.5 active:opacity-80"
           >
-            <Text className="text-primary-foreground text-[13px] font-semibold">
-              Iniciar un Jam
-            </Text>
+            <Text className="text-foreground text-[13px] font-semibold">Volver</Text>
           </Pressable>
-        )}
-        {conexion === 'conectando' ? null : <EntrarConCodigo />}
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => volver(router, '/')}
-          className="rounded-full bg-muted px-5 py-2.5 active:opacity-80"
-        >
-          <Text className="text-foreground text-[13px] font-semibold">Volver</Text>
-        </Pressable>
-      </SafeAreaView>
+        </SafeAreaView>
       </Hoja>
     )
   }
@@ -97,93 +94,93 @@ export default function JamSheet() {
     /* En web, `Hoja` pone lo que en iOS pone el formSheet: la subida, el
        grabber, el velo y el cierre tocando afuera. En nativo no dibuja nada. */
     <Hoja>
-    <SafeAreaView edges={['bottom']} className="flex-1 bg-background">
-      <View className="gap-3 px-5 pb-3 pt-4">
-        <View className="gap-0.5">
-          <Text className="text-foreground text-[22px] font-extrabold" numberOfLines={1}>
-            {nombreHost ? `Jam de ${nombreHost}` : 'Jam'}
-          </Text>
-          <Text className="text-muted-foreground text-[12px]">
-            Código {jam.code} · {miembros.length}{' '}
-            {miembros.length === 1 ? 'persona' : 'personas'}
-          </Text>
-        </View>
+      <SafeAreaView edges={['bottom']} className="flex-1 bg-background">
+        <View className="gap-3 px-5 pb-3 pt-4">
+          <View className="gap-0.5">
+            <Text className="text-foreground text-[22px] font-extrabold" numberOfLines={1}>
+              {nombreHost ? `Jam de ${nombreHost}` : 'Jam'}
+            </Text>
+            <Text className="text-muted-foreground text-[12px]">
+              Código {jam.code} · {miembros.length} {miembros.length === 1 ? 'persona' : 'personas'}
+            </Text>
+          </View>
 
-        <View className="flex-row items-center gap-3">
-          {/* La tira de avatares ES la puerta a la gente: tocarla abre la hoja
+          <View className="flex-row items-center gap-3">
+            {/* La tira de avatares ES la puerta a la gente: tocarla abre la hoja
               de invitar, igual que el «+». El puntito es presencia. */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Ver quiénes están e invitar"
-            onPress={() => router.push('/jam/personas')}
-            className="flex-row items-center active:opacity-70"
-          >
-            {visibles.map((m, i) => (
-              <View
-                key={m.userId}
-                className="rounded-full border-2 border-background"
-                style={i > 0 ? { marginLeft: -10 } : null}
-              >
-                <Avatar name={m.displayName ?? m.username} path={m.avatarPath} size={30} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Ver quiénes están e invitar"
+              onPress={() => router.push('/jam/personas')}
+              className="flex-row items-center active:opacity-70"
+            >
+              {visibles.map((m, i) => (
                 <View
-                  className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background ${
-                    enVivo.has(m.userId) ? 'bg-foreground' : 'bg-muted'
-                  }`}
-                />
-              </View>
-            ))}
-            {miembros.length > visibles.length ? (
-              <Text className="text-muted-foreground ml-1.5 text-[11px]">
-                +{miembros.length - visibles.length}
-              </Text>
-            ) : null}
-          </Pressable>
-          {/* Tamaño explícito EN el vidrio: dimensionado por su contenido, el
+                  key={m.userId}
+                  className="rounded-full border-2 border-background"
+                  style={i > 0 ? { marginLeft: -10 } : null}
+                >
+                  <Avatar name={m.displayName ?? m.username} path={m.avatarPath} size={30} />
+                  <View
+                    className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background ${
+                      enVivo.has(m.userId) ? 'bg-foreground' : 'bg-muted'
+                    }`}
+                  />
+                </View>
+              ))}
+              {miembros.length > visibles.length ? (
+                <Text className="text-muted-foreground ml-1.5 text-[11px]">
+                  +{miembros.length - visibles.length}
+                </Text>
+              ) : null}
+            </Pressable>
+            {/* Tamaño explícito EN el vidrio: dimensionado por su contenido, el
               GlassView de iOS estiraba la pieza y el círculo salía ovalado. Con
               el cuadrado fijo, radio 999 es un círculo siempre. */}
-          <BotonVidrio
-            label="Invitar"
-            onPress={() => router.push('/jam/personas')}
-            style={{ height: 36, width: 36 }}
-          >
-            <IconPlus size={17} color={ICON_COLOR.foreground} />
-          </BotonVidrio>
+            <BotonVidrio
+              label="Invitar"
+              onPress={() => router.push('/jam/personas')}
+              style={{ height: 36, width: 36 }}
+            >
+              <IconPlus size={17} color={ICON_COLOR.foreground} />
+            </BotonVidrio>
 
-          <View className="flex-1" />
+            <View className="flex-1" />
 
-          <BotonVidrio
-            label="Opciones del Jam"
-            onPress={() => router.push('/jam/opciones')}
-            style={{ height: 36, width: 36 }}
-          >
-            <IconSliders size={16} color={ICON_COLOR.foreground} />
-          </BotonVidrio>
-          <BotonSostener
-            rotulo={soyHost ? 'Terminar' : 'Salir'}
-            pista={
-              soyHost
-                ? 'Mantené apretado para terminar el Jam. Se termina para todos.'
-                : 'Mantené apretado para salir del Jam.'
-            }
-            onCompletar={() => {
-              salirDelJam()
-              volver(router, '/')
-            }}
-          />
+            <BotonVidrio
+              label="Opciones del Jam"
+              onPress={() => router.push('/jam/opciones')}
+              style={{ height: 36, width: 36 }}
+            >
+              <IconSliders size={16} color={ICON_COLOR.foreground} />
+            </BotonVidrio>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={soyHost ? 'Terminar el Jam' : 'Salir del Jam'}
+              onPress={() => {
+                salirDelJam()
+                volver(router, '/')
+              }}
+              className="min-h-11 items-center justify-center rounded-full bg-muted px-5 py-3 active:opacity-80"
+            >
+              <Text className="text-foreground text-[13px] font-semibold">
+                {soyHost ? 'Terminar el Jam' : 'Salir del Jam'}
+              </Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
 
-      <ScrollView
-        className="min-h-0 flex-1"
-        scrollEnabled={!arrastrando}
-        contentContainerClassName="gap-2 px-5 pb-8"
-      >
-        <Text className="text-muted-foreground pt-2 text-[11px] font-semibold uppercase tracking-[1.2px]">
-          Fila de reproducción
-        </Text>
-        <ColaJam onArrastre={setArrastrando} />
-      </ScrollView>
-    </SafeAreaView>
+        <ScrollView
+          className="min-h-0 flex-1"
+          scrollEnabled={!arrastrando}
+          contentContainerClassName="gap-2 px-5 pb-8"
+        >
+          <Text className="text-muted-foreground pt-2 text-[11px] font-semibold uppercase tracking-[1.2px]">
+            Fila de reproducción
+          </Text>
+          <ColaJam onArrastre={setArrastrando} />
+        </ScrollView>
+      </SafeAreaView>
     </Hoja>
   )
 }

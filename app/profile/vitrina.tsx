@@ -1,3 +1,4 @@
+import { FuentePerfil } from '../../src/ui/FuentePerfil'
 import { useState } from 'react'
 import {
   Image,
@@ -14,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { artworkSource } from '../../src/lib/artwork'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { pickImage } from '../../src/lib/pickImage'
-import { estiloDeFuente, fuenteDe } from '../../src/lib/fuentes'
+import { estiloDeFuente } from '../../src/lib/fuentes'
 import { coloresDe, nombreDeTema, temaEfectivo } from '../../src/lib/tema'
 import { volver } from '../../src/lib/volver'
 import {
@@ -48,7 +49,6 @@ import {
   IconLyrics,
   IconMusic,
   IconPalette,
-  IconType,
 } from '../../src/ui/icons'
 
 const MAX_W = 520
@@ -219,167 +219,234 @@ export default function EditarVitrina() {
   const temaGlobal = perfil?.tema ?? null
 
   return (
-    <Hoja>
-    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-1">
-        <View className="flex-row items-center gap-3 px-3 py-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver sin guardar"
-            onPress={() => {
-              limpiarBorrador()
-              volver(router, '/profile')
-            }}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconBack size={19} color={ICON_COLOR.foreground} />
-          </Pressable>
-          <Text className="text-foreground text-[15px] font-semibold">{titulo}</Text>
-        </View>
+    <FuentePerfil fuente={perfil?.fuente}>
+      <Hoja>
+        <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+          <View className="flex-1">
+            <View className="flex-row items-center gap-3 px-3 py-1">
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Volver sin guardar"
+                onPress={() => {
+                  limpiarBorrador()
+                  volver(router, '/profile')
+                }}
+                className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+              >
+                <IconBack size={19} color={ICON_COLOR.foreground} />
+              </Pressable>
+              <Text className="text-foreground text-[15px] font-semibold">{titulo}</Text>
+            </View>
 
-        <Panel className="flex-1">
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
-            <ScrollView
-              contentContainerClassName="items-center px-4 pt-4"
-              contentContainerStyle={{ paddingBottom: modal ? 24 : piso }}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View className="w-full gap-7" style={{ maxWidth: MAX_W }}>
-                {/*
-                 * La vista previa, con el tamaño que va a tener: a media fila
-                 * ocupa la mitad del ancho, centrada, así se ve lo que entra.
-                 */}
-                <View className="items-center py-4">
-                  <View
-                    style={{
-                      width: borrador.ancho === 'mitad' ? '52%' : '100%',
-                      maxWidth: borrador.ancho === 'mitad' ? 220 : 420,
-                    }}
-                  >
-                    {deTexto ? (
-                      <PrevioDeTexto
-                        borrador={borrador}
-                        texto={texto}
-                        onTexto={escribir}
-                        temaGlobal={temaGlobal}
-                        tapa={contenido?.kind === 'letra' ? (contenido.letra.artworkUrl ?? null) : null}
-                        firma={
-                          contenido?.kind === 'letra' && (contenido.letra.title || contenido.letra.artist)
-                            ? /* Un verso firmado solo con el artista no lleva la raya con un lado vacío. */
-                              [contenido.letra.artist, contenido.letra.title].filter(Boolean).join(' — ')
-                            : null
-                        }
-                      />
-                    ) : contenido ? (
-                      <View pointerEvents="none">
-                        <Vitrina
-                          showcase={{ id: 'borrador', ancho: borrador.ancho, estilo, ...contenido } as Showcase}
-                          estilo={estilo}
-                          temaGlobal={temaGlobal}
-                          playlists={null}
-                          esMio
-                          playing={false}
-                          onTogglePlay={() => undefined}
-                          onOpenPlaylist={() => undefined}
-                        />
-                      </View>
-                    ) : (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Elegir ${ROTULO_TIPO[kind].toLowerCase()}`}
-                        onPress={() => router.push({ pathname: '/profile/elegir', params: { que: kind, desde: 'editor' } })}
-                        className="aspect-square items-center justify-center gap-2 rounded-2xl bg-card active:opacity-80"
+            <Panel className="flex-1">
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                className="flex-1"
+              >
+                <ScrollView
+                  contentContainerClassName="items-center px-4 pt-4"
+                  contentContainerStyle={{ paddingBottom: modal ? 24 : piso }}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <View className="w-full gap-7" style={{ maxWidth: MAX_W }}>
+                    {/*
+                     * La vista previa, con el tamaño que va a tener: a media fila
+                     * ocupa la mitad del ancho, centrada, así se ve lo que entra.
+                     */}
+                    <View className="items-center py-4">
+                      <View
+                        style={{
+                          width: borrador.ancho === 'mitad' ? '52%' : '100%',
+                          maxWidth: borrador.ancho === 'mitad' ? 220 : 420,
+                        }}
                       >
-                        <IconMusic size={24} color={ICON_COLOR.muted} />
-                        <Text className="text-muted-foreground text-[12px]">Elegir</Text>
-                      </Pressable>
-                    )}
-                  </View>
-                </View>
-
-                <GrupoAjustes>
-                  {conMusica ? (
-                    <FilaAjuste
-                      rotulo={elegido?.nombre ?? ROTULO_TIPO[kind]}
-                      vacio={elegido ? '' : 'Elegí una'}
-                      valor={elegido ? 'Cambiar' : null}
-                      icono={
-                        elegido?.tapa ? (
-                          <Image source={{ uri: elegido.tapa }} style={{ width: 30, height: 30, borderRadius: 8 }} />
-                        ) : kind === 'letra' ? (
-                          <IconLyrics size={17} color={ICON_COLOR.muted} />
+                        {deTexto ? (
+                          <PrevioDeTexto
+                            borrador={borrador}
+                            texto={texto}
+                            onTexto={escribir}
+                            temaGlobal={temaGlobal}
+                            tapa={
+                              contenido?.kind === 'letra'
+                                ? (contenido.letra.artworkUrl ?? null)
+                                : null
+                            }
+                            firma={
+                              contenido?.kind === 'letra' &&
+                              (contenido.letra.title || contenido.letra.artist)
+                                ? /* Un verso firmado solo con el artista no lleva la raya con un lado vacío. */
+                                  [contenido.letra.artist, contenido.letra.title]
+                                    .filter(Boolean)
+                                    .join(' — ')
+                                : null
+                            }
+                          />
+                        ) : contenido ? (
+                          <View pointerEvents="none">
+                            <Vitrina
+                              showcase={
+                                {
+                                  id: 'borrador',
+                                  ancho: borrador.ancho,
+                                  estilo,
+                                  ...contenido,
+                                } as Showcase
+                              }
+                              estilo={estilo}
+                              temaGlobal={temaGlobal}
+                              playlists={null}
+                              esMio
+                              playing={false}
+                              onTogglePlay={() => undefined}
+                              onOpenPlaylist={() => undefined}
+                            />
+                          </View>
                         ) : (
-                          <IconMusic size={17} color={ICON_COLOR.muted} />
-                        )
-                      }
-                      onPress={() => router.push({ pathname: '/profile/elegir', params: { que: kind, desde: 'editor' } })}
-                      ultima={!conTema && !conFondo && kind !== 'imagen'}
-                    />
-                  ) : null}
-                  {deTexto ? (
-                    <FilaAjuste
-                      rotulo="Fuente"
-                      valor={fuenteDe(estilo.fuente)?.nombre ?? null}
-                      vacio="La del sistema"
-                      icono={<IconType size={17} color={ICON_COLOR.muted} />}
-                      onPress={() => router.push('/profile/fuente')}
-                    />
-                  ) : null}
-                  {conTema ? (
-                    <FilaAjuste
-                      rotulo="Tema"
-                      valor={nombreDeTema(estilo.tema)}
-                      vacio={temaGlobal ? `Del perfil (${nombreDeTema(temaGlobal) ?? 'propio'})` : 'Ninguno'}
-                      icono={<IconPalette size={17} color={ICON_COLOR.muted} />}
-                      onPress={() => router.push({ pathname: '/profile/tema', params: { para: 'vitrina' } })}
-                      ultima={!conFondo}
-                    />
-                  ) : null}
-                  {conFondo || kind === 'imagen' ? (
-                    <FilaImagen
-                      rotulo={kind === 'imagen' ? 'Imagen' : 'Imagen de fondo'}
-                      puesta={kind === 'imagen' ? contenido?.kind === 'imagen' : estilo.fondo !== null}
-                      subiendo={subiendo}
-                      sinNinguno={kind === 'imagen'}
-                      onNinguno={sacarImagen}
-                      onCamara={() => void ponerImagen(true)}
-                      onGaleria={() => void ponerImagen(false)}
-                      ultima={!encuadrable}
-                    />
-                  ) : null}
-                  {encuadrable ? (
-                    /* Encuadrar es distinto de cambiar: la imagen ya está, lo
-                       que se elige es qué pedazo se ve y cómo gira. */
-                    <FilaAjuste
-                      rotulo="Encuadre"
-                      valor={
-                        imagenPuesta.encuadre
-                          ? imagenPuesta.encuadre.rotacion
-                            ? `Girada ${imagenPuesta.encuadre.rotacion}°`
-                            : 'Ajustado'
-                          : null
-                      }
-                      vacio="Al centro"
-                      icono={<IconEncuadre size={17} color={ICON_COLOR.muted} />}
-                      onPress={encuadrar}
-                      ultima
-                    />
-                  ) : null}
-                </GrupoAjustes>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Elegir ${ROTULO_TIPO[kind].toLowerCase()}`}
+                            onPress={() =>
+                              router.push({
+                                pathname: '/profile/elegir',
+                                params: { que: kind, desde: 'editor' },
+                              })
+                            }
+                            className="aspect-square items-center justify-center gap-2 rounded-2xl bg-card active:opacity-80"
+                          >
+                            <IconMusic size={24} color={ICON_COLOR.muted} />
+                            <Text className="text-muted-foreground text-[12px]">Elegir</Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    </View>
 
-                <PrimaryButton
-                  label={guardando ? 'Guardando…' : nueva ? 'Agregar al mosaico' : 'Guardar'}
-                  onPress={() => void guardar()}
-                  disabled={!completa}
-                  busy={guardando}
-                />
-              </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </Panel>
-      </View>
-    </SafeAreaView>
-    </Hoja>
+                    {kind === 'cancion' || kind === 'fragmento' ? (
+                      <View className="gap-2">
+                        <Text className="text-muted-foreground text-[11px]">Cómo se muestra</Text>
+                        <View className="flex-row flex-wrap gap-2">
+                          {(['portada', 'reproductor', 'completa'] as const).map((modo, i) => (
+                            <Pressable
+                              key={modo}
+                              accessibilityRole="button"
+                              accessibilityState={{
+                                selected: (estilo.presentacion ?? 'completa') === modo,
+                              }}
+                              onPress={() =>
+                                actualizarBorrador((b) => ({
+                                  estilo: { ...b.estilo, presentacion: modo },
+                                }))
+                              }
+                              className={
+                                (estilo.presentacion ?? 'completa') === modo
+                                  ? 'min-h-11 flex-1 items-center justify-center rounded-xl bg-primary px-3'
+                                  : 'min-h-11 flex-1 items-center justify-center rounded-xl bg-card px-3'
+                              }
+                            >
+                              <Text
+                                className={
+                                  (estilo.presentacion ?? 'completa') === modo
+                                    ? 'text-primary-foreground text-[12px] font-semibold'
+                                    : 'text-foreground text-[12px]'
+                                }
+                              >
+                                {['Portada', 'Reproductor', 'Ambas'][i]}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      </View>
+                    ) : null}
+                    <GrupoAjustes>
+                      {conMusica ? (
+                        <FilaAjuste
+                          rotulo={elegido?.nombre ?? ROTULO_TIPO[kind]}
+                          vacio={elegido ? '' : 'Elegí una'}
+                          valor={elegido ? 'Cambiar' : null}
+                          icono={
+                            elegido?.tapa ? (
+                              <Image
+                                source={{ uri: elegido.tapa }}
+                                style={{ width: 30, height: 30, borderRadius: 8 }}
+                              />
+                            ) : kind === 'letra' ? (
+                              <IconLyrics size={17} color={ICON_COLOR.muted} />
+                            ) : (
+                              <IconMusic size={17} color={ICON_COLOR.muted} />
+                            )
+                          }
+                          onPress={() =>
+                            router.push({
+                              pathname: '/profile/elegir',
+                              params: { que: kind, desde: 'editor' },
+                            })
+                          }
+                          ultima={!conTema && !conFondo && kind !== 'imagen'}
+                        />
+                      ) : null}
+                      {conTema ? (
+                        <FilaAjuste
+                          rotulo="Tema"
+                          valor={nombreDeTema(estilo.tema)}
+                          vacio={
+                            temaGlobal
+                              ? `Del perfil (${nombreDeTema(temaGlobal) ?? 'propio'})`
+                              : 'Ninguno'
+                          }
+                          icono={<IconPalette size={17} color={ICON_COLOR.muted} />}
+                          onPress={() =>
+                            router.push({ pathname: '/profile/tema', params: { para: 'vitrina' } })
+                          }
+                          ultima={!conFondo}
+                        />
+                      ) : null}
+                      {conFondo || kind === 'imagen' ? (
+                        <FilaImagen
+                          rotulo={kind === 'imagen' ? 'Imagen' : 'Imagen de fondo'}
+                          puesta={
+                            kind === 'imagen' ? contenido?.kind === 'imagen' : estilo.fondo !== null
+                          }
+                          subiendo={subiendo}
+                          sinNinguno={kind === 'imagen'}
+                          onNinguno={sacarImagen}
+                          onCamara={() => void ponerImagen(true)}
+                          onGaleria={() => void ponerImagen(false)}
+                          ultima={!encuadrable}
+                        />
+                      ) : null}
+                      {encuadrable ? (
+                        /* Encuadrar es distinto de cambiar: la imagen ya está, lo
+                       que se elige es qué pedazo se ve y cómo gira. */
+                        <FilaAjuste
+                          rotulo="Encuadre"
+                          valor={
+                            imagenPuesta.encuadre
+                              ? imagenPuesta.encuadre.rotacion
+                                ? `Girada ${imagenPuesta.encuadre.rotacion}°`
+                                : 'Ajustado'
+                              : null
+                          }
+                          vacio="Al centro"
+                          icono={<IconEncuadre size={17} color={ICON_COLOR.muted} />}
+                          onPress={encuadrar}
+                          ultima
+                        />
+                      ) : null}
+                    </GrupoAjustes>
+
+                    <PrimaryButton
+                      label={guardando ? 'Guardando…' : nueva ? 'Agregar al mosaico' : 'Guardar'}
+                      onPress={() => void guardar()}
+                      disabled={!completa}
+                      busy={guardando}
+                    />
+                  </View>
+                </ScrollView>
+              </KeyboardAvoidingView>
+            </Panel>
+          </View>
+        </SafeAreaView>
+      </Hoja>
+    </FuentePerfil>
   )
 }
 
@@ -408,6 +475,7 @@ function PrevioDeTexto({
   const c = borrador.estilo.fondo
     ? { ...colores, texto: '#FFFFFF', secundario: 'rgba(255,255,255,0.75)' }
     : colores
+  const fuentePerfil = useMyProfile()?.fuente
   const encabezado = borrador.kind === 'encabezado'
   const letra = borrador.kind === 'letra'
   const subspace = borrador.kind === 'subspace'
@@ -435,7 +503,10 @@ function PrevioDeTexto({
               maxLength={40}
               autoFocus
               className="text-[15px] font-bold"
-              style={[{ color: c.texto, minHeight: 24, paddingVertical: 2 }, estiloDeFuente(borrador.estilo.fuente, 15)]}
+              style={[
+                { color: c.texto, minHeight: 24, paddingVertical: 2 },
+                estiloDeFuente(fuentePerfil, 15),
+              ]}
             />
             <Text className="text-[12px]" style={{ color: c.secundario }}>
               {/* Vacío y nuevo, la tarjeta dice qué viene: adentro se ponen
@@ -485,7 +556,10 @@ function PrevioDeTexto({
           }
           style={[
             { color: c.texto, minHeight: encabezado ? 24 : 72, paddingVertical: 4 },
-            estiloDeFuente(borrador.estilo.fuente, encabezado ? 15 : letra ? (grande ? 24 : 17) : grande ? 19 : 15),
+            estiloDeFuente(
+              fuentePerfil,
+              encabezado ? 15 : letra ? (grande ? 24 : 17) : grande ? 19 : 15,
+            ),
           ]}
         />
         {letra ? (

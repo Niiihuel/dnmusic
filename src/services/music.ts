@@ -170,12 +170,16 @@ export function proxiedImage(url: string): string {
      dibuja directo; pasarla por la función era un viaje de más y, con el
      servicio caído, un cuadrado gris donde había una imagen perfectamente
      accesible. */
-  if (!SIN_CORS.test(url)) return url
+  try {
+    if (!SIN_CORS.test(new URL(url).hostname)) return url
+  } catch {
+    return ''
+  }
   return `${MUSIC_API}/img?u=${encodeURIComponent(url)}`
 }
 
 /** Los CDN de Google, que responden sin CORS y por eso van por el proxy. */
-const SIN_CORS = /googleusercontent\.com|ggpht\.com|ytimg\.com/
+const SIN_CORS = /(^|\.)(googleusercontent\.com|ggpht\.com|ytimg\.com)$/i
 
 export type HomeItem = {
   /** Qué es: define a dónde lleva al tocarlo. */

@@ -18,7 +18,6 @@ import {
 import { usePiso } from '../state/shell'
 import { Avatar } from './Avatar'
 import { GrupoAjustes, FilaInterruptor } from './Ajustes'
-import { BotonSostener } from './BotonSostener'
 import { ColaJam } from './ColaJam'
 import { EntrarConCodigo } from './EntrarJam'
 import { MandarJamAmigo } from './MandarJamAmigo'
@@ -46,8 +45,7 @@ import { ICON_COLOR, IconClose, IconShare, IconUsers } from './icons'
  *   misma `ColaJam` del teléfono: arrastrar la manija también funciona con
  *   el mouse, y los permisos están a la vista en vez de detrás de un menú.
  *
- * Terminar es sostener el botón hasta que se llene (`BotonSostener`), no
- * tocar dos veces: la confirmación vive en el gesto.
+ * Terminar y salir son acciones directas, sin confirmación adicional.
  */
 export function JamBody() {
   const jam = useJam()
@@ -248,19 +246,20 @@ export function JamBody() {
       {/*
        * Terminar/Salir vive **fijo abajo**, fuera del scroll: era el último
        * hijo de la lista y quedaba abajo de la cola y de los permisos —había
-       * que recorrer todo para encontrarlo—. Sostener sigue siendo el gesto;
-       * el `piso` lo despega del reproductor que flota encima.
+       * que recorrer todo para encontrarlo—. El `piso` lo despega del
+       * reproductor que flota encima.
        */}
       <View className="px-4 pt-2" style={{ paddingBottom: piso }}>
-        <BotonSostener
-          rotulo={soyHost ? 'Terminar el Jam' : 'Salir del Jam'}
-          pista={
-            soyHost
-              ? 'Mantené apretado para terminar el Jam. Se termina para todos.'
-              : 'Mantené apretado para salir del Jam.'
-          }
-          onCompletar={salirDelJam}
-        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={soyHost ? 'Terminar el Jam' : 'Salir del Jam'}
+          onPress={salirDelJam}
+          className="min-h-11 items-center justify-center rounded-full bg-muted px-5 py-3 active:opacity-80"
+        >
+          <Text className="text-foreground text-[13px] font-semibold">
+            {soyHost ? 'Terminar el Jam' : 'Salir del Jam'}
+          </Text>
+        </Pressable>
       </View>
     </View>
   )

@@ -1,3 +1,4 @@
+import { fuenteDe } from '../lib/fuentes'
 import { getSupabase } from '../lib/supabase'
 import { temaDe, type Tema } from '../lib/tema'
 
@@ -56,6 +57,7 @@ export type Profile = {
    * El tema del mosaico entero: lo heredan las vitrinas que no eligen el
    * suyo. `null` es el vidrio de siempre. Ver `lib/tema`.
    */
+  fuente?: string | null
   tema: Tema | null
 }
 
@@ -89,6 +91,7 @@ type ProfileRow = {
   avatar_encuadre?: unknown
   banner_encuadre?: unknown
   marco?: unknown
+  fuente?: unknown
   tema?: unknown
 }
 
@@ -122,6 +125,7 @@ function profileFromRow(row: ProfileRow | null | undefined): Profile | null {
     bannerEncuadre: encuadreDe(row.banner_encuadre),
     marco: typeof row.marco === 'string' && row.marco ? row.marco : null,
     tema: temaDe(row.tema),
+    fuente: typeof row.fuente === 'string' ? (fuenteDe(row.fuente)?.id ?? null) : null,
   }
 }
 
@@ -155,6 +159,7 @@ export async function saveMyProfile(changes: {
   marco?: string
   /** `null` vuelve al vidrio; no mandarlo lo deja. Viaja como los encuadres. */
   tema?: Tema | null
+  fuente?: string | null
 }): Promise<Profile> {
   const { data, error } = await getSupabase().rpc('update_my_profile', {
     p_username: changes.username ?? null,
@@ -172,6 +177,7 @@ export async function saveMyProfile(changes: {
     p_avatar_encuadre: encuadreParaLaBase(changes.avatarEncuadre),
     p_banner_encuadre: encuadreParaLaBase(changes.bannerEncuadre),
     p_marco: changes.marco ?? null,
+    ...(changes.fuente !== undefined ? { p_fuente: changes.fuente ?? '' } : {}),
     p_tema: changes.tema === undefined ? null : changes.tema === null ? 'BORRAR' : changes.tema,
   })
   if (error) throw error

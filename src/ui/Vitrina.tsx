@@ -1,13 +1,21 @@
+import { fotoDelArtista } from '../lib/fotoArtista'
+import { proxiedImage } from '../services/music'
+import { TextoPerfil as Text } from './FuentePerfil'
 import { useEffect, useState, type ReactNode } from 'react'
-import { Image, Pressable, Text, View, type ViewStyle } from 'react-native'
+import { Image, Pressable, View, type ViewStyle } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { LinearGradient } from 'expo-linear-gradient'
 import Svg, { Circle, Defs, Line, RadialGradient, Rect, Stop } from 'react-native-svg'
 import { runOnJS, type SharedValue } from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
 import { useColorPortada } from '../lib/colorPortada'
-import { estiloDeFuente } from '../lib/fuentes'
-import { coloresDe, temaEfectivo, type ColoresVitrina, type Degradado, type Tema } from '../lib/tema'
+import {
+  coloresDe,
+  temaEfectivo,
+  type ColoresVitrina,
+  type Degradado,
+  type Tema,
+} from '../lib/tema'
 import type { SongSnippet } from '../models/message'
 import {
   ilustracionUrl,
@@ -240,7 +248,7 @@ export function Vitrina({
           {showcase.kind === 'texto' ? (
             <Text
               className={grande ? 'text-[19px] leading-7' : 'text-[15px] leading-6'}
-              style={[{ color: colores.texto }, estiloDeFuente(vestido.fuente, grande ? 19 : 15)]}
+              style={{ color: colores.texto }}
             >
               {showcase.texto}
             </Text>
@@ -248,7 +256,7 @@ export function Vitrina({
             <Text
               className="text-center text-[15px] font-bold"
               numberOfLines={1}
-              style={[{ color: colores.texto }, estiloDeFuente(vestido.fuente, 15)]}
+              style={{ color: colores.texto }}
             >
               {showcase.titulo}
             </Text>
@@ -267,7 +275,7 @@ export function Vitrina({
           ) : showcase.kind === 'album' ? (
             <VitrinaAlbum album={showcase.album} c={colores} mitad={showcase.ancho === 'mitad'} />
           ) : showcase.kind === 'letra' ? (
-            <VitrinaLetra letra={showcase.letra} c={colores} grande={grande} fuente={vestido.fuente} />
+            <VitrinaLetra letra={showcase.letra} c={colores} grande={grande} />
           ) : showcase.kind === 'subspace' ? (
             <VitrinaSubspace
               showcase={showcase}
@@ -277,7 +285,7 @@ export function Vitrina({
             />
           ) : (
             <VitrinaCancion
-              showcase={showcase}
+              showcase={{ ...showcase, estilo: vestido }}
               c={colores}
               playing={playing}
               sonando={sonando ?? playing}
@@ -507,15 +515,7 @@ function CapaPatron({ tipo, color, w, h }: { tipo: 'rayas' | 'puntos' | 'halo'; 
   )
 }
 
-/**
- * Los controles del modo de edición, en las esquinas de la tarjeta.
- *
- * Son los del «Space» de Airbuds y los de los widgets del iPhone: el «−» que
- * saca arriba a la izquierda, el lápiz arriba a la derecha y, en el medio de
- * cada lado, las asas que se arrastran para cambiar el tamaño. Desbordan la
- * tarjeta a propósito —viven en los bordes, no adentro— así el contenido no
- * tiene que hacerles lugar.
- */
+/** Barra de edición y ajuste de tamaño, con un asa discreta en la esquina. */
 function Controles({
   onRemove,
   onEditar,
@@ -527,165 +527,84 @@ function Controles({
   onRedimensionar?: (direccion: Redimension) => void
   onAncho?: () => void
 }) {
-  return (
-    <>
-      {onRemove ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Sacar del perfil"
-          onPress={onRemove}
-          hitSlop={8}
-          className="absolute items-center justify-center rounded-full active:opacity-60"
-          style={[BOTON_ESQUINA, { top: -6, left: -6 }]}
-        >
-          <IconMinus size={13} color={ICON_COLOR.foreground} strokeWidth={2.5} />
-        </Pressable>
-      ) : null}
-      {onEditar ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Editar esta vitrina"
-          onPress={onEditar}
-          hitSlop={8}
-          className="absolute items-center justify-center rounded-full active:opacity-60"
-          style={[BOTON_ESQUINA, { top: -6, right: -6 }]}
-        >
-          <IconPencil size={12} color={ICON_COLOR.foreground} />
-        </Pressable>
-      ) : null}
-      {onRedimensionar || onAncho ? (
-        <AsasDeTamano onRedimensionar={onRedimensionar} onAncho={onAncho} />
-      ) : null}
-    </>
-  )
-}
-
-/* Los botones de esquina: un disco gris oscuro con el trazo blanco, el mismo
-   escalón de luminancia que separa cualquier superficie de esta app. */
-/* Desbordan 6px y no más: con dos piezas a media fila, el lápiz de una y el
-   «−» de la otra se encuentran en el hueco de la grilla, y con más vuelo se
-   pisaban. */
-const BOTON_ESQUINA: ViewStyle = {
-  width: 24,
-  height: 24,
-  backgroundColor: 'rgb(58,58,58)',
-  boxShadow: '0 2px 6px rgba(0,0,0,0.45)',
-  zIndex: 30,
-}
-
-/**
- * Las asas de tamaño: una en el medio de cada lado, sólidas.
- *
- * Es el idioma de los editores de pantalla —Figma, los widgets de iOS—: una
- * pieza se estira desde cualquiera de sus bordes. Tirar del lado derecho o
- * del izquierdo hacia afuera la ensancha (1×1 → 2×1) y hacia adentro la
- * angosta; tirar del de arriba o del de abajo hacia afuera la hace más alta
- * (2×1 → 2×2) y hacia adentro más baja. Un toque sin arrastre pasa al tamaño
- * siguiente, que es lo que un lector de pantalla puede accionar.
- *
- * Son píldoras blancas opacas apoyadas a caballo del borde —mitad adentro,
- * mitad afuera— y no un trazo de esquina: el arco de antes se leía como un
- * borde de la tarjeta y sobre un fondo claro casi no se veía. La sombra
- * oscura las despega de cualquier tema, sin dibujar un borde.
- */
-type Lado = 'arriba' | 'abajo' | 'izquierda' | 'derecha'
-
-const LADOS: Lado[] = ['arriba', 'abajo', 'izquierda', 'derecha']
-
-/** Lo largo y lo grueso de un asa. */
-const ASA_LARGO = 26
-const ASA_GRUESO = 6
-
-function AsasDeTamano({
-  onRedimensionar,
-  onAncho,
-}: {
-  onRedimensionar?: (direccion: Redimension) => void
-  onAncho?: () => void
-}) {
-  return (
-    <>
-      {LADOS.map((lado) => (
-        <Asa key={lado} lado={lado} onRedimensionar={onRedimensionar} onAncho={onAncho} />
-      ))}
-    </>
-  )
-}
-
-function Asa({
-  lado,
-  onRedimensionar,
-  onAncho,
-}: {
-  lado: Lado
-  onRedimensionar?: (direccion: Redimension) => void
-  onAncho?: () => void
-}) {
-  const horizontal = lado === 'izquierda' || lado === 'derecha'
-
-  /*
-   * Hacia afuera del borde es crecer; hacia adentro, achicar. «Afuera» depende
-   * del lado: a la derecha es +x, a la izquierda −x, arriba −y, abajo +y.
-   */
-  const decidir = (dx: number, dy: number) => {
-    if (!onRedimensionar) return
-    const recorrido = horizontal ? dx : dy
-    if (Math.abs(recorrido) < UMBRAL_REDIMENSION) return
-    const haciaAfuera =
-      lado === 'derecha' || lado === 'abajo' ? recorrido > 0 : recorrido < 0
-    onRedimensionar(horizontal ? (haciaAfuera ? 'ancho' : 'angosto') : haciaAfuera ? 'alto' : 'bajo')
+  const [tamano, setTamano] = useState(false)
+  const redimensionar = (x: number, y: number) => {
+    if (Math.abs(x) >= UMBRAL_REDIMENSION) onRedimensionar?.(x > 0 ? 'ancho' : 'angosto')
+    else if (Math.abs(y) >= UMBRAL_REDIMENSION) onRedimensionar?.(y > 0 ? 'alto' : 'bajo')
   }
-
-  const arrastre = Gesture.Pan()
+  const gesto = Gesture.Pan()
     .minDistance(6)
     .onEnd((e) => {
-      runOnJS(decidir)(e.translationX, e.translationY)
+      runOnJS(redimensionar)(e.translationX, e.translationY)
     })
-  const toque = Gesture.Tap().onEnd(() => {
-    if (onAncho) runOnJS(onAncho)()
-  })
-  const gesto = Gesture.Race(arrastre, toque)
-
-  /* A caballo del borde: el centro del asa cae justo sobre la línea. */
-  const posicion: ViewStyle =
-    lado === 'arriba'
-      ? { top: -ASA_GRUESO / 2 - 8, left: '50%', marginLeft: -ASA_LARGO / 2 - 8 }
-      : lado === 'abajo'
-        ? { bottom: -ASA_GRUESO / 2 - 8, left: '50%', marginLeft: -ASA_LARGO / 2 - 8 }
-        : lado === 'izquierda'
-          ? { left: -ASA_GRUESO / 2 - 8, top: '50%', marginTop: -ASA_LARGO / 2 - 8 }
-          : { right: -ASA_GRUESO / 2 - 8, top: '50%', marginTop: -ASA_LARGO / 2 - 8 }
-
   return (
-    <GestureDetector gesture={gesto}>
-      <View
-        accessibilityRole="adjustable"
-        accessibilityLabel={`Cambiar el tamaño desde ${lado}: arrastrá, o tocá para el siguiente`}
-        hitSlop={6}
-        style={
-          {
-            position: 'absolute',
-            zIndex: 30,
-            /* El área de toque es más grande que el asa: 8px de aire a cada
-               lado, para agarrarla con el dedo sin apuntar. */
-            padding: 8,
-            ...posicion,
-            /* Solo web: el cursor de estirar según el eje. RN no lo tipa. */
-            cursor: horizontal ? 'ew-resize' : 'ns-resize',
-          } as object
-        }
-      >
-        <View
-          style={{
-            width: horizontal ? ASA_GRUESO : ASA_LARGO,
-            height: horizontal ? ASA_LARGO : ASA_GRUESO,
-            borderRadius: ASA_GRUESO / 2,
-            backgroundColor: '#FFFFFF',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,0,0,0.25)',
-          }}
-        />
+    <View
+      className="mt-1 gap-1 rounded-xl bg-background/90 p-1"
+      style={{ alignSelf: 'flex-end', width: 180, maxWidth: '100%' }}
+    >
+      <View className="flex-row items-center justify-end">
+        {onEditar ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Editar pieza"
+            onPress={onEditar}
+            className="h-11 flex-1 items-center justify-center rounded-lg active:bg-muted"
+          >
+            <IconPencil size={14} color={ICON_COLOR.muted} />
+          </Pressable>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Opciones de tamaño"
+          accessibilityState={{ expanded: tamano }}
+          onPress={() => setTamano((v) => !v)}
+          className="h-11 flex-1 items-center justify-center rounded-lg active:bg-muted"
+        >
+          <IconGrilla size={14} color={ICON_COLOR.muted} />
+        </Pressable>
+        {onRemove ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Sacar del perfil"
+            onPress={onRemove}
+            className="h-11 flex-1 items-center justify-center rounded-lg active:bg-muted"
+          >
+            <IconMinus size={14} color={ICON_COLOR.muted} />
+          </Pressable>
+        ) : null}
+        <GestureDetector gesture={gesto}>
+          <View style={{ width: 32, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+            <View
+              style={{
+                width: 9,
+                height: 9,
+                borderRightWidth: 1.5,
+                borderBottomWidth: 1.5,
+                borderColor: '#777',
+                borderBottomRightRadius: 2,
+              }}
+            />
+          </View>
+        </GestureDetector>
       </View>
-    </GestureDetector>
+      {tamano ? (
+        <View className="flex-row flex-wrap gap-1">
+          {(['angosto', 'ancho', 'bajo', 'alto'] as const).map((d, i) => (
+            <Pressable
+              key={d}
+              accessibilityRole="button"
+              onPress={() => (onRedimensionar ? onRedimensionar(d) : onAncho?.())}
+              className="min-h-11 items-center justify-center rounded-lg bg-muted px-3"
+              style={{ flexGrow: 1 }}
+            >
+              <Text className="text-foreground text-[11px]">
+                {['Más angosto', 'Más ancho', 'Más bajo', 'Más alto'][i]}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
   )
 }
 
@@ -757,16 +676,40 @@ function HuecoDeTapa({ c, size, redondo = false }: { c: ColoresVitrina; size: nu
  * buscador, la ficha): un artista es una cara, un álbum es una tapa cuadrada —
  * la forma es lo que los distingue de un vistazo, antes de leer nada.
  */
-function VitrinaArtista({ artista, c, mitad }: { artista: ShowcaseArtista; c: ColoresVitrina; mitad: boolean }) {
+function VitrinaArtista({
+  artista,
+  c,
+  mitad,
+}: {
+  artista: ShowcaseArtista
+  c: ColoresVitrina
+  mitad: boolean
+}) {
+  const [recuperada, setRecuperada] = useState<{ id: string; url: string } | null>(null)
+  const [fallida, setFallida] = useState('')
+  const guardada = proxiedImage(artista.fotoUrl)
+  const url = recuperada?.id === artista.artistId ? recuperada.url : guardada
+  useEffect(() => {
+    if (guardada && fallida !== guardada) return
+    let vivo = true
+    void fotoDelArtista(artista.artistId).then((url) => {
+      if (vivo) setRecuperada({ id: artista.artistId, url })
+    })
+    return () => {
+      vivo = false
+    }
+  }, [artista.artistId, guardada, fallida])
   const lado = mitad ? 72 : 56
-  const foto = artista.fotoUrl ? (
-    <Image
-      source={{ uri: artista.fotoUrl }}
-      style={{ width: lado, height: lado, borderRadius: lado / 2 }}
-    />
-  ) : (
-    <HuecoDeTapa c={c} size={lado} redondo />
-  )
+  const foto =
+    url && url !== fallida ? (
+      <Image
+        source={{ uri: url }}
+        onError={() => setFallida(url)}
+        style={{ width: lado, height: lado, borderRadius: lado / 2 }}
+      />
+    ) : (
+      <HuecoDeTapa c={c} size={lado} redondo />
+    )
 
   if (mitad) {
     return (
@@ -935,7 +878,7 @@ function VitrinaSubspace({
       <Text
         className="text-[15px] font-bold"
         numberOfLines={mitad ? 2 : 1}
-        style={[{ color: c.texto }, estiloDeFuente(showcase.estilo.fuente, 15)]}
+        style={{ color: c.texto }}
       >
         {showcase.titulo}
       </Text>
@@ -991,12 +934,10 @@ function VitrinaLetra({
   letra,
   c,
   grande = false,
-  fuente = null,
 }: {
   letra: ShowcaseLetra
   c: ColoresVitrina
   grande?: boolean
-  fuente?: string | null
 }) {
   return (
     <View className={grande ? 'gap-4 py-4' : 'gap-3'}>
@@ -1010,7 +951,7 @@ function VitrinaLetra({
       </View>
       <Text
         className={`font-semibold italic ${grande ? 'text-[24px] leading-9' : 'text-[17px] leading-6'}`}
-        style={[{ color: c.texto }, estiloDeFuente(fuente, grande ? 24 : 17)]}
+        style={{ color: c.texto }}
       >
         “{letra.texto}”
       </Text>
@@ -1053,6 +994,7 @@ function VitrinaCancion({
   const tapa = artworkSource(cancion.artworkPath ?? undefined, cancion.artworkUrl, 320)
   const esFragmento = showcase.kind === 'fragmento'
   const mitad = showcase.ancho === 'mitad'
+  const modo = showcase.estilo.presentacion ?? 'completa'
 
   /* Lo que entiende el reproductor de fragmentos, que ya existe y es el mismo
      que suena en el chat. Una canción entera es un recorte que empieza en cero
@@ -1141,7 +1083,32 @@ function VitrinaCancion({
    * esquina — la pieza de canción de Airbuds. La onda no entra en ese ancho y
    * no se dibuja; a fila entera vuelve, con el reloj.
    */
-  if (mitad) {
+  if (modo === 'portada' && tapa) {
+    return (
+      <View className="gap-3">
+        <View
+          style={{
+            width: '100%',
+            aspectRatio: 1,
+            maxHeight: 360,
+            overflow: 'hidden',
+            borderRadius: 12,
+          }}
+        >
+          <Image source={{ uri: tapa }} style={{ width: '100%', height: '100%' }} />
+          <View style={{ position: 'absolute', bottom: 12, right: 12 }}>{play}</View>
+        </View>
+        <Text style={{ color: c.texto }} className="text-[15px] font-bold" numberOfLines={2}>
+          {cancion.title}
+        </Text>
+        <Text style={{ color: c.secundario }} className="text-[12px]" numberOfLines={1}>
+          {cancion.artist}
+        </Text>
+      </View>
+    )
+  }
+
+  if (mitad && modo !== 'reproductor') {
     return (
       <View className="gap-3">
         <View>
@@ -1176,7 +1143,7 @@ function VitrinaCancion({
       </Text>
 
       <View className="flex-row items-center gap-3.5">
-        {tapa ? (
+        {modo === 'reproductor' ? null : tapa ? (
           <Image source={{ uri: tapa }} style={{ width: 68, height: 68, borderRadius: 12 }} />
         ) : (
           <HuecoDeTapa c={c} size={68} />

@@ -1,3 +1,4 @@
+import { fotoDelArtista } from '../../src/lib/fotoArtista'
 import { useEffect, useState, type ReactNode } from 'react'
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -223,7 +224,7 @@ export default function ElegirMusica() {
     return borrador?.contenido?.kind === 'letra' ? borrador.contenido.letra.texto : ''
   }
 
-  function elegirArtista(a: { id: string; name: string; photoUrl: string }) {
+  async function elegirArtista(a: { id: string; name: string; photoUrl: string }) {
     if (que === 'letra') {
       /* Firmado solo con el artista: sin título, la vitrina muestra «— Artista». */
       terminar({
@@ -232,7 +233,14 @@ export default function ElegirMusica() {
       })
       return
     }
-    terminar({ kind: 'artista', artista: { artistId: a.id, nombre: a.name, fotoUrl: a.photoUrl } })
+    if (ocupada) return
+    setOcupada(a.id)
+    try {
+      const fotoUrl = a.photoUrl || (await fotoDelArtista(a.id))
+      terminar({ kind: 'artista', artista: { artistId: a.id, nombre: a.name, fotoUrl } })
+    } finally {
+      setOcupada(null)
+    }
   }
 
   function elegirAlbum(a: AlbumHallado) {

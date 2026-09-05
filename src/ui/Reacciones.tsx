@@ -1,5 +1,6 @@
+import { TextoPerfil as Text } from './FuentePerfil'
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Image, Pressable, ScrollView, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import { mensajeError } from '../lib/mensajeError'
 import {

@@ -1,3 +1,5 @@
+import { crearSeleccionJam } from '../lib/seleccionJam'
+import { resolveSong } from '../services/music'
 import { AppState } from 'react-native'
 import { getSupabase } from '../lib/supabase'
 import { mensajeError } from '../lib/mensajeError'
@@ -31,6 +33,7 @@ import {
   type Unsubscribe,
 } from '../services/jam'
 import {
+  completarCancion,
   enEscuchaEspejo,
   getPlaybackState,
   jamAplicar,
@@ -323,6 +326,7 @@ async function conectar(jamId: string) {
  * silencio. No manda ningún RPC: eso es de quien llama, si corresponde.
  */
 function cerrar(mensaje?: string) {
+  seleccionDeCancion.cancelar()
   const s = store.get()
   const eraHost = soyHost(s)
   const habia = s.jam !== null
@@ -463,52 +467,43 @@ export function agregarCancionAlJam(track: PlaylistTrack) {
  * andando — como en Spotify—; encolar sin cambiar lo que suena es la otra
  * opción, la explícita del menú.
  */
-export function tocarAhoraEnJam(track: PlaylistTrack) {
-  const s = store.get()
-  if (!s.jam) return
-  if (!puedo('saltar')) {
-    avisar('El host no dejó cambiar de canción. Podés agregarla a la cola.')
-    return
-  }
-  void jamTocarAhora(s.jam.id, track).catch((e) => {
-    avisar(`No se pudo poner: ${mensajeError(e)}`, true)
+const seleccionDeCancion = crearSeleccionJam<PlaylistTrack>({
+  preparar: async (track, signal) => {
+    const audio = await resolveSong({ ...track, album: '', albumId: null }, signal)
+    if (signal.aborted) throw new Error('Selección cancelada')
+    const cambios = {
+      audioPath: audio.path,
+      artworkPath: audio.artworkPath,
+      durationMs: audio.durationMs,
+    }
+    completarCancion(track.videoId, cambios)
+    return { ...track, ...cambios }
+  },
+  vigente: (id) => store.get().jam?.id === id && puedo('saltar'),
+  publicar: async (id, canciones) => {
+    if (canciones.length > 1) await jamTocarCola(id, canciones)
+    else await jamTocarAhora(id, canciones[0])
+    if (store.get().jam?.id === id) programarRefetch()
+  },
+  onError: (e) => {
+    avisar(`No se pudo poner la canción: ${mensajeError(e)}`, true)
     programarRefetch()
-  })
+  },
+})
+
+export function tocarAhoraEnJam(track: PlaylistTrack) {
+  tocarColaEnJam([track], 0)
 }
 
-/**
- * Poner una **playlist** con el Jam andando: la lista suena desde la canción
- * elegida, en su orden, para todos. El bloque se intercala después de la que
- * suena —lo que otros encolaron sigue viniendo, después de la lista— y el Jam
- * salta a la primera. Es el mismo gesto que `tocarAhoraEnJam`, a escala de
- * lista: sin esto, tocar una fila de una playlist metía UNA canción y la fila
- * quedaba en «No viene nada después».
- */
+/** La canción pulsada va siempre primera. Las siguientes ya disponibles acompañan. */
 export function tocarColaEnJam(tracks: PlaylistTrack[], desde: number) {
   const s = store.get()
-  if (!s.jam) return
+  if (!s.jam || !tracks[desde]) return
   if (!puedo('saltar')) {
     avisar('El host no dejó cambiar de canción. Podés agregarlas a la cola.')
     return
   }
-  /* Desde la elegida hasta el final, como afuera del Jam sin aleatorio. El
-     tope cuida el viaje y el límite de 500 del servidor; una lista real acá
-     no se le acerca. Lo sin audio (candidatas de radio aún sin resolver) no
-     viaja: el servidor lo rechazaría fila por fila. */
-  const canciones = tracks
-    .slice(Math.max(0, desde))
-    .filter((t) => t.audioPath)
-    .slice(0, 300)
-  if (!canciones.length) {
-    // Ninguna tenía audio para poner: no se rompe nada, pero no callarse —así
-    // «no pasó nada» al tocar una fila tiene una razón visible.
-    avisar('Esas canciones todavía no están listas para el Jam.')
-    return
-  }
-  void jamTocarCola(s.jam.id, canciones).catch((e) => {
-    avisar(`No se pudo poner la lista: ${mensajeError(e)}`, true)
-    programarRefetch()
-  })
+  void seleccionDeCancion.elegir(s.jam.id, tracks, desde)
 }
 
 export function quitarCancionDelJam(itemId: string) {

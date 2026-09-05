@@ -1,3 +1,5 @@
+import { invitacionEnTexto } from '../../src/lib/invitacionJam'
+import { InvitacionJam } from '../../src/ui/InvitacionJam'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
@@ -63,8 +65,13 @@ type StoryView = 'disc' | 'lyrics'
 
 /** Para decir en qué idioma está la letra sin arrastrar toda la lista. */
 const LANG_NAMES: Record<string, string> = {
-  es: 'español', en: 'inglés', pt: 'portugués', fr: 'francés',
-  it: 'italiano', de: 'alemán', ja: 'japonés',
+  es: 'español',
+  en: 'inglés',
+  pt: 'portugués',
+  fr: 'francés',
+  it: 'italiano',
+  de: 'alemán',
+  ja: 'japonés',
 }
 
 /**
@@ -291,93 +298,97 @@ export default function MessageStory() {
         </View>
 
         <View className="min-h-0 flex-1 items-center">
-        <View
-          className="min-h-0 w-full flex-1 flex-row items-center justify-center gap-8 px-6"
-          style={{ maxWidth: ANCHO_MAX }}
-        >
-          {/* En ancho, la frase al costado: no le saca una sola línea a la
+          <View
+            className="min-h-0 w-full flex-1 flex-row items-center justify-center gap-8 px-6"
+            style={{ maxWidth: ANCHO_MAX }}
+          >
+            {/* En ancho, la frase al costado: no le saca una sola línea a la
               letra. Con su propio desplazamiento, así una frase larga no
               estira la columna. */}
-          {wide && verFrase && message.text ? (
-            <View className="max-h-[70%] w-[300px] rounded-2xl bg-card/80 p-4">
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <Text className="text-foreground text-[15px] leading-6">{message.text}</Text>
-              </ScrollView>
-            </View>
-          ) : null}
+            {wide && verFrase && message.text ? (
+              <View className="max-h-[70%] w-[300px] rounded-2xl bg-card/80 p-4">
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <InvitacionJam texto={message.text} />
+                </ScrollView>
+              </View>
+            ) : null}
 
-          <View className="min-h-0 flex-1 items-center justify-center gap-7">
-          {/*
+            <View className="min-h-0 flex-1 items-center justify-center gap-7">
+              {/*
             La letra va en una ventana de líneas fijas y no ocupando todo el
             alto: con el alto libre la última línea quedaba cortada por la mitad
             contra la frase de abajo. Con un número de líneas la ventana cierra
             siempre en un renglón entero.
           */}
-          {chosen === 'lyrics' && hasLyrics ? (
-            <View className="w-full max-w-xl items-center">
-              <Lyrics lines={lyrics} atMs={player.positionMs} size="lg" visible={5} />
-              {song?.lyricsLang ? (
-                <Text className="text-muted-foreground pt-3 text-center text-[11px]">
-                  Traducida al {LANG_NAMES[song.lyricsLang] ?? song.lyricsLang}
-                </Text>
+              {chosen === 'lyrics' && hasLyrics ? (
+                <View className="w-full max-w-xl items-center">
+                  <Lyrics lines={lyrics} atMs={player.positionMs} size="lg" visible={5} />
+                  {song?.lyricsLang ? (
+                    <Text className="text-muted-foreground pt-3 text-center text-[11px]">
+                      Traducida al {LANG_NAMES[song.lyricsLang] ?? song.lyricsLang}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : song ? (
+                <>
+                  <SongDisc
+                    artworkUrl={song.artworkUrl}
+                    artworkPath={artPath}
+                    title={song.title}
+                    playing={playing}
+                    size={wide ? DISC_WIDE : DISC_NARROW}
+                  />
+                  <View className="items-center gap-1">
+                    <Text className="text-foreground text-xl font-semibold" numberOfLines={1}>
+                      {song.title}
+                    </Text>
+                    <Text className="text-muted-foreground text-sm" numberOfLines={1}>
+                      {song.artist}
+                    </Text>
+                  </View>
+                </>
               ) : null}
-            </View>
-          ) : song ? (
-            <>
-              <SongDisc
-                artworkUrl={song.artworkUrl}
-                artworkPath={artPath}
-                title={song.title}
-                playing={playing}
-                size={wide ? DISC_WIDE : DISC_NARROW}
-              />
-              <View className="items-center gap-1">
-                <Text className="text-foreground text-xl font-semibold" numberOfLines={1}>
-                  {song.title}
-                </Text>
-                <Text className="text-muted-foreground text-sm" numberOfLines={1}>
-                  {song.artist}
-                </Text>
-              </View>
-            </>
-          ) : null}
 
-          {/* En el teléfono, una tarjeta de tres líneas debajo del contenido.
+              {/* En el teléfono, una tarjeta de tres líneas debajo del contenido.
               Desplegada crece hasta un tope y se desplaza adentro: lo que no
               puede pasar es que empuje la letra fuera de la pantalla. */}
-          {!wide && verFrase && message.text ? (
-            <View className="w-full max-w-xl rounded-2xl bg-card/80 p-4">
-              {fraseAbierta ? (
-                <ScrollView className="max-h-[180px]" showsVerticalScrollIndicator={false}>
-                  <Text className="text-foreground text-[15px] leading-6">{message.text}</Text>
-                </ScrollView>
-              ) : (
-                <Text className="text-foreground text-[15px] leading-6" numberOfLines={3}>
-                  {message.text}
-                </Text>
-              )}
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setFraseAbierta((v) => !v)}
-                className="self-end pt-2 active:opacity-60"
-              >
-                <Text className="text-muted-foreground text-[12px] font-semibold">
-                  {fraseAbierta ? 'Ver menos' : 'Ver más'}
-                </Text>
-              </Pressable>
+              {!wide && verFrase && message.text ? (
+                <View className="w-full max-w-xl rounded-2xl bg-card/80 p-4">
+                  {invitacionEnTexto(message.text) ? (
+                    <InvitacionJam texto={message.text} />
+                  ) : fraseAbierta ? (
+                    <ScrollView className="max-h-[180px]" showsVerticalScrollIndicator={false}>
+                      <InvitacionJam texto={message.text} />
+                    </ScrollView>
+                  ) : (
+                    <Text className="text-foreground text-[15px] leading-6" numberOfLines={3}>
+                      {message.text}
+                    </Text>
+                  )}
+                  {!invitacionEnTexto(message.text) ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setFraseAbierta((v) => !v)}
+                      className="self-end pt-2 active:opacity-60"
+                    >
+                      <Text className="text-muted-foreground text-[12px] font-semibold">
+                        {fraseAbierta ? 'Ver menos' : 'Ver más'}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
-          ) : null}
-          </View>
 
-          {/* El contrapeso de la frase: un hueco del mismo ancho del otro lado.
+            {/* El contrapeso de la frase: un hueco del mismo ancho del otro lado.
               Sin esto, mostrar la frase corría el disco a la derecha y dejaba
               de estar alineado con la onda y el play de abajo, que sí están
               centrados en la ventana — la pieza se veía descuadrada justo al
               hacer visible lo que se quiso compartir. */}
-          {wide && verFrase && message.text ? (
-            <View pointerEvents="none" className="w-[300px]" />
-          ) : null}
-        </View>
+            {wide && verFrase && message.text ? (
+              <View pointerEvents="none" className="w-[300px]" />
+            ) : null}
+          </View>
         </View>
 
         {song ? (
@@ -386,117 +397,122 @@ export default function MessageStory() {
              lo que están controlando. Y con aire abajo: pegado al borde se
              cortaba contra el filo de la ventana. */
           <View className="items-center px-6 pb-8">
-          <View className="w-full items-center gap-4" style={{ maxWidth: ANCHO_MAX }}>
-            {/* La onda del fragmento, que además es la única forma de moverse
+            <View className="w-full items-center gap-4" style={{ maxWidth: ANCHO_MAX }}>
+              {/* La onda del fragmento, que además es la única forma de moverse
                 dentro de él: esta pantalla no tenía barra de posición. */}
-            {picos ? (
-              <View className="w-full max-w-xl">
-                <Onda
-                  picos={picos}
-                  posicionMs={player.posicionSV}
-                  desdeMs={song.startMs}
-                  duracionMs={song.durationMs}
-                  activa={player.currentId === message.id}
-                  onSeek={(fraccion) =>
-                    player
-                      .seek(message.id, song, fraccion)
-                      .catch((e: unknown) => avisar(mensajeError(e), true))
-                  }
-                  height={48}
-                  etiqueta={song.title}
-                />
-              </View>
-            ) : null}
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}
-              onPress={() =>
-                player.toggle(message.id, song).catch((e: unknown) =>
-                  avisar(mensajeError(e), true),
-                )
-              }
-              className="h-14 w-14 items-center justify-center rounded-full bg-primary active:opacity-80"
-            >
-              {playing ? (
-                <IconPause size={20} color={ICON_COLOR.onPrimary} />
-              ) : (
-                <IconPlay size={20} color={ICON_COLOR.onPrimary} />
-              )}
-            </Pressable>
-
-            {/* Disco o letra, el mismo segmentado que el editor. Sin letra
-                guardada el botón no lleva a ningún lado y se apaga. */}
-            <View className="flex-row items-center gap-2">
-            <View className="flex-row items-center rounded-full bg-background/70 p-1">
-              <Segment
-                active={chosen === 'disc'}
-                label="Disco"
-                icon={<IconDisc size={14} color={chosen === 'disc' ? ICON_COLOR.onPrimary : ICON_COLOR.muted} />}
-                onPress={() => setView('disc')}
-              />
-              <Segment
-                active={chosen === 'lyrics'}
-                label="Letra"
-                enabled={hasLyrics}
-                icon={
-                  <IconLyrics
-                    size={14}
-                    color={chosen === 'lyrics' ? ICON_COLOR.onPrimary : ICON_COLOR.muted}
+              {picos ? (
+                <View className="w-full max-w-xl">
+                  <Onda
+                    picos={picos}
+                    posicionMs={player.posicionSV}
+                    desdeMs={song.startMs}
+                    duracionMs={song.durationMs}
+                    activa={player.currentId === message.id}
+                    onSeek={(fraccion) =>
+                      player
+                        .seek(message.id, song, fraccion)
+                        .catch((e: unknown) => avisar(mensajeError(e), true))
+                    }
+                    height={48}
+                    etiqueta={song.title}
                   />
-                }
-                onPress={() => setView('lyrics')}
-              />
-            </View>
+                </View>
+              ) : null}
 
-            {/* Mostrar y ocultar la frase. Solo si hay algo escrito: sin texto
-                sería un interruptor que no enciende nada. */}
-            {message.text ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityState={{ selected: verFrase }}
-                accessibilityLabel={verFrase ? 'Ocultar la frase' : 'Ver la frase'}
-                onPress={() => setVerFrase((v) => !v)}
-                className={`flex-row items-center gap-2 rounded-full px-4 py-2.5 active:opacity-70 ${
-                  verFrase ? 'bg-primary' : 'bg-background/70'
-                }`}
-              >
-                <IconMessage
-                  size={14}
-                  color={verFrase ? ICON_COLOR.onPrimary : ICON_COLOR.muted}
-                />
-                <Text
-                  className={`text-[13px] font-medium ${
-                    verFrase ? 'text-primary-foreground' : 'text-muted-foreground'
-                  }`}
-                >
-                  Frase
-                </Text>
-              </Pressable>
-            ) : null}
-
-            {/* Traducir: solo aparece si hay letra que traducir. */}
-            {hasLyrics ? (
-              <Popover
-                value={lang}
-                options={LYRIC_LANGS.map((l) => ({ value: l.value, label: l.label }))}
-                onChange={setLang}
-                display={LYRIC_LANGS.find((l) => l.value === lang)?.short || 'Traducir'}
-                accessibilityLabel="Traducir la letra"
-                icon={
-                  translating ? (
-                    <ActivityIndicator size="small" color={ICON_COLOR.muted} />
-                  ) : (
-                    <IconLanguages
-                      size={14}
-                      color={lang === 'off' ? ICON_COLOR.muted : ICON_COLOR.foreground}
-                    />
-                  )
+                accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}
+                onPress={() =>
+                  player
+                    .toggle(message.id, song)
+                    .catch((e: unknown) => avisar(mensajeError(e), true))
                 }
-              />
-            ) : null}
+                className="h-14 w-14 items-center justify-center rounded-full bg-primary active:opacity-80"
+              >
+                {playing ? (
+                  <IconPause size={20} color={ICON_COLOR.onPrimary} />
+                ) : (
+                  <IconPlay size={20} color={ICON_COLOR.onPrimary} />
+                )}
+              </Pressable>
+
+              {/* Disco o letra, el mismo segmentado que el editor. Sin letra
+                guardada el botón no lleva a ningún lado y se apaga. */}
+              <View className="flex-row items-center gap-2">
+                <View className="flex-row items-center rounded-full bg-background/70 p-1">
+                  <Segment
+                    active={chosen === 'disc'}
+                    label="Disco"
+                    icon={
+                      <IconDisc
+                        size={14}
+                        color={chosen === 'disc' ? ICON_COLOR.onPrimary : ICON_COLOR.muted}
+                      />
+                    }
+                    onPress={() => setView('disc')}
+                  />
+                  <Segment
+                    active={chosen === 'lyrics'}
+                    label="Letra"
+                    enabled={hasLyrics}
+                    icon={
+                      <IconLyrics
+                        size={14}
+                        color={chosen === 'lyrics' ? ICON_COLOR.onPrimary : ICON_COLOR.muted}
+                      />
+                    }
+                    onPress={() => setView('lyrics')}
+                  />
+                </View>
+
+                {/* Mostrar y ocultar la frase. Solo si hay algo escrito: sin texto
+                sería un interruptor que no enciende nada. */}
+                {message.text ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: verFrase }}
+                    accessibilityLabel={verFrase ? 'Ocultar la frase' : 'Ver la frase'}
+                    onPress={() => setVerFrase((v) => !v)}
+                    className={`flex-row items-center gap-2 rounded-full px-4 py-2.5 active:opacity-70 ${
+                      verFrase ? 'bg-primary' : 'bg-background/70'
+                    }`}
+                  >
+                    <IconMessage
+                      size={14}
+                      color={verFrase ? ICON_COLOR.onPrimary : ICON_COLOR.muted}
+                    />
+                    <Text
+                      className={`text-[13px] font-medium ${
+                        verFrase ? 'text-primary-foreground' : 'text-muted-foreground'
+                      }`}
+                    >
+                      Frase
+                    </Text>
+                  </Pressable>
+                ) : null}
+
+                {/* Traducir: solo aparece si hay letra que traducir. */}
+                {hasLyrics ? (
+                  <Popover
+                    value={lang}
+                    options={LYRIC_LANGS.map((l) => ({ value: l.value, label: l.label }))}
+                    onChange={setLang}
+                    display={LYRIC_LANGS.find((l) => l.value === lang)?.short || 'Traducir'}
+                    accessibilityLabel="Traducir la letra"
+                    icon={
+                      translating ? (
+                        <ActivityIndicator size="small" color={ICON_COLOR.muted} />
+                      ) : (
+                        <IconLanguages
+                          size={14}
+                          color={lang === 'off' ? ICON_COLOR.muted : ICON_COLOR.foreground}
+                        />
+                      )
+                    }
+                  />
+                ) : null}
+              </View>
             </View>
-          </View>
           </View>
         ) : null}
       </SafeAreaView>

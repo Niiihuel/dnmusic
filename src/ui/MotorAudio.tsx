@@ -1,3 +1,4 @@
+import { useEspectroAudio } from './useEspectroAudio'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Platform } from 'react-native'
 import { preload, setAudioModeAsync, useAudioPlayer } from 'expo-audio'
@@ -268,8 +269,13 @@ export function MotorAudio() {
    * teléfono bloqueado desaparecía. Apple Music y Spotify mantienen la ficha
    * incluso en pausa, y esto es lo que lo hace posible.
    */
-  const player = useAudioPlayer(url ? { uri: url } : null, { keepAudioSessionActive: true })
+  const player = useAudioPlayer(url ? { uri: url } : null, {
+    keepAudioSessionActive: true,
+    crossOrigin: 'anonymous',
+  })
   const playing = wantPlay && url !== null
+  const espectroVisible = useAppActiva()
+  useEspectroAudio(player, current?.videoId, playing && espectroVisible)
 
   /*
    * La ficha se publica recién con la URL cargada: es el momento en que el

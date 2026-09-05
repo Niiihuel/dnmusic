@@ -1,5 +1,6 @@
+import { TextoPerfil as Text } from './FuentePerfil'
 import { useEffect, useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Pressable, View } from 'react-native'
 import { listPublicPlaylists, type Playlist } from '../services/playlists'
 import { PlaylistCover } from './PlaylistCover'
 import { formatLength } from './SeekBar'

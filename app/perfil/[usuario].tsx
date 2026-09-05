@@ -1,5 +1,6 @@
+import { FuentePerfil, TextoPerfil as Text } from '../../src/ui/FuentePerfil'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
@@ -209,123 +210,122 @@ export default function PerfilAjeno() {
     ) : null
 
   return (
-    <SafeAreaView
-      className="flex-1 bg-background"
-      edges={ancho ? ['top', 'bottom'] : ['top']}
-    >
-      <View className={`flex-1 ${ancho ? 'gap-2 p-2' : ''}`}>
-        {/* En el teléfono la cabecera se queda: se llegó acá tocando a alguien
+    <FuentePerfil fuente={perfil?.fuente}>
+      <SafeAreaView className="flex-1 bg-background" edges={ancho ? ['top', 'bottom'] : ['top']}>
+        <View className={`flex-1 ${ancho ? 'gap-2 p-2' : ''}`}>
+          {/* En el teléfono la cabecera se queda: se llegó acá tocando a alguien
             y hace falta la salida, y el @usuario dice de quién es el perfil que
             estás mirando. En escritorio la franja negra cortaba la imagen a
             sangre, así que la salida flota sobre ella. */}
-        {ancho ? null : (
-          <View className="flex-row items-center gap-3 px-3 py-1">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Volver"
-              onPress={() => volver(router, '/')}
-              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-            >
-              <IconBack size={19} color={ICON_COLOR.foreground} />
-            </Pressable>
-            <Text className="text-foreground text-[15px] font-semibold">
-              {perfil ? `@${perfil.username}` : 'Perfil'}
-            </Text>
-          </View>
-        )}
-
-        <Panel className="flex-1">
-          <FondoPerfil
-            bannerPath={perfil?.bannerPath ?? null}
-            encuadre={perfil?.bannerEncuadre ?? null}
-          />
-
-          {ancho ? (
-            <View className="absolute left-4 top-4 z-10">
-              <BotonVidrio
+          {ancho ? null : (
+            <View className="flex-row items-center gap-3 px-3 py-1">
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Volver"
                 onPress={() => volver(router, '/')}
-                label="Volver"
-                radius={22}
-                style={{ height: 44, width: 44 }}
+                className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
               >
                 <IconBack size={19} color={ICON_COLOR.foreground} />
-              </BotonVidrio>
+              </Pressable>
+              <Text className="text-foreground text-[15px] font-semibold">
+                {perfil ? `@${perfil.username}` : 'Perfil'}
+              </Text>
             </View>
-          ) : null}
+          )}
 
-          <ScrollView
-            contentContainerClassName="items-center px-4"
-            /* Con fondo, la primera pantalla es de la imagen y el contenido
+          <Panel className="flex-1">
+            <FondoPerfil
+              bannerPath={perfil?.bannerPath ?? null}
+              encuadre={perfil?.bannerEncuadre ?? null}
+            />
+
+            {ancho ? (
+              <View className="absolute left-4 top-4 z-10">
+                <BotonVidrio
+                  onPress={() => volver(router, '/')}
+                  label="Volver"
+                  radius={22}
+                  style={{ height: 44, width: 44 }}
+                >
+                  <IconBack size={19} color={ICON_COLOR.foreground} />
+                </BotonVidrio>
+              </View>
+            ) : null}
+
+            <ScrollView
+              contentContainerClassName="items-center px-4"
+              /* Con fondo, la primera pantalla es de la imagen y el contenido
                arranca abajo, scrolleando por encima (`alturaDeHeroe`). Sin
                fondo, el arranque compacto de siempre: en escritorio debajo del
                redondel de volver, que flota sobre la imagen. */
-            contentContainerStyle={{
-              paddingTop: alturaDeHeroe(alto, perfil?.bannerPath, ancho ? 72 : 24),
-              paddingBottom: piso,
-            }}
-          >
-            {perfil === undefined ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : perfil === null ? (
-              /*
-               * Un solo cartel para «no existe» y para «está en privado».
-               *
-               * La función de la base devuelve lo mismo en los dos casos a
-               * propósito: «existe pero no te deja ver» ya es información sobre
-               * alguien que decidió no mostrarse. Acá no se puede distinguir, y
-               * está bien que así sea.
-               */
-              <Vacio
-                icono={<IconUser size={24} color={ICON_COLOR.muted} />}
-                titulo="No hay nada para ver"
-                detalle="Puede que esa cuenta no exista o que su perfil esté en privado."
-                accion={{ rotulo: 'Volver', onPress: () => volver(router, '/') }}
-              />
-            ) : (
-              <View className="w-full gap-7" style={{ maxWidth: ancho ? CAP_ANCHO : MAX_W }}>
-                {/* Misma banda que en el perfil propio: acostada en escritorio,
+              contentContainerStyle={{
+                paddingTop: alturaDeHeroe(alto, perfil?.bannerPath, ancho ? 72 : 24),
+                paddingBottom: piso,
+              }}
+            >
+              {perfil === undefined ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : perfil === null ? (
+                /*
+                 * Un solo cartel para «no existe» y para «está en privado».
+                 *
+                 * La función de la base devuelve lo mismo en los dos casos a
+                 * propósito: «existe pero no te deja ver» ya es información sobre
+                 * alguien que decidió no mostrarse. Acá no se puede distinguir, y
+                 * está bien que así sea.
+                 */
+                <Vacio
+                  icono={<IconUser size={24} color={ICON_COLOR.muted} />}
+                  titulo="No hay nada para ver"
+                  detalle="Puede que esa cuenta no exista o que su perfil esté en privado."
+                  accion={{ rotulo: 'Volver', onPress: () => volver(router, '/') }}
+                />
+              ) : (
+                <View className="w-full gap-7" style={{ maxWidth: ancho ? CAP_ANCHO : MAX_W }}>
+                  {/* Misma banda que en el perfil propio: acostada en escritorio,
                     apilada y centrada en el teléfono. Que las dos pantallas se
                     vean igual es el punto de compartir `Identidad`. */}
-                <Identidad
-                  nombre={nombre}
-                  usuario={perfil.username}
-                  avatarPath={perfil.avatarPath}
-                  encuadre={perfil.avatarEncuadre}
-                  marco={perfil.marco}
-                  bio={perfil.bio ?? ''}
-                  centrado={!ancho}
-                  banda={ancho}
-                />
+                  <Identidad
+                    nombre={nombre}
+                    usuario={perfil.username}
+                    avatarPath={perfil.avatarPath}
+                    encuadre={perfil.avatarEncuadre}
+                    marco={perfil.marco}
+                    bio={perfil.bio ?? ''}
+                    centrado={!ancho}
+                    banda={ancho}
+                  />
 
-                {ancho ? (
-                  /* Las dos columnas del perfil propio, con el mismo reparto:
+                  {ancho ? (
+                    /* Las dos columnas del perfil propio, con el mismo reparto:
                      el mosaico a la izquierda y lo reciente a la derecha. Son
                      las dos pestañas del teléfono, lado a lado. */
-                  <View className="flex-row items-start gap-6">
-                    <View className="min-w-0 flex-1">{vitrinas}</View>
-                    <View className="w-[320px] shrink-0 gap-7">
-                      {reciente}
-                      {bloqueo}
+                    <View className="flex-row items-start gap-6">
+                      <View className="min-w-0 flex-1">{vitrinas}</View>
+                      <View className="w-[320px] shrink-0 gap-7">
+                        {reciente}
+                        {bloqueo}
+                      </View>
                     </View>
-                  </View>
-                ) : (
-                  <>
-                    <View className="items-center">
-                      <PestanasPerfil activa={pestana} onCambiar={setElegida} />
-                    </View>
+                  ) : (
+                    <>
+                      <View className="items-center">
+                        <PestanasPerfil activa={pestana} onCambiar={setElegida} />
+                      </View>
 
-                    {/* Mientras no se sabe con cuál abrir, nada: mejor un
+                      {/* Mientras no se sabe con cuál abrir, nada: mejor un
                         instante en blanco que una pestaña que salta. */}
-                    {pestana === 'space' ? vitrinas : pestana === 'reciente' ? reciente : null}
+                      {pestana === 'space' ? vitrinas : pestana === 'reciente' ? reciente : null}
 
-                    {bloqueo}
-                  </>
-                )}
-              </View>
-            )}
-          </ScrollView>
-        </Panel>
-      </View>
-    </SafeAreaView>
+                      {bloqueo}
+                    </>
+                  )}
+                </View>
+              )}
+            </ScrollView>
+          </Panel>
+        </View>
+      </SafeAreaView>
+    </FuentePerfil>
   )
 }

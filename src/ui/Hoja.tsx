@@ -75,13 +75,20 @@ export function useHojaModal(): boolean {
 export function Hoja({
   children,
   medida = 'llena',
+  anchoMaximo = ANCHO_HOJA,
 }: {
   children: ReactNode
   medida?: MedidaHoja
+  anchoMaximo?: number
 }) {
   const ancho = useWindowDimensions().width >= ESCRITORIO_PX
   if (!ES_WEB) return <>{children}</>
-  if (ancho) return <Modal medida={medida}>{children}</Modal>
+  if (ancho)
+    return (
+      <Modal medida={medida} anchoMaximo={anchoMaximo}>
+        {children}
+      </Modal>
+    )
   return <Sabana medida={medida}>{children}</Sabana>
 }
 
@@ -93,7 +100,15 @@ export function Hoja({
  * y parpadeó. Escape y el click afuera lo cierran — los dos idiomas del
  * escritorio para «esto no era».
  */
-function Modal({ children, medida }: { children: ReactNode; medida: MedidaHoja }) {
+function Modal({
+  children,
+  medida,
+  anchoMaximo,
+}: {
+  children: ReactNode
+  medida: MedidaHoja
+  anchoMaximo: number
+}) {
   const router = useRouter()
   const { height } = useWindowDimensions()
   const entrada = useSharedValue(0)
@@ -158,7 +173,7 @@ function Modal({ children, medida }: { children: ReactNode; medida: MedidaHoja }
         <Animated.View
           style={[
             {
-              width: ANCHO_HOJA,
+              width: anchoMaximo,
               maxWidth: '92%' as const,
               borderRadius: 24,
               overflow: 'hidden',

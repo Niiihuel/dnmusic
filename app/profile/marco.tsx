@@ -1,5 +1,14 @@
 import { useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { volver } from '../../src/lib/volver'
@@ -8,175 +17,249 @@ import { avisar } from '../../src/state/aviso'
 import { setMyProfile, useMyProfile } from '../../src/state/session'
 import { usePiso } from '../../src/state/shell'
 import { Avatar } from '../../src/ui/Avatar'
-import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
-import { aireDelMarco, FAMILIAS_MARCO, Marco, MARCOS } from '../../src/ui/Marco'
-import { ICON_COLOR, IconBan, IconCheck } from '../../src/ui/icons'
+import { Hoja, useHojaModal } from '../../src/ui/Hoja'
+import { FAMILIAS_MARCO, Marco, MARCOS } from '../../src/ui/Marco'
+import { COLECCION_MARCOS } from '../../src/ui/MarcosColeccion'
+import { ICON_COLOR, IconBack, IconCheck } from '../../src/ui/icons'
 
-/**
- * Elegir el marco de la foto: la vidriera de los marcos dibujados.
- *
- * Cada opción se muestra **puesta sobre tu propia foto**, no sobre una de
- * muestra: un marco se elige por cómo te queda, y la única forma de saberlo es
- * verlo puesto. Es lo que hacen Discord y Steam en sus tiendas, sin la tienda —
- * acá los marcos se dibujan (ver `ui/Marco`) y son de todos.
- *
- * Van agrupados por familia con un rótulo por grupo, como los temas en
- * `profile/tema`: dieciocho tarjetas en una sola grilla se escanean, cinco
- * grupos con nombre se recorren. Dos por fila y no tres, porque el marco
- * desborda a la foto y necesita aire alrededor; el bloque de cada familia se
- * centra y el rótulo se alinea con su primera tarjeta.
- *
- * Tocar elige y guarda: no hay botón de confirmar, igual que la foto. La
- * primera opción es «Ninguno», que es una elección tan válida como las otras.
- */
-
-/** El ancho de una tarjeta de opción y el hueco entre dos. */
-const TARJETA = 136
-const HUECO = 12
-
-/** La foto de muestra dentro de cada tarjeta. */
-const FOTO = 72
-
-/**
- * El aire que el marco necesita abajo de la foto para no tocar el nombre: el
- * lienzo desborda `aireDelMarco` por lado, y el `gap` de la tarjeta no alcanza
- * solo. Arriba lo cubre el relleno de la tarjeta.
- */
-const AIRE_ABAJO = Math.max(0, aireDelMarco(FOTO) - HUECO + 4)
 export default function ElegirMarco() {
   const router = useRouter()
   const perfil = useMyProfile()
   const piso = usePiso(24)
   const modal = useHojaModal()
-  const [guardando, setGuardando] = useState<string | null>(null)
-
-  const nombre = perfil?.displayName?.trim() || perfil?.username || '?'
-  const actual = perfil?.marco ?? null
-
-  async function elegir(marco: string | null) {
+  const { width } = useWindowDimensions()
+  const [seleccion, setSeleccion] = useState<string | null>(perfil?.marco ?? 'eclipse')
+  const [familia, setFamilia] = useState('destacados')
+  const [busqueda, setBusqueda] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const nombre = perfil?.displayName?.trim() || perfil?.username || 'Vos'
+  const elegido = MARCOS.find((m) => m.id === seleccion)
+  const tarjetas = MARCOS.filter(
+    (m) =>
+      (familia === 'todos' ||
+        (familia === 'destacados'
+          ? COLECCION_MARCOS.some((c) => c.id === m.id)
+          : m.familia === familia)) &&
+      m.nombre.toLocaleLowerCase().includes(busqueda.trim().toLocaleLowerCase()),
+  )
+  const columnas = width >= 900 ? 3 : 2
+  async function guardar() {
     if (guardando) return
-    setGuardando(marco ?? 'ninguno')
+    setGuardando(true)
     try {
-      /* La cadena vacía borra, como el resto de los textos del perfil. */
-      const guardado = await saveMyProfile({ marco: marco ?? '' })
-      setMyProfile(guardado)
-      avisar(marco ? 'Marco puesto' : 'Sin marco')
-      volver(router, '/')
+      setMyProfile(await saveMyProfile({ marco: seleccion ?? '' }))
+      avisar(seleccion ? 'Marco aplicado a tu perfil' : 'Marco quitado')
     } catch (e) {
       avisar(mensajeError(e), true)
-      setGuardando(null)
+    } finally {
+      setGuardando(false)
     }
   }
-
+  const avatar = (marco: string | null, size: number, animado = false) => (
+    <View style={{ width: size, height: size }}>
+      <Avatar
+        name={nombre}
+        path={perfil?.avatarPath}
+        size={size}
+        encuadre={perfil?.avatarEncuadre}
+      />
+      <Marco marco={marco} size={size} animado={animado} />
+    </View>
+  )
   return (
-    <Hoja medida="contenido">
-      <ScrollView
-        /* `flexGrow` y no `flex-1`: el modal compacto mide su contenido y un
-           flex con base cero colapsa adentro (ver `useHojaModal`). */
-        className="bg-background"
-        style={{ flexGrow: 1 }}
-        contentContainerClassName="gap-5 px-6 pt-6"
-        contentContainerStyle={{
-          paddingBottom: modal ? 24 : piso,
-          maxWidth: ANCHO_HOJA,
-          width: '100%',
-          alignSelf: 'center',
-        }}
-      >
-        <View className="items-center gap-1">
-          <Text className="text-foreground text-[17px] font-bold">El marco de tu foto</Text>
-          <Text className="text-muted-foreground text-center text-[12px] leading-4">
-            Dibujado alrededor, en todos lados donde tu perfil se muestre grande.
+    <Hoja anchoMaximo={1040}>
+      <View className="flex-row items-center gap-3 bg-background px-4 py-3">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Volver al perfil"
+          onPress={() => volver(router, '/profile')}
+          className="h-11 w-11 items-center justify-center rounded-full bg-card"
+        >
+          <IconBack size={18} color={ICON_COLOR.foreground} />
+        </Pressable>
+        <View className="flex-1 gap-0.5">
+          <Text className="text-foreground text-[19px] font-bold">Marcos</Text>
+          <Text className="text-muted-foreground text-[11px]">
+            Un detalle que hace tuyo el perfil
           </Text>
         </View>
-
-        {FAMILIAS_MARCO.map((familia, i) => (
-          <View key={familia.id} className="gap-2" style={{ width: TARJETA * 2 + HUECO, alignSelf: 'center' }}>
-            <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-              {familia.titulo}
-            </Text>
-            <View className="flex-row flex-wrap" style={{ gap: HUECO }}>
-              {/* «Ninguno» abre el primer grupo: es la salida del catálogo. */}
-              {i === 0 ? (
-                <Opcion
-                  titulo="Ninguno"
-                  elegido={actual === null}
-                  guardando={guardando === 'ninguno'}
-                  onPress={() => void elegir(null)}
-                >
-                  <View
-                    className="items-center justify-center rounded-full bg-muted"
-                    style={{ width: FOTO, height: FOTO, marginBottom: AIRE_ABAJO }}
-                  >
-                    <IconBan size={22} color={ICON_COLOR.muted} />
-                  </View>
-                </Opcion>
-              ) : null}
-              {MARCOS.filter((m) => m.familia === familia.id).map((m) => (
-                <Opcion
-                  key={m.id}
-                  titulo={m.nombre}
-                  elegido={actual === m.id}
-                  guardando={guardando === m.id}
-                  onPress={() => void elegir(m.id)}
-                >
-                  {/* `overflow: visible` explícito: el marco desborda a la foto
-                      y se dibuja por fuera de esta caja. */}
-                  <View style={{ marginBottom: AIRE_ABAJO, overflow: 'visible' }}>
-                    <Avatar name={nombre} path={perfil?.avatarPath} size={FOTO} />
-                    <Marco marco={m.id} size={FOTO} />
-                  </View>
-                </Opcion>
-              ))}
+      </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingTop: 8,
+          paddingBottom: 24,
+          gap: 20,
+        }}
+      >
+        <LinearGradient
+          colors={['#252936', '#181b25', '#151619']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ borderRadius: 22, overflow: 'hidden', padding: 24 }}
+        >
+          <View className="flex-row flex-wrap items-center justify-between gap-6">
+            <View style={{ flexGrow: 1, flexBasis: 210 }} className="gap-3">
+              <Text
+                style={{ color: '#b6becf' }}
+                className="text-[10px] font-semibold uppercase tracking-[2px]"
+              >
+                Colección · Después de medianoche
+              </Text>
+              <Text className="text-foreground text-[28px] font-bold">
+                Pequeños detalles.{'\n'}Otra presencia.
+              </Text>
+              <Text
+                className="text-muted-foreground text-[13px] leading-5"
+                style={{ maxWidth: 360 }}
+              >
+                Plata, órbitas y jardines nocturnos. Probá cada diseño sobre tu foto.
+              </Text>
+            </View>
+            <View
+              style={{ flexGrow: 1, flexBasis: 140, alignItems: 'center', paddingVertical: 20 }}
+            >
+              {avatar(seleccion, 110, true)}
+              <Text className="mt-7 text-foreground text-[14px] font-semibold">
+                {elegido?.nombre ?? 'Sin marco'}
+              </Text>
+              <Text className="mt-1 text-muted-foreground text-[11px]">
+                Vista previa · @{perfil?.username}
+              </Text>
             </View>
           </View>
-        ))}
-      </ScrollView>
-    </Hoja>
-  )
-}
-
-function Opcion({
-  titulo,
-  elegido,
-  guardando,
-  onPress,
-  children,
-}: {
-  titulo: string
-  elegido: boolean
-  guardando: boolean
-  onPress: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Marco ${titulo}`}
-      accessibilityState={{ selected: elegido }}
-      onPress={onPress}
-      className={`items-center gap-3 rounded-2xl px-3 pb-3 pt-5 active:opacity-80 ${
-        elegido ? 'bg-muted' : 'bg-card'
-      }`}
-      style={{ width: TARJETA, overflow: 'visible' }}
-    >
-      {children}
-      <View className="h-5 flex-row items-center gap-1.5">
-        {guardando ? (
-          <ActivityIndicator size="small" color={ICON_COLOR.muted} />
-        ) : (
-          <>
-            {elegido ? <IconCheck size={12} color={ICON_COLOR.foreground} /> : null}
-            <Text
-              className={`text-[12px] font-semibold ${
-                elegido ? 'text-foreground' : 'text-muted-foreground'
-              }`}
+        </LinearGradient>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8 }}
+        >
+          {[
+            { id: 'destacados', titulo: 'Destacados' },
+            { id: 'todos', titulo: 'Todos' },
+            ...FAMILIAS_MARCO,
+          ].map((f) => (
+            <Pressable
+              key={f.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected: familia === f.id }}
+              onPress={() => setFamilia(f.id)}
+              className={
+                familia === f.id
+                  ? 'min-h-11 items-center justify-center rounded-full bg-primary px-4'
+                  : 'min-h-11 items-center justify-center rounded-full bg-card px-4'
+              }
             >
-              {titulo}
-            </Text>
-          </>
-        )}
+              <Text
+                className={
+                  familia === f.id
+                    ? 'text-primary-foreground text-[12px] font-semibold'
+                    : 'text-muted-foreground text-[12px]'
+                }
+              >
+                {f.titulo}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+        <TextInput
+          accessibilityLabel="Buscar marcos"
+          placeholder="Buscar en esta colección"
+          placeholderTextColor="#858585"
+          value={busqueda}
+          onChangeText={setBusqueda}
+          className="min-h-11 rounded-xl bg-card px-4 text-foreground text-[13px]"
+        />
+        <View className="flex-row flex-wrap" style={{ gap: 12 }}>
+          {tarjetas.map((m) => (
+            <Pressable
+              key={m.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Probar marco ${m.nombre}`}
+              accessibilityState={{ selected: seleccion === m.id }}
+              onPress={() => setSeleccion(m.id)}
+              disabled={guardando}
+              style={{
+                width: columnas === 3 ? '32%' : '48%',
+                flexGrow: 1,
+                borderRadius: 16,
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: seleccion === m.id ? '#b0b6c1' : '#25262a',
+                backgroundColor: '#18191d',
+              }}
+            >
+              <LinearGradient
+                colors={
+                  m.familia === 'naturaleza'
+                    ? ['#252e29', '#171d1a']
+                    : m.familia === 'realeza'
+                      ? ['#302b22', '#1e1b17']
+                      : ['#252934', '#191a21']
+                }
+                style={{ height: 160, alignItems: 'center', justifyContent: 'center' }}
+              >
+                {avatar(m.id, 84)}
+              </LinearGradient>
+              <View className="gap-1 p-3">
+                <View className="flex-row items-center justify-between gap-2">
+                  <Text
+                    className="text-foreground text-[13px] font-semibold"
+                    numberOfLines={1}
+                    style={{ flex: 1 }}
+                  >
+                    {m.nombre}
+                  </Text>
+                  {seleccion === m.id ? (
+                    <IconCheck size={14} color={ICON_COLOR.foreground} />
+                  ) : null}
+                </View>
+                <Text className="text-muted-foreground text-[11px]">
+                  {FAMILIAS_MARCO.find((f) => f.id === m.familia)?.titulo} · Incluido
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+        {!tarjetas.length ? (
+          <Text className="text-muted-foreground py-6 text-center text-[13px]">
+            No hay marcos con ese nombre en esta colección.
+          </Text>
+        ) : null}
+      </ScrollView>
+      <View
+        className="flex-row flex-wrap items-center justify-between gap-3 bg-card px-5 py-3"
+        style={{ paddingBottom: modal ? 12 : piso }}
+      >
+        <Pressable
+          accessibilityRole="button"
+          disabled={guardando}
+          onPress={() => setSeleccion(null)}
+          className="min-h-11 justify-center px-2"
+        >
+          <Text className="text-muted-foreground text-[12px]">Sin marco</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: guardando || (perfil?.marco ?? null) === seleccion }}
+          disabled={guardando || (perfil?.marco ?? null) === seleccion}
+          onPress={() => void guardar()}
+          className="min-h-11 flex-row items-center justify-center gap-2 rounded-full bg-primary px-6 active:opacity-80"
+          style={{ opacity: (perfil?.marco ?? null) === seleccion ? 0.55 : 1 }}
+        >
+          {guardando ? <ActivityIndicator size="small" color="#121212" /> : null}
+          <Text className="text-primary-foreground text-[13px] font-bold">
+            {guardando
+              ? 'Guardando…'
+              : (perfil?.marco ?? null) === seleccion
+                ? 'Aplicado'
+                : seleccion
+                  ? 'Usar este marco'
+                  : 'Quitar marco'}
+          </Text>
+        </Pressable>
       </View>
-    </Pressable>
+    </Hoja>
   )
 }

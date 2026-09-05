@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.9.3",
+    "fecha": "4 de septiembre de 2026",
+    "titulo": "Tu espacio, con más personalidad.",
+    "cambios": [
+      "Invitaciones al Jam con tarjeta, botón para abrir y código para copiar, también en mensajes anteriores.",
+      "Elegir una canción en el Jam prepara primero ese tema, sin descartarlo por no estar descargado. Terminar o salir ahora requiere un solo toque.",
+      "Barras de reproducción conectadas al audio real. Sin muestras disponibles permanecen quietas, sin simular el ritmo.",
+      "Nuevo catálogo de marcos con seis diseños, colecciones y vista previa antes de aplicar.",
+      "Una tipografía para todo el perfil, fotos recuperadas para artistas y tres vistas para canciones: portada, reproductor o ambas.",
+      "Edición del mosaico sin temblor, controles discretos y transiciones al ordenar o cambiar el tamaño."
+    ]
+  },
+  {
     "version": "1.9.2",
     "fecha": "4 de septiembre de 2026",
     "titulo": "Tu música vuelve a encontrar su camino.",

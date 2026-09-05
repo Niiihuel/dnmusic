@@ -272,7 +272,12 @@ export default function EditarPerfil() {
                   ) : null}
                 </GrupoAjustes>
 
-                <GrupoAjustes titulo="Tu marco">
+                <GrupoAjustes titulo="Tu estilo">
+                  <FilaAjuste
+                    rotulo="Tipografía de todo el perfil"
+                    valor="Elegir"
+                    onPress={() => router.push('/profile/fuente')}
+                  />
                   <FilaAjuste
                     rotulo="Marco de la foto"
                     valor={

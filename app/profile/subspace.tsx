@@ -1,5 +1,6 @@
+import { FuentePerfil, TextoPerfil as Text } from '../../src/ui/FuentePerfil'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Tema } from '../../src/lib/tema'
@@ -85,12 +86,18 @@ export default function SubspaceScreen() {
   const pieza = id ? cargada : null
 
   /* El tema del dueño, si es otro. El propio sale de la sesión. */
+  const [fuenteAjena, setFuenteAjena] = useState<string | null>(null)
   const [temaAjeno, setTemaAjeno] = useState<Tema | null>(null)
   useEffect(() => {
     if (propio || !usuario) return
     let vivo = true
     fetchProfile(usuario)
-      .then((p) => vivo && setTemaAjeno(p?.tema ?? null))
+      .then((p) => {
+        if (vivo) {
+          setTemaAjeno(p?.tema ?? null)
+          setFuenteAjena(p?.fuente ?? null)
+        }
+      })
       .catch(() => undefined)
     return () => {
       vivo = false
@@ -164,90 +171,95 @@ export default function SubspaceScreen() {
   )
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-1">
-        <View className="flex-row items-center gap-3 px-3 py-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver"
-            onPress={() => volver(router, '/profile')}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconBack size={19} color={ICON_COLOR.foreground} />
-          </Pressable>
-          <Text className="min-w-0 flex-1 text-foreground text-[15px] font-semibold" numberOfLines={1}>
-            {titulo}
-          </Text>
-          {/* Armando, el chip dice en qué modo está la pantalla; mirando, el
-              lápiz entra a armar — la otra puerta además del apretón. */}
-          {propio && pieza ? (
-            armando ? (
-              <View className="h-9 justify-center rounded-full bg-muted px-4">
-                <Text className="text-foreground text-[11px] font-bold uppercase tracking-[1.4px]">
-                  Modo de edición
-                </Text>
-              </View>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Armar el sub-space"
-                onPress={() => setArmando(true)}
-                className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-              >
-                <IconPencil size={17} color={ICON_COLOR.foreground} />
-              </Pressable>
-            )
-          ) : null}
-        </View>
-
-        <Panel className="flex-1">
-          <ScrollView
-            contentContainerClassName="items-center px-4 pt-4"
-            contentContainerStyle={{ paddingBottom: piso }}
-            scrollEnabled={!arrastrando}
-          >
-            {pieza === undefined ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : pieza === null || !owner || !id ? (
-              /* Un solo cartel para «no existe» y «no se puede ver»: la base
-                 no distingue, y está bien que no. */
-              <Vacio
-                icono={<IconGrilla size={24} color={ICON_COLOR.muted} />}
-                titulo="No hay nada para ver"
-                detalle="Puede que esta pieza ya no exista o que el perfil esté en privado."
-                accion={{ rotulo: 'Volver', onPress: () => volver(router, '/profile') }}
-              />
-            ) : (
-              <View className="w-full" style={{ maxWidth: MAX_W }}>
-                <Vitrinas
-                  ownerId={owner}
-                  parentId={id}
-                  recarga={recarga}
-                  onCambio={() => setRecarga((n) => n + 1)}
-                  editando={armando}
-                  temaGlobal={temaGlobal}
-                  onEditar={propio ? abrirEditor : undefined}
-                  onEntrarEdicion={propio ? () => setArmando(true) : undefined}
-                  onArrastre={setArrastrando}
-                  reaccionable={!propio}
-                  vacio={vacio}
-                />
-              </View>
-            )}
-          </ScrollView>
-
-          {/* La barra flota al pie, apoyada sobre lo que ya flota debajo. */}
-          {armando && propio ? (
-            <View
-              pointerEvents="box-none"
-              className="absolute inset-x-0 items-center"
-              style={{ bottom: chrome + 12 }}
+    <FuentePerfil fuente={propio ? yo?.fuente : fuenteAjena}>
+      <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+        <View className="flex-1">
+          <View className="flex-row items-center gap-3 px-3 py-1">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Volver"
+              onPress={() => volver(router, '/profile')}
+              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
             >
-              {barraDeArmado}
-            </View>
-          ) : null}
-        </Panel>
-      </View>
-    </SafeAreaView>
+              <IconBack size={19} color={ICON_COLOR.foreground} />
+            </Pressable>
+            <Text
+              className="min-w-0 flex-1 text-foreground text-[15px] font-semibold"
+              numberOfLines={1}
+            >
+              {titulo}
+            </Text>
+            {/* Armando, el chip dice en qué modo está la pantalla; mirando, el
+              lápiz entra a armar — la otra puerta además del apretón. */}
+            {propio && pieza ? (
+              armando ? (
+                <View className="h-9 justify-center rounded-full bg-muted px-4">
+                  <Text className="text-foreground text-[11px] font-bold uppercase tracking-[1.4px]">
+                    Modo de edición
+                  </Text>
+                </View>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Armar el sub-space"
+                  onPress={() => setArmando(true)}
+                  className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+                >
+                  <IconPencil size={17} color={ICON_COLOR.foreground} />
+                </Pressable>
+              )
+            ) : null}
+          </View>
+
+          <Panel className="flex-1">
+            <ScrollView
+              contentContainerClassName="items-center px-4 pt-4"
+              contentContainerStyle={{ paddingBottom: piso }}
+              scrollEnabled={!arrastrando}
+            >
+              {pieza === undefined ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : pieza === null || !owner || !id ? (
+                /* Un solo cartel para «no existe» y «no se puede ver»: la base
+                 no distingue, y está bien que no. */
+                <Vacio
+                  icono={<IconGrilla size={24} color={ICON_COLOR.muted} />}
+                  titulo="No hay nada para ver"
+                  detalle="Puede que esta pieza ya no exista o que el perfil esté en privado."
+                  accion={{ rotulo: 'Volver', onPress: () => volver(router, '/profile') }}
+                />
+              ) : (
+                <View className="w-full" style={{ maxWidth: MAX_W }}>
+                  <Vitrinas
+                    ownerId={owner}
+                    parentId={id}
+                    recarga={recarga}
+                    onCambio={() => setRecarga((n) => n + 1)}
+                    editando={armando}
+                    temaGlobal={temaGlobal}
+                    onEditar={propio ? abrirEditor : undefined}
+                    onEntrarEdicion={propio ? () => setArmando(true) : undefined}
+                    onArrastre={setArrastrando}
+                    reaccionable={!propio}
+                    vacio={vacio}
+                  />
+                </View>
+              )}
+            </ScrollView>
+
+            {/* La barra flota al pie, apoyada sobre lo que ya flota debajo. */}
+            {armando && propio ? (
+              <View
+                pointerEvents="box-none"
+                className="absolute inset-x-0 items-center"
+                style={{ bottom: chrome + 12 }}
+              >
+                {barraDeArmado}
+              </View>
+            ) : null}
+          </Panel>
+        </View>
+      </SafeAreaView>
+    </FuentePerfil>
   )
 }

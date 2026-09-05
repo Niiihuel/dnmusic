@@ -1,11 +1,6 @@
+import { FuentePerfil, TextoPerfil as Text } from '../../src/ui/FuentePerfil'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  ActivityIndicator,
-  ScrollView,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native'
+import { ActivityIndicator, ScrollView, useWindowDimensions, View } from 'react-native'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
@@ -24,7 +19,14 @@ import {
   Reciente,
   type PestanaPerfil,
 } from '../../src/ui/PestanasPerfil'
-import { ICON_COLOR, IconBack, IconPalette, IconPencil, IconPlus } from '../../src/ui/icons'
+import {
+  ICON_COLOR,
+  IconBack,
+  IconPalette,
+  IconType,
+  IconPencil,
+  IconPlus,
+} from '../../src/ui/icons'
 import { listPlaylists, type Playlist } from '../../src/services/playlists'
 import { useMyProfile } from '../../src/state/session'
 import { useChromeH, usePiso } from '../../src/state/shell'
@@ -261,6 +263,14 @@ export default function ProfileScreen() {
           <IconPalette size={17} color={ICON_COLOR.foreground} />
         </BotonVidrio>
         <BotonVidrio
+          label="Tipografía de todo el perfil"
+          onPress={() => router.push('/profile/fuente')}
+          radius={999}
+          style={{ width: 40, height: 40 }}
+        >
+          <IconType size={17} color={ICON_COLOR.foreground} />
+        </BotonVidrio>
+        <BotonVidrio
           label="Agregar una pieza"
           onPress={() => router.push('/profile/agregar')}
           radius={999}
@@ -332,186 +342,188 @@ export default function ProfileScreen() {
   return (
     /* En el teléfono el fondo es el mismo del contenido; el negro puro es el de
        la ventana en escritorio, donde los paneles flotan. Ver `app/index.tsx`. */
-    <SafeAreaView
-      className="flex-1 bg-background"
-      /* En el teléfono el margen de abajo lo pone la barra de pestañas.
+    <FuentePerfil fuente={profile?.fuente}>
+      <SafeAreaView
+        className="flex-1 bg-background"
+        /* En el teléfono el margen de abajo lo pone la barra de pestañas.
          Reservarlo también acá lo contaría dos veces. Y el de arriba tampoco
          va: el fondo del perfil pasa por detrás del reloj —el velo del layout
          cuida la hora— y el margen lo reserva el contenido, como la portada. */
-      edges={ancho ? ['top', 'bottom'] : []}
-    >
-      <View className={`flex-1 ${ancho ? 'gap-2 p-2' : ''}`}>
-        <Panel className="flex-1">
-          {/* El fondo va detrás de todo: además de ser lo de Steam, es la única
+        edges={ancho ? ['top', 'bottom'] : []}
+      >
+        <View className={`flex-1 ${ancho ? 'gap-2 p-2' : ''}`}>
+          <Panel className="flex-1">
+            {/* El fondo va detrás de todo: además de ser lo de Steam, es la única
               pantalla donde el vidrio tiene una foto que difuminar. */}
-          <FondoPerfil
-            bannerPath={profile?.bannerPath ?? null}
-            encuadre={profile?.bannerEncuadre ?? null}
-          />
+            <FondoPerfil
+              bannerPath={profile?.bannerPath ?? null}
+              encuadre={profile?.bannerEncuadre ?? null}
+            />
 
-          {/*
-           * La salida, en escritorio: un redondel de vidrio sobre la imagen.
-           *
-           * Antes era una franja negra con «← Tu perfil» **encima** del panel,
-           * fuera del fondo. Con la imagen a sangre esa franja quedaba como un
-           * techo opaco cortando justo lo que se eligió para que se vea, y el
-           * título repetía el nombre que está dos centímetros más abajo, en
-           * grande. El botón flota sobre la imagen igual que «Editar perfil» del
-           * otro extremo, así la banda de arriba es una sola cosa.
-           *
-           * En el teléfono no va: el perfil es una pestaña, y una pestaña no
-           * tiene volver — se sale tocando otra.
-           */}
-          {ancho ? (
-            <View className="absolute left-4 top-4 z-10">
-              <BotonVidrio
-                onPress={() => volver(router, '/')}
-                label="Volver"
-                radius={22}
-                style={{ height: 44, width: 44 }}
-              >
-                <IconBack size={19} color={ICON_COLOR.foreground} />
-              </BotonVidrio>
-            </View>
-          ) : null}
+            {/*
+             * La salida, en escritorio: un redondel de vidrio sobre la imagen.
+             *
+             * Antes era una franja negra con «← Tu perfil» **encima** del panel,
+             * fuera del fondo. Con la imagen a sangre esa franja quedaba como un
+             * techo opaco cortando justo lo que se eligió para que se vea, y el
+             * título repetía el nombre que está dos centímetros más abajo, en
+             * grande. El botón flota sobre la imagen igual que «Editar perfil» del
+             * otro extremo, así la banda de arriba es una sola cosa.
+             *
+             * En el teléfono no va: el perfil es una pestaña, y una pestaña no
+             * tiene volver — se sale tocando otra.
+             */}
+            {ancho ? (
+              <View className="absolute left-4 top-4 z-10">
+                <BotonVidrio
+                  onPress={() => volver(router, '/')}
+                  label="Volver"
+                  radius={22}
+                  style={{ height: 44, width: 44 }}
+                >
+                  <IconBack size={19} color={ICON_COLOR.foreground} />
+                </BotonVidrio>
+              </View>
+            ) : null}
 
-          {/*
-           * Bajando, la cáscara se pliega; subiendo, vuelve.
-           *
-           * Faltaba **solo acá**: inicio, la biblioteca, cada lista y el chat lo
-           * tienen. Como el plegado es global, se llegaba al perfil ya plegado
-           * desde cualquiera de esas y no había forma de desplegarlo desplazando
-           * —era la única pantalla donde el gesto no hacía nada—. Se notaba como
-           * que el perfil tenía otro layout que el resto de la app.
-           */}
-          <ScrollView
-            contentContainerClassName="items-center px-4"
-            /* En el teléfono el contenido arranca debajo del reloj —la
+            {/*
+             * Bajando, la cáscara se pliega; subiendo, vuelve.
+             *
+             * Faltaba **solo acá**: inicio, la biblioteca, cada lista y el chat lo
+             * tienen. Como el plegado es global, se llegaba al perfil ya plegado
+             * desde cualquiera de esas y no había forma de desplegarlo desplazando
+             * —era la única pantalla donde el gesto no hacía nada—. Se notaba como
+             * que el perfil tenía otro layout que el resto de la app.
+             */}
+            <ScrollView
+              contentContainerClassName="items-center px-4"
+              /* En el teléfono el contenido arranca debajo del reloj —la
                pantalla ya no reserva esa franja— con el respiro que ya tenía
                (`pt-6`). El estilo pisa a la clase, así que va todo acá. */
-            contentContainerStyle={{
-              /* En escritorio el contenido arranca **debajo del redondel de
+              contentContainerStyle={{
+                /* En escritorio el contenido arranca **debajo del redondel de
                  volver**, que ahora flota sobre la imagen: con el respiro de
                  antes, el avatar quedaba justo abajo del botón en una ventana
                  angosta. Es más o menos lo que ocupaba la franja negra, así que
                  el ritmo vertical queda igual y la imagen gana esa altura. */
-              /* Y con un fondo elegido, todo eso queda como piso: la primera
+                /* Y con un fondo elegido, todo eso queda como piso: la primera
                  pantalla es de la imagen y el contenido arranca a ~2/5 del
                  alto, scrolleando por encima. Ver `alturaDeHeroe`. */
-              /* Armando, el arranque es el compacto aunque haya fondo: la
+                /* Armando, el arranque es el compacto aunque haya fondo: la
                  primera pantalla pasa a ser del mosaico, que es lo que se
                  está tocando, y no de la imagen. Sin esto las piezas caían
                  justo debajo de la barra de armado. */
-              paddingTop: alturaDeHeroe(
-                altoVentana,
-                armando ? null : profile?.bannerPath,
-                ancho ? 72 : arriba.top + 24,
-              ),
-              paddingBottom: piso,
-            }}
-            {...colapso}
-            scrollEnabled={!arrastrando}
-          >
-            {!profile ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              /* `propio` en falso en las vitrinas: acá se ven como las ve
+                paddingTop: alturaDeHeroe(
+                  altoVentana,
+                  armando ? null : profile?.bannerPath,
+                  ancho ? 72 : arriba.top + 24,
+                ),
+                paddingBottom: piso,
+              }}
+              {...colapso}
+              scrollEnabled={!arrastrando}
+            >
+              {!profile ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                /* `propio` en falso en las vitrinas: acá se ven como las ve
                  cualquiera, sin cruces ni flechas. Los controles están en el
                  editor. */
-              <View className="w-full gap-8" style={{ maxWidth: ancho ? CAP_ANCHO : MAX_W }}>
-                {ancho ? (
-                  <>
-                    {/* La banda: identidad acostada de punta a punta, con el
+                <View className="w-full gap-8" style={{ maxWidth: ancho ? CAP_ANCHO : MAX_W }}>
+                  {ancho ? (
+                    <>
+                      {/* La banda: identidad acostada de punta a punta, con el
                         botón contra el borde derecho. Va sobre `FondoPerfil`,
                         que sangra a todo el ancho del panel por detrás. */}
-                    <Identidad
-                      nombre={nombre}
-                      usuario={profile.username}
-                      avatarPath={profile.avatarPath}
-                      encuadre={profile.avatarEncuadre}
-                      marco={profile.marco}
-                      bio={profile.bio ?? ''}
-                      banda
-                      accion={armando ? barraDeArmado : botonEditar}
-                    />
+                      <Identidad
+                        nombre={nombre}
+                        usuario={profile.username}
+                        avatarPath={profile.avatarPath}
+                        encuadre={profile.avatarEncuadre}
+                        marco={profile.marco}
+                        bio={profile.bio ?? ''}
+                        banda
+                        accion={armando ? barraDeArmado : botonEditar}
+                      />
 
-                    {/*
-                     * Las dos columnas son las dos pestañas del teléfono.
-                     *
-                     * A la izquierda el mosaico solo —«Space»—, y a la derecha
-                     * «Reciente» con los números debajo. Antes la pared de
-                     * reacciones iba arriba del mosaico y las listas abajo, con
-                     * lo que la columna ancha apilaba tres cosas de tres
-                     * dueños distintos y la angosta tenía seis números. Ahora
-                     * cada columna es una sola idea: lo que armaste, y lo que
-                     * pasa. Es el reparto de Steam —las vitrinas mandan, el
-                     * costado acompaña— y hace que el mosaico sea lo primero
-                     * de la izquierda también armando, cuando la barra vive en
-                     * la banda y las piezas tienen que estar a mano debajo.
-                     */}
-                    <View className="flex-row items-start gap-6">
-                      <View className="min-w-0 flex-1">{vitrinas}</View>
-                      <View className="w-[320px] shrink-0 gap-8">
-                        {reciente}
-                        {resumen}
+                      {/*
+                       * Las dos columnas son las dos pestañas del teléfono.
+                       *
+                       * A la izquierda el mosaico solo —«Space»—, y a la derecha
+                       * «Reciente» con los números debajo. Antes la pared de
+                       * reacciones iba arriba del mosaico y las listas abajo, con
+                       * lo que la columna ancha apilaba tres cosas de tres
+                       * dueños distintos y la angosta tenía seis números. Ahora
+                       * cada columna es una sola idea: lo que armaste, y lo que
+                       * pasa. Es el reparto de Steam —las vitrinas mandan, el
+                       * costado acompaña— y hace que el mosaico sea lo primero
+                       * de la izquierda también armando, cuando la barra vive en
+                       * la banda y las piezas tienen que estar a mano debajo.
+                       */}
+                      <View className="flex-row items-start gap-6">
+                        <View className="min-w-0 flex-1">{vitrinas}</View>
+                        <View className="w-[320px] shrink-0 gap-8">
+                          {reciente}
+                          {resumen}
+                        </View>
                       </View>
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <Identidad
-                      nombre={nombre}
-                      usuario={profile.username}
-                      avatarPath={profile.avatarPath}
-                      encuadre={profile.avatarEncuadre}
-                      marco={profile.marco}
-                      bio={profile.bio ?? ''}
-                      centrado
-                    />
+                    </>
+                  ) : (
+                    <>
+                      <Identidad
+                        nombre={nombre}
+                        usuario={profile.username}
+                        avatarPath={profile.avatarPath}
+                        encuadre={profile.avatarEncuadre}
+                        marco={profile.marco}
+                        bio={profile.bio ?? ''}
+                        centrado
+                      />
 
-                    {filaDePestanas}
+                      {filaDePestanas}
 
-                    {/* Mientras no se sabe con cuál abrir, nada: mejor un
+                      {/* Mientras no se sabe con cuál abrir, nada: mejor un
                         instante en blanco que una pestaña que salta. */}
-                    {pestana === 'space' ? (
-                      vitrinas
-                    ) : pestana === 'reciente' ? (
-                      <View className="gap-8">
-                        {reciente}
-                        {/* Los números de tu biblioteca, al pie, como antes.
+                      {pestana === 'space' ? (
+                        vitrinas
+                      ) : pestana === 'reciente' ? (
+                        <View className="gap-8">
+                          {reciente}
+                          {/* Los números de tu biblioteca, al pie, como antes.
                             Sin los minutos: «Reciente» ya abrió con ellos. */}
-                        {resumen}
-                      </View>
-                    ) : null}
-                  </>
-                )}
-              </View>
-            )}
-          </ScrollView>
+                          {resumen}
+                        </View>
+                      ) : null}
+                    </>
+                  )}
+                </View>
+              )}
+            </ScrollView>
 
-          {/*
-           * La barra de armado: el tema del perfil, el «+» y «Hecho».
-           *
-           * Flota sobre el mosaico, apoyada en lo que ya flota debajo —el
-           * reproductor, las pestañas—, y es de vidrio porque es de la capa de
-           * controles: por detrás pasan las piezas. El «+» es el único blanco
-           * pleno: es lo principal que hay para hacer mientras se arma.
-           */}
-          {/* En el teléfono la barra flota al pie, apoyada sobre el
+            {/*
+             * La barra de armado: el tema del perfil, el «+» y «Hecho».
+             *
+             * Flota sobre el mosaico, apoyada en lo que ya flota debajo —el
+             * reproductor, las pestañas—, y es de vidrio porque es de la capa de
+             * controles: por detrás pasan las piezas. El «+» es el único blanco
+             * pleno: es lo principal que hay para hacer mientras se arma.
+             */}
+            {/* En el teléfono la barra flota al pie, apoyada sobre el
               reproductor y las pestañas. En escritorio va arriba, en la banda
               —donde estaba «Editar perfil»—: ahí no hay nada que la tape y no
               tapa nada. */}
-          {armando && profile && !ancho ? (
-            <View
-              pointerEvents="box-none"
-              className="absolute inset-x-0 items-center"
-              style={{ bottom: chrome + 12 }}
-            >
-              {barraDeArmado}
-            </View>
-          ) : null}
-        </Panel>
-      </View>
-    </SafeAreaView>
+            {armando && profile && !ancho ? (
+              <View
+                pointerEvents="box-none"
+                className="absolute inset-x-0 items-center"
+                style={{ bottom: chrome + 12 }}
+              >
+                {barraDeArmado}
+              </View>
+            ) : null}
+          </Panel>
+        </View>
+      </SafeAreaView>
+    </FuentePerfil>
   )
 }

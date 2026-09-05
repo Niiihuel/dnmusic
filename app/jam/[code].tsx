@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import {
+  ActivityIndicator,
+  ScrollView,
+  Pressable,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { verJam, type VistaJam } from '../../src/services/jam'
@@ -106,7 +113,16 @@ export default function EntrarAlJam() {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
-      <View className="flex-1 items-center justify-center gap-8 px-6">
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 24,
+          padding: 24,
+          paddingBottom: 120,
+        }}
+      >
         <View className="items-center gap-3">
           <Avatar name={nombreHost} path={vista.hostAvatarPath} size={72} />
           <View className="items-center gap-1">
@@ -143,7 +159,7 @@ export default function EntrarAlJam() {
         <View className="w-full max-w-[420px] gap-3">
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Entrar al Jam"
+            accessibilityLabel="Unirme al Jam"
             onPress={() => void entrar()}
             disabled={entrando}
             className="items-center rounded-full bg-primary px-5 py-3.5 active:opacity-80"
@@ -152,7 +168,7 @@ export default function EntrarAlJam() {
               <ActivityIndicator color="#121212" />
             ) : (
               <Text className="text-primary-foreground text-[15px] font-semibold">
-                Entrar al Jam
+                Unirme al Jam
               </Text>
             )}
           </Pressable>
@@ -164,7 +180,7 @@ export default function EntrarAlJam() {
             <Text className="text-muted-foreground text-[13px]">Ahora no</Text>
           </Pressable>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   )
 }
@@ -184,7 +200,7 @@ function Opcion({
   return (
     <Pressable
       accessibilityRole="radio"
-      accessibilityState={{ selected: activa }}
+      accessibilityState={{ checked: activa }}
       onPress={onPress}
       className={`flex-row items-center gap-3 rounded-2xl px-4 py-3.5 active:opacity-80 ${
         activa ? 'bg-muted' : 'bg-card'

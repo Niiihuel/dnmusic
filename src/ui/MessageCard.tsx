@@ -1,3 +1,5 @@
+import { InvitacionJam } from './InvitacionJam'
+import { invitacionEnTexto } from '../lib/invitacionJam'
 import { Image, Pressable, Text, View } from 'react-native'
 import type { Message } from '../models/message'
 import { artworkSource } from '../lib/artwork'
@@ -65,11 +67,12 @@ export function MessageCard({
           ) : null}
         </View>
 
-        {message.text.length > 0 ? (
+        {message.text.length > 0 && !invitacionEnTexto(message.text) ? (
           <Text className="text-card-foreground text-[16px] leading-6">{message.text}</Text>
         ) : null}
       </Pressable>
 
+      {invitacionEnTexto(message.text) ? <InvitacionJam texto={message.text} /> : null}
       {song ? (
         <View className={`flex-row items-center gap-3 rounded-lg p-2.5 ${selected ? 'bg-background' : 'bg-muted'}`}>
           <Pressable

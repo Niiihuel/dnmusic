@@ -1,27 +1,9 @@
 import { useFonts } from 'expo-font'
 import type { TextStyle } from 'react-native'
 
-/**
- * Las tipografías de las piezas de texto del perfil.
- *
- * Es la otra mitad de «vestir» una pieza (ver `lib/tema`): el tema le da el
- * color, la fuente le da la voz. Un encabezado en una serif de revista no
- * dice lo mismo que en una manuscrita, y eso es exactamente lo que Airbuds
- * deja elegir en su Space.
- *
- * **Seis, con personalidad distinta, y una sola variante cada una.** Vienen
- * de Google Fonts, empaquetadas con la app (`@expo-google-fonts/*`): así se
- * ven igual en iOS, en la web y en el escritorio, y sin red. Se importa el
- * archivo puntual y no el índice del paquete, que arrastraría todos los pesos
- * al bundle. Una variante por familia es lo que mantiene el costo bajo —unos
- * 60–200 KB cada una— y lo que evita la trampa de iOS con los pesos: con un
- * solo archivo cargado, `fontWeight` tiene que ir en `normal`, porque el
- * archivo ya es del peso que se ve.
- *
- * La interfaz de la app no cambia de tipografía: esto es contenido de la
- * persona, como su tema y su fondo. Por eso vive en `estilo.fuente` de la
- * vitrina y no en `docs/DESIGN.md`. Un id que el cliente no conozca cae a la
- * del sistema, como los temas caen al vidrio.
+/** Seis fuentes empaquetadas para todo el perfil, disponibles también sin red.
+ * `profiles.fuente` se comparte con quienes visitan el perfil; FuentePerfil
+ * conserva los tamaños de cada texto y aplica la familia elegida en conjunto.
  */
 export type Fuente = {
   id: string

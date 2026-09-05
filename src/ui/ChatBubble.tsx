@@ -1,3 +1,5 @@
+import { InvitacionJam } from './InvitacionJam'
+import { invitacionEnTexto } from '../lib/invitacionJam'
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 import type { Message } from '../models/message'
@@ -46,13 +48,15 @@ export function ChatBubble({
 
   return (
     <View className={`w-full ${mine ? 'items-end' : 'items-start'}`}>
-      <View className="max-w-[78%] min-w-[140px]">
+      <View style={{ maxWidth: '88%', minWidth: 140 }}>
         <View
           className={`gap-2 rounded-2xl px-3.5 py-2.5 active:opacity-80 ${
             mine ? 'rounded-br-sm bg-muted' : 'rounded-bl-sm bg-card'
           }`}
         >
-          {message.text ? (
+          {invitacionEnTexto(message.text) ? (
+            <InvitacionJam texto={message.text} />
+          ) : message.text ? (
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ selected }}

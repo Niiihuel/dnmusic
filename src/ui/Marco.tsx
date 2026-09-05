@@ -1,7 +1,9 @@
-import { useEffect, useId, type ReactNode } from 'react'
+import { COLECCION_MARCOS, MarcoColeccion } from './MarcosColeccion'
+import { createContext, useContext, useEffect, useId, type ReactNode } from 'react'
 import { View, type ViewStyle } from 'react-native'
 import Animated, {
   cancelAnimation,
+  useReducedMotion,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -85,6 +87,7 @@ export const FAMILIAS_MARCO: { id: FamiliaMarco; titulo: string }[] = [
 ]
 
 export const MARCOS = [
+  ...COLECCION_MARCOS,
   { id: 'aro', nombre: 'Aro', familia: 'clasicos' },
   { id: 'pulso', nombre: 'Pulso', familia: 'clasicos' },
   { id: 'orbita', nombre: 'Órbita', familia: 'clasicos' },
@@ -250,36 +253,50 @@ function Radial({
 /* Las animaciones: tres formas de moverse, y nada más.                       */
 /* ------------------------------------------------------------------------ */
 
+const Movimiento = createContext(true)
+
 const SUAVE: EasingFunction = Easing.inOut(Easing.sin)
 const LINEAL: EasingFunction = Easing.linear
 
 /** Un valor que va y vuelve entre 0 y 1, suave, para siempre. */
 function useVaiven(duracion: number, demora = 0, easing: EasingFunction = SUAVE) {
+  const animado = useContext(Movimiento)
+  const reducir = useReducedMotion()
   const t = useSharedValue(0)
   useEffect(() => {
+    if (!animado || reducir) return
     t.value = withDelay(demora, withRepeat(withTiming(1, { duration: duracion, easing }), -1, true))
     return () => cancelAnimation(t)
-  }, [t, duracion, demora, easing])
+  }, [animado, reducir, t, duracion, demora, easing])
   return t
 }
 
 /** Un valor que sube de 0 a 1 y arranca de nuevo: para lo que nace, viaja y se apaga. */
 function useCiclo(duracion: number, demora = 0) {
+  const animado = useContext(Movimiento)
+  const reducir = useReducedMotion()
   const t = useSharedValue(0)
   useEffect(() => {
-    t.value = withDelay(demora, withRepeat(withTiming(1, { duration: duracion, easing: LINEAL }), -1))
+    if (!animado || reducir) return
+    t.value = withDelay(
+      demora,
+      withRepeat(withTiming(1, { duration: duracion, easing: LINEAL }), -1),
+    )
     return () => cancelAnimation(t)
-  }, [t, duracion, demora])
+  }, [animado, reducir, t, duracion, demora])
   return t
 }
 
 /** Una vuelta entera, constante. `sentido` -1 gira al revés. */
 function useGiro(duracion: number, sentido: 1 | -1 = 1) {
+  const animado = useContext(Movimiento)
+  const reducir = useReducedMotion()
   const g = useSharedValue(0)
   useEffect(() => {
+    if (!animado || reducir) return
     g.value = withRepeat(withTiming(360 * sentido, { duration: duracion, easing: LINEAL }), -1)
     return () => cancelAnimation(g)
-  }, [g, duracion, sentido])
+  }, [animado, reducir, g, duracion, sentido])
   return g
 }
 
@@ -312,7 +329,15 @@ function Giro({
  * contenedor de quien lo apila tiene que dejar `overflow: visible`, que es lo
  * que hace un `View` si nadie le dice lo contrario.
  */
-export function Marco({ marco, size }: { marco: string | null | undefined; size: number }) {
+export function Marco({
+  marco,
+  size,
+  animado = true,
+}: {
+  marco: string | null | undefined
+  size: number
+  animado?: boolean
+}) {
   if (!marco || !MARCOS.some((m) => m.id === marco)) {
     /* Sin marco, o uno que esta versión no conoce: nada, sin romper. */
     return null
@@ -325,7 +350,9 @@ export function Marco({ marco, size }: { marco: string | null | undefined; size:
       pointerEvents="none"
       style={{ position: 'absolute', top: -aire, left: -aire, width: geo.lado, height: geo.lado, overflow: 'visible' }}
     >
-      <Pieza geo={geo} />
+      <Movimiento.Provider value={animado}>
+        <Pieza geo={geo} />
+      </Movimiento.Provider>
     </View>
   )
 }
@@ -1184,6 +1211,13 @@ function Brillo({ geo }: { geo: Geo }) {
 
 /** Qué se dibuja con cada nombre. */
 const PIEZAS: Record<MarcoId, (props: { geo: Geo }) => ReactNode> = {
+  eclipse: () => <MarcoColeccion id="eclipse" />,
+  astral: () => <MarcoColeccion id="astral" />,
+  zarza: () => <MarcoColeccion id="zarza" />,
+  jardin: () => <MarcoColeccion id="jardin" />,
+  cromo: () => <MarcoColeccion id="cromo" />,
+  reliquia: () => <MarcoColeccion id="reliquia" />,
+
   aro: Aro,
   pulso: Pulso,
   orbita: Orbita,

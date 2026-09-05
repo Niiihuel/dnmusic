@@ -1,5 +1,6 @@
+import { TextoPerfil as Text } from './FuentePerfil'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Pressable, View } from 'react-native'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { fetchStats, type EstadisticasPerfil } from '../services/plays'
 import type { Playlist } from '../services/playlists'

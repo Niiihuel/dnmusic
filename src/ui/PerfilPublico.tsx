@@ -1,12 +1,21 @@
-import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
-import { Image, Modal, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { TECLADO_FISICO } from '../lib/teclado'
+import { TextoPerfil as Text } from './FuentePerfil'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type ReactNode,
+} from 'react'
+import { Image, Modal, Pressable, useWindowDimensions, View } from 'react-native'
 import { Gesture, GestureDetector, State } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
+  LinearTransition,
+  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
-  withSequence,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated'
@@ -39,7 +48,7 @@ import { fetchStats, type EstadisticasPerfil } from '../services/plays'
 import { useMyProfile } from '../state/session'
 import type { Encuadre } from '../services/profile'
 import { Avatar } from './Avatar'
-import { ES_WEB, Glass } from './Glass'
+import { Glass } from './Glass'
 import { estiloEncuadrado } from './Encuadre'
 import { aireDelMarco, Marco } from './Marco'
 import { Confirmar } from './Confirmar'
@@ -707,8 +716,15 @@ export function Vitrinas({
    * en la nada.
    */
   function soltar(desde: number, tx: number, ty: number) {
+    // El gesto y el orden se actualizan juntos, sin volver primero al origen.
+    activa.value = -1
+    dx.value = 0
+    dy.value = 0
     const propio = rects.current.get(desde)
-    if (!propio) return
+    if (!propio) {
+      onArrastre?.(false)
+      return
+    }
     const cx = propio.x + propio.w / 2 + tx
     const cy = propio.y + propio.h / 2 + ty
     let mejor = desde
@@ -885,70 +901,55 @@ export function Vitrinas({
    * vez de estirarse, que es lo que la hace verse elegida y no sobrante.
    */
   /* Grande y entero ocupan su fila; solo dos mitades vecinas comparten una. */
-  const filas: FilaDeMosaico[] = []
-  for (let i = 0; i < vitrinas.length; i++) {
-    const v = vitrinas[i]
-    if (v.ancho === 'mitad' && vitrinas[i + 1]?.ancho === 'mitad') {
-      filas.push([{ v, i }, { v: vitrinas[i + 1], i: i + 1 }])
-      i++
-    } else {
-      filas.push([{ v, i }])
-    }
-  }
 
   return (
-    /* Armando, las filas se separan un poco más: los controles de las
-       esquinas viven en ese hueco y necesitan su aire. */
-    <View className={editando ? 'gap-4' : 'gap-3'}>
-      {filas.map((fila) => (
-        <View key={fila[0].v.id} className={editando ? 'flex-row gap-4' : 'flex-row gap-3'}>
-          {fila.map(({ v, i }) => (
-            <CeldaDeMosaico
-              key={v.id}
-              indice={i}
-              mitad={v.ancho === 'mitad'}
-              agarre={agarre}
-              editando={editando}
-              onApreton={apretonDe(v, i)}
-            >
-              <Vitrina
-                showcase={v}
-                temaGlobal={temaGlobal}
-                playlists={listas}
-                esMio={esMio}
-                reacciones={reacciones.get(v.id) ?? null}
-                playing={player.currentId === v.id && player.playing}
-                sonando={player.currentId === v.id}
-                posicionMs={player.posicionSV}
-                transcurridoMs={player.positionMs}
-                /*
-                 * Escuchar puede fallar —la URL del audio se firma en el
-                 * momento— y sin capturarlo quedaba una promesa rechazada
-                 * suelta: en el teléfono eso es un recuadro rojo a pantalla
-                 * completa por no poder reproducir una tarjeta. Se avisa y se
-                 * sigue.
-                 */
-                onTogglePlay={(id, song) => {
-                  player.toggle(id, song).catch((e: unknown) => avisar(mensajeError(e), true))
-                }}
-                onSeek={(id, song, fraccion) => {
-                  player.seek(id, song, fraccion).catch((e: unknown) => avisar(mensajeError(e), true))
-                }}
-                onOpenPlaylist={() => undefined}
-                onAbrirSubspace={editando ? undefined : onAbrirSubspace}
-                recarga={recarga}
-                editando={editando}
-                onRemove={editando ? () => pedirSacar(v) : undefined}
-                onEditar={editando ? onEditar : undefined}
-                onRedimensionar={editando ? (d) => redimensionar(v, d) : undefined}
-                onAncho={editando ? () => cambiarAncho(v.id, siguienteAncho(v.ancho, v.kind)) : undefined}
-              />
-            </CeldaDeMosaico>
-          ))}
-          {/* Una chica suelta queda a media fila: el hueco al lado la hace
-              verse elegida y no sobrante. Con `flex-1` sola se estiraba. */}
-          {fila.length === 1 && fila[0].v.ancho === 'mitad' ? <View className="flex-1" /> : null}
-        </View>
+    /* Las celdas mantienen su identidad al cambiar de fila: el layout puede
+       animarse sin desmontar reproductores ni volver a pedir imágenes. */
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
+      {vitrinas.map((v, i) => (
+        <CeldaDeMosaico
+          key={v.id}
+          indice={i}
+          mitad={v.ancho === 'mitad'}
+          agarre={agarre}
+          editando={editando}
+          onApreton={apretonDe(v, i)}
+        >
+          <Vitrina
+            showcase={v}
+            temaGlobal={temaGlobal}
+            playlists={listas}
+            esMio={esMio}
+            reacciones={reacciones.get(v.id) ?? null}
+            playing={player.currentId === v.id && player.playing}
+            sonando={player.currentId === v.id}
+            posicionMs={player.posicionSV}
+            transcurridoMs={player.positionMs}
+            /*
+             * Escuchar puede fallar —la URL del audio se firma en el
+             * momento— y sin capturarlo quedaba una promesa rechazada
+             * suelta: en el teléfono eso es un recuadro rojo a pantalla
+             * completa por no poder reproducir una tarjeta. Se avisa y se
+             * sigue.
+             */
+            onTogglePlay={(id, song) => {
+              player.toggle(id, song).catch((e: unknown) => avisar(mensajeError(e), true))
+            }}
+            onSeek={(id, song, fraccion) => {
+              player.seek(id, song, fraccion).catch((e: unknown) => avisar(mensajeError(e), true))
+            }}
+            onOpenPlaylist={() => undefined}
+            onAbrirSubspace={editando ? undefined : onAbrirSubspace}
+            recarga={recarga}
+            editando={editando}
+            onRemove={editando ? () => pedirSacar(v) : undefined}
+            onEditar={editando ? onEditar : undefined}
+            onRedimensionar={editando ? (d) => redimensionar(v, d) : undefined}
+            onAncho={
+              editando ? () => cambiarAncho(v.id, siguienteAncho(v.ancho, v.kind)) : undefined
+            }
+          />
+        </CeldaDeMosaico>
       ))}
 
       <Confirmar
@@ -1120,32 +1121,13 @@ function CeldaDeMosaico({
   /* eslint-disable react-hooks/immutability -- escribir `.value` es la API
      imperativa de un SharedValue; es el mismo gesto que `EncoladaArrastrable`
      en la cola, que el analizador acepta con otra forma de llegar al valor. */
-  const temblor = useSharedValue(0)
-  useEffect(() => {
-    if (!editando) {
-      temblor.value = withTiming(0, { duration: 120 })
-      return
-    }
-    /* Las pares y las impares tiemblan a contrafase: en fase, la grilla entera
-       se hamaca como una sola cosa y se ve como un error de render. */
-    const fase = indice % 2 === 0 ? 1 : -1
-    temblor.value = withRepeat(
-      withSequence(
-        withTiming(fase, { duration: 150 }),
-        withTiming(-fase, { duration: 150 }),
-      ),
-      -1,
-      true,
-    )
-  }, [editando, indice, temblor])
-
   const estilo = useAnimatedStyle(() => {
     if (agarre.activa.value === indice) {
       return {
         transform: [
           { translateX: agarre.dx.value },
           { translateY: agarre.dy.value },
-          { scale: 1.04 },
+          { scale: 1.012 },
           { rotate: '0deg' },
         ],
         zIndex: 20,
@@ -1153,14 +1135,9 @@ function CeldaDeMosaico({
       }
     }
     return {
-      transform: [
-        { translateX: 0 },
-        { translateY: 0 },
-        { scale: 1 },
-        { rotate: `${temblor.value * 0.7}deg` },
-      ],
+      transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }],
       zIndex: 0,
-      opacity: withTiming(agarre.activa.value >= 0 ? 0.7 : 1, { duration: 160 }),
+      opacity: withTiming(agarre.activa.value >= 0 ? 0.9 : 1, { duration: 160 }),
     }
   })
 
@@ -1173,7 +1150,9 @@ function CeldaDeMosaico({
    * activa sin desplazamiento, y la manija de tamaño tiene el suyo, que
    * arranca antes y gana.
    */
-  const arrastre = (ES_WEB ? Gesture.Pan().minDistance(12) : Gesture.Pan().activateAfterLongPress(130))
+  const arrastre = (
+    TECLADO_FISICO ? Gesture.Pan().minDistance(12) : Gesture.Pan().activateAfterLongPress(220)
+  )
     .enabled(editando)
     .onStart(() => {
       activa.value = indice
@@ -1186,9 +1165,6 @@ function CeldaDeMosaico({
       dy.value = e.translationY
     })
     .onEnd((e) => {
-      activa.value = -1
-      dx.value = 0
-      dy.value = 0
       runOnJS(soltar)(indice, e.translationX, e.translationY)
     })
     .onFinalize((e) => {
@@ -1213,32 +1189,23 @@ function CeldaDeMosaico({
     })
 
   return (
-    <View
-      className={mitad ? 'flex-1' : 'w-full'}
-      ref={(r) => {
+    <Animated.View
+      layout={LinearTransition.duration(180).reduceMotion(ReduceMotion.System)}
+      style={{ width: mitad ? '50%' : '100%', padding: 6 }}
+      ref={(r: unknown) => {
         agarre.refs.current.set(indice, r as MedibleRef)
       }}
     >
       <GestureDetector gesture={Gesture.Race(arrastre, apreton)}>
         <Animated.View
-          style={[estilo, editando && ES_WEB ? ({ cursor: 'grab', touchAction: 'none' } as object) : null]}
+          style={[estilo, editando && TECLADO_FISICO ? ({ cursor: 'grab' } as object) : null]}
         >
           {children}
         </Animated.View>
       </GestureDetector>
-    </View>
+    </Animated.View>
   )
 }
-
-/**
- * Una fila del mosaico: una vitrina entera, o dos mitades.
- *
- * Lleva el índice además de la vitrina porque los controles de reordenar
- * razonan sobre la **secuencia**, no sobre la fila: subir la de la derecha de
- * la segunda fila es moverla un lugar en la lista, y la fila donde termina se
- * vuelve a derivar sola.
- */
-type FilaDeMosaico = { v: Showcase; i: number }[]
 
 /**
  * Cuántas vitrinas hay, para el resumen y para la pestaña con la que abre el
