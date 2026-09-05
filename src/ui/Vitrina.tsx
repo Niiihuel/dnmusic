@@ -6,6 +6,7 @@ import Svg, { Circle, Defs, Line, RadialGradient, Rect, Stop } from 'react-nativ
 import { runOnJS, type SharedValue } from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
 import { useColorPortada } from '../lib/colorPortada'
+import { estiloDeFuente } from '../lib/fuentes'
 import { coloresDe, temaEfectivo, type ColoresVitrina, type Degradado, type Tema } from '../lib/tema'
 import type { SongSnippet } from '../models/message'
 import {
@@ -239,7 +240,7 @@ export function Vitrina({
           {showcase.kind === 'texto' ? (
             <Text
               className={grande ? 'text-[19px] leading-7' : 'text-[15px] leading-6'}
-              style={{ color: colores.texto }}
+              style={[{ color: colores.texto }, estiloDeFuente(vestido.fuente, grande ? 19 : 15)]}
             >
               {showcase.texto}
             </Text>
@@ -247,7 +248,7 @@ export function Vitrina({
             <Text
               className="text-center text-[15px] font-bold"
               numberOfLines={1}
-              style={{ color: colores.texto }}
+              style={[{ color: colores.texto }, estiloDeFuente(vestido.fuente, 15)]}
             >
               {showcase.titulo}
             </Text>
@@ -266,7 +267,7 @@ export function Vitrina({
           ) : showcase.kind === 'album' ? (
             <VitrinaAlbum album={showcase.album} c={colores} mitad={showcase.ancho === 'mitad'} />
           ) : showcase.kind === 'letra' ? (
-            <VitrinaLetra letra={showcase.letra} c={colores} grande={grande} />
+            <VitrinaLetra letra={showcase.letra} c={colores} grande={grande} fuente={vestido.fuente} />
           ) : showcase.kind === 'subspace' ? (
             <VitrinaSubspace
               showcase={showcase}
@@ -510,10 +511,10 @@ function CapaPatron({ tipo, color, w, h }: { tipo: 'rayas' | 'puntos' | 'halo'; 
  * Los controles del modo de edición, en las esquinas de la tarjeta.
  *
  * Son los del «Space» de Airbuds y los de los widgets del iPhone: el «−» que
- * saca arriba a la izquierda, el lápiz arriba a la derecha y, abajo a la
- * derecha, la manija que se arrastra para cambiar el tamaño. Desbordan la
- * tarjeta a propósito —viven en las esquinas, no adentro— así el contenido
- * no tiene que hacerles lugar.
+ * saca arriba a la izquierda, el lápiz arriba a la derecha y, en el medio de
+ * cada lado, las asas que se arrastran para cambiar el tamaño. Desbordan la
+ * tarjeta a propósito —viven en los bordes, no adentro— así el contenido no
+ * tiene que hacerles lugar.
  */
 function Controles({
   onRemove,
@@ -553,7 +554,7 @@ function Controles({
         </Pressable>
       ) : null}
       {onRedimensionar || onAncho ? (
-        <ManijaDeTamano onRedimensionar={onRedimensionar} onAncho={onAncho} />
+        <AsasDeTamano onRedimensionar={onRedimensionar} onAncho={onAncho} />
       ) : null}
     </>
   )
@@ -573,25 +574,66 @@ const BOTON_ESQUINA: ViewStyle = {
 }
 
 /**
- * La manija de tamaño: el arco de abajo a la derecha, que se arrastra.
+ * Las asas de tamaño: una en el medio de cada lado, sólidas.
  *
- * Arrastrar hacia la derecha la ensancha (1×1 → 2×1), hacia abajo la hace
- * más alta (2×1 → 2×2), y en sentido contrario la achica. Un toque sin
- * arrastre pasa al tamaño siguiente, que es lo que hacía el chip de antes y
- * lo que un lector de pantalla puede accionar.
+ * Es el idioma de los editores de pantalla —Figma, los widgets de iOS—: una
+ * pieza se estira desde cualquiera de sus bordes. Tirar del lado derecho o
+ * del izquierdo hacia afuera la ensancha (1×1 → 2×1) y hacia adentro la
+ * angosta; tirar del de arriba o del de abajo hacia afuera la hace más alta
+ * (2×1 → 2×2) y hacia adentro más baja. Un toque sin arrastre pasa al tamaño
+ * siguiente, que es lo que un lector de pantalla puede accionar.
+ *
+ * Son píldoras blancas opacas apoyadas a caballo del borde —mitad adentro,
+ * mitad afuera— y no un trazo de esquina: el arco de antes se leía como un
+ * borde de la tarjeta y sobre un fondo claro casi no se veía. La sombra
+ * oscura las despega de cualquier tema, sin dibujar un borde.
  */
-function ManijaDeTamano({
+type Lado = 'arriba' | 'abajo' | 'izquierda' | 'derecha'
+
+const LADOS: Lado[] = ['arriba', 'abajo', 'izquierda', 'derecha']
+
+/** Lo largo y lo grueso de un asa. */
+const ASA_LARGO = 26
+const ASA_GRUESO = 6
+
+function AsasDeTamano({
   onRedimensionar,
   onAncho,
 }: {
   onRedimensionar?: (direccion: Redimension) => void
   onAncho?: () => void
 }) {
+  return (
+    <>
+      {LADOS.map((lado) => (
+        <Asa key={lado} lado={lado} onRedimensionar={onRedimensionar} onAncho={onAncho} />
+      ))}
+    </>
+  )
+}
+
+function Asa({
+  lado,
+  onRedimensionar,
+  onAncho,
+}: {
+  lado: Lado
+  onRedimensionar?: (direccion: Redimension) => void
+  onAncho?: () => void
+}) {
+  const horizontal = lado === 'izquierda' || lado === 'derecha'
+
+  /*
+   * Hacia afuera del borde es crecer; hacia adentro, achicar. «Afuera» depende
+   * del lado: a la derecha es +x, a la izquierda −x, arriba −y, abajo +y.
+   */
   const decidir = (dx: number, dy: number) => {
     if (!onRedimensionar) return
-    if (Math.abs(dx) < UMBRAL_REDIMENSION && Math.abs(dy) < UMBRAL_REDIMENSION) return
-    if (Math.abs(dx) >= Math.abs(dy)) onRedimensionar(dx > 0 ? 'ancho' : 'angosto')
-    else onRedimensionar(dy > 0 ? 'alto' : 'bajo')
+    const recorrido = horizontal ? dx : dy
+    if (Math.abs(recorrido) < UMBRAL_REDIMENSION) return
+    const haciaAfuera =
+      lado === 'derecha' || lado === 'abajo' ? recorrido > 0 : recorrido < 0
+    onRedimensionar(horizontal ? (haciaAfuera ? 'ancho' : 'angosto') : haciaAfuera ? 'alto' : 'bajo')
   }
 
   const arrastre = Gesture.Pan()
@@ -604,39 +646,42 @@ function ManijaDeTamano({
   })
   const gesto = Gesture.Race(arrastre, toque)
 
+  /* A caballo del borde: el centro del asa cae justo sobre la línea. */
+  const posicion: ViewStyle =
+    lado === 'arriba'
+      ? { top: -ASA_GRUESO / 2 - 8, left: '50%', marginLeft: -ASA_LARGO / 2 - 8 }
+      : lado === 'abajo'
+        ? { bottom: -ASA_GRUESO / 2 - 8, left: '50%', marginLeft: -ASA_LARGO / 2 - 8 }
+        : lado === 'izquierda'
+          ? { left: -ASA_GRUESO / 2 - 8, top: '50%', marginTop: -ASA_LARGO / 2 - 8 }
+          : { right: -ASA_GRUESO / 2 - 8, top: '50%', marginTop: -ASA_LARGO / 2 - 8 }
+
   return (
     <GestureDetector gesture={gesto}>
       <View
         accessibilityRole="adjustable"
-        accessibilityLabel="Cambiar el tamaño: arrastrá, o tocá para el siguiente"
-        hitSlop={10}
+        accessibilityLabel={`Cambiar el tamaño desde ${lado}: arrastrá, o tocá para el siguiente`}
+        hitSlop={6}
         style={
           {
             position: 'absolute',
-            right: -4,
-            bottom: -4,
-            width: 30,
-            height: 30,
             zIndex: 30,
-            alignItems: 'flex-end',
-            justifyContent: 'flex-end',
-            /* Solo web: el cursor de estirar. RN no lo tipa, RNW lo pasa. */
-            cursor: 'nwse-resize',
+            /* El área de toque es más grande que el asa: 8px de aire a cada
+               lado, para agarrarla con el dedo sin apuntar. */
+            padding: 8,
+            ...posicion,
+            /* Solo web: el cursor de estirar según el eje. RN no lo tipa. */
+            cursor: horizontal ? 'ew-resize' : 'ns-resize',
           } as object
         }
       >
-        {/* El arco: solo el borde de abajo y el de la derecha, redondeado en
-            esa esquina. Es la forma de la manija de Airbuds, y se lee como
-            «de acá se tira» sin necesitar un ícono. */}
         <View
           style={{
-            width: 22,
-            height: 22,
-            borderRightWidth: 3.5,
-            borderBottomWidth: 3.5,
-            borderColor: '#FFFFFF',
-            borderBottomRightRadius: 12,
-            boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+            width: horizontal ? ASA_GRUESO : ASA_LARGO,
+            height: horizontal ? ASA_LARGO : ASA_GRUESO,
+            borderRadius: ASA_GRUESO / 2,
+            backgroundColor: '#FFFFFF',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,0,0,0.25)',
           }}
         />
       </View>
@@ -887,7 +932,11 @@ function VitrinaSubspace({
           Sub-space
         </Text>
       </View>
-      <Text className="text-[15px] font-bold" numberOfLines={mitad ? 2 : 1} style={{ color: c.texto }}>
+      <Text
+        className="text-[15px] font-bold"
+        numberOfLines={mitad ? 2 : 1}
+        style={[{ color: c.texto }, estiloDeFuente(showcase.estilo.fuente, 15)]}
+      >
         {showcase.titulo}
       </Text>
       <Text className="text-[12px]" numberOfLines={1} style={{ color: c.secundario }}>
@@ -938,7 +987,17 @@ function Grilla({ tapas, c }: { tapas: string[]; c: ColoresVitrina }) {
  * palabras. La canción firma abajo, chiquita — es la fuente, no el punto. Si
  * hay tapa, va arriba y chica, como la de la pieza de letras de Airbuds.
  */
-function VitrinaLetra({ letra, c, grande = false }: { letra: ShowcaseLetra; c: ColoresVitrina; grande?: boolean }) {
+function VitrinaLetra({
+  letra,
+  c,
+  grande = false,
+  fuente = null,
+}: {
+  letra: ShowcaseLetra
+  c: ColoresVitrina
+  grande?: boolean
+  fuente?: string | null
+}) {
   return (
     <View className={grande ? 'gap-4 py-4' : 'gap-3'}>
       <View className="flex-row items-center justify-between">
@@ -951,7 +1010,7 @@ function VitrinaLetra({ letra, c, grande = false }: { letra: ShowcaseLetra; c: C
       </View>
       <Text
         className={`font-semibold italic ${grande ? 'text-[24px] leading-9' : 'text-[17px] leading-6'}`}
-        style={{ color: c.texto }}
+        style={[{ color: c.texto }, estiloDeFuente(fuente, grande ? 24 : 17)]}
       >
         “{letra.texto}”
       </Text>

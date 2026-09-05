@@ -72,3 +72,4 @@ npm-debug.*
 desktop/web/
 desktop/release/
 desktop/release-notas.md
+desktop/diagnosticos/

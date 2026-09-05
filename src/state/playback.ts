@@ -1562,6 +1562,11 @@ export const useNowPlayingView = () => useStore(store, (state) => state.view)
 export const useManualPlaying = () => useStore(store, (state) => state.manual !== null)
 export const useUpNextCount = () => useStore(store, (state) => state.upNext.length)
 export const usePlaybackIndex = () => useStore(store, (state) => state.index)
+/* Lo justo para que un indicador siga el sonido sin suscribirse al estado
+   entero: la posición, la duración y si el motor ya tiene el audio. */
+export const usePlaybackPositionMs = () => useStore(store, (state) => state.positionMs)
+export const usePlaybackDurationMs = () => useStore(store, (state) => state.durationMs)
+export const usePlaybackCargada = () => useStore(store, (state) => state.cargada)
 export const usePlaybackOriginId = () => useStore(store, (state) => state.origin?.id ?? null)
 /** El origen de lo que suena, leído una vez: lo anota el historial al cambiar de tema. */
 export function playbackOrigin(): PlaybackOrigin | null {

@@ -256,8 +256,11 @@ export function HomeFeed({
               />
             ))}
             {/* La portada que no llegó solo grita si no hay nada más para
-                mostrar; con filas propias arriba, se calla. */}
-            {inicio.sections.length === 0 && !inicio.misGeneros.length ? (
+                mostrar; con filas propias arriba, se calla. Y mientras viene
+                —se pasó del tope— un esqueleto abajo, no un error. */}
+            {inicio.portadaPendiente ? (
+              <Loading filas={1} />
+            ) : inicio.sections.length === 0 && !inicio.misGeneros.length && !hayLoTuyo(inicio) ? (
               <VacioError
                 icono={<IconMusic size={22} color={ICON_COLOR.muted} />}
                 titulo="La portada no llegó"
@@ -789,10 +792,21 @@ function GeneroPage({
   )
 }
 
-function Loading() {
+/** Si el inicio tiene algo propio que mostrar: con eso, la portada que falta no es un error. */
+function hayLoTuyo(i: Inicio): boolean {
+  return (
+    i.escuchas.length > 0 ||
+    i.origenes.length > 0 ||
+    i.artistas.length > 0 ||
+    i.radio.length > 0 ||
+    i.mixes.length > 0
+  )
+}
+
+function Loading({ filas = 2 }: { filas?: number }) {
   return (
     <View className="gap-7">
-      {[0, 1].map((row) => (
+      {Array.from({ length: filas }, (_, row) => row).map((row) => (
         <View key={row} className="gap-3">
           <View className="px-6">
             <Skeleton width={200} height={19} />
@@ -1144,6 +1158,12 @@ type Inicio = {
   mixes: MixPersonal[]
   /** Lo que se desprende de tu artista más escuchado. */
   porque: HomeItem[]
+  /**
+   * La portada de YouTube todavía viene: se pasó del tope y se dibuja el
+   * resto sin ella. Cuando llegue se suma abajo, que es donde va y donde
+   * sumarla no mueve nada de lo que ya se está mirando.
+   */
+  portadaPendiente: boolean
 }
 
 /** Cuánto se espera, como mucho, a que llegue todo. Después va lo que haya. */
@@ -1175,9 +1195,22 @@ function useInicio(): { inicio: Inicio | null; recargar: () => void } {
   useEffect(() => {
     let vivo = true
     void (async () => {
+      /*
+       * La portada se pide con los demás pero se espera aparte: es lo que más
+       * tarda —el servicio en frío puede pasar los doce segundos— y lo único
+       * que puede llegar después sin que se note, porque va al final. Si se
+       * pasa del tope, el inicio sale sin ella y ella se suma cuando llega.
+       */
+      let portadaLlego = false
+      const portada = fetchHome()
+        .catch(() => [] as HomeSection[])
+        .then((secs) => {
+          portadaLlego = true
+          return secs
+        })
       const [sections, generos, semillas, escuchas, origenes, artistas, listas, radio, mixes] =
         await Promise.all([
-          oVacio(fetchHome(), []),
+          oVacio(portada, []),
           oVacio(fetchGeneros(), []),
           oVacio(listarSemillas(), []),
           oVacio(ultimasEscuchas(12), []),
@@ -1209,7 +1242,13 @@ function useInicio(): { inicio: Inicio | null; recargar: () => void } {
         radio,
         mixes: conTapa(mixes, artistas, escuchas),
         porque,
+        portadaPendiente: !portadaLlego,
       })
+      if (!portadaLlego) {
+        void portada.then((secs) => {
+          if (vivo) setInicio((prev) => (prev ? { ...prev, sections: secs, portadaPendiente: false } : prev))
+        })
+      }
     })()
     return () => {
       vivo = false

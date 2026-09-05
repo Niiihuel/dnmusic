@@ -54,6 +54,8 @@ export type JamMiembro = {
 export type JamItem = PlaylistTrack & {
   agregadoPor: string
   posicion: number
+  /** La puso el relleno del Jam, no una persona. Va después de lo pedido. */
+  automatica: boolean
 }
 
 export type JamEstado = {
@@ -150,6 +152,7 @@ function itemFromRow(row: unknown): JamItem[] {
       truePeak: typeof r.true_peak === 'number' ? r.true_peak : undefined,
       agregadoPor: texto(r.added_by),
       posicion: numero(r.posicion),
+      automatica: r.automatica === true,
     },
   ]
 }
@@ -233,8 +236,16 @@ export async function cambiarSalida(jamId: string, salida: 'propia' | 'host'): P
   await rpc('jam_salida', { p_jam_id: jamId, p_salida: salida })
 }
 
-export async function agregarAJam(jamId: string, track: PlaylistTrack): Promise<void> {
-  await rpc('jam_agregar', { p_jam_id: jamId, p_cancion: cancionAJson(track) })
+/**
+ * Sumar una canción al Jam. `automatica` es la del relleno: va al final;
+ * lo que pide una persona va antes de lo sugerido (ver `jam_agregar`).
+ */
+export async function agregarAJam(
+  jamId: string,
+  track: PlaylistTrack,
+  automatica = false,
+): Promise<void> {
+  await rpc('jam_agregar', { p_jam_id: jamId, p_cancion: cancionAJson(track), p_automatica: automatica })
 }
 
 export async function quitarDeJam(jamId: string, itemId: string): Promise<void> {

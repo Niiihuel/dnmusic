@@ -2,7 +2,7 @@
    existen para mutarse desde los worklets de gesto: es su contrato, no una
    mutación de estado de React. La regla no lo conoce y marca cada `x.value =`
    dentro de un gesto; el mismo falso positivo vive en Waveform.tsx. */
-import { useCallback } from 'react'
+import { Fragment, useCallback } from 'react'
 import { Image, Pressable, Text, View } from 'react-native'
 import { Gesture, GestureDetector, State } from 'react-native-gesture-handler'
 import Animated, {
@@ -136,8 +136,15 @@ export function ColaJam({
         </View>
       ) : (
         proximas.map((item, i) => (
+          <Fragment key={item.id}>
+            {/* El corte entre lo pedido y lo sugerido, una sola vez: es lo que
+                dice que lo tuyo va a sonar antes que la radio del Jam. */}
+            {item.automatica && !proximas[i - 1]?.automatica ? (
+              <Text className="pb-1 pt-3 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                {i === 0 ? 'Después · sigue el Jam' : 'Después · sigue el Jam'}
+              </Text>
+            ) : null}
           <FilaProxima
-            key={item.id}
             item={item}
             i={i}
             total={proximas.length}
@@ -151,6 +158,7 @@ export function ColaJam({
             onSoltar={soltar}
             onCancelar={cancelo}
           />
+          </Fragment>
         ))
       )}
     </View>
@@ -183,7 +191,15 @@ function FilaProxima({
   onSoltar,
   onCancelar,
 }: {
-  item: { id: string; title: string; artist: string; artworkUrl: string; artworkPath: string | null; agregadoPor: string }
+  item: {
+    id: string
+    title: string
+    artist: string
+    artworkUrl: string
+    artworkPath: string | null
+    agregadoPor: string
+    automatica: boolean
+  }
   i: number
   total: number
   indiceReal: number
@@ -273,7 +289,11 @@ function FilaProxima({
             </Text>
             <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
               {item.artist}
-              {dueno ? ` · la puso ${dueno.displayName?.trim() || dueno.username}` : ''}
+              {item.automatica
+                ? ' · sigue el Jam'
+                : dueno
+                  ? ` · la puso ${dueno.displayName?.trim() || dueno.username}`
+                  : ''}
             </Text>
           </View>
         </Pressable>

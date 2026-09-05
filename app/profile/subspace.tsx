@@ -44,12 +44,19 @@ const ALTO_BARRA = 64
  * el tema es del perfil entero, y se elige desde ahí.
  */
 export default function SubspaceScreen() {
-  const { owner, id, usuario } = useLocalSearchParams<{ owner?: string; id?: string; usuario?: string }>()
+  const { owner, id, usuario, armar } = useLocalSearchParams<{
+    owner?: string
+    id?: string
+    usuario?: string
+    armar?: string
+  }>()
   const router = useRouter()
   const yo = useMyProfile()
   const propio = !!owner && !!yo && yo.userId === owner
   const chrome = useChromeH()
-  const [armando, setArmando] = useState(false)
+  /* Recién creado se entra armando (`?armar=1`): la pieza está vacía y lo
+     único que hay para hacer es llenarla. */
+  const [armando, setArmando] = useState(armar === '1')
   /* Mientras se arrastra una pieza el scroll se congela: un ScrollView vivo
      abajo del dedo se pelea con el gesto. */
   const [arrastrando, setArrastrando] = useState(false)

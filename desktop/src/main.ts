@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import {
   arrancarActualizador,
   buscarAhora,
+  descargarAhora,
   estadoActual,
   instalarYReabrir,
   seguirAudioDe,
@@ -217,10 +218,8 @@ async function resolverDesdeAca(opciones: unknown): Promise<Aporte> {
   if (typeof o.token !== 'string' || !o.token) throw new Error('sin sesión')
   registrar('resolviendo de a bordo:', o.videoId)
   /*
-   * Va a un proceso hijo en modo Node y no acá: adentro del main de Electron,
-   * BotGuard acuña un PO token degradado y YouTube contesta «This video is
-   * unavailable» en todos los clientes. Está medido; el porqué entero, en
-   * `resolutor-hijo.ts`.
+   * El hijo descarga sin ocupar el main. Para atestar pide tokens a un
+   * WebContents de Chromium aislado; ver `resolutor-hijo.ts`.
    */
   return resolverEnHijo({
     videoId: o.videoId,
@@ -289,6 +288,7 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on('ventana:enfocar', () => traerAlFrente())
     ipcMain.handle('actualizacion:estado', () => estadoActual())
     ipcMain.on('actualizacion:buscar', () => void buscarAhora(true))
+    ipcMain.on('actualizacion:descargar', () => descargarAhora())
     ipcMain.on('actualizacion:instalar', () => void instalarYReabrir())
     ipcMain.handle('resolver:aportar', (_evento, opciones) => resolverDesdeAca(opciones))
     ipcMain.handle('descarga:lista', (_evento, opciones) =>

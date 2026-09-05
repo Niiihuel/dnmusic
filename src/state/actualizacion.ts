@@ -1,3 +1,4 @@
+import { usePreferencia } from './ajustes'
 import { createStore, useStore } from './store'
 
 /**
@@ -45,6 +46,7 @@ type PuenteEscritorio = {
   actualizacion?: {
     estado: () => Promise<EstadoActualizacion>
     buscar: () => void
+    descargar?: () => void
     instalar: () => void
     alCambiar: (escuchar: (estado: EstadoActualizacion) => void) => () => void
   }
@@ -56,6 +58,7 @@ function puente(): PuenteEscritorio['actualizacion'] | undefined {
 
 /** Si esta sesión corre adentro de la app de escritorio. */
 export const HAY_ACTUALIZADOR = puente() !== undefined
+export const PUEDE_DESCARGAR_ACTUALIZACION = typeof puente()?.descargar === 'function'
 
 type Estado = {
   estado: EstadoActualizacion
@@ -84,12 +87,28 @@ const store = createStore<Estado>({
  */
 if (HAY_ACTUALIZADOR) {
   const p = puente()
-  void p?.estado().then((estado) => store.set({ estado }))
-  p?.alCambiar((estado) => store.set({ estado }))
+  let huboEvento = false
+  p?.alCambiar((estado) => {
+    huboEvento = true
+    store.set({ estado })
+  })
+  void p
+    ?.estado()
+    .then((estado) => {
+      if (!huboEvento) store.set({ estado })
+    })
+    .catch(() => {
+      if (!huboEvento)
+        store.set({ estado: { fase: 'error', mensaje: 'No se pudo consultar el actualizador.' } })
+    })
 }
 
 export function buscarActualizacion(): void {
   puente()?.buscar()
+}
+
+export function descargarActualizacion(): void {
+  puente()?.descargar?.()
 }
 
 export function instalarActualizacion(): void {
@@ -123,7 +142,9 @@ function seleccionarAviso(s: Estado): Extract<EstadoActualizacion, { fase: 'list
 
 /** La versión lista para instalar, con sus notas. La usa la píldora. */
 export function useAvisoDeActualizacion() {
-  return useStore(store, seleccionarAviso)
+  const activo = usePreferencia('avisosActualizacion')
+  const aviso = useStore(store, seleccionarAviso)
+  return activo ? aviso : null
 }
 
 /**
@@ -136,5 +157,7 @@ export function useAvisoDeActualizacion() {
  * hay a hay, que es exactamente lo que le importa (regla `rerender-derived-state`).
  */
 export function useHayAvisoActualizacion(): boolean {
-  return useStore(store, (s) => seleccionarAviso(s) !== null)
+  const activo = usePreferencia('avisosActualizacion')
+  const hay = useStore(store, (s) => seleccionarAviso(s) !== null)
+  return activo && hay
 }

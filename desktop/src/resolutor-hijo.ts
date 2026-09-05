@@ -1,36 +1,70 @@
 import { resolverYAportar } from './resolutor.js'
+import { configurarProveedorTokens } from './potoken.js'
+import { ErrorDescargaYouTube } from './descarga-youtube.js'
 
 /**
- * El resolutor, corriendo en un proceso **Node de verdad**.
- *
- * No es una manía de arquitectura: es la única forma medida de que YouTube
- * entregue el audio. BotGuard —el que decide si sos un navegador o un script—
- * examina el runtime donde corre, y adentro del proceso principal de Electron
- * su veredicto es peor: acuña un PO token **degradado**, y con ese token los
- * /player contestan «This video is unavailable» en los siete clientes. Medido
- * en esta misma máquina, misma IP, mismo minuto y mismo código:
- *
- *   · en el main de Electron  → token de 120-124 caracteres → no reproduce
- *   · en Node a secas         → token de 168-172 caracteres → resuelve y baja
- *
- * Se lanza con el binario de Electron en modo `ELECTRON_RUN_AS_NODE`, así que
- * no hay que llevar otro Node: es el mismo ejecutable sin Chromium encima.
- *
- * El hijo **vive** entre pedidos a propósito. La sesión de InnerTube y el
- * acuñador de tokens se guardan en memoria con su vencimiento (ver
- * `potoken.ts`), y rehacerlos por cada canción no solo sumaría medio segundo a
- * cada una: crear sesiones nuevas a repetición es justo lo que parece un bot.
+ * Descifra y descarga en un hijo Node para no ocupar el main de Electron.
+ * La atestación corre en Chromium: el hijo solo intercambia bindings y tokens
+ * por IPC. Sesión, cola y pausa de descargas viven entre pedidos.
  */
 
 type Pedido = {
+  tipo?: undefined
   id: number
   opciones: { videoId: string; apiBase: string; token: string; artworkUrl?: string; durationMs?: number }
 }
 
-process.on('message', (mensaje: Pedido) => {
+type Token = { tipo: 'potoken'; id: number; token?: string; error?: string }
+let siguienteToken = 1
+const tokens = new Map<number, (respuesta: Token) => void>()
+configurarProveedorTokens((binding) => new Promise<string>((resolve, reject) => {
+  const id = siguienteToken++
+  const timer = setTimeout(() => {
+    tokens.delete(id)
+    reject(new Error('El navegador no respondió al pedido de token'))
+  }, 45_000)
+  tokens.set(id, (respuesta) => {
+    clearTimeout(timer)
+    tokens.delete(id)
+    if (respuesta.token) resolve(respuesta.token)
+    else reject(new Error(respuesta.error ?? 'No se obtuvo PO token'))
+  })
+  process.send?.({ tipo: 'potoken', id, binding }, (error: Error | null) => {
+    if (error) tokens.get(id)?.({ tipo: 'potoken', id, error: error.message })
+  })
+}))
+
+// Una descarga a la vez. Los pedidos repetidos comparten también la subida.
+let cola: Promise<unknown> = Promise.resolve()
+let pausaHasta = 0
+const trabajos = new Map<string, ReturnType<typeof resolverYAportar>>()
+
+process.on('message', (mensaje: Pedido | Token) => {
+  if (mensaje?.tipo === 'potoken') {
+    tokens.get(mensaje.id)?.(mensaje)
+    return
+  }
   const { id, opciones } = mensaje ?? ({} as Pedido)
   if (!id || !opciones) return
-  resolverYAportar(opciones)
+  const clave = JSON.stringify([opciones.apiBase, opciones.token, opciones.videoId])
+  let trabajo = trabajos.get(clave)
+  if (!trabajo) {
+    trabajo = cola.then(async () => {
+      if (Date.now() < pausaHasta) {
+        const segundos = Math.ceil((pausaHasta - Date.now()) / 1000)
+        throw new Error(`YouTube pausó las descargas. Probá en ${segundos} segundos.`)
+      }
+      try {
+        return await resolverYAportar(opciones)
+      } catch (e) {
+        if (e instanceof ErrorDescargaYouTube && e.pausaMs) pausaHasta = Date.now() + e.pausaMs
+        throw e
+      }
+    })
+    trabajos.set(clave, trabajo)
+    cola = trabajo.catch(() => {}).finally(() => trabajos.delete(clave))
+  }
+  trabajo
     .then((aporte) => process.send?.({ id, ok: true, aporte }))
     .catch((e: unknown) => process.send?.({ id, ok: false, error: (e as Error).message }))
 })

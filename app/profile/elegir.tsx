@@ -19,6 +19,7 @@ import { playQueue, togglePlayback, usePlaybackTrack, useWantPlay } from '../../
 import { useKeyboardH, usePiso } from '../../src/state/shell'
 import { actualizarBorrador, useBorrador } from '../../src/state/vitrinaBorrador'
 import { EstadoTapa } from '../../src/ui/CoverState'
+import { Hoja, useHojaModal } from '../../src/ui/Hoja'
 import { Panel } from '../../src/ui/Panel'
 import { SearchField } from '../../src/ui/SearchField'
 import { SkeletonList } from '../../src/ui/Skeleton'
@@ -80,6 +81,8 @@ export default function ElegirMusica() {
     pedido === 'artista' ? 'artista' : pedido === 'album' ? 'album' : pedido === 'letra' ? 'letra' : 'cancion'
   const piso = usePiso(24)
   const teclado = useKeyboardH()
+  /* Ventana en escritorio, como el editor: ver `useHojaModal`. */
+  const modal = useHojaModal()
   const borrador = useBorrador()
 
   const [termino, setTermino] = useState('')
@@ -293,6 +296,7 @@ export default function ElegirMusica() {
   const filaAlbum = (a: AlbumHallado) => <FilaAlbum key={a.albumId} album={a} onPress={() => elegirAlbum(a)} />
 
   return (
+    <Hoja>
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="min-h-0 flex-1">
         <View className="flex-row items-center gap-3 px-3 py-1">
@@ -350,7 +354,7 @@ export default function ElegirMusica() {
               <ScrollView
                 className="min-h-0 flex-1"
                 contentContainerClassName="px-2"
-                contentContainerStyle={{ paddingBottom: piso + teclado }}
+                contentContainerStyle={{ paddingBottom: (modal ? 24 : piso) + teclado }}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
               >
@@ -470,6 +474,7 @@ export default function ElegirMusica() {
         </Panel>
       </View>
     </SafeAreaView>
+    </Hoja>
   )
 }
 

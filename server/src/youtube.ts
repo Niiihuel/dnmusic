@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 import { mintSessionToken, mintVideoToken, tokensSinRespaldo } from './potoken.js'
 import { UA_NAVEGADOR, fetchYt } from './salida.js'
 import { FFMPEG, FFPROBE } from './binarios.js'
+import { cacheConsultas } from './cache-consultas.js'
 
 const run = promisify(execFile)
 
@@ -275,6 +276,30 @@ async function getClient(): Promise<Innertube> {
   return clientPromise
 }
 
+let metadataPromise: Promise<Innertube> | null = null
+let metadataExpiraEn = 0
+
+/** Buscar y navegar el catálogo no necesitan descifrar audio ni generar PO tokens. */
+async function getMetadataClient(): Promise<Innertube> {
+  if (metadataPromise && Date.now() < metadataExpiraEn) return metadataPromise
+  metadataExpiraEn = Date.now() + CLIENT_TTL_MS
+  const propia = Innertube.create({
+    client_type: ClientType.MUSIC,
+    cookie: YT_COOKIE,
+    retrieve_player: false,
+    retrieve_innertube_config: false,
+    generate_session_locally: false,
+    user_agent: UA_NAVEGADOR,
+    fetch: fetchYt,
+  }).then(async (yt) => {
+    await refrescarVersionDeMusica(yt)
+    return yt
+  })
+  metadataPromise = propia
+  propia.catch(() => { if (metadataPromise === propia) metadataPromise = null })
+  return propia
+}
+
 export type YtTrack = {
   videoId: string
   title: string
@@ -379,10 +404,14 @@ function trackFrom(raw: unknown): YtTrack[] {
 }
 
 export async function search(query: string, limit = 20): Promise<YtTrack[]> {
-  const yt = await getClient()
-  const res = await yt.music.search(query, { type: 'song' })
-  return (res.songs?.contents ?? []).slice(0, limit).flatMap(trackFrom)
+  return (await buscarCanciones(query)).slice(0, limit)
 }
+
+const buscarCanciones = cacheConsultas(async (query: string): Promise<YtTrack[]> => {
+  const yt = await getMetadataClient()
+  const res = await yt.music.search(query, { type: 'song' })
+  return (res.songs?.contents ?? []).flatMap(trackFrom)
+})
 
 /**
  * La forma de onda de una canción, para el editor de fragmentos.
@@ -463,7 +492,11 @@ export type YtArtistHit = {
  * dos llamadas en paralelo salen igual de rápido y se mapean sin adivinar.
  */
 export async function searchArtists(query: string, limit = 4): Promise<YtArtistHit[]> {
-  const yt = await getClient()
+  return (await buscarArtistas(query)).slice(0, limit)
+}
+
+const buscarArtistas = cacheConsultas(async (query: string): Promise<YtArtistHit[]> => {
+  const yt = await getMetadataClient()
   const res = await yt.music.search(query, { type: 'artist' })
   const found = (res.artists?.contents ?? res.contents ?? []) as unknown[]
 
@@ -491,8 +524,7 @@ export async function searchArtists(query: string, limit = 4): Promise<YtArtistH
         },
       ]
     })
-    .slice(0, limit)
-}
+})
 
 export type ResolvedAudio = {
   videoId: string
@@ -1033,7 +1065,7 @@ function shelfKind(title: string): 'songs' | 'albums' | 'singles' | 'relacionado
 }
 
 export async function getArtist(channelId: string): Promise<YtArtist> {
-  const yt = await getClient()
+  const yt = await getMetadataClient()
   const artist = await yt.music.getArtist(channelId)
 
   /*
@@ -1139,7 +1171,7 @@ export type YtAlbum = {
  * igual en las dos. Se leen las dos y gana la que tenga algo.
  */
 export async function getAlbum(albumId: string): Promise<YtAlbum> {
-  const yt = await getClient()
+  const yt = await getMetadataClient()
   const album = await yt.music.getAlbum(albumId)
   return collectionFrom(album.header, album.contents ?? [])
 }
@@ -1155,7 +1187,7 @@ export async function getAlbum(albumId: string): Promise<YtAlbum> {
  * YouTube marca la *vista* de una lista— y la API lo quiere sin él.
  */
 export async function getPlaylistInfo(playlistId: string): Promise<YtAlbum> {
-  const yt = await getClient()
+  const yt = await getMetadataClient()
   const clean = playlistId.startsWith('VL') ? playlistId.slice(2) : playlistId
   const playlist = await yt.music.getPlaylist(clean)
   return collectionFrom(playlist.header, playlist.contents ?? [])
@@ -1274,7 +1306,7 @@ export type YtHomeSection = {
  * salvo ocupar lugar, porque no se puede abrir ni reproducir.
  */
 export async function getHome(): Promise<YtHomeSection[]> {
-  const yt = await getClient()
+  const yt = await getMetadataClient()
 
   /*
    * Dos fuentes, en este orden.
@@ -1478,7 +1510,7 @@ export async function getGeneros(): Promise<YtGenero[]> {
     return generosCache.generos
   }
 
-  const yt = await getClient()
+  const yt = await getMetadataClient()
   const page = await yt.actions.execute('/browse', {
     browse_id: 'FEmusic_moods_and_genres',
     client: 'YTMUSIC',
@@ -1527,7 +1559,7 @@ export async function getGeneros(): Promise<YtGenero[]> {
 
 /** Una categoría: sus listas y álbumes, en la forma de la portada. */
 export async function getGenero(params: string): Promise<{ items: YtHomeItem[] }> {
-  const yt = await getClient()
+  const yt = await getMetadataClient()
   const page = await yt.actions.execute('/browse', {
     browse_id: 'FEmusic_moods_and_genres_category',
     params,

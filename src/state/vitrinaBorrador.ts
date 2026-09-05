@@ -84,7 +84,7 @@ export function empezarBorrador(kind: ShowcaseKind, parentId: string | null = nu
               : kind === 'texto'
                 ? { kind: 'texto', texto: '' }
                 : null,
-      estilo: { tema: null, fondo: null },
+      estilo: { tema: null, fondo: null, fuente: null },
       parentId,
     },
   })

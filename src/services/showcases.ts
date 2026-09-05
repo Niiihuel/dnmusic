@@ -153,9 +153,11 @@ export type ShowcaseLetra = {
 export type ShowcaseEstilo = {
   tema: Tema | null
   fondo: ShowcaseImagen | null
+  /** La tipografía de las piezas de texto; `null` es la del sistema. Ver `lib/fuentes`. */
+  fuente: string | null
 }
 
-export const SIN_ESTILO: ShowcaseEstilo = { tema: null, fondo: null }
+export const SIN_ESTILO: ShowcaseEstilo = { tema: null, fondo: null, fuente: null }
 
 /** Lo que muestra una vitrina, sin su identidad ni su tamaño. */
 export type ShowcaseContenido =
@@ -202,6 +204,7 @@ function estiloDe(v: unknown): ShowcaseEstilo {
       fondo && typeof fondo === 'object' && typeof fondo.path === 'string' && fondo.path
         ? { path: fondo.path, encuadre: encuadreDe(fondo.encuadre) }
         : null,
+    fuente: typeof r.fuente === 'string' && r.fuente ? r.fuente : null,
   }
 }
 
@@ -375,6 +378,7 @@ function estiloParaLaBase(estilo: ShowcaseEstilo): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   if (estilo.tema) out.tema = estilo.tema
   if (estilo.fondo) out.fondo = estilo.fondo
+  if (estilo.fuente) out.fuente = estilo.fuente
   return out
 }
 
@@ -472,19 +476,26 @@ export async function addShowcase(
   /* Dentro de qué sub-space; `null` es el mosaico principal. La posición se
      cuenta dentro del mismo padre: cada mosaico tiene su propio orden. */
   parentId: string | null = null,
-): Promise<void> {
+): Promise<string> {
   const position = await countShowcases(ownerId, parentId)
 
-  const { error } = await getSupabase().from('profile_showcases').insert({
-    owner_id: ownerId,
-    kind,
-    position,
-    payload,
-    ancho,
-    estilo: estiloParaLaBase(estilo),
-    parent_id: parentId,
-  })
+  const { data, error } = await getSupabase()
+    .from('profile_showcases')
+    .insert({
+      owner_id: ownerId,
+      kind,
+      position,
+      payload,
+      ancho,
+      estilo: estiloParaLaBase(estilo),
+      parent_id: parentId,
+    })
+    .select('id')
+    .single()
   if (error) throw error
+  /* El id vuelve para quien lo necesite enseguida: un sub-space recién
+     creado se abre para armarlo adentro, sin volver a buscarlo. */
+  return (data as { id: string }).id
 }
 
 /**

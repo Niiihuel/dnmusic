@@ -1,5 +1,6 @@
 import { ActivityIndicator, Text, View } from 'react-native'
 import { PlayingBars } from './PlayingBars'
+import { usePlaybackCargada } from '../state/playback'
 import { useProgresoResolucion } from '../state/resolucion'
 import { ICON_COLOR, IconPause, IconPlay } from './icons'
 
@@ -56,7 +57,11 @@ export function EstadoTapa({
   hovered?: boolean
   size?: number
 }) {
-  const visible = busy || sounding || hovered
+  /* La que suena pero cuyo audio el motor todavía no tiene también está
+     cargando: spinner, no barras sobre silencio. Ver `TrackRow`. */
+  const cargada = usePlaybackCargada()
+  const cargando = busy || (sounding && !cargada)
+  const visible = cargando || sounding || hovered
 
   return (
     <View
@@ -67,7 +72,7 @@ export function EstadoTapa({
         backgroundColor: visible ? 'rgba(10,10,10,0.66)' : 'transparent',
       }}
     >
-      {busy ? (
+      {cargando ? (
         <IndicadorPreparando />
       ) : sounding && !hovered ? (
         <PlayingBars playing={playing} size={13} />

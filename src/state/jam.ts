@@ -727,7 +727,7 @@ export async function rellenarJamSiFalta() {
     // En serie y no en paralelo: jam_agregar ancla cada una al final de la
     // fila, y una ráfaga concurrente las dejaría en cualquier orden.
     for (const track of tanda) {
-      await agregarAJam(ahora.jam.id, track)
+      await agregarAJam(ahora.jam.id, track, true)
     }
 
     /*

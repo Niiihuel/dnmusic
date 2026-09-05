@@ -142,6 +142,19 @@ textarea:focus {
 }
 
 /*
+ * Y en el resto de los controles tampoco: el contorno de foco del navegador
+ * —amarillo en Chrome, azul en Safari— es el único color que quedaba en la
+ * pantalla, y aparecía al tocar Tab sobre una fila o un botón y se quedaba ahí.
+ * La app marca lo activo por luminancia (`docs/DESIGN.md`), no con un anillo
+ * del sistema. Es una decisión de producto tomada a sabiendas del costo para
+ * quien navega solo con teclado.
+ */
+*:focus,
+*:focus-visible {
+  outline: none !important;
+}
+
+/*
  * ── Texto seleccionado ─────────────────────────────────────────────────────
  *
  * El azul del sistema era el único color de la pantalla, y se veía justo en el

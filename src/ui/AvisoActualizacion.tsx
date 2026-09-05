@@ -69,7 +69,7 @@ export function AvisoActualizacion() {
         radius={22}
         style={[HAY_VIDRIO ? null : { backgroundColor: 'rgb(31,31,31)' }, animado]}
       >
-        <View className="max-w-[520px] flex-row items-center gap-3 py-2.5 pl-4 pr-2.5">
+        <View className="max-w-[480px] flex-row items-center gap-3 py-2.5 pl-4 pr-2.5">
           <IconSparkles size={17} color={ICON_COLOR.foreground} />
 
           {/*
@@ -84,20 +84,10 @@ export function AvisoActualizacion() {
             className="min-w-0 flex-1 active:opacity-70"
           >
             <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
-              Versión {aviso.version} lista
+              Actualización lista
             </Text>
-            {/*
-              Dos renglones y no uno.
-              El título de una versión es una frase, no una etiqueta, y con uno
-              solo se cortaba en la mitad de la primera idea — «…y las
-              actualizaciones se d…», visto en la verificación. Dos alcanzan
-              para cualquiera de las que escribimos y la píldora sigue siendo
-              una píldora.
-            */}
-            <Text className="text-muted-foreground text-[12px] leading-4" numberOfLines={2}>
-              {/* El título de la versión nueva sale del feed; si no vino, se
-                  dice lo que igual va a pasar. */}
-              {aviso.notas?.titulo ?? 'Se instala sola al cerrar la app.'}
+            <Text className="text-muted-foreground text-[12px] leading-4" numberOfLines={1}>
+              {aviso.version} · Se instala al cerrar.
             </Text>
           </Pressable>
 
@@ -105,7 +95,7 @@ export function AvisoActualizacion() {
             accessibilityRole="button"
             accessibilityLabel="Reiniciar e instalar ahora"
             onPress={instalarActualizacion}
-            className="rounded-full bg-primary px-3.5 py-2 active:opacity-80"
+            className="min-h-11 justify-center rounded-full bg-primary px-3.5 active:opacity-80"
           >
             <Text className="text-primary-foreground text-[13px] font-semibold">Reiniciar</Text>
           </Pressable>
@@ -114,7 +104,7 @@ export function AvisoActualizacion() {
             accessibilityRole="button"
             accessibilityLabel="Después"
             onPress={() => descartarAviso(aviso.version)}
-            className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
+            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
           >
             <IconClose size={15} color={ICON_COLOR.muted} />
           </Pressable>

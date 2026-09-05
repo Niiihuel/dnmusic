@@ -1,64 +1,24 @@
 import { ClientType, Innertube, Platform, UniversalCache } from 'youtubei.js'
-import { runInNewContext } from 'node:vm'
+import { evaluarPlayer } from './evaluar-player.js'
+import type { ObservadorDiagnostico } from './diagnostico-eventos.js'
+import { CLIENTES_RESOLVE, type ClienteResolve } from './clientes-youtube.js'
 import { mintSessionToken, mintVideoToken } from './potoken.js'
+import { bajarPorRangos } from './descarga-youtube.js'
 import { CABECERAS_MEDIA, UA_NAVEGADOR, fetchYt } from './salida.js'
 
 /**
- * El resolutor de a bordo: esta compu baja el audio con **su propia IP**.
- *
- * Existe por la reja anti-bot de YouTube contra las IPs de datacenter: el
- * servidor de Railway puede pasar días con `LOGIN_REQUIRED` en los siete
- * clientes mientras cualquier IP residencial resuelve sin drama — se comprobó
- * el día del apagón, corriendo el mismo código en una casa y en Railway a la
- * vez. Acá cada usuario de escritorio es su propia salida.
- *
- * La mecánica de resolución es un **espejo de `server/src/youtube.ts`**, con
- * la misma sesión MUSIC, los mismos PO tokens y la misma cirugía de URL. El
- * primer borrador probó el atajo de los clientes móviles sin token y no
- * existe: googlevideo corta con 403 pasado el primer megabyte también en IPs
- * residenciales — el token de origen se exige en todos lados; lo que cambia
- * con la IP es la reja de `LOGIN_REQUIRED` de los /player. Si tocás la copia,
- * mirá el original.
- *
- * El reparto de responsabilidades es deliberado:
- *
- *   · **Esta punta baja bytes** y los manda a `/aportar`.
- *   · **El servidor decide qué se guarda**: ffprobe verifica que sean AAC con
- *     la duración que el catálogo espera, y ffmpeg los remuxea. Esta compu no
- *     escribe en Storage: no tiene ni las llaves ni la confianza — el bucket
- *     es de todos.
- *
- * Es Node puro a propósito, sin nada de Electron: se prueba con `node` a
- * secas, y el día que el satélite de una compu de escritorio quiera correr
- * como worker suelto, este archivo ya sabe.
+ * Descarga con la conexión de esta computadora y aporta el audio al servidor.
+ * El servidor valida AAC y duración antes de guardar. La resolución comparte
+ * el protocolo con server/src/youtube.ts; en Electron, los PO tokens se piden
+ * a Chromium mediante el proveedor configurado por resolutor-hijo.ts.
  */
 
-/** googlevideo rechaza el GET completo; hay que pedir por rangos. */
-const CHUNK_BYTES = 1 << 20
-
-/** Con qué clientes pedir los formatos, en orden — la lista del servidor. */
-const CLIENTES_RESOLVE = [
-  'YTMUSIC',
-  'TV',
-  'TV_SIMPLY',
-  'IOS',
-  'ANDROID_VR',
-  'WEB_EMBEDDED',
-  'MWEB',
-] as const
-
-/**
- * Clientes que además del token de sesión piden uno **atado al video** (la
- * familia web, la misma lista que yt-dlp). iOS y ANDROID_VR no llevan: son
- * clientes nativos, no pasan por BotGuard.
- */
-const TOKEN_POR_VIDEO = new Set<(typeof CLIENTES_RESOLVE)[number]>([
-  'YTMUSIC',
-  'TV',
-  'TV_SIMPLY',
-  'WEB_EMBEDDED',
-  'MWEB',
-])
+export type OpcionesDiagnostico = {
+  cliente?: ClienteResolve
+  signal?: AbortSignal
+  chunkBytes?: number
+  onEvento?: ObservadorDiagnostico
+}
 
 // youtubei.js v17 dejó de traer evaluador de JS por seguridad, y sin uno no se
 // pueden descifrar las URLs. node:vm alcanza y mantiene el código aislado del
@@ -68,17 +28,7 @@ function ensurePlatform() {
   if (platformLoaded) return
   Platform.load({
     ...Platform.shim,
-    eval: (data: { output: string; exported: string[] }, env: Record<string, unknown>) => {
-      // El script emitido usa `return` de nivel superior: se evalúa como cuerpo
-      // de función, no como script suelto.
-      const names = Object.keys(env)
-      const factory = runInNewContext(
-        `(function(${names.join(',')}) {\n${data.output}\n})`,
-        Object.create(null),
-        { timeout: 10_000 },
-      )
-      return factory(...names.map((n) => env[n]))
-    },
+    eval: evaluarPlayer,
   } as never)
   platformLoaded = true
 }
@@ -180,33 +130,38 @@ async function getClient(): Promise<Innertube> {
 }
 
 type Formatos =
-  | { info: Awaited<ReturnType<Innertube['getBasicInfo']>>; cliente: (typeof CLIENTES_RESOLVE)[number] }
+  | { info: Awaited<ReturnType<Innertube['getBasicInfo']>>; cliente: ClienteResolve; tokenVideo: string }
   | { info: null; razones: string[] }
 
-async function buscarFormatos(yt: Innertube, videoId: string): Promise<Formatos> {
+async function buscarFormatos(yt: Innertube, videoId: string, opciones: OpcionesDiagnostico): Promise<Formatos> {
   const razones: string[] = []
-  /* El token del video se acuña una vez y lo comparten los clientes que lo
-     piden. Si BotGuard falla, se sigue sin él en vez de tirar la resolución. */
-  let acunado: Promise<string | undefined> | null = null
-  const tokenDelVideo = () =>
-    (acunado ??= mintVideoToken(videoId).catch(() => undefined))
-
-  for (const candidato of CLIENTES_RESOLVE) {
+  opciones.signal?.throwIfAborted()
+  const tokenVideo = await mintVideoToken(videoId)
+  for (const candidato of opciones.cliente ? [opciones.cliente] : CLIENTES_RESOLVE) {
+    opciones.signal?.throwIfAborted()
+    const inicio = Date.now()
+    opciones.onEvento?.({ etapa: 'cliente', cliente: candidato, estado: 'consultando' })
     try {
       const intento = await yt.getBasicInfo(videoId, {
         client: candidato,
-        po_token: TOKEN_POR_VIDEO.has(candidato) ? await tokenDelVideo() : undefined,
+        po_token: tokenVideo,
       })
       /* Un formato sin URL ni cifrado es SABR y no sirve desde acá. */
       const audio = (intento.streaming_data?.adaptive_formats ?? []).filter(
-        (f) => f.mime_type.startsWith('audio') && (f.url || f.signature_cipher),
+        (f) => f.mime_type.startsWith('audio/mp4') && (f.url || f.signature_cipher) && !f.drm_families?.length && !f.drm_track_type,
       )
-      if (audio.length) return { info: intento, cliente: candidato }
+      opciones.signal?.throwIfAborted()
+      opciones.onEvento?.({ etapa: 'cliente', cliente: candidato,
+        estado: audio.length ? 'audio_disponible' : intento.playability_status?.status ?? 'sin_audio',
+        duracionMs: Date.now() - inicio })
+      if (audio.length) return { info: intento, cliente: candidato, tokenVideo }
       const estado = intento.playability_status
       razones.push(
         `${candidato}: ${estado?.status ?? 'sin streaming_data'}${estado?.reason ? ` — ${estado.reason}` : ''}`,
       )
     } catch (e) {
+      opciones.signal?.throwIfAborted()
+      opciones.onEvento?.({ etapa: 'cliente', cliente: candidato, estado: 'error', duracionMs: Date.now() - inicio })
       razones.push(`${candidato}: ${(e as Error).message}`)
     }
   }
@@ -235,22 +190,53 @@ export async function resolverYAportar(opciones: {
   durationMs?: number
 }): Promise<Aporte> {
   const { videoId, apiBase, token, artworkUrl, durationMs } = opciones
+  const audio = await descargarAudio(videoId)
+  return aportar(apiBase, token, {
+    videoId, artworkUrl,
+    durationMs: audio.durationMs || durationMs || undefined,
+    bytes: audio.bytes,
+  })
+}
 
+/** El informe de formatos excluye la URL firmada. No descarga media. */
+export async function inspeccionarAudio(videoId: string, opciones: OpcionesDiagnostico = {}) {
+  const { url: _url, ...informe } = await prepararAudio(videoId, opciones)
+  return informe
+}
+
+export async function descargarAudio(videoId: string, opciones: OpcionesDiagnostico = {}): Promise<{
+  bytes: Uint8Array<ArrayBuffer>
+  durationMs: number
+}> {
+  const preparado = await prepararAudio(videoId, opciones)
+  const crudo = await bajarPorRangos(preparado.url, {
+    fetch: fetchYt, headers: CABECERAS_MEDIA, totalEsperado: preparado.formato.bytes,
+    signal: opciones.signal, chunkBytes: opciones.chunkBytes, onEvento: opciones.onEvento,
+  })
+  return { durationMs: preparado.durationMs, bytes: new Uint8Array(crudo) }
+}
+
+async function prepararAudio(videoId: string, opciones: OpcionesDiagnostico) {
+  if (!/^[\w-]{11}$/.test(videoId)) throw new Error('videoId inválido')
+  if (opciones.cliente && !CLIENTES_RESOLVE.includes(opciones.cliente)) throw new Error('Cliente no compatible')
+  opciones.signal?.throwIfAborted()
+  const inicioSesion = Date.now()
   let yt = await getClient()
-  let encontrado = await buscarFormatos(yt, videoId)
+  opciones.onEvento?.({ etapa: 'sesion', duracionMs: Date.now() - inicioSesion })
+  let encontrado = await buscarFormatos(yt, videoId, opciones)
 
-  if (!encontrado.info && puedeResetear()) {
+  if (!encontrado.info && !opciones.cliente && puedeResetear()) {
     /* El caso conocido es la sesión pasada de fecha; una nueva lo destraba.
        Una vez sola, y nunca sobre una sesión joven. */
     resetClient()
     yt = await getClient()
-    encontrado = await buscarFormatos(yt, videoId)
+    encontrado = await buscarFormatos(yt, videoId, opciones)
   }
   if (!encontrado.info) {
     throw new Error(`Sin audio desde acá — ${encontrado.razones.join('; ')}`)
   }
 
-  const { info, cliente } = encontrado
+  const { info, cliente, tokenVideo } = encontrado
 
   /*
    * Solo AAC en mp4, sin caída a Opus como tiene el servidor: `/aportar`
@@ -258,11 +244,17 @@ export async function resolverYAportar(opciones: {
    * bajar un webm sería trabajo tirado.
    */
   const enMp4 = (info.streaming_data?.adaptive_formats ?? []).filter(
-    (f) => f.mime_type.startsWith('audio/mp4') && (f.url || f.signature_cipher),
+    (f) => f.mime_type.startsWith('audio/mp4') && (f.url || f.signature_cipher) && !f.drm_families?.length && !f.drm_track_type,
   )
   const best = enMp4.sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0]
   if (!best) throw new Error(`${cliente} no ofreció audio AAC para aportar`)
+  const formato = { cliente, itag: best.itag, bytes: best.content_length, mime: best.mime_type, bitrate: best.bitrate }
+  opciones.onEvento?.({ etapa: 'formato', cliente, itag: best.itag, bytes: best.content_length })
+  opciones.signal?.throwIfAborted()
+  const inicioDescifrado = Date.now()
+  opciones.onEvento?.({ etapa: 'descifrado', estado: 'iniciando' })
   let url = await best.decipher(yt.session.player)
+  opciones.onEvento?.({ etapa: 'descifrado', duracionMs: Date.now() - inicioDescifrado })
 
   /*
    * La misma cirugía de URL que el servidor (ver allá el porqué largo):
@@ -274,27 +266,14 @@ export async function resolverYAportar(opciones: {
   if (cver && cliente === 'YTMUSIC')
     url = url.replace(/([?&]cver=)[^&]*/, `$1${encodeURIComponent(cver)}`)
 
+  // Reutiliza el token del video que se envió a /player.
   url = url
     .replace(/&pot=[^&]*/g, '')
     .replace(/\?pot=[^&]*&/, '?')
     .replace(/\?pot=[^&]*$/, '')
-  const videoToken = await mintVideoToken(videoId)
-  url += `${url.includes('?') ? '&' : '?'}pot=${encodeURIComponent(videoToken)}`
+  url += `${url.includes('?') ? '&' : '?'}pot=${encodeURIComponent(tokenVideo)}`
+  return { url, formato, durationMs: Math.round((info.basic_info.duration ?? 0) * 1000) }
 
-  const crudo = await bajarPorRangos(url)
-
-  /*
-   * La duración que se declara es la **del video según YouTube**, no la que
-   * mandó el renderer: el servidor la compara contra lo que mide ffprobe, y
-   * cuanto más cerca del origen esté la declaración, mejor verifica.
-   */
-  const declararMs = (info.basic_info.duration ?? 0) * 1000 || durationMs || 0
-  return aportar(apiBase, token, {
-    videoId,
-    durationMs: declararMs > 0 ? Math.round(declararMs) : undefined,
-    artworkUrl,
-    bytes: new Uint8Array(crudo),
-  })
 }
 
 /**
@@ -362,96 +341,4 @@ async function aportar(
   })) as unknown as Aporte
   if (!listo.path) throw new Error('El servidor no confirmó el aporte')
   return listo
-}
-
-/**
- * La descarga por rangos, con los cuidados aprendidos en el servidor:
- *
- *   · un 200 en un rango que no arranca en cero es el archivo entero metido en
- *     el medio — pegado daría un audio roto que «suena» mal para siempre;
- *   · el total lo dice el `content-range` del primer pedazo, y al final los
- *     bytes tienen que ser **exactos**: de más es tan corrupto como de menos;
- *   · el resto baja de a cuatro en paralelo — una ráfaga mayor sobre la misma
- *     URL firmada es la forma de que googlevideo corte con 403.
- */
-async function bajarPorRangos(url: string): Promise<Buffer> {
-  /*
-   * Un pedazo que falla se reintenta; antes mataba la canción entera.
-   *
-   * googlevideo contesta 403 sobre una URL firmada perfectamente válida cuando
-   * le llegan varios rangos juntos —la ráfaga de a cuatro de acá abajo es
-   * justamente lo que lo dispara— y también cuando el mismo video se vuelve a
-   * pedir al rato. Es **pasajero**: medido, el mismo rango sale bien al segundo
-   * intento. Sin reintento, ese 403 suelto se veía como «esta canción no se
-   * puede poner», y era una canción que sí se podía.
-   *
-   * La espera crece entre intentos porque lo que hay del otro lado es un
-   * límite de tasa: volver a golpear en el acto es pedir el mismo no.
-   */
-  const ESPERAS_MS = [600, 1800]
-
-  const pedirUnaVez = async (desde: number) => {
-    const res = await fetchYt(url, {
-      /* Con las cabeceras del reproductor de verdad, no un `Range` pelado:
-         es el último tramo y el único que mueve bytes. Ver el servidor. */
-      headers: { ...CABECERAS_MEDIA, Range: `bytes=${desde}-${desde + CHUNK_BYTES - 1}` },
-    })
-    if (res.status !== 206 && !(res.status === 200 && desde === 0)) {
-      throw new Error(`googlevideo respondió ${res.status} al rango ${desde}`)
-    }
-    const range = res.headers.get('content-range')
-    const inicio = range ? Number(range.split(' ')[1]?.split('-')[0]) : desde
-    if (Number.isFinite(inicio) && inicio !== desde) {
-      throw new Error(`googlevideo sirvió el rango ${inicio} en vez de ${desde}`)
-    }
-    return {
-      buf: Buffer.from(await res.arrayBuffer()),
-      total: range ? Number(range.split('/')[1]) : null,
-    }
-  }
-
-  const pedir = async (desde: number) => {
-    let ultimo: unknown
-    for (let intento = 0; intento <= ESPERAS_MS.length; intento++) {
-      if (intento > 0) {
-        await new Promise((listo) => setTimeout(listo, ESPERAS_MS[intento - 1]))
-      }
-      try {
-        return await pedirUnaVez(desde)
-      } catch (e) {
-        ultimo = e
-        // Que quede dicho: si esto aparece seguido, googlevideo está apretando.
-        console.warn(`[resolve] reintento ${intento + 1} del rango ${desde}: ${(e as Error).message}`)
-      }
-    }
-    throw ultimo
-  }
-
-  const primero = await pedir(0)
-  if (!primero.buf.length) throw new Error('No se descargó audio')
-  const total = primero.total
-  const chunks: Buffer[] = [primero.buf]
-
-  if (total !== null && total > primero.buf.length) {
-    const desde: number[] = []
-    for (let o = primero.buf.length; o < total; o += CHUNK_BYTES) desde.push(o)
-    const PARALELO = 4
-    const resto: Buffer[] = new Array<Buffer>(desde.length)
-    let puntero = 0
-    await Promise.all(
-      Array.from({ length: Math.min(PARALELO, desde.length) }, async () => {
-        while (puntero < desde.length) {
-          const i = puntero++
-          resto[i] = (await pedir(desde[i])).buf
-        }
-      }),
-    )
-    chunks.push(...resto)
-  }
-
-  const crudo = Buffer.concat(chunks)
-  if (total !== null && crudo.length !== total) {
-    throw new Error(`Descarga inconsistente: ${crudo.length} de ${total} bytes`)
-  }
-  return crudo
 }

@@ -5,6 +5,10 @@ const expoConfig = require("eslint-config-expo/flat");
 module.exports = defineConfig([
   expoConfig,
   {
+    files: ['desktop/**/*.cjs'],
+    languageOptions: { globals: { Buffer: 'readonly', __dirname: 'readonly' } },
+  },
+  {
     // Salida generada: el bundle web, el compilado del servicio de música, la
     // caché de expo-router, lo que Supabase deja al levantar los contenedores y
     // lo que el escritorio copia y empaqueta.

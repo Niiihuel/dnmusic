@@ -41,7 +41,7 @@ import type { Encuadre } from '../services/profile'
 import { Avatar } from './Avatar'
 import { ES_WEB, Glass } from './Glass'
 import { estiloEncuadrado } from './Encuadre'
-import { Marco } from './Marco'
+import { aireDelMarco, Marco } from './Marco'
 import { Confirmar } from './Confirmar'
 import { EMOJIS } from './Reacciones'
 import { Vitrina, type Redimension } from './Vitrina'
@@ -301,6 +301,7 @@ export function Identidad({
           encuadre={encuadre}
           marco={marco}
           size={136}
+          aireADerecha
         />
         <View className="min-w-0 flex-1 gap-1">
           <Text className="text-foreground text-[32px] font-bold" numberOfLines={1}>
@@ -354,10 +355,10 @@ export function Identidad({
  * las dos imágenes se funden. El anillo la despega de cualquier fondo sin
  * meterle un color nuevo a la pantalla.
  *
- * Vive en su propio componente porque acá es donde algún día se cuelga el
- * marco decorativo (la regla del 1,2× de las referencias: un marco desborda a
- * la foto, no la pisa). Cuando exista, se dibuja alrededor de esto sin tocar a
- * nadie más.
+ * Vive en su propio componente porque acá es donde se cuelga el marco
+ * decorativo (un marco desborda a la foto, no la pisa; ver `ui/Marco`). Se
+ * dibuja alrededor de esto sin tocar a nadie más, y por eso la caja deja
+ * `overflow: visible` a propósito: las alas y las llamas viven por fuera.
  */
 function FotoDeHeroe({
   nombre,
@@ -365,21 +366,30 @@ function FotoDeHeroe({
   encuadre,
   marco,
   size,
+  aireADerecha = false,
 }: {
   nombre: string
   avatarPath: string | null
   encuadre: Encuadre | null
   marco?: string | null
   size: number
+  /**
+   * Reservar a la derecha lo que el marco desborda. En la banda de escritorio
+   * la foto tiene el nombre pegado al lado, y sin este margen la punta de un
+   * ala se le metía encima; apilada, el marco flota sobre el fondo y no hace
+   * falta correr nada.
+   */
+  aireADerecha?: boolean
 }) {
+  /* El +8 cuenta el anillo de 4px de cada lado. */
+  const lado = size + 8
   return (
-    <View>
+    <View style={{ overflow: 'visible', marginRight: aireADerecha && marco ? aireDelMarco(lado) : 0 }}>
       <View className="rounded-full border-4 border-background">
         <Avatar name={nombre} path={avatarPath} size={size} encuadre={encuadre} />
       </View>
-      {/* Por fuera y por encima, desbordando la foto — la regla del 1,2× de
-          las referencias. El +8 cuenta el anillo de 4px de cada lado. */}
-      <Marco marco={marco} size={size + 8} />
+      {/* Por fuera y por encima, desbordando la foto. */}
+      <Marco marco={marco} size={lado} />
     </View>
   )
 }

@@ -73,6 +73,7 @@ const puente = {
   actualizacion: {
     estado: (): Promise<EstadoActualizacion> => ipcRenderer.invoke('actualizacion:estado'),
     buscar: (): void => ipcRenderer.send('actualizacion:buscar'),
+    descargar: (): void => ipcRenderer.send('actualizacion:descargar'),
     /** Solo hace algo cuando el estado es `lista`; si no, se ignora. */
     instalar: (): void => ipcRenderer.send('actualizacion:instalar'),
 

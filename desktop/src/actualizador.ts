@@ -84,12 +84,18 @@ export function leerNotas(crudo: unknown): NotasVersion | null {
     typeof crudo === 'string'
       ? crudo
       : Array.isArray(crudo)
-        ? crudo.map((n) => (typeof n === 'object' && n && 'note' in n ? String(n.note) : '')).join('\n')
+        ? crudo
+            .map((n) => (typeof n === 'object' && n && 'note' in n ? String(n.note) : ''))
+            .join('\n')
         : ''
   if (!texto.trim()) return null
 
   const lineas = texto.split('\n').map((l) => l.trim())
-  const titulo = lineas.find((l) => l.startsWith('## '))?.slice(3).trim() ?? ''
+  const titulo =
+    lineas
+      .find((l) => l.startsWith('## '))
+      ?.slice(3)
+      .trim() ?? ''
   const cambios = lineas.filter((l) => l.startsWith('- ')).map((l) => l.slice(2).trim())
   const fecha = lineas.find((l) => /^_.+_$/.test(l))?.slice(1, -1) ?? null
 
@@ -170,12 +176,22 @@ export function marcarSonando(activo: boolean): void {
   }, ESPERA_SILENCIO_MS)
 }
 
-function bajar(): void {
-  if (!pendiente || bajando || sonando) return
+function bajar(manual = false): void {
+  if (!pendiente || bajando || (sonando && !manual)) return
   // Ya está en disco esperando el cierre; volver a pedirla sería bajar 100 MB
   // para terminar exactamente igual.
   if (estado.fase === 'lista') return
   bajando = true
+  if (temporizadorSilencio) clearTimeout(temporizadorSilencio)
+  temporizadorSilencio = null
+  avisar({
+    fase: 'bajando',
+    version: pendiente.version,
+    notas: notasPendientes,
+    porcentaje: 0,
+    bajados: 0,
+    total: 0,
+  })
   registrar('bajando', pendiente.version)
   autoUpdater.downloadUpdate().catch((error: unknown) => {
     bajando = false
@@ -184,7 +200,19 @@ function bajar(): void {
   })
 }
 
+/** Solo una acción explícita permite competir con el audio. */
+export function descargarAhora(): void {
+  if (estado.fase === 'esperando-silencio') bajar(true)
+}
+
 export async function buscarAhora(manual = false): Promise<void> {
+  if (
+    bajando ||
+    estado.fase === 'buscando' ||
+    estado.fase === 'lista' ||
+    estado.fase === 'esperando-silencio'
+  )
+    return
   const motivo = porQueNoCorre()
   if (motivo) {
     registrar('no busco:', motivo)
@@ -213,13 +241,11 @@ export async function buscarAhora(manual = false): Promise<void> {
      */
     await autoUpdater.checkForUpdates()
   } catch (error) {
-    /*
-     * Sin internet esto falla, y fallar acá es normal: se registra y se sigue.
-     * El estado de error solo se publica si lo pediste vos — que la pantalla
-     * diga «no se pudo» porque el wifi se cayó a las 4am es ruido.
-     */
+    // Salir de «buscando» también si falló la comprobación automática:
+    // dejarlo ahí impediría reintentar. El error no abre ningún aviso.
+
     registrar('falló la búsqueda:', error)
-    if (manual) avisar({ fase: 'error', mensaje: String(error) })
+    avisar({ fase: 'error', mensaje: String(error) })
   }
 }
 
@@ -287,14 +313,6 @@ export function arrancarActualizador(): void {
     if (sonando) {
       avisar({ fase: 'esperando-silencio', version: info.version, notas: notasPendientes })
     } else {
-      avisar({
-        fase: 'bajando',
-        version: info.version,
-        notas: notasPendientes,
-        porcentaje: 0,
-        bajados: 0,
-        total: 0,
-      })
       bajar()
     }
   })

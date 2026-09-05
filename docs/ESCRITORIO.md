@@ -47,24 +47,22 @@ cd desktop && npm run empaquetar   # queda en desktop/release/
 El escritorio no es solo una ventana: cuando el `/resolve` del servidor falla,
 **esta compu baja el audio con su propia IP y se lo aporta al bucket común**.
 
-Existe por la reja anti-bot de YouTube contra las IPs de datacenter: el servidor
-puede pasar días con `LOGIN_REQUIRED` en los siete clientes mientras cualquier
-IP residencial resuelve sin drama — se comprobó el día del apagón, corriendo el
-mismo código en una casa y en Railway a la vez. Con esto, cada usuario de
-escritorio es una salida más, y lo que resuelve uno le suena a todos: la web y
-el teléfono lo encuentran después en el caché de Storage.
+El servidor y la computadora pueden recibir rechazos distintos de YouTube.
+Resolver localmente permite usar la conexión de quien escucha, pero no garantiza
+que YouTube acepte la sesión. Lo guardado en Storage sigue sirviendo a los otros
+clientes sin volver a descargarlo.
 
 El circuito completo, con quién confía en quién:
 
 1. `pedirResolve` (en `src/services/music.ts`) intenta el servidor. Si falla y
-   el puente del preload existe, prueba el plan B — y si el plan B también
-   falla, muestra el error **del servidor**, que está en el idioma de la app.
-2. El main valida lo que llegó por IPC (forma del videoId, URL del api, sesión)
-   y corre `resolverYAportar`: la misma maquinaria que el servidor — sesión
-   MUSIC, PO tokens de BotGuard con jsdom, descifrado, cirugía de `cver` y
-   `pot`, descarga por rangos. Es un **espejo de `server/src/youtube.ts`**; el
-   atajo de los clientes móviles sin token no existe: googlevideo corta con 403
-   pasado el primer megabyte también en IPs residenciales.
+   existe el puente del preload, prueba el resolutor local. Si también falla,
+   muestra el motivo local.
+2. El main valida el pedido y lo pasa a un hijo Node persistente. El hijo
+   descifra y descarga; para generar PO tokens consulta por IPC un
+   `WebContentsView` de Chromium, sin Node ni acceso a la sesión de dnmusic.
+   Las descargas se serializan y los pedidos simultáneos del mismo video y
+   credencial comparten el trabajo. Un 403/429 corta y pausa los siguientes
+   pedidos; 429 respeta `Retry-After`.
 3. Los bytes **no pasan por el servicio**: `POST /aportar/url` devuelve una URL
    firmada de un solo uso, el archivo sube derecho a Supabase Storage con un
    `PUT`, y después `POST /aportar/confirmar` avisa que está. Va así porque el
@@ -339,3 +337,6 @@ compila.
   teclado multimedia no hace nada todavía.
 - **No está firmado.** En Windows, SmartScreen avisa la primera vez que se
   instala. El auto-update funciona igual; la firma es un certificado pago.
+
+Para investigar fallos de YouTube y ejecutar el diagnóstico sin subir audio,
+ver [YOUTUBE-DIAGNOSTICO.md](YOUTUBE-DIAGNOSTICO.md).

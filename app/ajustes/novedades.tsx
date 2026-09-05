@@ -1,218 +1,67 @@
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native'
+import { useState } from 'react'
+import { Image, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
-import { GrupoAjustes } from '../../src/ui/Ajustes'
-import { ICON_COLOR, IconBack } from '../../src/ui/icons'
-import { NOVEDADES } from '../../src/lib/novedades'
-import {
-  buscarActualizacion,
-  HAY_ACTUALIZADOR,
-  instalarActualizacion,
-  useActualizacion,
-  type EstadoActualizacion,
-  type NotasVersion,
-} from '../../src/state/actualizacion'
+import { Actualizador } from '../../src/ui/Actualizador'
+import { ICON_COLOR, IconBack, IconChevronRight } from '../../src/ui/icons'
+import { NOVEDADES, type Novedad } from '../../src/lib/novedades'
 import { usePiso } from '../../src/state/shell'
 import { volver } from '../../src/lib/volver'
 
 const LOGO = require('../../assets/icon.png')
 
-/** Debajo de esto la app es pestañas y el contenido va de borde a borde. */
-const SHELL_PX = 780
-/** Tope del contenido en escritorio, como en el resto de las pantallas. */
-const CAP = 672
-
-/**
- * Las novedades: qué cambió en cada versión, y —en el escritorio— el
- * actualizador a la vista.
- *
- * La lista sale del bundle (`src/lib/novedades.ts`), así que es la misma
- * pantalla en la web, la computadora y el teléfono, y no le pide nada a nadie.
- *
- * La parte de arriba solo existe adentro de la app de escritorio: ahí el
- * actualizador ya trabajaba solo —baja en silencio, instala al cerrar— pero no
- * tenía cara; lo único visible era una entrada de menú detrás de Alt. Acá se ve
- * en qué anda y se le puede pedir que busque ya.
- */
-
-/** Megabytes, para poder decir «42 de 137 MB» y no solo un porcentaje. */
-function mb(bytes: number): string {
-  return `${Math.round(bytes / 1_000_000)} MB`
-}
-
-/** Qué contar de cada fase, en una frase. */
-function fraseDelEstado(estado: EstadoActualizacion): string {
-  switch (estado.fase) {
-    case 'buscando':
-      return 'Buscando…'
-    case 'sin-novedad':
-      return `Estás al día. Versión ${estado.version}.`
-    case 'esperando-silencio':
-      return `Hay una versión nueva; se baja cuando pares la música.`
-    case 'bajando':
-      return estado.total
-        ? `Bajando… ${mb(estado.bajados)} de ${mb(estado.total)}`
-        : 'Bajando…'
-    case 'lista':
-      return 'Lista para instalar. Si no hacés nada, se instala sola al cerrar la app.'
-    case 'error':
-      return 'No se pudo buscar. Probá de nuevo en un rato.'
-    case 'apagado':
-      return `Acá no se actualiza sola: ${estado.motivo}.`
-    default:
-      return estado.version ? `Versión ${estado.version}` : ''
-  }
-}
-
-/**
- * Qué dice el botón en cada momento. Es la misma frase para la vista y para
- * quien la escucha con el lector de pantalla, que antes decían cosas distintas:
- * la etiqueta se quedaba en «Buscar actualizaciones» mientras el botón ya
- * estaba bajando.
- */
-function rotuloBoton(estado: EstadoActualizacion): string {
-  switch (estado.fase) {
-    case 'buscando':
-      return 'Buscando…'
-    case 'bajando':
-      return `Bajando ${Math.round(estado.porcentaje)}%`
-    case 'lista':
-      return 'Reiniciar e instalar'
-    default:
-      return 'Buscar actualizaciones'
-  }
-}
-
-/** La versión que viene, si hay alguna en camino. */
-function versionEnCamino(estado: EstadoActualizacion): string | null {
-  return estado.fase === 'esperando-silencio' || estado.fase === 'bajando' || estado.fase === 'lista'
-    ? estado.version
-    : null
-}
-
-function notasEnCamino(estado: EstadoActualizacion): NotasVersion | null {
-  return estado.fase === 'esperando-silencio' || estado.fase === 'bajando' || estado.fase === 'lista'
-    ? estado.notas
-    : null
-}
-
-/**
- * La barra de progreso.
- *
- * Sin color, como todo (`docs/DESIGN.md`): el riel es la superficie
- * interactiva y lo que avanza es el blanco, que es el acento. Píldora, como
- * cualquier otra cosa de la app.
- */
-function Barra({ porcentaje }: { porcentaje: number }) {
+function Version({ novedad, ultima }: { novedad: Novedad; ultima: boolean }) {
+  const [abierta, setAbierta] = useState(ultima)
   return (
-    <View className="h-1 w-full overflow-hidden rounded-full bg-muted">
-      <View
-        className="h-full rounded-full bg-primary"
-        style={{ width: `${Math.max(2, Math.min(100, porcentaje))}%` }}
-      />
-    </View>
-  )
-}
-
-function Actualizador() {
-  const estado = useActualizacion()
-
-  if (!HAY_ACTUALIZADOR) return null
-
-  const ocupado = estado.fase === 'buscando' || estado.fase === 'bajando'
-  const lista = estado.fase === 'lista'
-  const enCamino = versionEnCamino(estado)
-  const notas = notasEnCamino(estado)
-
-  return (
-    <GrupoAjustes titulo="Tu versión">
-      <View className="gap-3 px-4 py-3.5">
-        {enCamino ? (
-          <Text className="text-foreground text-[15px] font-semibold">
-            Versión {enCamino} {lista ? 'lista' : 'en camino'}
-          </Text>
-        ) : null}
-
-        <Text className="text-muted-foreground text-[13px] leading-5">
-          {fraseDelEstado(estado)}
-        </Text>
-
-        {estado.fase === 'bajando' ? <Barra porcentaje={estado.porcentaje} /> : null}
-
-        {/*
-          Qué trae, antes de instalarla.
-          Sale del propio feed de actualización (`latest.yml` lleva las notas del
-          release), que es la única fuente posible: las novedades del bundle
-          llegan hasta la versión que estás corriendo, no hasta la que viene.
-        */}
-        {notas && notas.cambios.length ? (
-          <View className="gap-2 rounded-2xl bg-muted p-3.5">
-            {notas.titulo ? (
-              <Text className="text-foreground text-[13px] font-semibold">{notas.titulo}</Text>
+    <View className="overflow-hidden rounded-2xl bg-card">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Versión ${novedad.version}: ${novedad.titulo}`}
+        aria-expanded={abierta}
+        onPress={() => setAbierta((v) => !v)}
+        className="flex-row items-center gap-3 p-5 active:bg-muted"
+      >
+        <View className="min-w-0 flex-1 gap-2">
+          <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
+            <Text className="text-foreground text-[12px] font-semibold">{novedad.version}</Text>
+            <Text className="text-muted-foreground text-[11px]">{novedad.fecha}</Text>
+            {ultima ? (
+              <Text className="text-muted-foreground text-[10px] uppercase tracking-[1px]">
+                Esta versión
+              </Text>
             ) : null}
-            {notas.cambios.map((cambio) => (
-              <View key={cambio} className="flex-row gap-2.5">
-                <Text className="text-muted-foreground text-[13px] leading-5">·</Text>
-                <Text className="flex-1 text-muted-foreground text-[13px] leading-5">{cambio}</Text>
-              </View>
-            ))}
           </View>
-        ) : null}
-
-        {estado.fase === 'apagado' ? null : (
-          /*
-           * El botón dice **qué** está pasando, no que algo pasa.
-           *
-           * Decía «En eso…» para las dos esperas —buscar y bajar—, que son
-           * distintas: una tarda un segundo y la otra puede tardar minutos.
-           * Bajando muestra el porcentaje, por lo mismo que el botón de
-           * descarga de una lista: una rueda girando dice «esperá» sin decir
-           * cuánto, y el número es lo que deja decidir si vale la pena mirar.
-           * La rueda queda igual, al lado, porque es lo que dice que sigue vivo.
-           */
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={rotuloBoton(estado)}
-            disabled={ocupado}
-            onPress={lista ? instalarActualizacion : buscarActualizacion}
-            className={`flex-row items-center gap-2 self-start rounded-full px-4 py-2 ${
-              ocupado ? 'bg-muted' : 'bg-primary active:opacity-80'
-            }`}
-          >
-            {ocupado ? <ActivityIndicator size="small" color={ICON_COLOR.muted} /> : null}
-            <Text
-              className={`text-[13px] font-semibold ${
-                ocupado ? 'text-muted-foreground' : 'text-primary-foreground'
-              } ${estado.fase === 'bajando' ? 'tabular-nums' : ''}`}
-            >
-              {rotuloBoton(estado)}
-            </Text>
-          </Pressable>
-        )}
-      </View>
-    </GrupoAjustes>
+          <Text className="text-foreground text-[15px] font-semibold leading-5">
+            {novedad.titulo}
+          </Text>
+        </View>
+        <View style={{ transform: [{ rotate: abierta ? '90deg' : '0deg' }] }}>
+          <IconChevronRight size={17} color={ICON_COLOR.muted} />
+        </View>
+      </Pressable>
+      {abierta ? (
+        <View className="gap-3 px-5 pb-5">
+          {novedad.cambios.map((cambio, i) => (
+            <View key={i} className="flex-row gap-3">
+              <Text className="text-muted-foreground text-[13px] leading-5">·</Text>
+              <Text className="min-w-0 flex-1 text-muted-foreground text-[13px] leading-5">
+                {cambio}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
   )
 }
 
 export default function Novedades() {
   const router = useRouter()
-  const suelto = useWindowDimensions().width < SHELL_PX
+  const suelto = useWindowDimensions().width < 780
   const piso = usePiso(24)
-
   return (
-    <SafeAreaView
-      className="flex-1 bg-background"
-      edges={suelto ? ['top'] : ['top', 'bottom']}
-    >
+    <SafeAreaView className="flex-1 bg-background" edges={suelto ? ['top'] : ['top', 'bottom']}>
       <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
         <View className="flex-row items-center gap-3 px-3 py-1">
           <Pressable
@@ -223,69 +72,38 @@ export default function Novedades() {
           >
             <IconBack size={19} color={ICON_COLOR.foreground} />
           </Pressable>
-          <Text className="text-foreground text-[15px] font-semibold">Novedades</Text>
+          <Text className="text-foreground text-[15px] font-semibold">Actualizaciones</Text>
         </View>
-
         <Panel className="flex-1">
           <ScrollView
-            contentContainerClassName={`items-center ${suelto ? 'px-3 pt-3' : 'p-5'}`}
+            contentContainerClassName={`items-center ${suelto ? 'px-4 pt-3' : 'p-6'}`}
             contentContainerStyle={{ paddingBottom: piso }}
           >
-            <View className="w-full gap-6" style={{ maxWidth: suelto ? undefined : CAP }}>
-              {/*
-               * El arranque de la pantalla: la app con su cara y su versión.
-               * La placa redondeada sobre `card` es la misma familia de las
-               * placas de los íconos de Ajustes —separación por luminancia, sin
-               * bordes ni color (`docs/DESIGN.md`)—.
-               */}
-              <View className="items-center gap-3 pb-1 pt-2">
-                <View className="h-[74px] w-[74px] items-center justify-center rounded-[20px] bg-card">
-                  <Image source={LOGO} style={{ width: 46, height: 46 }} resizeMode="contain" />
-                </View>
-                <View className="items-center gap-1">
-                  <Text className="text-foreground text-[20px] font-bold">dnmusic</Text>
-                  {NOVEDADES[0] ? (
-                    <Text className="text-muted-foreground text-[13px]">
-                      Versión {NOVEDADES[0].version}
-                    </Text>
-                  ) : null}
+            <View className="w-full gap-6" style={{ maxWidth: 720 }}>
+              <View className="flex-row items-center gap-4 py-2">
+                <Image
+                  source={LOGO}
+                  style={{ width: 48, height: 48, borderRadius: 12 }}
+                  resizeMode="contain"
+                />
+                <View className="min-w-0 flex-1 gap-1">
+                  <Text className="text-foreground text-[24px] font-bold">
+                    Siempre un poco mejor.
+                  </Text>
+                  <Text className="text-muted-foreground text-[13px]">
+                    Lo nuevo en dnmusic · {NOVEDADES[0]?.version}
+                  </Text>
                 </View>
               </View>
-
               <Actualizador />
-
-              {NOVEDADES.map((novedad, i) => (
-                <View key={novedad.version} className="gap-2">
-                  <View className="flex-row items-center justify-between px-4">
-                    <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-                      {novedad.fecha}
-                    </Text>
-                    <View className="flex-row items-center gap-2">
-                      {i === 0 ? (
-                        <Text className="overflow-hidden rounded-full bg-primary px-2 py-0.5 text-primary-foreground text-[10px] font-bold uppercase tracking-[0.6px]">
-                          Actual
-                        </Text>
-                      ) : null}
-                      <Text className="text-muted-foreground text-[11px]">{novedad.version}</Text>
-                    </View>
-                  </View>
-                  <View className="gap-3 rounded-2xl bg-card p-4">
-                    <Text className="text-foreground text-[15px] font-semibold">
-                      {novedad.titulo}
-                    </Text>
-                    <View className="gap-2">
-                      {novedad.cambios.map((cambio) => (
-                        <View key={cambio} className="flex-row gap-2.5">
-                          <Text className="text-muted-foreground text-[13px] leading-5">·</Text>
-                          <Text className="flex-1 text-muted-foreground text-[13px] leading-5">
-                            {cambio}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                </View>
-              ))}
+              <View className="gap-3">
+                <Text className="px-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                  Historial de versiones
+                </Text>
+                {NOVEDADES.map((n, i) => (
+                  <Version key={n.version} novedad={n} ultima={i === 0} />
+                ))}
+              </View>
             </View>
           </ScrollView>
         </Panel>

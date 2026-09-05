@@ -10,6 +10,7 @@ import { EstadoTapa, IndicadorPreparando } from './CoverState'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { useClicDerecho } from './useClicDerecho'
 import { PlayingBars } from './PlayingBars'
+import { usePlaybackCargada } from '../state/playback'
 import { formatClock } from './SeekBar'
 import { ICON_COLOR, IconMusic, IconPause, IconPlay } from './icons'
 
@@ -102,6 +103,14 @@ export function TrackRow({
 }) {
   const suelto = useWindowDimensions().width < SHELL_PX
   const lado = suelto ? 52 : 40
+  /*
+   * «Cargando» es dos cosas: el audio se está resolviendo (`busy`, la primera
+   * vez de una canción) o el motor todavía no lo tiene (la que suena, con
+   * `cargada` en falso: bajando, o cortada por YouTube). En las dos se ve el
+   * spinner y no las barras: barras sobre silencio es mentir que suena.
+   */
+  const cargada = usePlaybackCargada()
+  const cargando = !!busy || (sounding && !cargada)
 
   /* Propio salvo que lo manden de afuera; el de afuera manda porque quien lo
      pasa lo necesita para dibujar algo que no está acá adentro. */
@@ -153,13 +162,13 @@ export function TrackRow({
          */}
         <Text
           className="text-muted-foreground text-[12px] tabular-nums"
-          style={{ opacity: hovered || sounding || busy ? 0 : 1 }}
+          style={{ opacity: hovered || sounding || cargando ? 0 : 1 }}
         >
           {index + 1}
         </Text>
         <View
           pointerEvents="none"
-          style={{ position: 'absolute', opacity: hovered && !busy ? 1 : 0 }}
+          style={{ position: 'absolute', opacity: hovered && !cargando ? 1 : 0 }}
         >
           {playing ? (
             <IconPause size={13} color={ICON_COLOR.foreground} />
@@ -169,11 +178,14 @@ export function TrackRow({
         </View>
         <View
           pointerEvents="none"
-          style={{ position: 'absolute', opacity: !hovered && sounding && !busy ? 1 : 0 }}
+          style={{ position: 'absolute', opacity: !hovered && sounding && !cargando ? 1 : 0 }}
         >
-          <PlayingBars playing={playing} />
+          {/* Solo en la fila que suena: las barras siguen la onda y la
+              posición, y cuarenta filas suscriptas a la posición serían
+              cuarenta redibujados por segundo. */}
+          {sounding ? <PlayingBars playing={playing} /> : null}
         </View>
-        {busy ? (
+        {cargando ? (
           <View pointerEvents="none" style={{ position: 'absolute' }}>
             <IndicadorPreparando color={ICON_COLOR.muted} />
           </View>
@@ -203,7 +215,7 @@ export function TrackRow({
             </View>
           )}
           {suelto ? (
-            <EstadoTapa busy={busy} sounding={sounding} playing={playing} />
+            <EstadoTapa busy={cargando} sounding={sounding} playing={playing} />
           ) : null}
         </View>
 

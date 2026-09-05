@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { artworkSource } from '../../src/lib/artwork'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { pickImage } from '../../src/lib/pickImage'
+import { estiloDeFuente, fuenteDe } from '../../src/lib/fuentes'
 import { coloresDe, nombreDeTema, temaEfectivo } from '../../src/lib/tema'
 import { volver } from '../../src/lib/volver'
 import {
@@ -33,6 +34,7 @@ import { FilaAjuste, GrupoAjustes, IconoAjuste } from '../../src/ui/Ajustes'
 import { PrimaryButton } from '../../src/ui/Button'
 import { PLACEHOLDER_COLOR } from '../../src/ui/Field'
 import { Menu } from '../../src/ui/Menu'
+import { Hoja, useHojaModal } from '../../src/ui/Hoja'
 import { Panel } from '../../src/ui/Panel'
 import { GrillaDeMiniaturas, rotuloDePiezas, Superficie, useMiniaturas, Vitrina } from '../../src/ui/Vitrina'
 import {
@@ -46,6 +48,7 @@ import {
   IconLyrics,
   IconMusic,
   IconPalette,
+  IconType,
 } from '../../src/ui/icons'
 
 const MAX_W = 520
@@ -67,6 +70,9 @@ export default function EditarVitrina() {
   const user = useUser()
   const perfil = useMyProfile()
   const piso = usePiso(24)
+  /* En escritorio esto es una ventana centrada y no una pantalla a lo ancho:
+     un editor de 520px estirado a 1400 se lee como un teléfono gigante. */
+  const modal = useHojaModal()
   const borrador = useBorrador()
   const [guardando, setGuardando] = useState(false)
   const [subiendo, setSubiendo] = useState(false)
@@ -140,13 +146,24 @@ export default function EditarVitrina() {
     setGuardando(true)
     try {
       const payload = payloadDe(contenido)
+      let creado: string | null = null
       if (borrador.id) {
         await updateShowcase(borrador.id, { payload, estilo, ancho: borrador.ancho })
       } else {
-        await addShowcase(user.id, kind, payload, borrador.ancho, estilo, borrador.parentId)
+        creado = await addShowcase(user.id, kind, payload, borrador.ancho, estilo, borrador.parentId)
       }
       limpiarBorrador()
       avisar(nueva ? 'Agregada al mosaico' : 'Guardada')
+      /*
+       * Un sub-space recién creado se abre **adentro y armando**: lo que
+       * uno quiere después de ponerle nombre es llenarlo, y volver al perfil
+       * para tocar la pieza y después el lápiz eran dos pasos que preguntaban
+       * «¿y ahora qué?». La pieza vacía no dice nada por sí sola.
+       */
+      if (creado && kind === 'subspace') {
+        router.replace({ pathname: '/profile/subspace', params: { owner: user.id, id: creado, armar: '1' } })
+        return
+      }
       volver(router, '/profile')
     } catch (e) {
       avisar(mensajeError(e), true)
@@ -202,6 +219,7 @@ export default function EditarVitrina() {
   const temaGlobal = perfil?.tema ?? null
 
   return (
+    <Hoja>
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="flex-1">
         <View className="flex-row items-center gap-3 px-3 py-1">
@@ -223,7 +241,7 @@ export default function EditarVitrina() {
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
             <ScrollView
               contentContainerClassName="items-center px-4 pt-4"
-              contentContainerStyle={{ paddingBottom: piso }}
+              contentContainerStyle={{ paddingBottom: modal ? 24 : piso }}
               keyboardShouldPersistTaps="handled"
             >
               <View className="w-full gap-7" style={{ maxWidth: MAX_W }}>
@@ -298,6 +316,15 @@ export default function EditarVitrina() {
                       ultima={!conTema && !conFondo && kind !== 'imagen'}
                     />
                   ) : null}
+                  {deTexto ? (
+                    <FilaAjuste
+                      rotulo="Fuente"
+                      valor={fuenteDe(estilo.fuente)?.nombre ?? null}
+                      vacio="La del sistema"
+                      icono={<IconType size={17} color={ICON_COLOR.muted} />}
+                      onPress={() => router.push('/profile/fuente')}
+                    />
+                  ) : null}
                   {conTema ? (
                     <FilaAjuste
                       rotulo="Tema"
@@ -352,6 +379,7 @@ export default function EditarVitrina() {
         </Panel>
       </View>
     </SafeAreaView>
+    </Hoja>
   )
 }
 
@@ -407,10 +435,14 @@ function PrevioDeTexto({
               maxLength={40}
               autoFocus
               className="text-[15px] font-bold"
-              style={{ color: c.texto, minHeight: 24, paddingVertical: 2 }}
+              style={[{ color: c.texto, minHeight: 24, paddingVertical: 2 }, estiloDeFuente(borrador.estilo.fuente, 15)]}
             />
             <Text className="text-[12px]" style={{ color: c.secundario }}>
-              {rotuloDePiezas(miniaturas?.cuantas ?? 0)}
+              {/* Vacío y nuevo, la tarjeta dice qué viene: adentro se ponen
+                  canciones, artistas, textos, lo mismo que en el mosaico. */}
+              {miniaturas?.cuantas
+                ? rotuloDePiezas(miniaturas.cuantas)
+                : 'Al guardar se abre para llenarlo: canciones, artistas, textos…'}
             </Text>
           </View>
         </View>
@@ -451,7 +483,10 @@ function PrevioDeTexto({
                   ? 'text-[19px] leading-7'
                   : 'text-[15px] leading-6'
           }
-          style={{ color: c.texto, minHeight: encabezado ? 24 : 72, paddingVertical: 4 }}
+          style={[
+            { color: c.texto, minHeight: encabezado ? 24 : 72, paddingVertical: 4 },
+            estiloDeFuente(borrador.estilo.fuente, encabezado ? 15 : letra ? (grande ? 24 : 17) : grande ? 19 : 15),
+          ]}
         />
         {letra ? (
           <Text className="text-[11px]" numberOfLines={1} style={{ color: c.secundario }}>

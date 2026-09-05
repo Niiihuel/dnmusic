@@ -11,6 +11,7 @@ en el del host usando el suyo de control remoto.
 | --- | --- |
 | `supabase/migrations/20260812100000_jam.sql` | La verdad: tablas, RLS, todos los RPCs |
 | `supabase/migrations/20260812150000_jam_mover.sql` | Reordenar la cola: `jam_mover`, midpoint sobre `posicion` |
+| `supabase/migrations/20260908000000_jam_cola_prioridad.sql` | Lo pedido antes que lo sugerido: `automatica` y el `jam_agregar` nuevo |
 | `src/services/jam.ts` | Los pedidos y el canal; parsers fila→tipo |
 | `src/state/jam.ts` | La copia local: conexión, resync, permisos, volcado |
 | `src/state/playback.ts` | `registerJam`, el puente; `jamAplicar`/`jamSoltar` |
@@ -81,6 +82,22 @@ el aleatorio y el repetir avisan que no, y `playQueue` pide salir primero.
 **Encolar dentro de un Jam es agregarle al Jam.** El «Agregar a la cola» de
 toda la app pasa por `enqueue`, y `enqueue` en un Jam llama a `jam_agregar`:
 no hubo que tocar ni una pantalla.
+
+**Lo pedido suena antes que lo sugerido.** El host rellena la cola con
+recomendaciones cuando quedan pocas (`rellenarJamSiFalta`), y esas filas van
+marcadas `automatica`. `jam_agregar` mete lo que pide una persona **después de
+lo último pedido y antes de lo primero sugerido**; lo sugerido va al final.
+Encolar tres canciones a mano es escucharlas las tres, en orden, y recién
+después la radio del Jam — la misma regla que la cola de afuera. Tocar una
+canción de una **lista** con el Jam andando (`jam_tocar_cola`) sigue la misma
+regla: la tocada suena ya, y el resto de la lista entra como contexto
+—`automatica`— detrás de lo pedido y antes de lo sugerido; antes metía la
+lista entera por delante de todo. Las dos pantallas de cola lo muestran en dos
+secciones («Lo que pidieron» / «Después · sigue el Jam»). Y un pedido despierta al Jam que quedó mudo en el final de la
+cola: la huella de ese silencio es sin sonar, en cero, sin arranque y con la
+actual siendo la última — las cuatro juntas, porque un Jam recién creado en
+pausa cumple tres. La migración `jam_cola_prioridad` tiene la cuenta y
+`supabase/tests/jam.sql` la prueba.
 
 **El host que se va termina el Jam; el que se desconecta, no.** Salir es una
 decisión y termina la sesión para todos (como Spotify). Perder la señal no:

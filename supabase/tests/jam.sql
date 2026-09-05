@@ -314,6 +314,99 @@ begin
 end;
 $$;
 
+-- ── La cola: lo pedido antes que lo sugerido ────────────────────────────────
+-- Ana crea el Jam con dos canciones y el relleno agrega dos sugeridas; Beto
+-- pide una: tiene que sonar después de lo que ya se había pedido y ANTES de
+-- las sugeridas, y las sugeridas siguen yendo al final.
+do $$
+declare
+  ana constant uuid := '00000000-0000-4000-8000-0000000000a1';
+  beto constant uuid := '00000000-0000-4000-8000-0000000000b2';
+  estado jsonb;
+  v_jam uuid;
+  v_code text;
+  orden text[];
+begin
+  perform pg_temp.como(ana);
+  estado := public.crear_jam(
+    '[{"videoId":"v1","title":"Uno","audioPath":"v1.m4a","durationMs":1000},
+      {"videoId":"v2","title":"Dos","audioPath":"v2.m4a","durationMs":1000}]'::jsonb,
+    0, true, 0
+  );
+  v_jam  := (estado -> 'jam' ->> 'id')::uuid;
+  v_code := estado -> 'jam' ->> 'code';
+
+  -- El relleno del host: dos sugeridas al final.
+  perform public.jam_agregar(v_jam, '{"videoId":"a1","title":"Radio 1","audioPath":"a1.m4a"}'::jsonb, true);
+  perform public.jam_agregar(v_jam, '{"videoId":"a2","title":"Radio 2","audioPath":"a2.m4a"}'::jsonb, true);
+
+  -- Beto pide una y después otra: van entre lo pedido y lo sugerido, en orden.
+  perform pg_temp.como(beto);
+  perform public.unirse_jam(v_code, 'propia');
+  perform public.jam_agregar(v_jam, '{"videoId":"p1","title":"Pedida 1","audioPath":"p1.m4a"}'::jsonb);
+  perform public.jam_agregar(v_jam, '{"videoId":"p2","title":"Pedida 2","audioPath":"p2.m4a"}'::jsonb);
+
+  select array_agg(video_id order by posicion) into orden
+  from public.jam_queue where jam_id = v_jam;
+  if orden <> array['v1', 'v2', 'p1', 'p2', 'a1', 'a2'] then
+    raise exception 'FALLO: lo pedido no fue antes que lo sugerido: %', orden;
+  end if;
+
+  -- Una sugerida más sigue yendo al final, detrás de lo pedido.
+  perform pg_temp.como(ana);
+  perform public.jam_agregar(v_jam, '{"videoId":"a3","title":"Radio 3","audioPath":"a3.m4a"}'::jsonb, true);
+  select array_agg(video_id order by posicion) into orden
+  from public.jam_queue where jam_id = v_jam;
+  if orden[7] <> 'a3' then
+    raise exception 'FALLO: la sugerida no fue al final: %', orden;
+  end if;
+
+  -- Lo marcado como automático llega como tal al estado.
+  estado := public.jam_estado(v_jam);
+  if (select count(*) from jsonb_array_elements(estado -> 'cola') c
+      where (c ->> 'automatica')::boolean) <> 3 then
+    raise exception 'FALLO: jam_estado no cuenta las sugeridas';
+  end if;
+
+  -- El Jam mudo en el final se despierta con lo que pide una persona.
+  perform public.jam_tocar(v_jam, (select id from public.jam_queue where jam_id = v_jam and video_id = 'a3'));
+  perform public.jam_saltar(v_jam);
+  if (select suena from public.jams where id = v_jam) then
+    raise exception 'FALLO: saltar en la última no dejó el Jam mudo';
+  end if;
+  perform pg_temp.como(beto);
+  perform public.jam_agregar(v_jam, '{"videoId":"p3","title":"Pedida 3","audioPath":"p3.m4a"}'::jsonb);
+  if not (select suena from public.jams where id = v_jam)
+     or (select video_id from public.jam_queue where id = (select item_actual from public.jams where id = v_jam)) <> 'p3' then
+    raise exception 'FALLO: pedir una canción con el Jam mudo no lo despertó con ella';
+  end if;
+
+  -- Poner una lista con el Jam andando: la tocada suena ya, y el resto de la
+  -- lista va detrás de lo pedido y antes de lo sugerido.
+  perform public.jam_tocar_cola(v_jam,
+    '[{"videoId":"L1","title":"Lista 1","audioPath":"L1.m4a"},
+      {"videoId":"L2","title":"Lista 2","audioPath":"L2.m4a"},
+      {"videoId":"L3","title":"Lista 3","audioPath":"L3.m4a"}]'::jsonb);
+  if (select video_id from public.jam_queue where id = (select item_actual from public.jams where id = v_jam)) <> 'L1' then
+    raise exception 'FALLO: poner una lista no hizo sonar la primera';
+  end if;
+  perform public.jam_agregar(v_jam, '{"videoId":"p4","title":"Pedida 4","audioPath":"p4.m4a"}'::jsonb);
+  select array_agg(video_id order by posicion) into orden
+  from public.jam_queue q where jam_id = v_jam
+    and posicion > (select posicion from public.jam_queue where id = (select item_actual from public.jams where id = v_jam));
+  -- Después de L1 (la que suena): lo pedido antes (p4), la lista después (L2, L3), y nada sugerido quedaba.
+  if orden[1] <> 'p4' or orden[2] <> 'L2' or orden[3] <> 'L3' then
+    raise exception 'FALLO: la lista no quedó detrás de lo pedido: %', orden;
+  end if;
+
+  -- Beto se va antes de que Ana cierre: la membresía sobrevive al Jam
+  -- terminado, y la prueba de RLS de abajo espera que no vea ninguno.
+  perform public.salir_jam(v_jam);
+  perform pg_temp.como(ana);
+  perform public.terminar_jam(v_jam);
+end;
+$$;
+
 -- ── RLS: quien no es miembro no ve una fila ─────────────────────────────────
 -- Directo contra las tablas, como haría un cliente con supabase-js. Ana arma
 -- un Jam nuevo; Beto, afuera, tiene que ver exactamente nada.

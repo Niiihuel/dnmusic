@@ -14,7 +14,10 @@
     "notas": "node scripts/notas-release.mjs",
     "empaquetar": "npm run build && npm run traer-web && npm run notas && electron-builder --publish never",
     "publicar": "npm run build && npm run traer-web && npm run notas && electron-builder --publish always",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "diagnostico:youtube": "npm run build && electron scripts/diagnostico-youtube.cjs",
+    "comparar:youtube": "node scripts/comparar-diagnosticos.cjs"
   },
   "dependencies": {
     "bgutils-js": "^4.0.3",

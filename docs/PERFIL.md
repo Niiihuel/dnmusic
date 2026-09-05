@@ -33,8 +33,10 @@ que te deja mirar lo que muestra tu perfil sin la interfaz de armarlo delante.
 Airbuds. Se entra manteniendo apretada cualquier pieza —como los widgets del
 iPhone— o desde «Editar perfil → Armar el mosaico», y se sale con «Hecho». Las
 piezas tiemblan apenas, y cada una muestra sus controles en las esquinas: el
-«−» que la saca (con un «¿seguro?»), el lápiz que la abre y la manija de abajo
-a la derecha que se arrastra para cambiarle el tamaño. La tarjeta entera es lo
+«−» que la saca (con un «¿seguro?»), el lápiz que la abre y cuatro asas
+sólidas, una en el medio de cada lado, que se arrastran para cambiarle el
+tamaño: hacia afuera crece, hacia adentro se achica; los lados ensanchan y
+arriba/abajo dan altura. La tarjeta entera es lo
 que se agarra para reordenar. Abajo flota la barra: el tema del perfil, el «+»
 y «Hecho».
 
@@ -186,6 +188,17 @@ heredan** mientras no elijan el suyo: `tema: null` en una pieza no es «vidrio»
 es «sin opinión». Es lo que hace que el botón de la paleta en la barra vista al
 mosaico entero de una vez.
 
+**La fuente** es la otra mitad de vestir una pieza de texto —encabezado,
+texto, letras y el título de un sub-space—: `estilo.fuente`, con seis
+tipografías de Google Fonts empaquetadas en la app (`src/lib/fuentes.ts`):
+Revista (serif), Redonda, Máquina (mono), Manuscrita, Cartel (condensada) y
+Retro. Una sola variante por familia, importada por archivo y no por el
+índice del paquete, para que el bundle no arrastre todos los pesos; y con
+`fontWeight: 'normal'` a la fuerza, porque el archivo ya es del peso que se
+ve y pedir negrita encima haría caer a iOS a la del sistema. Se cargan una
+vez en la raíz sin bloquear el arranque. La hoja de elegir escribe **lo que
+uno puso** en cada fuente, no un texto de muestra.
+
 **La imagen de fondo** va detrás con un velo oscuro y el texto en blanco, sea
 cual sea el tema (con foto no se dibujan ni el degradado ni la textura): la foto puede ser cualquiera y el velo se lee sobre todas.
 Sale de la galería o de la cámara (`pickImage({ desdeCamara })`).
@@ -226,12 +239,30 @@ flotan arriba y a media fila se montaban sobre el texto.
 
 ## El marco de la foto
 
-Cinco decoraciones dibujadas en SVG con animación (`src/ui/Marco.tsx`),
-acromáticas, desbordando la foto con la regla del 1,2× de Discord y Steam. Cero
-assets: la lección de decoprofile fue no depender de archivos ajenos. En la base
-es solo un nombre (`profiles.marco`); uno desconocido se dibuja como ninguno.
-Se elige en «Editar perfil → Marco de la foto», cada opción puesta sobre tu
-propia foto.
+Dieciocho decoraciones dibujadas en SVG y animadas con Reanimated
+(`src/ui/Marco.tsx`), en cinco familias: **Clásicos** (aro, pulso, órbita,
+trazos, destello, los ids de siempre con el dibujo mejorado), **Música**
+(vinilo, ecualizador, ondas, notas), **Naturaleza** (llamas, pétalos, nubes),
+**Cielo** (estrellas, aureola, luna) y **Realeza** (corona, alas, laurel).
+Cero assets: la lección de decoprofile fue no depender de archivos ajenos. La
+interfaz sigue acromática, pero el marco es contenido de la persona como su
+foto o el tema de sus vitrinas, y por eso puede tener color con criterio: dos
+o tres tonos por marco, de la misma escala 200/300 y 800 de Tailwind v4 que
+`lib/tema`, y la mitad del catálogo en blanco, plata, humo y un dorado
+apagado. El lienzo desborda a la foto 1,35× (los anillos viven en el 1,2× de
+Discord y Steam; las alas, llamas y coronas usan el resto) y no la pisa; quien
+apila el marco deja `overflow: visible` y puede reservar el aire con
+`aireDelMarco`. Todo se mueve con `withRepeat`/`withTiming` en el hilo de UI,
+nunca por cuadro, con a lo sumo una docena de nodos animados por marco. En la
+base es solo un nombre (`profiles.marco`); uno desconocido se dibuja como
+ninguno. Se elige en «Editar perfil → Marco de la foto», agrupado por familia
+y con cada opción puesta sobre tu propia foto.
+
+Dos trampas de SVG en web que costaron una tarde: `strokeDashoffset` corre la
+fase módulo el período del patrón —un hueco arbitrario hace aparecer un
+segundo arco—, y el prop `origin` de react-native-svg se vuelve un
+`transform-origin` que React rechaza; las formas rotadas van en `<G x y
+rotation>`.
 
 ## Lo que no hace
 

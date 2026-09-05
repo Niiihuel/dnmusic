@@ -147,7 +147,7 @@ export function FilaInterruptor({
     <Pressable
       accessibilityRole="switch"
       accessibilityLabel={rotulo}
-      accessibilityState={{ checked: activo }}
+      aria-checked={activo}
       onPress={() => onCambiar(!activo)}
       className="flex-row items-center gap-3 px-4 active:bg-muted"
     >

@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.9.1",
+    "fecha": "4 de septiembre de 2026",
+    "titulo": "Más a tu manera.",
+    "cambios": [
+      "Ajustes con búsqueda, categorías y un temporizador más cómodo. Elegí qué novedades y ayudas querés ver.",
+      "Actualizaciones más simples: progreso de descarga, historial desplegable y un resumen al abrir. Descargá y reiniciá cuando quieras.",
+      "Tu perfil suma 18 marcos de foto, tipografías para el Space y mejoras para acomodar piezas, fondos y sub-spaces.",
+      "La reproducción en escritorio maneja mejor las descargas interrumpidas y respeta las pausas que pide YouTube. Las búsquedas repetidas aprovechan la caché y evitan pedidos duplicados.",
+      "En el Jam, las canciones que agregás a mano van antes que las recomendaciones. La cola distingue tus pedidos del contexto de una lista.",
+      "Mejoras en las animaciones del reproductor, las portadas y las recomendaciones del inicio."
+    ]
+  },
+  {
     "version": "1.9.0",
     "fecha": "4 de septiembre de 2026",
     "titulo": "El inicio es tuyo, y el perfil se arma como un mosaico",

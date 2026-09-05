@@ -1,3 +1,4 @@
+import { artworkSource } from '../lib/artwork'
 import { getSupabase } from '../lib/supabase'
 import { fetchArtist, resolveSong, type TrackResult } from './music'
 import { listarMeGusta } from './gustos'
@@ -115,10 +116,12 @@ async function anclasDeSemillas(): Promise<ArtistaEscuchado[]> {
  *
  * Devuelve vacío ante cualquier tropiezo, igual que las semillas.
  */
-async function anclasDeListas(): Promise<(ArtistaEscuchado & { artworkUrl?: string })[]> {
+async function anclasDeListas(): Promise<
+  (ArtistaEscuchado & { artworkUrl?: string; artworkPath?: string | null })[]
+> {
   try {
     const listas = await listPlaylists()
-    const porArtista = new Map<string, ArtistaEscuchado & { artworkUrl?: string }>()
+    const porArtista = new Map<string, ArtistaEscuchado & { artworkUrl?: string; artworkPath?: string | null }>()
     await Promise.all(
       listas.map(async (lista) => {
         const temas = await listTracks(lista.id)
@@ -129,13 +132,17 @@ async function anclasDeListas(): Promise<(ArtistaEscuchado & { artworkUrl?: stri
             previo.ms += Math.max(1, t.durationMs)
             /* La tapa: la primera que aparezca. Los mixes de «Hecho para vos»
                la necesitan, y un mix sin tapa era un cuadrado gris. */
-            if (!previo.artworkUrl && t.artworkUrl) previo.artworkUrl = t.artworkUrl
+            if (!previo.artworkUrl && t.artworkUrl) {
+              previo.artworkUrl = t.artworkUrl
+              previo.artworkPath = t.artworkPath
+            }
           } else
             porArtista.set(t.artistId, {
               artist_id: t.artistId,
               artist: t.artist,
               ms: Math.max(1, t.durationMs),
               artworkUrl: t.artworkUrl || undefined,
+              artworkPath: t.artworkPath,
             })
         }
       }),
@@ -557,25 +564,41 @@ export type MixPersonal = {
 export async function mezclasPersonales(cuantas = 6): Promise<MixPersonal[]> {
   try {
     const porArtista = new Map<string, { ancla: ArtistaEscuchado; artworkUrl: string }>()
-    const sumar = (t: { artistId: string | null; artist: string; durationMs: number; artworkUrl?: string }) => {
+    const sumar = (t: {
+      artistId: string | null
+      artist: string
+      durationMs: number
+      artworkUrl?: string
+      artworkPath?: string | null
+    }) => {
       if (!t.artistId) return
       const peso = Math.max(1, t.durationMs)
+      /* Nuestra copia en Storage antes que la URL de Google: la de Google va
+         por el proxy del servicio, y cuando el servicio está en frío la tapa
+         llega tarde o no llega. La copia se dibuja directo, siempre. */
+      const tapa = artworkSource(t.artworkPath, t.artworkUrl, 400) ?? ''
       const previo = porArtista.get(t.artistId)
       if (previo) {
         previo.ancla.ms += peso
-        if (!previo.artworkUrl && t.artworkUrl) previo.artworkUrl = t.artworkUrl
+        if (!previo.artworkUrl && tapa) previo.artworkUrl = tapa
       } else
         porArtista.set(t.artistId, {
           ancla: { artist_id: t.artistId, artist: t.artist, ms: peso },
           /* La primera carátula que llega sirve de tapa: es de una canción
              real del artista, que es lo único que la tarjeta promete. */
-          artworkUrl: t.artworkUrl ?? '',
+          artworkUrl: tapa,
         })
     }
 
     for (const g of await listarMeGusta()) sumar(g)
     for (const a of await anclasDeListas())
-      sumar({ artistId: a.artist_id, artist: a.artist, durationMs: a.ms, artworkUrl: a.artworkUrl })
+      sumar({
+        artistId: a.artist_id,
+        artist: a.artist,
+        durationMs: a.ms,
+        artworkUrl: a.artworkUrl,
+        artworkPath: a.artworkPath,
+      })
 
     return [...porArtista.values()]
       .sort((x, y) => y.ancla.ms - x.ancla.ms)

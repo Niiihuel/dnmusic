@@ -1,3 +1,4 @@
+import { leerAjustes } from '../state/ajustes'
 import { useCallback, useEffect } from 'react'
 import { Platform, StyleSheet, Text, View } from 'react-native'
 import {
@@ -58,7 +59,7 @@ export function useConTooltip(texto?: string) {
    */
   const medir = useCallback(
     (e: unknown, ya: boolean) => {
-      if (!texto || !TECLADO_FISICO) return
+      if (!texto || !TECLADO_FISICO || (!ya && !leerAjustes().ayudasCursor)) return
       const nodo = (e as { currentTarget?: { getBoundingClientRect?: () => DOMRect } })
         ?.currentTarget
       const r = nodo?.getBoundingClientRect?.()

@@ -109,6 +109,20 @@ export function ColaBody({
     .map((track, i) => ({ track, i }))
     .filter(({ track }) => track.id.startsWith('radio:'))
 
+  /*
+   * En un Jam la cola es una sola fila en el servidor, pero también son dos
+   * cosas: lo que alguien **pidió** y lo que el Jam **sugirió** para no
+   * quedarse mudo (`automatica`). Se muestran como afuera del Jam: primero lo
+   * pedido, después lo sugerido — que es además el orden en que suenan, porque
+   * `jam_agregar` mete lo pedido antes de lo sugerido.
+   */
+  const pedidasJam = enJam
+    ? porVenir.filter(({ track }) => !colaJam.find((i) => i.id === track.id)?.automatica)
+    : porVenir
+  const sugeridasJam = enJam
+    ? porVenir.filter(({ track }) => colaJam.find((i) => i.id === track.id)?.automatica)
+    : []
+
   const cuantas = (actual ? 1 : 0) + upNext.length + porVenir.length
   const totalMs =
     (actual?.durationMs ?? 0) +
@@ -238,22 +252,52 @@ export function ColaBody({
 
       {porVenir.length > 0 ? (
         <>
-          <Encabezado texto={upNext.length > 0 ? 'Después · sigue la lista' : 'A continuación'} />
-          {porVenir.map(({ track, indice }, i) => (
-            <TrackRow
-              key={`viene-${track.id}-${indice}`}
-              index={i + 1}
-              title={track.title}
-              artist={artistaDe(track)}
-              artwork={artworkSource(track.artworkPath, track.artworkUrl, 96)}
-              durationMs={track.durationMs}
-              sounding={false}
-              playing={false}
-              /* En un Jam esto es un intent de saltar ahí para todos; el
-                 puente de playback ya sabe pedir permiso. */
-              onPlay={() => playAt(indice)}
-            />
-          ))}
+          {pedidasJam.length > 0 ? (
+            <>
+              <Encabezado
+                texto={
+                  enJam
+                    ? 'Lo que pidieron'
+                    : upNext.length > 0
+                      ? 'Después · sigue la lista'
+                      : 'A continuación'
+                }
+              />
+              {pedidasJam.map(({ track, indice }, i) => (
+                <TrackRow
+                  key={`viene-${track.id}-${indice}`}
+                  index={i + 1}
+                  title={track.title}
+                  artist={artistaDe(track)}
+                  artwork={artworkSource(track.artworkPath, track.artworkUrl, 96)}
+                  durationMs={track.durationMs}
+                  sounding={false}
+                  playing={false}
+                  /* En un Jam esto es un intent de saltar ahí para todos; el
+                     puente de playback ya sabe pedir permiso. */
+                  onPlay={() => playAt(indice)}
+                />
+              ))}
+            </>
+          ) : null}
+          {sugeridasJam.length > 0 ? (
+            <>
+              <Encabezado texto="Después · sigue el Jam" />
+              {sugeridasJam.map(({ track, indice }, i) => (
+                <TrackRow
+                  key={`sugerida-${track.id}-${indice}`}
+                  index={i + 1}
+                  title={track.title}
+                  artist={track.artist}
+                  artwork={artworkSource(track.artworkPath, track.artworkUrl, 96)}
+                  durationMs={track.durationMs}
+                  sounding={false}
+                  playing={false}
+                  onPlay={() => playAt(indice)}
+                />
+              ))}
+            </>
+          ) : null}
         </>
       ) : actual ? (
         <Vacio

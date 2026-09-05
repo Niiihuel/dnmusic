@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { mensajeError } from '../../src/lib/mensajeError'
 import { pickImage } from '../../src/lib/pickImage'
 import { volver } from '../../src/lib/volver'
-import { uploadIlustracion, type ShowcaseKind } from '../../src/services/showcases'
+import { addShowcase, SIN_ESTILO, uploadIlustracion, type ShowcaseKind } from '../../src/services/showcases'
 import { avisar } from '../../src/state/aviso'
 import { useUser } from '../../src/state/session'
 import { usePiso } from '../../src/state/shell'
@@ -49,7 +50,30 @@ export default function AgregarVitrina() {
   const modal = useHojaModal()
   const [subiendo, setSubiendo] = useState(false)
 
+  /**
+   * Un espacio no tiene nada que editar —ni texto, ni tema, ni imagen—, así
+   * que se agrega acá mismo y se vuelve al mosaico. Pasarlo por el editor era
+   * una pantalla con un solo botón.
+   */
+  async function agregarEspacio() {
+    if (!user || subiendo) return
+    setSubiendo(true)
+    try {
+      await addShowcase(user.id, 'espaciador', {}, 'entero', SIN_ESTILO, parentId)
+      avisar('Espacio agregado')
+      volver(router, '/profile')
+    } catch (e) {
+      avisar(mensajeError(e), true)
+    } finally {
+      setSubiendo(false)
+    }
+  }
+
   function elegir(kind: ShowcaseKind) {
+    if (kind === 'espaciador') {
+      void agregarEspacio()
+      return
+    }
     empezarBorrador(kind, parentId)
     if (kind === 'cancion' || kind === 'artista' || kind === 'album' || kind === 'letra') {
       router.replace({ pathname: '/profile/elegir', params: { que: kind } })

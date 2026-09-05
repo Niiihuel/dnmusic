@@ -1,19 +1,13 @@
 import { fork, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import type { Aporte } from './resolutor.js'
+import { acunarEnNavegador, cerrarTokens, userAgentTokens } from './potoken-navegador.js'
 
-/**
- * El puente al hijo que resuelve. Ver el porqué entero en `resolutor-hijo.ts`:
- * adentro del main de Electron, BotGuard acuña un token degradado y YouTube no
- * entrega el audio; en un Node de verdad, sí.
- *
- * Un solo hijo para toda la sesión, encendido al primer pedido y reusado
- * después —así la sesión de InnerTube y los tokens siguen valiendo—. Si se
- * muere, el próximo pedido lo levanta de nuevo y los que estaban esperando se
- * enteran en vez de quedar colgados para siempre.
- */
+/** Un hijo persistente para resolver audio y un navegador aislado para atestar. */
 
-type Respuesta = { id: number; ok: true; aporte: Aporte } | { id: number; ok: false; error: string }
+type Respuesta = { tipo?: undefined; id: number; ok: true; aporte: Aporte }
+  | { tipo?: undefined; id: number; ok: false; error: string }
+  | { tipo: 'potoken'; id: number; binding: string }
 
 type Pendiente = { resolver: (a: Aporte) => void; rechazar: (e: Error) => void }
 
@@ -45,12 +39,22 @@ function asegurarHijo(): ChildProcess {
   const guion = join(__dirname, 'resolutor-hijo.js')
   const nuevo = fork(guion, [], {
     execPath: process.execPath,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', DNMUSIC_YT_USER_AGENT: userAgentTokens() },
     // Su salida a la nuestra: los `console.log` del resolutor siguen sirviendo.
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
   })
 
   nuevo.on('message', (m: Respuesta) => {
+    if (m?.tipo === 'potoken') {
+      const contestar = (respuesta: object) => {
+        if (nuevo.connected) nuevo.send({ tipo: 'potoken', id: m.id, ...respuesta }, () => {})
+      }
+      void acunarEnNavegador(m.binding).then(
+        (token) => contestar({ token }),
+        (e: unknown) => contestar({ error: (e as Error).message }),
+      )
+      return
+    }
     const p = pendientes.get(m?.id)
     if (!p) return
     pendientes.delete(m.id)
@@ -96,6 +100,7 @@ export function resolverEnHijo(opciones: {
 /** Cortarlo al cerrar la app: un hijo huérfano bajando bytes no le sirve a nadie. */
 export function cerrarResolutor() {
   const actual = hijo
-  hijo = null
+  tumbar('El resolutor se cerró')
   actual?.kill()
+  cerrarTokens()
 }

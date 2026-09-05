@@ -333,9 +333,20 @@ export async function fetchAlbum(
  */
 export type SearchHits = { tracks: TrackResult[]; artists: ArtistResult[] }
 
+const busquedas = new Map<string, { hits: SearchHits; vence: number }>()
+
+function verificarBusquedaActiva(signal?: AbortSignal): void {
+  // El AbortSignal de React Native no siempre implementa throwIfAborted.
+  if (signal?.aborted) throw Object.assign(new Error('Búsqueda cancelada'), { name: 'AbortError' })
+}
+
 export async function searchMusic(query: string, signal?: AbortSignal): Promise<SearchHits> {
-  const term = query.trim()
+  verificarBusquedaActiva(signal)
+  const term = query.normalize('NFC').trim().replace(/\s+/g, ' ')
   if (!term) return { tracks: [], artists: [] }
+  const guardada = busquedas.get(term)
+  if (guardada && guardada.vence > Date.now()) return guardada.hits
+  busquedas.delete(term)
 
   const res = await fetchMusica(`${MUSIC_API}/search?q=${encodeURIComponent(term)}`, { signal })
   if (!res.ok) throw new Error(`El servicio de música respondió ${res.status}`)
@@ -345,7 +356,11 @@ export async function searchMusic(query: string, signal?: AbortSignal): Promise<
     error?: string
   }
   if (data.error) throw new Error(data.error)
-  return { tracks: data.results ?? [], artists: data.artists ?? [] }
+  verificarBusquedaActiva(signal)
+  const hits = { tracks: data.results ?? [], artists: data.artists ?? [] }
+  busquedas.set(term, { hits, vence: Date.now() + 60_000 })
+  while (busquedas.size > 100) busquedas.delete(busquedas.keys().next().value!)
+  return hits
 }
 
 /** Solo las canciones, para quien no tiene dónde poner un artista. */
@@ -483,6 +498,13 @@ function motivoDeAca(e: unknown): string {
   const texto = pelar((e as Error)?.message ?? '')
   const aparato = esEscritorio() ? 'esta computadora' : 'este teléfono'
 
+  if (/YouTube pausó las descargas/i.test(texto)) return texto
+  if (/BotGuard|verificar el navegador|navegador.*(token|tiempo)/i.test(texto)) {
+    return `YouTube no pudo verificar la sesión de ${aparato}. Esperá un minuto antes de volver a intentar.`
+  }
+  if (/googlevideo respondió (403|429)/i.test(texto)) {
+    return `YouTube rechazó la descarga desde ${aparato}. Esperá un rato antes de volver a intentar.`
+  }
   if (/LOGIN_REQUIRED|not a bot|Sin audio desde/i.test(texto)) {
     return `Ni el servidor ni ${aparato} pudieron sacarla de YouTube ahora mismo. Suele ser pasajero: probá en un rato.`
   }

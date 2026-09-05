@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Stack, usePathname, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import * as SplashScreen from 'expo-splash-screen'
+import { useFuentesDelPerfil } from '../src/lib/fuentes'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SplashAnimado } from '../src/ui/SplashAnimado'
 import { Tooltip } from '../src/ui/Tooltip'
@@ -105,6 +106,9 @@ export default function RootLayout() {
   // GestureHandlerRootView es obligatorio para que el arrastre de la ventana
   // de selección en la onda funcione — sin él los gestos no llegan nunca.
   const [splashListo, setSplashListo] = useState(false)
+  /* Las tipografías del perfil, una vez y para toda la app. No bloquean el
+     arranque: hasta que llegan, las piezas salen con la del sistema. */
+  useFuentesDelPerfil()
   /* Apenas monta el árbol, se baja el splash nativo: atrás ya está el
      `SplashAnimado`, que toma la posta sin que se vea el corte. */
   useEffect(() => {
@@ -987,13 +991,29 @@ function SessionGate() {
       {/* Armar una pieza del mosaico: el editor y el buscador son pantallas
           apiladas —hay teclado y lista—; la hoja de «+» y la del tema son
           hojas, como el marco. */}
-      <Stack.Screen name="profile/vitrina" />
-      <Stack.Screen name="profile/elegir" />
+      {/* En web van como hoja (angosta) o ventana centrada (escritorio): una
+          pantalla de 520px a todo el ancho de una PC se lee como un teléfono
+          gigante. En nativo siguen siendo pantallas apiladas. */}
+      <Stack.Screen name="profile/vitrina" options={ES_WEB ? HOJA_WEB : undefined} />
+      <Stack.Screen name="profile/elegir" options={ES_WEB ? HOJA_WEB : undefined} />
       {/* El mosaico de adentro de un sub-space: una pantalla apilada sobre el
           perfil, con el mismo modo de edición. Ver `app/profile/subspace`. */}
       <Stack.Screen name="profile/subspace" />
       <Stack.Screen
         name="profile/agregar"
+        options={
+          ES_WEB
+            ? HOJA_WEB
+            : {
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                sheetCornerRadius: 24,
+              }
+        }
+      />
+      <Stack.Screen
+        name="profile/fuente"
         options={
           ES_WEB
             ? HOJA_WEB
