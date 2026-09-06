@@ -442,6 +442,7 @@ export default function ProfileScreen() {
                         avatarPath={profile.avatarPath}
                         encuadre={profile.avatarEncuadre}
                         marco={profile.marco}
+                        placa={profile.placa}
                         bio={profile.bio ?? ''}
                         banda
                         accion={armando ? barraDeArmado : botonEditar}
@@ -477,6 +478,7 @@ export default function ProfileScreen() {
                         avatarPath={profile.avatarPath}
                         encuadre={profile.avatarEncuadre}
                         marco={profile.marco}
+                        placa={profile.placa}
                         bio={profile.bio ?? ''}
                         centrado
                       />

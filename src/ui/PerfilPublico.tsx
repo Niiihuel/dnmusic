@@ -55,6 +55,7 @@ import { estiloEncuadrado } from './Encuadre'
 import { aireDelMarco, Marco } from './Marco'
 import { Confirmar } from './Confirmar'
 import { EfectoPerfil } from './DecoracionImagen'
+import { PlacaDeNombre } from './Placas'
 import { EMOJIS } from './Reacciones'
 import { Vitrina } from './Vitrina'
 
@@ -282,6 +283,7 @@ export function Identidad({
   avatarPath,
   encuadre = null,
   marco = null,
+  placa = null,
   bio,
   centrado = false,
   banda = false,
@@ -294,6 +296,8 @@ export function Identidad({
   encuadre?: Encuadre | null
   /** El marco dibujado alrededor. Ver `ui/Marco`. */
   marco?: string | null
+  /** La placa detrás del nombre. Ver `ui/Placas`. */
+  placa?: string | null
   bio: string
   /** En el teléfono va centrado; con dos columnas, alineado a la izquierda. */
   centrado?: boolean
@@ -321,11 +325,13 @@ export function Identidad({
           size={136}
           aireADerecha
         />
-        <View className="min-w-0 flex-1 gap-1">
-          <Text className="text-foreground text-[32px] font-bold" numberOfLines={1}>
-            {nombre}
-          </Text>
-          <Text className="text-muted-foreground text-[14px]">@{usuario}</Text>
+        <View className="min-w-0 flex-1 items-start gap-1">
+          <PlacaDeNombre id={placa}>
+            <Text className="text-foreground text-[32px] font-bold" numberOfLines={1}>
+              {nombre}
+            </Text>
+            <Text className="text-muted-foreground text-[14px]">@{usuario}</Text>
+          </PlacaDeNombre>
           {bio.trim() ? (
             <Text className="text-foreground text-[15px] leading-6" numberOfLines={2}>
               {bio}
@@ -346,12 +352,14 @@ export function Identidad({
         marco={marco}
         size={centrado ? 120 : 96}
       />
-      <View className={`gap-0.5 ${centrado ? 'items-center' : ''}`}>
-        <Text className="text-foreground text-[26px] font-bold" numberOfLines={1}>
-          {nombre}
-        </Text>
-        <Text className="text-muted-foreground text-[14px]">@{usuario}</Text>
-      </View>
+      <PlacaDeNombre id={placa}>
+        <View className={`gap-0.5 ${centrado ? 'items-center' : ''}`}>
+          <Text className="text-foreground text-[26px] font-bold" numberOfLines={1}>
+            {nombre}
+          </Text>
+          <Text className="text-muted-foreground text-[14px]">@{usuario}</Text>
+        </View>
+      </PlacaDeNombre>
       {bio.trim() ? (
         <Text
           className={`text-foreground text-[15px] leading-6 ${centrado ? 'text-center' : ''}`}

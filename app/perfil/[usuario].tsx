@@ -292,6 +292,7 @@ export default function PerfilAjeno() {
                     avatarPath={perfil.avatarPath}
                     encuadre={perfil.avatarEncuadre}
                     marco={perfil.marco}
+                    placa={perfil.placa}
                     bio={perfil.bio ?? ''}
                     centrado={!ancho}
                     banda={ancho}

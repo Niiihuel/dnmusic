@@ -489,7 +489,7 @@ export default function Encuadrar() {
       <Hoja>
         <View className="flex-1 bg-background">
           {encabezado}
-          <View className="flex-1 items-center justify-center gap-4 px-8">
+          <View className="flex-1 items-center justify-center gap-4 px-8" style={{ minHeight: 240 }}>
             <Text className="text-muted-foreground text-center text-[13px]">
               {esVitrina
                 ? 'Todavía no pusiste una imagen.'
@@ -507,20 +507,23 @@ export default function Encuadrar() {
 
   return (
     <Hoja>
-      <View className="flex-1 bg-background">
+      {/*
+       * El scroll es la raíz de la hoja y la cabecera va **adentro, pegada
+       * arriba** (`stickyHeaderIndices`): así la hoja nace con el alto del
+       * sistema y el contenido nunca se dibuja debajo de la cabecera — que
+       * es lo que pasaba en iOS con la cabecera y el scroll apilados en una
+       * vista sin alto propio. Lo que sobra de alto reparte el contenido al
+       * medio, no lo deja colgando arriba.
+       */}
+      <ScrollView
+        className="flex-1 bg-background"
+        stickyHeaderIndices={[0]}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: modal ? 24 : piso }}
+      >
         {encabezado}
-        {/* Scroll por si aun acotado no entra (una ventana muy baja): mejor
-            desplazar que superponer. El piso solo se reserva en la sábana — en
-            el modal el reproductor queda afuera. */}
-        <ScrollView
-          className="flex-1"
-          contentContainerClassName="items-center gap-6 px-6 pt-4"
-          contentContainerStyle={{
-            paddingBottom: modal ? 24 : piso,
-            maxWidth: ANCHO_HOJA,
-            width: '100%',
-            alignSelf: 'center',
-          }}
+        <View
+          className="flex-1 items-center justify-center gap-6 px-6 pt-2"
+          style={{ maxWidth: ANCHO_HOJA, width: '100%', alignSelf: 'center' }}
         >
           <Text className="text-muted-foreground text-center text-[13px] leading-[18px]">
             Arrastrá para mover, pellizcá para acercar y girá con el dial.
@@ -647,8 +650,8 @@ export default function Encuadrar() {
           >
             <Text className="text-foreground text-[14px] font-semibold">Centrar</Text>
           </Pressable>
-        </ScrollView>
-      </View>
+        </View>
+      </ScrollView>
     </Hoja>
   )
 }

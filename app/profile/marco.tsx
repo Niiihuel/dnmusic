@@ -34,6 +34,7 @@ import { aireDelMarco, Marco, MARCOS } from '../../src/ui/Marco'
 import { alfa } from '../../src/ui/marcoBase'
 import { FondoPerfil } from '../../src/ui/PerfilPublico'
 import { SearchField } from '../../src/ui/SearchField'
+import { PlacaDeNombre, PLACAS } from '../../src/ui/Placas'
 import { Segmentado } from '../../src/ui/Segmentado'
 import { ICON_COLOR, IconCheck, IconPlus } from '../../src/ui/icons'
 
@@ -49,6 +50,9 @@ const FOTO = 76
 const MUESTRA = 56
 /** El ancho de la tarjeta de perfil y de los banners. */
 const ANCHO_TARJETA = 560
+
+/** Qué vidriera está abierta: las dos del catálogo, más las placas de nombre. */
+type Pestana = TipoDecoracion | 'placa'
 
 /** Una opción de la tienda: un marco o efecto dibujado, o una decoración en imagen. */
 type Opcion = {
@@ -86,17 +90,23 @@ export default function Tienda() {
   const piso = usePiso(24)
   const modal = useHojaModal()
   const { tipo: tipoCrudo } = useLocalSearchParams<{ tipo?: string }>()
-  const [pestana, setPestana] = useState<TipoDecoracion>(tipoCrudo === 'efecto' ? 'efecto' : 'marco')
+  const [pestana, setPestana] = useState<Pestana>(
+    tipoCrudo === 'efecto' ? 'efecto' : tipoCrudo === 'placa' ? 'placa' : 'marco',
+  )
   const esEfecto = pestana === 'efecto'
+  const esPlaca = pestana === 'placa'
   const decoraciones = useDecoraciones()
 
   const marcoActual = perfil?.marco ?? null
   const efectoActual = perfil?.efecto ?? null
+  const placaActual = perfil?.placa ?? null
   const [marcoSel, setMarcoSel] = useState<string | null>(marcoActual)
   const [efectoSel, setEfectoSel] = useState<string | null>(efectoActual)
-  const seleccion = esEfecto ? efectoSel : marcoSel
-  const elegir = (id: string | null) => (esEfecto ? setEfectoSel(id) : setMarcoSel(id))
-  const cambiado = marcoSel !== marcoActual || efectoSel !== efectoActual
+  const [placaSel, setPlacaSel] = useState<string | null>(placaActual)
+  const seleccion = esEfecto ? efectoSel : esPlaca ? placaSel : marcoSel
+  const elegir = (id: string | null) =>
+    esEfecto ? setEfectoSel(id) : esPlaca ? setPlacaSel(id) : setMarcoSel(id)
+  const cambiado = marcoSel !== marcoActual || efectoSel !== efectoActual || placaSel !== placaActual
 
   const [busqueda, setBusqueda] = useState('')
   const [guardando, setGuardando] = useState(false)
@@ -133,25 +143,30 @@ export default function Tienda() {
   }
 
   /* La vidriera de la pestaña: los dibujados primero, después los del catálogo. */
-  const deImagen: Opcion[] = (decoraciones ?? [])
-    .filter((d) => d.tipo === pestana)
-    .map((d) => ({ id: d.id, nombre: d.nombre, familia: d.familia, imagen: d }))
+  const deImagen: Opcion[] = esPlaca
+    ? []
+    : (decoraciones ?? [])
+        .filter((d) => d.tipo === pestana)
+        .map((d) => ({ id: d.id, nombre: d.nombre, familia: d.familia, imagen: d }))
   const dibujados: Opcion[] = esEfecto
     ? EFECTOS.map((e) => ({ id: e.id, nombre: e.nombre, familia: e.familia }))
-    : MARCOS.map((m) => ({ id: m.id, nombre: m.nombre, familia: m.familia }))
+    : esPlaca
+      ? PLACAS.map((p) => ({ id: p.id, nombre: p.nombre, familia: 'placas' }))
+      : MARCOS.map((m) => ({ id: m.id, nombre: m.nombre, familia: m.familia }))
   const opciones: Opcion[] = [...dibujados, ...deImagen]
   const porId = new Map(opciones.map((o) => [o.id, o]))
-  const propia: Opcion | undefined = esDecoracionPropia(seleccion)
-    ? { id: seleccion, nombre: 'Tu decoración', familia: 'propias', imagen: decoracionPropia(seleccion, pestana) }
-    : undefined
+  const propia: Opcion | undefined =
+    !esPlaca && esDecoracionPropia(seleccion)
+      ? { id: seleccion, nombre: 'Tu decoración', familia: 'propias', imagen: decoracionPropia(seleccion, pestana) }
+      : undefined
   const elegido = propia ?? porId.get(seleccion ?? '')
-  const coleccionDe = (id: string) =>
-    COLECCIONES.find((c) => (esEfecto ? c.efectos : c.marcos).includes(id))
+  const idsDe = (c: Coleccion) => (esEfecto ? c.efectos : esPlaca ? c.placas : c.marcos)
+  const coleccionDe = (id: string) => COLECCIONES.find((c) => idsDe(c).includes(id))
 
   /* Las colecciones con lo que tienen de esta pestaña, en su orden. */
   const estantes = COLECCIONES.map((c) => ({
     ...c,
-    piezas: (esEfecto ? c.efectos : c.marcos).map((id) => porId.get(id)).filter((o): o is Opcion => !!o),
+    piezas: idsDe(c).map((id) => porId.get(id)).filter((o): o is Opcion => !!o),
   })).filter((c) => c.piezas.length > 0)
 
   const texto = busqueda.trim().toLocaleLowerCase()
@@ -169,7 +184,9 @@ export default function Tienda() {
     if (guardando || !cambiado) return
     setGuardando(true)
     try {
-      setMyProfile(await saveMyProfile({ marco: marcoSel ?? '', efecto: efectoSel ?? '' }))
+      setMyProfile(
+        await saveMyProfile({ marco: marcoSel ?? '', efecto: efectoSel ?? '', placa: placaSel ?? '' }),
+      )
       avisar('Decoraciones aplicadas')
       cerrar()
     } catch (e) {
@@ -187,6 +204,16 @@ export default function Tienda() {
 
   /** Lo que va adentro de una celda, según la pestaña. */
   const muestra = (o: Opcion | null, lado: number, animada: boolean): ReactNode => {
+    if (esPlaca)
+      return (
+        <View style={{ width: lado - 16 }}>
+          <PlacaDeNombre id={o?.id ?? null} animado={animada} radio={10}>
+            <Text className="text-foreground text-[13px] font-bold" numberOfLines={1}>
+              {nombre}
+            </Text>
+          </PlacaDeNombre>
+        </View>
+      )
     if (!esEfecto) return foto(o?.id ?? null, MUESTRA, animada)
     if (!o) return <View className="h-14 w-14 rounded-full bg-muted" />
     if (esEfectoDibujado(o.id))
@@ -224,7 +251,15 @@ export default function Tienda() {
 
   return (
     <Hoja anchoMaximo={720}>
-      <View className="flex-1 bg-background">
+      {/* El scroll es la raíz y la cabecera va pegada arriba, con su velo:
+          lo que pasa por debajo se apaga en vez de cortarse. */}
+      <ScrollView
+        className="flex-1 bg-background"
+        stickyHeaderIndices={[0]}
+        contentContainerStyle={{ paddingBottom: modal ? 24 : piso }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <EncabezadoHoja
           titulo="Decoraciones"
           izquierda={<BotonHoja tipo="cerrar" onPress={cerrar} />}
@@ -237,18 +272,14 @@ export default function Tienda() {
             />
           }
         />
-        <ScrollView
-          className="flex-1"
-          contentContainerStyle={{ paddingBottom: modal ? 24 : piso }}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
+        <View>
           {/* La tarjeta de tu perfil, con lo elegido puesto. */}
           <View className="items-center px-4 pt-3">
             <TarjetaDePerfil
               bannerPath={perfil?.bannerPath ?? null}
               encuadre={perfil?.bannerEncuadre ?? null}
               efecto={efectoSel}
+              placa={placaSel}
               foto={foto(marcoSel, FOTO, true)}
               nombre={nombre}
               usuario={perfil?.username ?? ''}
@@ -256,7 +287,7 @@ export default function Tienda() {
             />
             <View className="items-center gap-0.5 pt-3">
               <Text className="text-foreground text-[15px] font-semibold">
-                {elegido?.nombre ?? (esEfecto ? 'Sin efecto' : 'Sin marco')}
+                {elegido?.nombre ?? (esEfecto ? 'Sin efecto' : esPlaca ? 'Sin placa' : 'Sin marco')}
               </Text>
               {elegido?.imagen && !esDecoracionPropia(elegido.id) ? (
                 <Atribucion decoracion={elegido.imagen} />
@@ -280,6 +311,7 @@ export default function Tienda() {
               options={[
                 { value: 'marco', label: 'Marcos' },
                 { value: 'efecto', label: 'Efectos' },
+                { value: 'placa', label: 'Placas' },
               ]}
               onChange={setPestana}
             />
@@ -289,7 +321,7 @@ export default function Tienda() {
             <SearchField
               value={busqueda}
               onChangeText={setBusqueda}
-              placeholder={esEfecto ? 'Buscar efectos' : 'Buscar marcos'}
+              placeholder={esEfecto ? 'Buscar efectos' : esPlaca ? 'Buscar placas' : 'Buscar marcos'}
             />
           </View>
 
@@ -306,7 +338,11 @@ export default function Tienda() {
               </View>
               {!encontradas.length ? (
                 <Text className="text-muted-foreground px-2 py-8 text-center text-[13px]">
-                  {esEfecto ? 'No hay efectos con ese nombre.' : 'No hay marcos con ese nombre.'}
+                  {esEfecto
+                    ? 'No hay efectos con ese nombre.'
+                    : esPlaca
+                      ? 'No hay placas con ese nombre.'
+                      : 'No hay marcos con ese nombre.'}
                 </Text>
               ) : null}
             </View>
@@ -317,6 +353,7 @@ export default function Tienda() {
               <View className="gap-3">
                 <FadingRow gap={HUECO} padding={16}>
                   {celdaDe(null, CELDA_ESTANTE)}
+                  {esPlaca ? null : (
                   <Celda
                     lado={CELDA_ESTANTE}
                     nombre="Subir la tuya"
@@ -335,20 +372,27 @@ export default function Tienda() {
                       )
                     }
                   </Celda>
+                  )}
                   {propia ? celdaDe(propia, CELDA_ESTANTE) : null}
                 </FadingRow>
                 <Text className="px-4 text-muted-foreground text-[12px]">
-                  {esEfecto
-                    ? 'Un archivo tuyo cubre la banda de arriba del fondo. PNG, WebP, GIF o APNG.'
-                    : 'Un archivo tuyo va centrado, 1,2 veces la foto, como las decoraciones de Discord. PNG, WebP, GIF o APNG con el centro transparente.'}
+                  {esPlaca
+                    ? 'La placa va detrás de tu nombre, en el perfil.'
+                    : esEfecto
+                      ? 'Un archivo tuyo cubre la banda de arriba del fondo. PNG, WebP, GIF o APNG.'
+                      : 'Un archivo tuyo va centrado, 1,2 veces la foto, como las decoraciones de Discord. PNG, WebP, GIF o APNG con el centro transparente.'}
                 </Text>
               </View>
               {estantes.map((c) => (
                 <View key={c.id} className="gap-3">
                   <BannerDeColeccion
                     coleccion={c}
-                    muestras={c.piezas.slice(0, 2).map((o) =>
-                      esEfecto ? (
+                    muestras={c.piezas.slice(0, esPlaca ? 1 : 2).map((o) =>
+                      esPlaca ? (
+                        <View key={o.id} style={{ width: 120 }}>
+                          {muestra(o, 136, false)}
+                        </View>
+                      ) : esEfecto ? (
                         <View key={o.id} className="overflow-hidden rounded-xl" style={{ width: 56, height: 56 }}>
                           {muestra(o, 56, false)}
                         </View>
@@ -369,8 +413,8 @@ export default function Tienda() {
               ) : null}
             </View>
           )}
-        </ScrollView>
-      </View>
+        </View>
+      </ScrollView>
     </Hoja>
   )
 }
@@ -385,6 +429,7 @@ function TarjetaDePerfil({
   bannerPath,
   encuadre,
   efecto,
+  placa,
   foto,
   nombre,
   usuario,
@@ -393,6 +438,7 @@ function TarjetaDePerfil({
   bannerPath: string | null
   encuadre: Parameters<typeof FondoPerfil>[0]['encuadre']
   efecto: string | null
+  placa: string | null
   foto: ReactNode
   nombre: string
   usuario: string
@@ -407,12 +453,16 @@ function TarjetaDePerfil({
           de acá; el marco desborda y el aire lo reserva `aireDelMarco`. */}
       <View className="px-5 pb-5" style={{ marginTop: -(FOTO / 2) }}>
         <View style={{ width: FOTO, height: FOTO, marginBottom: aireDelMarco(FOTO) - 4 }}>{foto}</View>
-        <Text className="text-foreground text-[17px] font-bold" numberOfLines={1}>
-          {nombre}
-        </Text>
-        <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
-          @{usuario}
-        </Text>
+        <View className="items-start">
+          <PlacaDeNombre id={placa}>
+            <Text className="text-foreground text-[17px] font-bold" numberOfLines={1}>
+              {nombre}
+            </Text>
+            <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+              @{usuario}
+            </Text>
+          </PlacaDeNombre>
+        </View>
         {bio ? (
           <Text className="pt-2 text-foreground text-[13px]" numberOfLines={2}>
             {bio}

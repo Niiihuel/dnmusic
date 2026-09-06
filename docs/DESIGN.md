@@ -165,6 +165,13 @@ la HIG de Liquid Glass y **corrige** al de Tahoe:
   listas agrupadas con placa —las «cards»— quedan para lo que es un
   formulario o una lista de controles: Ajustes, Editar perfil, una hoja. Una
   portada hecha de cajas se lee como un panel de control, no como música.
+- **La cabecera de una hoja va pegada arriba y de ella cuelga un velo.**
+  `EncabezadoHoja` es opaca y lleva debajo un degradado del fondo a nada;
+  puesta como primer hijo del scroll con `stickyHeaderIndices={[0]}`, lo
+  que se desplaza por debajo se apaga contra el velo en vez de cortarse
+  contra el borde, y nunca tapa un botón. El scroll es la raíz de la hoja
+  —no una vista con la cabecera y el scroll apilados— porque en iOS esa
+  vista no tenía alto y el contenido se dibujaba debajo de la cabecera.
 - **El buscador vive arriba de la barra lateral**, como en Música y en Mensajes
   para Mac, y no en el encabezado. En música la primera letra lleva el panel
   del medio a la pantalla de resultados —la misma del teléfono— y las

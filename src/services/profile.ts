@@ -61,6 +61,8 @@ export type Profile = {
   tema: Tema | null
   /** El efecto encima del fondo: el id de una decoración `efecto`, o nada. */
   efecto?: string | null
+  /** La placa detrás del nombre, como las «nameplates» de Discord. Ver `ui/Placas`. */
+  placa?: string | null
 }
 
 /**
@@ -96,6 +98,7 @@ type ProfileRow = {
   fuente?: unknown
   tema?: unknown
   efecto?: unknown
+  placa?: unknown
 }
 
 /** Un encuadre del jsonb, o null. Un número raro lo descarta entero: medio
@@ -130,6 +133,7 @@ function profileFromRow(row: ProfileRow | null | undefined): Profile | null {
     tema: temaDe(row.tema),
     fuente: typeof row.fuente === 'string' ? (fuenteDe(row.fuente)?.id ?? null) : null,
     efecto: typeof row.efecto === 'string' && row.efecto ? row.efecto : null,
+    placa: typeof row.placa === 'string' && row.placa ? row.placa : null,
   }
 }
 
@@ -166,6 +170,7 @@ export async function saveMyProfile(changes: {
   fuente?: string | null
   /** La cadena vacía lo saca, como el marco. */
   efecto?: string
+  placa?: string
 }): Promise<Profile> {
   const { data, error } = await getSupabase().rpc('update_my_profile', {
     p_username: changes.username ?? null,
@@ -185,6 +190,7 @@ export async function saveMyProfile(changes: {
     p_marco: changes.marco ?? null,
     ...(changes.fuente !== undefined ? { p_fuente: changes.fuente ?? '' } : {}),
     ...(changes.efecto !== undefined ? { p_efecto: changes.efecto } : {}),
+    ...(changes.placa !== undefined ? { p_placa: changes.placa } : {}),
     p_tema: changes.tema === undefined ? null : changes.tema === null ? 'BORRAR' : changes.tema,
   })
   if (error) throw error

@@ -429,3 +429,16 @@ dibuja con lo mismo que el catálogo: un marco entero al estilo Discord,
 centrado y 1,2× la foto, o un efecto que cubre la banda. Lo que cada uno sube
 es suyo, igual que su foto: la app no reparte activos de nadie.
 
+## Placas de nombre
+
+La tercera pieza de la tienda, como las «nameplates» de Discord: una franja
+redondeada **detrás del nombre** (`src/ui/Placas.tsx`), con el tinte diluido
+de su colección, un patrón quieto que dice de cuál es —píxeles, estrellas,
+puntos, rayas, barras, luces, niebla— y un brillo que la recorre de a ratos,
+el único nodo animado. Nueve placas, una por colección (`placas` en
+`colecciones.ts`). El id va en `profiles.placa` (migración
+`placa_de_nombre`) y la dibuja `Identidad` envolviendo nombre y usuario, en
+las dos formas del perfil; la tarjeta de la tienda la muestra igual. Se
+elige en la pestaña «Placas» de Decoraciones, también desde «Editar perfil →
+Placa de nombre».
+

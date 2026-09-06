@@ -7,12 +7,13 @@ import { BotonVidrio } from '../../../src/ui/Glass'
 import { Panel, Shell } from '../../../src/ui/Panel'
 import { FilaAjuste, FilaInterruptor, GrupoAjustes } from '../../../src/ui/Ajustes'
 import { FilaCampo } from '../../../src/ui/EditorDeCampo'
-import { ICON_COLOR, IconAt, IconBack, IconClose, IconGrilla, IconImage, IconLock, IconMessage, IconPalette, IconSparkles, IconType, IconUser, type IconProps } from '../../../src/ui/icons'
+import { ICON_COLOR, IconAt, IconBack, IconClose, IconGrilla, IconHeading, IconImage, IconLock, IconMessage, IconPalette, IconSparkles, IconType, IconUser, type IconProps } from '../../../src/ui/icons'
 import { removeAvatar, saveMyProfile, uploadAvatar } from '../../../src/services/profile'
 import { dejarFondoPendiente } from '../../../src/state/fondoPendiente'
 import { BarraDeProgreso, porciento } from '../../../src/ui/Progreso'
 import { FondoPerfil } from '../../../src/ui/PerfilPublico'
 import { nombreDeEfecto } from '../../../src/ui/EfectosDibujados'
+import { nombreDePlaca } from '../../../src/ui/Placas'
 import { esDecoracionPropia } from '../../../src/services/decoraciones'
 import { MARCOS } from '../../../src/ui/Marco'
 import { pickImage } from '../../../src/lib/pickImage'
@@ -315,6 +316,13 @@ export default function EditarPerfil() {
         vacio="Ninguno"
         icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
         onPress={() => router.push({ pathname: '/profile/marco', params: { tipo: 'efecto' } })}
+      />
+      <FilaAjuste
+        rotulo="Placa de nombre"
+        valor={profile.placa ? (nombreDePlaca(profile.placa) ?? profile.placa) : null}
+        vacio="Ninguna"
+        icono={<IconHeading size={17} color={ICON_COLOR.muted} />}
+        onPress={() => router.push({ pathname: '/profile/marco', params: { tipo: 'placa' } })}
         ultima
       />
     </GrupoAjustes>

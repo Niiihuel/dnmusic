@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react'
 import { ActivityIndicator, Pressable, Text, View } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import { ICON_COLOR, IconCheck, IconChevronLeft, IconClose } from './icons'
+
+/** Lo que mide la cabecera, para quien la pega arriba y necesita reservarlo. */
+export const ALTO_ENCABEZADO = 64
+/** Lo que cuelga el velo por debajo de la cabecera. */
+const VELO = 28
 
 /**
  * La cabecera de una hoja: cerrar a la izquierda, el título en el medio y la
@@ -31,19 +37,34 @@ export function EncabezadoHoja({
   derecha?: ReactNode
 }) {
   return (
-    <View className="h-16 flex-row items-center px-3">
-      <View className="w-11 items-start">{izquierda}</View>
-      <View className="min-w-0 flex-1 items-center gap-0.5">
-        {sobre ? (
-          <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-            {sobre}
+    /*
+     * La cabecera es opaca y **de ella cuelga un velo**: un degradado del
+     * fondo a nada, por debajo, sobre lo que viene después. Pegada arriba de
+     * un scroll (`stickyHeaderIndices={[0]}`), lo que pasa por debajo se apaga
+     * contra el velo en vez de cortarse contra el borde — el encabezado
+     * flotante de `docs/DESIGN.md`, y lo que hace cualquier hoja de Apple.
+     * `zIndex` para que el velo quede sobre el contenido y no debajo.
+     */
+    <View className="bg-background" style={{ zIndex: 10, height: ALTO_ENCABEZADO }}>
+      <View className="h-16 flex-row items-center px-3">
+        <View className="w-11 items-start">{izquierda}</View>
+        <View className="min-w-0 flex-1 items-center gap-0.5">
+          {sobre ? (
+            <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+              {sobre}
+            </Text>
+          ) : null}
+          <Text className="text-foreground text-[16px] font-semibold" numberOfLines={1}>
+            {titulo}
           </Text>
-        ) : null}
-        <Text className="text-foreground text-[16px] font-semibold" numberOfLines={1}>
-          {titulo}
-        </Text>
+        </View>
+        <View className="w-11 items-end">{derecha}</View>
       </View>
-      <View className="w-11 items-end">{derecha}</View>
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgb(18,18,18)', 'rgba(18,18,18,0)']}
+        style={{ position: 'absolute', left: 0, right: 0, top: ALTO_ENCABEZADO, height: VELO }}
+      />
     </View>
   )
 }

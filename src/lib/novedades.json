@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.10.3",
+    "fecha": "6 de septiembre de 2026",
+    "titulo": "Placas de nombre, y hojas que respiran.",
+    "cambios": [
+      "Placas de nombre en la tienda, como las de Discord: una franja con el tinte de su colección detrás de tu nombre en el perfil, con su patrón y un brillo que la recorre. Nueve, una por colección.",
+      "La cabecera de las hojas queda pegada arriba con un velo: lo que se desplaza por debajo se apaga en vez de cortarse, y ya no tapa botones ni textos.",
+      "La hoja de encuadre centra su contenido y ya no dibuja la cabecera encima de las instrucciones en iOS."
+    ]
+  },
+  {
     "version": "1.10.2",
     "fecha": "6 de septiembre de 2026",
     "titulo": "Subí tu propia decoración.",
