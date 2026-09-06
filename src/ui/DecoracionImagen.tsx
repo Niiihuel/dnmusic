@@ -1,6 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
-import { decoracionUrl, type Decoracion, useDecoracion } from '../services/decoraciones'
+import {
+  decoracionPropia,
+  decoracionUrl,
+  esDecoracionPropia,
+  rutaDePropia,
+  type Decoracion,
+  useDecoracion,
+} from '../services/decoraciones'
+import { ilustracionUrl } from '../services/showcases'
 import { EfectoDibujado, esEfectoDibujado } from './EfectosDibujados'
 
 /**
@@ -31,7 +39,7 @@ export function MarcoImagen({
   return (
     <View pointerEvents="none" style={{ position: 'absolute', left, top, width: lado, height: lado }}>
       <Image
-        source={{ uri: decoracionUrl(decoracion.archivo) }}
+        source={{ uri: urlDe(decoracion) }}
         style={StyleSheet.absoluteFill}
         contentFit="contain"
         autoplay={animado}
@@ -63,12 +71,20 @@ function esquina(posicion: Decoracion['posicion'], size: number, lado: number): 
   }
 }
 
+/** De dónde sale el archivo: del bucket del catálogo, o de tu carpeta si es propia. */
+function urlDe(decoracion: Decoracion): string {
+  return esDecoracionPropia(decoracion.id)
+    ? ilustracionUrl(rutaDePropia(decoracion.id))
+    : decoracionUrl(decoracion.archivo)
+}
+
 /**
- * El marco de imagen por id, si el catálogo lo tiene. Es lo que `Marco` usa
- * cuando el nombre no es un marco dibujado.
+ * El marco de imagen por id: uno propio (`imagen:…`) o uno del catálogo, si
+ * lo tiene. Es lo que `Marco` usa cuando el nombre no es un marco dibujado.
  */
 export function MarcoImagenPorId({ id, size, animado = true }: { id: string; size: number; animado?: boolean }) {
-  const decoracion = useDecoracion(id, 'marco')
+  const delCatalogo = useDecoracion(esDecoracionPropia(id) ? null : id, 'marco')
+  const decoracion = esDecoracionPropia(id) ? decoracionPropia(id, 'marco') : delCatalogo
   if (!decoracion) return null
   return <MarcoImagen decoracion={decoracion} size={size} animado={animado} />
 }
@@ -97,12 +113,13 @@ export function EfectoPerfil({
 }
 
 function EfectoImagen({ id, alto, animado }: { id: string | null | undefined; alto: number; animado: boolean }) {
-  const decoracion = useDecoracion(id, 'efecto')
+  const delCatalogo = useDecoracion(esDecoracionPropia(id) ? null : id, 'efecto')
+  const decoracion = esDecoracionPropia(id) ? decoracionPropia(id, 'efecto') : delCatalogo
   if (!decoracion) return null
   return (
     <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: alto }}>
       <Image
-        source={{ uri: decoracionUrl(decoracion.archivo) }}
+        source={{ uri: urlDe(decoracion) }}
         style={StyleSheet.absoluteFill}
         contentFit="cover"
         contentPosition="top center"

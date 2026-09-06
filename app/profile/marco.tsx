@@ -7,14 +7,21 @@ import { mensajeError } from '../../src/lib/mensajeError'
 import { TECLADO_FISICO } from '../../src/lib/teclado'
 import { volver } from '../../src/lib/volver'
 import {
+  decoracionPropia,
   decoracionUrl,
+  esDecoracionPropia,
+  PREFIJO_PROPIA,
+  rutaDePropia,
   useDecoraciones,
   type Decoracion,
   type TipoDecoracion,
 } from '../../src/services/decoraciones'
+import { pickImage } from '../../src/lib/pickImage'
 import { saveMyProfile } from '../../src/services/profile'
+import { ilustracionUrl, uploadIlustracionConProgreso } from '../../src/services/showcases'
+import { BarraDeProgreso, porciento } from '../../src/ui/Progreso'
 import { avisar } from '../../src/state/aviso'
-import { setMyProfile, useMyProfile } from '../../src/state/session'
+import { setMyProfile, useMyProfile, useUser } from '../../src/state/session'
 import { usePiso } from '../../src/state/shell'
 import { Avatar } from '../../src/ui/Avatar'
 import { COLECCIONES, type Coleccion } from '../../src/ui/colecciones'
@@ -28,7 +35,7 @@ import { alfa } from '../../src/ui/marcoBase'
 import { FondoPerfil } from '../../src/ui/PerfilPublico'
 import { SearchField } from '../../src/ui/SearchField'
 import { Segmentado } from '../../src/ui/Segmentado'
-import { ICON_COLOR, IconCheck } from '../../src/ui/icons'
+import { ICON_COLOR, IconCheck, IconPlus } from '../../src/ui/icons'
 
 /** El hueco entre celdas. */
 const HUECO = 10
@@ -94,6 +101,36 @@ export default function Tienda() {
   const [busqueda, setBusqueda] = useState('')
   const [guardando, setGuardando] = useState(false)
   const nombre = perfil?.displayName?.trim() || perfil?.username || 'Vos'
+  const user = useUser()
+  /** Cuánto subió tu archivo, de 0 a 1; `null` mientras no se sube. */
+  const [progreso, setProgreso] = useState<number | null>(null)
+
+  /**
+   * Subir la tuya: un archivo propio —PNG, WebP, GIF o APNG— que va a tu
+   * carpeta y queda elegido con el prefijo `imagen:`. Es la misma puerta que
+   * la foto de perfil; lo que subís es tuyo y se ve en tu perfil.
+   */
+  async function subirPropia() {
+    if (!user || progreso !== null) return
+    try {
+      const elegida = await pickImage({ cuadrada: false })
+      if (!elegida) return
+      setProgreso(0)
+      const ruta = await uploadIlustracionConProgreso(
+        user.id,
+        elegida.blob,
+        elegida.fileName,
+        elegida.mime,
+        setProgreso,
+      )
+      elegir(`${PREFIJO_PROPIA}${ruta}`)
+      avisar('Subida. Tocá el tilde para aplicarla.')
+    } catch (e) {
+      avisar(mensajeError(e), true)
+    } finally {
+      setProgreso(null)
+    }
+  }
 
   /* La vidriera de la pestaña: los dibujados primero, después los del catálogo. */
   const deImagen: Opcion[] = (decoraciones ?? [])
@@ -104,7 +141,10 @@ export default function Tienda() {
     : MARCOS.map((m) => ({ id: m.id, nombre: m.nombre, familia: m.familia }))
   const opciones: Opcion[] = [...dibujados, ...deImagen]
   const porId = new Map(opciones.map((o) => [o.id, o]))
-  const elegido = porId.get(seleccion ?? '')
+  const propia: Opcion | undefined = esDecoracionPropia(seleccion)
+    ? { id: seleccion, nombre: 'Tu decoración', familia: 'propias', imagen: decoracionPropia(seleccion, pestana) }
+    : undefined
+  const elegido = propia ?? porId.get(seleccion ?? '')
   const coleccionDe = (id: string) =>
     COLECCIONES.find((c) => (esEfecto ? c.efectos : c.marcos).includes(id))
 
@@ -158,7 +198,9 @@ export default function Tienda() {
     if (o.imagen)
       return (
         <Image
-          source={{ uri: decoracionUrl(o.imagen.archivo) }}
+          source={{
+            uri: esDecoracionPropia(o.id) ? ilustracionUrl(rutaDePropia(o.id)) : decoracionUrl(o.imagen.archivo),
+          }}
           style={{ width: lado, height: lado }}
           contentFit="cover"
           autoplay={animada}
@@ -216,11 +258,15 @@ export default function Tienda() {
               <Text className="text-foreground text-[15px] font-semibold">
                 {elegido?.nombre ?? (esEfecto ? 'Sin efecto' : 'Sin marco')}
               </Text>
-              {elegido?.imagen ? (
+              {elegido?.imagen && !esDecoracionPropia(elegido.id) ? (
                 <Atribucion decoracion={elegido.imagen} />
               ) : (
                 <Text className="text-muted-foreground text-[13px]">
-                  {elegido ? (coleccionDe(elegido.id)?.nombre ?? 'Sin colección') : 'Tocá una pieza para probarla'}
+                  {elegido
+                    ? esDecoracionPropia(elegido.id)
+                      ? 'Un archivo tuyo'
+                      : (coleccionDe(elegido.id)?.nombre ?? 'Sin colección')
+                    : 'Tocá una pieza para probarla'}
                 </Text>
               )}
             </View>
@@ -267,9 +313,36 @@ export default function Tienda() {
           ) : (
             /* Las colecciones: banner y estante, como la tienda de Discord. */
             <View className="gap-7 pt-5">
-              <FadingRow gap={HUECO} padding={16}>
-                {celdaDe(null, CELDA_ESTANTE)}
-              </FadingRow>
+              {/* Ninguno, subir la tuya, y la tuya si hay una elegida. */}
+              <View className="gap-3">
+                <FadingRow gap={HUECO} padding={16}>
+                  {celdaDe(null, CELDA_ESTANTE)}
+                  <Celda
+                    lado={CELDA_ESTANTE}
+                    nombre="Subir la tuya"
+                    seleccionada={false}
+                    onPress={() => void subirPropia()}
+                  >
+                    {() =>
+                      progreso !== null ? (
+                        <View className="w-full px-3">
+                          <BarraDeProgreso valor={progreso} rotulo={porciento(progreso)} />
+                        </View>
+                      ) : (
+                        <View className="h-12 w-12 items-center justify-center rounded-full bg-muted">
+                          <IconPlus size={20} color={ICON_COLOR.foreground} />
+                        </View>
+                      )
+                    }
+                  </Celda>
+                  {propia ? celdaDe(propia, CELDA_ESTANTE) : null}
+                </FadingRow>
+                <Text className="px-4 text-muted-foreground text-[12px]">
+                  {esEfecto
+                    ? 'Un archivo tuyo cubre la banda de arriba del fondo. PNG, WebP, GIF o APNG.'
+                    : 'Un archivo tuyo va centrado, 1,2 veces la foto, como las decoraciones de Discord. PNG, WebP, GIF o APNG con el centro transparente.'}
+                </Text>
+              </View>
               {estantes.map((c) => (
                 <View key={c.id} className="gap-3">
                   <BannerDeColeccion

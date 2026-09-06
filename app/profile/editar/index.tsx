@@ -13,6 +13,7 @@ import { dejarFondoPendiente } from '../../../src/state/fondoPendiente'
 import { BarraDeProgreso, porciento } from '../../../src/ui/Progreso'
 import { FondoPerfil } from '../../../src/ui/PerfilPublico'
 import { nombreDeEfecto } from '../../../src/ui/EfectosDibujados'
+import { esDecoracionPropia } from '../../../src/services/decoraciones'
 import { MARCOS } from '../../../src/ui/Marco'
 import { pickImage } from '../../../src/lib/pickImage'
 import { esVideo, uploadIlustracionConProgreso } from '../../../src/services/showcases'
@@ -289,7 +290,13 @@ export default function EditarPerfil() {
       />
       <FilaAjuste
         rotulo="Marco de la foto"
-        valor={profile.marco ? (MARCOS.find((m) => m.id === profile.marco)?.nombre ?? profile.marco) : null}
+        valor={
+          profile.marco
+            ? esDecoracionPropia(profile.marco)
+              ? 'Tu decoración'
+              : (MARCOS.find((m) => m.id === profile.marco)?.nombre ?? profile.marco)
+            : null
+        }
         vacio="Ninguno"
         icono={<IconPalette size={17} color={ICON_COLOR.muted} />}
         onPress={() => router.push('/profile/marco')}
@@ -298,7 +305,13 @@ export default function EditarPerfil() {
           effects». Vive en el catálogo en imagen (`services/decoraciones`). */}
       <FilaAjuste
         rotulo="Efecto del perfil"
-        valor={profile.efecto ? (nombreDeEfecto(profile.efecto) ?? profile.efecto) : null}
+        valor={
+          profile.efecto
+            ? esDecoracionPropia(profile.efecto)
+              ? 'Tu decoración'
+              : (nombreDeEfecto(profile.efecto) ?? profile.efecto)
+            : null
+        }
         vacio="Ninguno"
         icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
         onPress={() => router.push({ pathname: '/profile/marco', params: { tipo: 'efecto' } })}

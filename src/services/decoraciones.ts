@@ -116,3 +116,49 @@ export function useDecoracion(id: string | null | undefined, tipo: TipoDecoracio
   if (!id || !lista) return null
   return lista.find((d) => d.id === id && d.tipo === tipo) ?? null
 }
+
+/* ------------------------------------------------------------------------ */
+/* Las propias: un archivo tuyo, en tu carpeta                                */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * El prefijo de una decoración **propia**: `imagen:<ruta en showcases>`.
+ *
+ * Además del catálogo compartido, cada persona puede subir su propio archivo
+ * —como sube su foto— y llevarlo de marco o de efecto. No pasa por la tabla
+ * ni por el bucket `decoraciones`: va a su carpeta del bucket `showcases`,
+ * que ya es suya, y el perfil guarda la ruta con este prefijo. Lo que cada
+ * uno sube es cosa suya, igual que su foto.
+ */
+export const PREFIJO_PROPIA = 'imagen:'
+
+export function esDecoracionPropia(id: string | null | undefined): id is string {
+  return !!id && id.startsWith(PREFIJO_PROPIA)
+}
+
+/** La ruta en `showcases` de una decoración propia. */
+export function rutaDePropia(id: string): string {
+  return id.slice(PREFIJO_PROPIA.length)
+}
+
+/**
+ * Una decoración propia como fila del catálogo, para dibujarla con lo mismo:
+ * un marco entero al estilo Discord (1,2× la foto, centrado) o un efecto que
+ * cubre la banda.
+ */
+export function decoracionPropia(id: string, tipo: TipoDecoracion): Decoracion {
+  return {
+    id,
+    tipo,
+    nombre: 'Tu decoración',
+    familia: 'propias',
+    archivo: rutaDePropia(id),
+    escala: 1.2,
+    posicion: 'centro',
+    autor: '',
+    licencia: '',
+    fuente: '',
+    orden: 0,
+  }
+}
+

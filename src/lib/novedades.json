@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.10.2",
+    "fecha": "6 de septiembre de 2026",
+    "titulo": "Subí tu propia decoración.",
+    "cambios": [
+      "En la tienda, «Subir la tuya»: un archivo tuyo —PNG, WebP, GIF o APNG— como marco de la foto (centrado, 1,2 veces la foto, como las decoraciones de Discord) o como efecto sobre el fondo. Va a tu carpeta, como tu foto, y se aplica con el tilde.",
+      "El marco y el efecto aceptan ids largos: antes una decoración propia no se podía guardar."
+    ]
+  },
+  {
     "version": "1.10.1",
     "fecha": "6 de septiembre de 2026",
     "titulo": "La tienda de decoraciones.",

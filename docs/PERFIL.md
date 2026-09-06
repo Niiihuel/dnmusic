@@ -419,3 +419,13 @@ piezas de muestra sobre el tinte diluido de su paleta, `tonos` en
 dos filas del editor abren la misma hoja, «Efecto del perfil» con
 `?tipo=efecto`.
 
+**Subir la tuya.** Además del catálogo, cada persona puede subir su propio
+archivo (PNG, WebP, GIF o APNG) como marco o como efecto: va a su carpeta
+del bucket `showcases` con `uploadIlustracionConProgreso` —la barra se ve en
+la celda— y el perfil guarda `imagen:<ruta>` en `marco` o `efecto`
+(`PREFIJO_PROPIA` en `services/decoraciones`; la migración
+`decoraciones_propias` subió el tope de esas columnas a 200 caracteres). Se
+dibuja con lo mismo que el catálogo: un marco entero al estilo Discord,
+centrado y 1,2× la foto, o un efecto que cubre la banda. Lo que cada uno sube
+es suyo, igual que su foto: la app no reparte activos de nadie.
+
