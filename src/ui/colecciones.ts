@@ -19,6 +19,8 @@ export type Coleccion = {
   efectos: string[]
   /** La placa de nombre de la colección (`ui/Placas`). */
   placas: string[]
+  /** La tipografía del logo de la colección en la tienda (`lib/fuentes`); sin ella, la del sistema. */
+  fuente?: string
   /**
    * Los dos tonos del banner de la colección en la tienda, de la misma
    * escala que `marcoBase` (Tailwind v4, 300 y 800). Van muy diluidos sobre
@@ -31,6 +33,7 @@ export type Coleccion = {
 export const COLECCIONES: Coleccion[] = [
   {
     id: 'arcade',
+    fuente: 'retro',
     placas: ['placa-arcade'],
     tonos: ['#5EE9B5', '#C4B4FF'] /* menta y lila */,
     nombre: 'Arcade',
@@ -40,6 +43,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'gotico',
+    fuente: 'cartel',
     placas: ['placa-gotico'],
     tonos: ['#D6D3D1', '#292524'] /* plata y humo */,
     nombre: 'Gótico',
@@ -49,6 +53,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'medianoche',
+    fuente: 'revista',
     placas: ['placa-medianoche'],
     tonos: ['#deddf5', '#333d49'] /* luna y acero */,
     nombre: 'Después de medianoche',
@@ -58,6 +63,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'tormenta',
+    fuente: 'maquina',
     placas: ['placa-tormenta'],
     tonos: ['#46ECD5', '#74D4FF'] /* agua y cielo */,
     nombre: 'Neón y tormenta',
@@ -67,6 +73,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'cosmos',
+    fuente: 'redonda',
     placas: ['placa-cosmos'],
     tonos: ['#C4B4FF', '#74D4FF'] /* lila y cielo */,
     nombre: 'Cosmos',
@@ -76,6 +83,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'fiesta',
+    fuente: 'manuscrita',
     placas: ['placa-fiesta'],
     tonos: ['#FDA5D5', '#FEE685'] /* rosa y oro */,
     nombre: 'Fiesta',
@@ -85,6 +93,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'bosque',
+    fuente: 'revista',
     placas: ['placa-bosque'],
     tonos: ['#5EE9B5', '#006045'] /* menta y bosque */,
     nombre: 'Bosque de noche',
@@ -94,6 +103,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'maquinas',
+    fuente: 'maquina',
     placas: ['placa-maquinas'],
     tonos: ['#D6D3D1', '#46ECD5'] /* plata y agua */,
     nombre: 'Sala de máquinas',
@@ -103,6 +113,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'corte',
+    fuente: 'cartel',
     placas: ['placa-corte'],
     tonos: ['#FEE685', '#973C00'] /* oro y cobre */,
     nombre: 'La corte',

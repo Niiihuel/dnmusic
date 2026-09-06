@@ -409,15 +409,23 @@ estrellas fugaces, lluvia, lluvia de píxeles, bandada— con a lo sumo veinte
 nodos animados, repartidas por la razón áurea para que no formen columnas.
 El id va en `profiles.efecto` y lo dibuja `FondoPerfil` sobre el velo.
 
-**La tienda** (`app/profile/marco.tsx`) es una sola hoja «Decoraciones», con
-la anatomía de la tienda de Discord: arriba la **tarjeta de tu perfil** como
-vista previa (el fondo con el efecto, la foto con el marco pisando el borde
-del fondo, nombre, usuario y línea), el segmentado Marcos / Efectos, el
-buscador, y las colecciones cada una con su **banner** (nombre, lema y dos
-piezas de muestra sobre el tinte diluido de su paleta, `tonos` en
-`colecciones.ts`) y su estante. El tilde aplica marco y efecto juntos. Las
-dos filas del editor abren la misma hoja, «Efecto del perfil» con
-`?tipo=efecto`.
+**La tienda** (`app/profile/marco.tsx`) tiene la anatomía de la tienda de
+Discord. La portada: un **hero** de la colección destacada —el efecto de la
+colección corriendo sobre el tinte de su paleta, el logo en la tipografía de
+la colección (`fuente` en `colecciones.ts`, de las del perfil), el lema y la
+flecha para pasar a la siguiente— con el estante de sus piezas montado sobre
+el borde de abajo; debajo, un **banner por colección** (logo, lema y una
+composición de muestra: la foto con el marco, la banda con el efecto, la
+placa con tu nombre) que abre la colección; y al pie «Encontrá tu estilo» con
+«Explorar todo». Una colección es su hero y sus estantes por clase. Una
+**pieza** es tu tarjeta de perfil con la pieza puesta, de qué colección es,
+y «Aplicar», que guarda al toque (y «Quitar» si es la que tenés) — como en
+Discord, se prueba y se aplica desde la pieza, no desde un tilde general.
+«Explorar todo» es Marcos / Efectos / Placas, el buscador, «Lo tuyo» (la que
+tenés puesta y «Subir la tuya») y la grilla. Las tarjetas de pieza son las de
+Discord: la placa oscura con la muestra arriba, el nombre y una línea chica;
+la que tenés puesta lleva el tilde. Las filas del editor abren la tienda en
+«Explorar todo» con la pestaña que corresponde (`?tipo=`).
 
 **Subir la tuya.** Además del catálogo, cada persona puede subir su propio
 archivo (PNG, WebP, GIF o APNG) como marco o como efecto: va a su carpeta

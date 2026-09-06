@@ -2,9 +2,11 @@
   {
     "version": "1.10.3",
     "fecha": "6 de septiembre de 2026",
-    "titulo": "Placas de nombre, y hojas que respiran.",
+    "titulo": "La tienda, como la de Discord.",
     "cambios": [
-      "Placas de nombre en la tienda, como las de Discord: una franja con el tinte de su colección detrás de tu nombre en el perfil, con su patrón y un brillo que la recorre. Nueve, una por colección.",
+      "La tienda de decoraciones se rehízo con la anatomía de la tienda de Discord: un hero de la colección destacada con su efecto corriendo, el logo en su tipografía y la flecha para pasar a la siguiente; el estante de sus piezas montado sobre el borde; un banner por colección con una composición de muestra; y «Explorar todo» con Marcos, Efectos, Placas y el buscador.",
+      "Cada pieza tiene su página: tu tarjeta de perfil con la pieza puesta, de qué colección es, y «Aplicar», que guarda al toque. Desde ahí también se quita.",
+      "Placas de nombre, como las de Discord: una franja con el tinte de su colección detrás de tu nombre en el perfil, con su patrón y un brillo que la recorre. Nueve, una por colección.",
       "La cabecera de las hojas queda pegada arriba con un velo: lo que se desplaza por debajo se apaga en vez de cortarse, y ya no tapa botones ni textos.",
       "La hoja de encuadre centra su contenido y ya no dibuja la cabecera encima de las instrucciones en iOS."
     ]
