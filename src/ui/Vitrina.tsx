@@ -3,10 +3,9 @@ import { proxiedImage } from '../services/music'
 import { TextoPerfil as Text } from './FuentePerfil'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Image, Pressable, View, type ViewStyle } from 'react-native'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { LinearGradient } from 'expo-linear-gradient'
 import Svg, { Circle, Defs, Line, RadialGradient, Rect, Stop } from 'react-native-svg'
-import { runOnJS, type SharedValue } from 'react-native-reanimated'
+import type { SharedValue } from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
 import { useColorPortada } from '../lib/colorPortada'
 import {
@@ -62,12 +61,6 @@ import {
  * dos perfiles no se vean iguales (ver `lib/tema`). Lo que cambia entre tipos
  * es qué hay adentro, nunca el marco.
  */
-/** Hacia dónde se arrastró la manija de tamaño. */
-export type Redimension = 'ancho' | 'angosto' | 'alto' | 'bajo'
-
-/** Cuánto hay que arrastrar la manija para que cuente como cambio de tamaño. */
-const UMBRAL_REDIMENSION = 22
-
 export function Vitrina({
   showcase,
   temaGlobal = null,
@@ -84,8 +77,6 @@ export function Vitrina({
   editando = false,
   onRemove,
   onEditar,
-  onRedimensionar,
-  onAncho,
   onAbrirSubspace,
   reacciones,
   recarga = 0,
@@ -140,17 +131,14 @@ export function Vitrina({
    *
    * Es el modo de «reordenar» de la pantalla de inicio del iPhone: la tarjeta
    * deja de reaccionar a sus toques —no se reproduce nada— y pasa a ser una
-   * pieza que se agarra, se saca, se edita y se estira.
+   * pieza que se agarra, se saca y se edita. Estirarla es cosa de la celda que
+   * la contiene (`CeldaDeMosaico`), que es quien conoce el mosaico.
    */
   editando?: boolean
   /** Sacarla. Va en el «−» de arriba a la izquierda. */
   onRemove?: (id: string) => void
   /** Abrir su editor. Va en el lápiz de arriba a la derecha. */
   onEditar?: (showcase: Showcase) => void
-  /** Se arrastró la manija de abajo a la derecha hacia algún lado. */
-  onRedimensionar?: (direccion: Redimension) => void
-  /** Tocar la manija sin arrastrar: pasar al tamaño siguiente. */
-  onAncho?: () => void
   /**
    * Tocar un sub-space, mirando: abrir su mosaico a pantalla completa.
    *
@@ -210,12 +198,7 @@ export function Vitrina({
           ) : null}
         </View>
         {editando ? (
-          <Controles
-            onRemove={onRemove ? () => onRemove(showcase.id) : undefined}
-            onEditar={undefined}
-            onRedimensionar={onRedimensionar}
-            onAncho={onAncho}
-          />
+          <Controles onRemove={onRemove ? () => onRemove(showcase.id) : undefined} />
         ) : null}
       </View>
     )
@@ -302,8 +285,6 @@ export function Vitrina({
         <Controles
           onRemove={onRemove ? () => onRemove(showcase.id) : undefined}
           onEditar={onEditar ? () => onEditar(showcase) : undefined}
-          onRedimensionar={onRedimensionar}
-          onAncho={onAncho}
         />
       ) : reacciones ? (
         <ChipsDeReacciones reacciones={reacciones} c={colores} />
@@ -515,96 +496,72 @@ function CapaPatron({ tipo, color, w, h }: { tipo: 'rayas' | 'puntos' | 'halo'; 
   )
 }
 
-/** Barra de edición y ajuste de tamaño, con un asa discreta en la esquina. */
-function Controles({
-  onRemove,
-  onEditar,
-  onRedimensionar,
-  onAncho,
-}: {
-  onRemove?: () => void
-  onEditar?: () => void
-  onRedimensionar?: (direccion: Redimension) => void
-  onAncho?: () => void
-}) {
-  const [tamano, setTamano] = useState(false)
-  const redimensionar = (x: number, y: number) => {
-    if (Math.abs(x) >= UMBRAL_REDIMENSION) onRedimensionar?.(x > 0 ? 'ancho' : 'angosto')
-    else if (Math.abs(y) >= UMBRAL_REDIMENSION) onRedimensionar?.(y > 0 ? 'alto' : 'bajo')
-  }
-  const gesto = Gesture.Pan()
-    .minDistance(6)
-    .onEnd((e) => {
-      runOnJS(redimensionar)(e.translationX, e.translationY)
-    })
+/**
+ * Los controles de una pieza armando: el «−» arriba a la izquierda y el
+ * lápiz arriba a la derecha, como los widgets de la pantalla de inicio del
+ * iPhone en su modo de reordenar.
+ *
+ * Son dos discos que se apoyan medio afuera de la esquina —desbordan 6px, que
+ * es el aire que la celda deja alrededor— y nada más: la barra de antes, con
+ * cuatro botones de texto para el tamaño, tapaba el contenido y hacía que la
+ * pieza pareciera un formulario. El tamaño ahora se cambia con el asa de la
+ * esquina de abajo, que pone la celda (ver `CeldaDeMosaico`).
+ *
+ * El disco es del fondo de la app y no de la tarjeta: es un control de la
+ * interfaz sobre contenido de la persona, y tiene que leerse igual sobre una
+ * pieza rosa que sobre una foto.
+ */
+function Controles({ onRemove, onEditar }: { onRemove?: () => void; onEditar?: () => void }) {
   return (
-    <View
-      className="mt-1 gap-1 rounded-xl bg-background/90 p-1"
-      style={{ alignSelf: 'flex-end', width: 180, maxWidth: '100%' }}
-    >
-      <View className="flex-row items-center justify-end">
-        {onEditar ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Editar pieza"
-            onPress={onEditar}
-            className="h-11 flex-1 items-center justify-center rounded-lg active:bg-muted"
-          >
-            <IconPencil size={14} color={ICON_COLOR.muted} />
-          </Pressable>
-        ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Opciones de tamaño"
-          accessibilityState={{ expanded: tamano }}
-          onPress={() => setTamano((v) => !v)}
-          className="h-11 flex-1 items-center justify-center rounded-lg active:bg-muted"
-        >
-          <IconGrilla size={14} color={ICON_COLOR.muted} />
-        </Pressable>
-        {onRemove ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Sacar del perfil"
-            onPress={onRemove}
-            className="h-11 flex-1 items-center justify-center rounded-lg active:bg-muted"
-          >
-            <IconMinus size={14} color={ICON_COLOR.muted} />
-          </Pressable>
-        ) : null}
-        <GestureDetector gesture={gesto}>
-          <View style={{ width: 32, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-            <View
-              style={{
-                width: 9,
-                height: 9,
-                borderRightWidth: 1.5,
-                borderBottomWidth: 1.5,
-                borderColor: '#777',
-                borderBottomRightRadius: 2,
-              }}
-            />
-          </View>
-        </GestureDetector>
-      </View>
-      {tamano ? (
-        <View className="flex-row flex-wrap gap-1">
-          {(['angosto', 'ancho', 'bajo', 'alto'] as const).map((d, i) => (
-            <Pressable
-              key={d}
-              accessibilityRole="button"
-              onPress={() => (onRedimensionar ? onRedimensionar(d) : onAncho?.())}
-              className="min-h-11 items-center justify-center rounded-lg bg-muted px-3"
-              style={{ flexGrow: 1 }}
-            >
-              <Text className="text-foreground text-[11px]">
-                {['Más angosto', 'Más ancho', 'Más bajo', 'Más alto'][i]}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+    <>
+      {onRemove ? (
+        <Insignia lado="izquierda" label="Sacar del perfil" onPress={onRemove}>
+          <IconMinus size={13} color="#FFFFFF" strokeWidth={2.2} />
+        </Insignia>
       ) : null}
-    </View>
+      {onEditar ? (
+        <Insignia lado="derecha" label="Editar pieza" onPress={onEditar}>
+          <IconPencil size={12} color="#FFFFFF" />
+        </Insignia>
+      ) : null}
+    </>
+  )
+}
+
+/** El disco de una esquina de arriba. #121212 es el token `background`. */
+function Insignia({
+  lado,
+  label,
+  onPress,
+  children,
+}: {
+  lado: 'izquierda' | 'derecha'
+  label: string
+  onPress: () => void
+  children: ReactNode
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      hitSlop={8}
+      style={{
+        position: 'absolute',
+        top: -6,
+        ...(lado === 'izquierda' ? { left: -6 } : { right: -6 }),
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(18,18,18,0.94)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
+        zIndex: 25,
+      }}
+    >
+      {children}
+    </Pressable>
   )
 }
 

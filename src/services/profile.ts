@@ -59,6 +59,8 @@ export type Profile = {
    */
   fuente?: string | null
   tema: Tema | null
+  /** El efecto encima del fondo: el id de una decoración `efecto`, o nada. */
+  efecto?: string | null
 }
 
 /**
@@ -93,6 +95,7 @@ type ProfileRow = {
   marco?: unknown
   fuente?: unknown
   tema?: unknown
+  efecto?: unknown
 }
 
 /** Un encuadre del jsonb, o null. Un número raro lo descarta entero: medio
@@ -126,6 +129,7 @@ function profileFromRow(row: ProfileRow | null | undefined): Profile | null {
     marco: typeof row.marco === 'string' && row.marco ? row.marco : null,
     tema: temaDe(row.tema),
     fuente: typeof row.fuente === 'string' ? (fuenteDe(row.fuente)?.id ?? null) : null,
+    efecto: typeof row.efecto === 'string' && row.efecto ? row.efecto : null,
   }
 }
 
@@ -160,6 +164,8 @@ export async function saveMyProfile(changes: {
   /** `null` vuelve al vidrio; no mandarlo lo deja. Viaja como los encuadres. */
   tema?: Tema | null
   fuente?: string | null
+  /** La cadena vacía lo saca, como el marco. */
+  efecto?: string
 }): Promise<Profile> {
   const { data, error } = await getSupabase().rpc('update_my_profile', {
     p_username: changes.username ?? null,
@@ -178,6 +184,7 @@ export async function saveMyProfile(changes: {
     p_banner_encuadre: encuadreParaLaBase(changes.bannerEncuadre),
     p_marco: changes.marco ?? null,
     ...(changes.fuente !== undefined ? { p_fuente: changes.fuente ?? '' } : {}),
+    ...(changes.efecto !== undefined ? { p_efecto: changes.efecto } : {}),
     p_tema: changes.tema === undefined ? null : changes.tema === null ? 'BORRAR' : changes.tema,
   })
   if (error) throw error

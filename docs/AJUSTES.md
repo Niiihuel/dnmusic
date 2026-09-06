@@ -1,8 +1,27 @@
-# Ajustes y actualizaciones
+# Configuración y actualizaciones
 
-`app/ajustes/index.tsx` agrupa escucha, experiencia y cuenta. La búsqueda ignora
-acentos y filtra dentro de la categoría seleccionada. Las tarjetas pasan a dos
-columnas cuando el contenido tiene al menos 760 px disponibles.
+`app/ajustes/index.tsx` es Configuración con la anatomía del sistema en las dos
+plataformas, armada desde **una sola lista de categorías** (`categorias`):
+
+- **Teléfono — Configuración de iOS.** El título grande, el bloque de la cuenta
+  arriba (la cara, el nombre, y «Novedades» como segunda fila con el globito de
+  lo que falta leer), y debajo los bloques de filas sin títulos de sección: placa
+  de ícono, rótulo de 17, valor en gris a la derecha, chevron o interruptor. Lo
+  que un bloque necesita explicar va en su **pie** (`GrupoAjustes.pie`), no como
+  subtítulo de la fila. El buscador **flota abajo**, como en iOS 26, y con el
+  teclado abierto se apoya sobre él. Elegir entre varios (el temporizador) es
+  una fila con menú (`FilaOpciones`), el del sistema en el iPhone.
+- **Compu — Ajustes del Sistema de macOS.** Una *navigation split view*: la barra
+  lateral (280 px, tono `canvas`) con el buscador, la cuenta y la lista de
+  categorías con su placa; a la derecha el detalle de la elegida, con sus
+  bloques a 640 px como mucho. Buscando, el detalle muestra todas las
+  categorías que coinciden, con su rótulo.
+
+Las piezas (`src/ui/Ajustes.tsx`) tienen las medidas del sistema —fila de 52,
+placa de 30 con radio 8, bloque con radio 22— porque es el único lugar donde la
+app se parece a los Ajustes del teléfono a propósito. La búsqueda ignora acentos
+y esconde las categorías que no coinciden; sin coincidencias, un vacío con la
+salida de volver a ver todo.
 
 Las preferencias viven en `src/state/ajustes.ts`, en AsyncStorage bajo
 `ajustes:v1`. Son del dispositivo y se conservan al cerrar sesión. Las

@@ -1,26 +1,37 @@
-import { useState } from 'react'
-import { Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native'
+import { useState, type ReactNode } from 'react'
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { Panel } from '../../src/ui/Panel'
-import { FilaAjuste, FilaInterruptor, GrupoAjustes } from '../../src/ui/Ajustes'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import {
+  FilaAjuste,
+  FilaCuenta,
+  FilaInterruptor,
+  FilaOpciones,
+  GrupoAjustes,
+} from '../../src/ui/Ajustes'
 import { FilaSostener } from '../../src/ui/Mantener'
 import { Avatar } from '../../src/ui/Avatar'
-import { HAY_MENU_NATIVO, Menu } from '../../src/ui/Menu'
+import { BotonVidrio } from '../../src/ui/Glass'
+import { Panel, Shell } from '../../src/ui/Panel'
+import { SearchField } from '../../src/ui/SearchField'
+import { Vacio } from '../../src/ui/Vacio'
 import {
   ICON_COLOR,
   IconBack,
   IconBan,
-  IconChevronRight,
   IconClock,
   IconDisc,
   IconDisk,
+  IconDownload,
+  IconLock,
   IconLogOut,
   IconMusic,
+  IconSearch,
   IconSparkles,
   IconTrash,
-  IconSearch,
-  IconClose,
+  IconUser,
+  IconWifi,
+  type IconProps,
 } from '../../src/ui/icons'
 import {
   cuantasListas,
@@ -35,40 +46,74 @@ import { setAutoplay, setPreferencia, setSoloWifi, useAjustes } from '../../src/
 import { programarApagado, useDormirMin } from '../../src/state/playback'
 import { borrarHistorial } from '../../src/services/plays'
 import { endSession, useMyProfile } from '../../src/state/session'
+import { useNovedadesPendientes } from '../../src/state/novedadesVistas'
 import { avisar } from '../../src/state/aviso'
 import { mensajeError } from '../../src/lib/mensajeError'
-import { usePiso } from '../../src/state/shell'
+import { useKeyboardH, usePiso } from '../../src/state/shell'
 import { volver } from '../../src/lib/volver'
 import { NOVEDADES } from '../../src/lib/novedades'
 import { HAY_ACTUALIZADOR } from '../../src/state/actualizacion'
 import { TECLADO_FISICO } from '../../src/lib/teclado'
 
+/** Desde acá la pantalla es la de macOS: barra lateral con las categorías y el detalle al lado. */
+const ESCRITORIO_PX = 780
+/** Ancho de la barra lateral, el de Ajustes del Sistema. */
+const LATERAL_W = 280
+/** Tope del detalle: una lista agrupada más ancha se lee como una tabla. */
+const MAX_W = 640
+/** Los minutos que ofrece el temporizador. */
 const MINUTOS = [15, 30, 45, 60, 90]
-const CATEGORIAS = ['Todo', 'Escucha', 'Experiencia', 'Cuenta'] as const
-type Categoria = (typeof CATEGORIAS)[number]
+
 const normalizar = (valor: string) =>
   valor
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .trim()
 
-export default function Ajustes() {
+type Categoria = {
+  id: string
+  titulo: string
+  icono: (p: IconProps) => React.ReactElement
+  /** Con qué palabras se la encuentra buscando. */
+  palabras: string
+  visible: boolean
+  /** Los bloques de la categoría. En el teléfono van uno tras otro; en la compu, al elegirla. */
+  bloques: ReactNode
+}
+
+/**
+ * Configuración, con la anatomía del sistema en las dos plataformas.
+ *
+ * **En el teléfono es Configuración de iOS**: el título grande, la fila de la
+ * cuenta arriba con la cara y el nombre, y debajo los bloques de filas —placa
+ * de ícono, rótulo, valor en gris, chevron o interruptor— sin títulos de
+ * sección (la raíz de Configuración no los lleva: cada bloque agrupa lo que va
+ * junto y su pie explica lo que haga falta). El buscador **flota abajo**, como
+ * en iOS 26, y la lista pasa por detrás.
+ *
+ * **En la compu es Ajustes del Sistema de macOS**: una barra lateral con el
+ * buscador, la cuenta y la lista de categorías, y a la derecha el detalle de la
+ * elegida con sus bloques. Es lo que la HIG pide para una app de escritorio con
+ * varias secciones —una *navigation split view*— y es lo que deja el espacio
+ * que una columna sola desaprovecha en una ventana de 1400.
+ *
+ * Los dos son la **misma lista de categorías** (`categorias`), armada una vez:
+ * lo que cambia es cómo se recorre.
+ */
+export default function Configuracion() {
   const router = useRouter()
   const ajustes = useAjustes()
   const dormirMin = useDormirMin()
   const perfil = useMyProfile()
   const nombre = perfil?.displayName?.trim() || perfil?.username || 'Tu cuenta'
   const { items } = useDescargas()
-  const [categoria, setCategoria] = useState<Categoria>('Todo')
+  const pendientes = useNovedadesPendientes()
   const [busqueda, setBusqueda] = useState('')
-  const [ancho, setAncho] = useState(0)
-  const suelto = useWindowDimensions().width < 780
-  const piso = usePiso(24)
+  const { width } = useWindowDimensions()
+  const escritorio = width >= ESCRITORIO_PX
   const consulta = normalizar(busqueda)
-  const coincide = (grupo: Categoria, palabras: string) =>
-    (categoria === 'Todo' || categoria === grupo) &&
-    consulta.split(/\s+/).every((palabra) => normalizar(`${grupo} ${palabras}`).includes(palabra))
+  const buscando = consulta.length > 0
 
   async function borrar() {
     try {
@@ -79,99 +124,57 @@ export default function Ajustes() {
     }
   }
 
-  const grupos = [
+  const categorias: Categoria[] = [
     {
       id: 'reproduccion',
-      visible: coincide(
-        'Escucha',
-        'reproducción autoplay seguir al terminar lista recomendaciones géneros artistas gustos música',
-      ),
-      contenido: (
-        <GrupoAjustes titulo="Reproducción">
-          <FilaInterruptor
-            rotulo="Seguir escuchando"
-            detalle="Al terminar la lista, seguir con recomendaciones."
-            icono={<IconDisc size={17} color={ICON_COLOR.muted} />}
-            activo={ajustes.autoplay}
-            onCambiar={setAutoplay}
-          />
-          <FilaAjuste
-            rotulo="Géneros y artistas"
-            vacio=""
-            icono={<IconMusic size={17} color={ICON_COLOR.muted} />}
-            onPress={() => router.push('/onboarding?de=ajustes')}
-            ultima
-          />
-        </GrupoAjustes>
-      ),
-    },
-    {
-      id: 'temporizador',
-      visible: coincide('Escucha', 'temporizador apagar dormir minutos pausa'),
-      contenido: (
-        <GrupoAjustes titulo="Temporizador">
-          <View className="gap-4 p-4">
-            <View className="flex-row items-center gap-3">
-              <IconClock size={19} color={ICON_COLOR.muted} />
-              <View className="flex-1 gap-1">
-                <Text className="text-foreground text-[15px]">Dormí con tu música</Text>
-                <Text
-                  accessibilityLiveRegion="polite"
-                  className="text-muted-foreground text-[12px]"
-                >
-                  {dormirMin === null
-                    ? 'Elegí cuándo pausar la reproducción.'
-                    : `Se pausa en ${dormirMin} ${dormirMin === 1 ? 'minuto' : 'minutos'}.`}
-                </Text>
-              </View>
-            </View>
-            {HAY_MENU_NATIVO ? (
-              <Menu
-                label="Temporizador de reproducción"
-                triggerText="Elegir duración"
-                triggerSymbol="moon.zzz"
-                items={[
-                  ...MINUTOS.map((m) => ({ label: `${m} minutos`, sfSymbol: 'clock' as const, onPress: () => programarApagado(m) })),
-                  { label: 'Cancelar temporizador', sfSymbol: 'xmark.circle', disabled: dormirMin === null, onPress: () => programarApagado(null) },
-                ]}
-              />
-            ) : <View className="flex-row flex-wrap gap-2">
-              {MINUTOS.map((m) => (
-                <Pressable
-                  key={m}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Pausar en ${m} minutos`}
-                  onPress={() => programarApagado(m)}
-                  className="min-h-11 min-w-11 items-center justify-center rounded-full bg-muted px-3 active:opacity-70"
-                >
-                  <Text className="text-foreground text-[13px]">{m} min</Text>
-                </Pressable>
-              ))}
-              {dormirMin !== null ? (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => programarApagado(null)}
-                  className="min-h-11 items-center justify-center rounded-full bg-primary px-4 active:opacity-80"
-                >
-                  <Text className="text-primary-foreground text-[13px] font-semibold">
-                    Cancelar
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>}
-          </View>
-        </GrupoAjustes>
+      titulo: 'Reproducción',
+      icono: IconDisc,
+      palabras:
+        'reproducción autoplay seguir escuchando al terminar lista recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música',
+      visible: true,
+      bloques: (
+        <>
+          <GrupoAjustes pie="Al terminar la lista, sigue con recomendaciones según lo que escuchás.">
+            <FilaInterruptor
+              rotulo="Seguir escuchando"
+              icono={<IconDisc size={17} color={ICON_COLOR.muted} />}
+              activo={ajustes.autoplay}
+              onCambiar={setAutoplay}
+              ultima
+            />
+          </GrupoAjustes>
+          <GrupoAjustes pie="El temporizador pausa la música cuando se cumple el tiempo. Es de esta sesión, no queda guardado.">
+            <FilaOpciones
+              rotulo="Temporizador"
+              icono={<IconClock size={17} color={ICON_COLOR.muted} />}
+              valor={dormirMin ?? 0}
+              opciones={[
+                ...MINUTOS.map((m) => ({ value: m, label: `${m} minutos`, sfSymbol: 'clock' as const })),
+                { value: 0, label: 'Apagado', sfSymbol: 'xmark.circle' as const, separadorAntes: true },
+              ]}
+              onElegir={(m) => programarApagado(m === 0 ? null : m)}
+            />
+            <FilaAjuste
+              rotulo="Géneros y artistas"
+              vacio=""
+              icono={<IconMusic size={17} color={ICON_COLOR.muted} />}
+              onPress={() => router.push('/onboarding?de=ajustes')}
+              ultima
+            />
+          </GrupoAjustes>
+        </>
       ),
     },
     {
       id: 'descargas',
-      visible:
-        HAY_DESCARGAS &&
-        coincide('Escucha', 'almacenamiento descargas espacio wifi datos conexión'),
-      contenido: (
-        <GrupoAjustes titulo="Descargas">
+      titulo: 'Descargas',
+      icono: IconDownload,
+      palabras: 'almacenamiento descargas espacio wifi datos conexión bajadas sin conexión',
+      visible: HAY_DESCARGAS,
+      bloques: (
+        <GrupoAjustes pie="Con «Solo con Wi-Fi», las descargas esperan a tener una red sin consumo de datos.">
           <FilaAjuste
-            rotulo="Administrar"
+            rotulo="Descargas"
             valor={
               cuantasPendientes(items)
                 ? `${cuantasPendientes(items)} en camino`
@@ -182,7 +185,7 @@ export default function Ajustes() {
           />
           <FilaInterruptor
             rotulo="Solo con Wi-Fi"
-            detalle="Pausar descargas al usar datos móviles."
+            icono={<IconWifi size={17} color={ICON_COLOR.muted} />}
             activo={ajustes.soloWifi}
             onCambiar={(v) => {
               setSoloWifi(v)
@@ -194,53 +197,54 @@ export default function Ajustes() {
       ),
     },
     {
-      id: 'experiencia',
-      visible: coincide(
-        'Experiencia',
-        'novedades actualizaciones versión avisos ayudas cursor interfaz',
-      ),
-      contenido: (
-        <GrupoAjustes titulo="La app, a tu manera">
+      id: 'app',
+      titulo: 'La app',
+      icono: IconSparkles,
+      palabras: 'novedades actualizaciones versión avisos ayudas cursor interfaz app rótulos',
+      visible: true,
+      bloques: (
+        <GrupoAjustes
+          pie={
+            TECLADO_FISICO
+              ? 'Las ayudas nombran los controles al pasar el cursor; las del teclado siguen disponibles. Las novedades se muestran una vez por versión.'
+              : 'Las novedades se muestran una vez por versión, al abrir la app.'
+          }
+        >
           {TECLADO_FISICO ? (
             <FilaInterruptor
               rotulo="Ayudas al pasar el cursor"
-              detalle="Mostrar el nombre de los controles. Las ayudas de teclado siguen disponibles."
+              icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
               activo={ajustes.ayudasCursor}
               onCambiar={(v) => setPreferencia('ayudasCursor', v)}
             />
           ) : null}
           <FilaInterruptor
             rotulo="Novedades al abrir"
-            detalle="Ver un resumen después de actualizar."
+            icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
             activo={ajustes.novedadesAlAbrir}
             onCambiar={(v) => setPreferencia('novedadesAlAbrir', v)}
+            ultima={!HAY_ACTUALIZADOR}
           />
           {HAY_ACTUALIZADOR ? (
             <FilaInterruptor
-              rotulo="Avisar cuando esté lista"
-              detalle="Mostrar un aviso cuando puedas instalar una actualización."
+              rotulo="Avisar cuando haya una versión nueva"
+              icono={<IconDownload size={17} color={ICON_COLOR.muted} />}
               activo={ajustes.avisosActualizacion}
               onCambiar={(v) => setPreferencia('avisosActualizacion', v)}
+              ultima
             />
           ) : null}
-          <FilaAjuste
-            rotulo="Actualizaciones"
-            valor={NOVEDADES[0]?.version}
-            icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
-            onPress={() => router.push('/ajustes/novedades')}
-            ultima
-          />
         </GrupoAjustes>
       ),
     },
     {
       id: 'privacidad',
-      visible: coincide(
-        'Cuenta',
-        'privacidad datos bloqueados borrar historial escucha recomendaciones',
-      ),
-      contenido: (
-        <GrupoAjustes titulo="Privacidad y datos">
+      titulo: 'Privacidad',
+      icono: IconLock,
+      palabras: 'privacidad datos bloqueados borrar historial escucha recomendaciones',
+      visible: true,
+      bloques: (
+        <GrupoAjustes pie="Borrar el historial deja las recomendaciones en cero. No se puede deshacer.">
           <FilaAjuste
             rotulo="Bloqueados"
             vacio=""
@@ -249,7 +253,6 @@ export default function Ajustes() {
           />
           <FilaSostener
             rotulo="Borrar historial de escucha"
-            detalle="Mantené pulsado. Las recomendaciones empiezan de cero y no se puede deshacer."
             icono={<IconTrash size={17} color={ICON_COLOR.muted} />}
             onCompletar={() => void borrar()}
             ultima
@@ -259,20 +262,20 @@ export default function Ajustes() {
     },
     {
       id: 'cuenta',
-      visible: coincide(
-        'Cuenta',
-        'perfil foto nombre fuente tipografía espacio cerrar sesión salir',
-      ),
-      contenido: (
-        <GrupoAjustes titulo="Tu cuenta">
+      titulo: 'Cuenta',
+      icono: IconUser,
+      palabras: 'perfil foto nombre fuente tipografía espacio cerrar sesión salir cuenta',
+      visible: true,
+      bloques: (
+        <GrupoAjustes pie="Cerrar sesión no borra nada: tus listas y tu perfil siguen en tu cuenta.">
           <FilaAjuste
             rotulo="Personalizar perfil"
             vacio=""
+            icono={<IconUser size={17} color={ICON_COLOR.muted} />}
             onPress={() => router.push('/profile')}
           />
           <FilaSostener
             rotulo="Cerrar sesión"
-            detalle="Mantené pulsado para salir de tu cuenta."
             icono={<IconLogOut size={17} color={ICON_COLOR.muted} />}
             onCompletar={() => void endSession()}
             ultima
@@ -280,128 +283,274 @@ export default function Ajustes() {
         </GrupoAjustes>
       ),
     },
-  ].filter((grupo) => grupo.visible)
+  ].filter((c) => c.visible)
 
-  return (
-    <SafeAreaView className="flex-1 bg-background" edges={suelto ? ['top'] : ['top', 'bottom']}>
-      <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
-        <View className="flex-row items-center gap-3 px-3 py-1">
+  /* Lo que la búsqueda deja: la categoría entera si alguna de sus palabras
+     coincide. Sin búsqueda, todas. */
+  const coinciden = buscando
+    ? categorias.filter((c) =>
+        consulta.split(/\s+/).every((palabra) => normalizar(`${c.titulo} ${c.palabras}`).includes(palabra)),
+      )
+    : categorias
+
+  /* La cuenta arriba de todo, con las novedades sin leer como segunda fila:
+     es el bloque del Apple ID, con su «1» de lo que espera. */
+  const bloqueCuenta = (
+    <GrupoAjustes>
+      <FilaCuenta
+        avatar={<Avatar name={nombre} path={perfil?.avatarPath} size={58} />}
+        nombre={nombre}
+        detalle={perfil?.username ? `@${perfil.username} · Tu perfil y tu Space` : 'Tu perfil y tu Space'}
+        onPress={() => router.push('/profile')}
+      />
+      <FilaAjuste
+        rotulo="Novedades"
+        valor={NOVEDADES[0]?.version}
+        icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+        globito={pendientes?.length || undefined}
+        onPress={() => router.push('/ajustes/novedades')}
+        ultima
+      />
+    </GrupoAjustes>
+  )
+
+  const sinResultados = (
+    <Vacio
+      compacto
+      icono={<IconSearch size={20} color={ICON_COLOR.muted} />}
+      titulo="No encontramos ese ajuste"
+      detalle="Probá con otra palabra."
+      accion={{ rotulo: 'Ver todo', onPress: () => setBusqueda('') }}
+    />
+  )
+
+  if (escritorio) {
+    return (
+      <Escritorio
+        categorias={categorias}
+        coinciden={coinciden}
+        buscando={buscando}
+        busqueda={busqueda}
+        onBusqueda={setBusqueda}
+        cuenta={
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Volver"
-            onPress={() => volver(router, '/')}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+            accessibilityLabel={`${nombre}. Tu perfil y tu Space`}
+            onPress={() => router.push('/profile')}
+            className="mx-2 flex-row items-center gap-3 rounded-xl px-2 py-2 active:bg-muted hover:bg-white/5"
           >
-            <IconBack size={19} color={ICON_COLOR.foreground} />
+            <Avatar name={nombre} path={perfil?.avatarPath} size={40} />
+            <View className="min-w-0 flex-1">
+              <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
+                {nombre}
+              </Text>
+              <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+                {perfil?.username ? `@${perfil.username} · Tu perfil y tu Space` : 'Tu perfil y tu Space'}
+              </Text>
+            </View>
           </Pressable>
-          <Text className="text-foreground text-[15px] font-semibold">Ajustes</Text>
+        }
+        novedades={
+          <GrupoAjustes titulo="Versión">
+            <FilaAjuste
+              rotulo="Novedades"
+              valor={NOVEDADES[0]?.version}
+              icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+              globito={pendientes?.length || undefined}
+              onPress={() => router.push('/ajustes/novedades')}
+              ultima
+            />
+          </GrupoAjustes>
+        }
+        sinResultados={sinResultados}
+        onVolver={() => volver(router, '/')}
+      />
+    )
+  }
+
+  return (
+    <Telefono
+      coinciden={coinciden}
+      buscando={buscando}
+      busqueda={busqueda}
+      onBusqueda={setBusqueda}
+      cuenta={bloqueCuenta}
+      sinResultados={sinResultados}
+      onVolver={() => volver(router, '/')}
+    />
+  )
+}
+
+/**
+ * La forma del teléfono: la lista de Configuración de iOS, con el buscador
+ * flotando abajo.
+ */
+function Telefono({
+  coinciden,
+  buscando,
+  busqueda,
+  onBusqueda,
+  cuenta,
+  sinResultados,
+  onVolver,
+}: {
+  coinciden: Categoria[]
+  buscando: boolean
+  busqueda: string
+  onBusqueda: (v: string) => void
+  cuenta: ReactNode
+  sinResultados: ReactNode
+  onVolver: () => void
+}) {
+  const piso = usePiso(24)
+  const teclado = useKeyboardH()
+  const insets = useSafeAreaInsets()
+  /* El buscador flota sobre el borde de abajo; con el teclado abierto se
+     apoya sobre él. La lista reserva su alto para llegar a la última fila. */
+  const pieBuscador = Math.max(insets.bottom, 12) + teclado
+
+  return (
+    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+      {/* La barra chica: solo la flecha. Configuración es una pantalla apilada
+          en esta app —no una pestaña— y necesita su vuelta. */}
+      <View className="flex-row items-center px-3 py-1">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Volver"
+          onPress={onVolver}
+          className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+        >
+          <IconBack size={19} color={ICON_COLOR.foreground} />
+        </Pressable>
+      </View>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerClassName="px-4"
+        contentContainerStyle={{ paddingBottom: piso + 72 }}
+      >
+        <View className="gap-7">
+          <Text className="px-1 pt-1 text-foreground text-[34px] font-bold tracking-[-0.4px]">
+            Configuración
+          </Text>
+          {!buscando ? cuenta : null}
+          {coinciden.map((c) => (
+            <View key={c.id} className="gap-7">
+              {c.bloques}
+            </View>
+          ))}
+          {coinciden.length === 0 ? sinResultados : null}
         </View>
+      </ScrollView>
+
+      {/* El buscador de iOS 26: flota abajo y la lista pasa por detrás. */}
+      <View
+        pointerEvents="box-none"
+        style={{ position: 'absolute', left: 16, right: 16, bottom: pieBuscador }}
+      >
+        <SearchField value={busqueda} onChangeText={onBusqueda} placeholder="Buscar" />
+      </View>
+    </SafeAreaView>
+  )
+}
+
+/**
+ * La forma de la compu: Ajustes del Sistema de macOS. La barra lateral con el
+ * buscador, la cuenta y las categorías; el detalle de la elegida a la derecha.
+ * Buscando, el detalle muestra todo lo que coincide, de una.
+ */
+function Escritorio({
+  categorias,
+  coinciden,
+  buscando,
+  busqueda,
+  onBusqueda,
+  cuenta,
+  novedades,
+  sinResultados,
+  onVolver,
+}: {
+  categorias: Categoria[]
+  coinciden: Categoria[]
+  buscando: boolean
+  busqueda: string
+  onBusqueda: (v: string) => void
+  cuenta: ReactNode
+  novedades: ReactNode
+  sinResultados: ReactNode
+  onVolver: () => void
+}) {
+  const [elegida, setElegida] = useState(categorias[0]?.id ?? '')
+  const actual = categorias.find((c) => c.id === elegida) ?? categorias[0]
+  const mostradas = buscando ? coinciden : actual ? [actual] : []
+
+  return (
+    <Shell>
+      <SafeAreaView className="flex-1 flex-row" edges={['top', 'bottom']}>
+        <Panel tone="lateral" style={{ width: LATERAL_W }}>
+          <View className="flex-row items-center gap-3 px-3 pb-2 pt-3">
+            <BotonVidrio onPress={onVolver} label="Volver" radius={18} style={{ width: 36, height: 36 }}>
+              <IconBack size={17} color={ICON_COLOR.foreground} />
+            </BotonVidrio>
+            <Text className="text-foreground text-[17px] font-bold">Configuración</Text>
+          </View>
+          <View className="px-3 pb-3">
+            <SearchField value={busqueda} onChangeText={onBusqueda} placeholder="Buscar" />
+          </View>
+          {cuenta}
+          <ScrollView className="flex-1" contentContainerClassName="gap-0.5 px-2 pt-3">
+            {categorias.map((c) => {
+              const activa = !buscando && c.id === actual?.id
+              const Icono = c.icono
+              return (
+                <Pressable
+                  key={c.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: activa }}
+                  onPress={() => {
+                    onBusqueda('')
+                    setElegida(c.id)
+                  }}
+                  className={`flex-row items-center gap-3 rounded-lg px-2 py-1.5 ${
+                    activa ? 'bg-muted' : 'hover:bg-white/5 active:bg-muted'
+                  }`}
+                >
+                  <View className="h-7 w-7 items-center justify-center rounded-[7px] bg-muted">
+                    <Icono size={15} color={ICON_COLOR.foreground} />
+                  </View>
+                  <Text className="text-foreground text-[14px]">{c.titulo}</Text>
+                </Pressable>
+              )
+            })}
+          </ScrollView>
+        </Panel>
+
         <Panel className="flex-1">
           <ScrollView
+            className="flex-1"
             keyboardShouldPersistTaps="handled"
-            contentContainerClassName={`items-center ${suelto ? 'px-4 pt-3' : 'p-6'}`}
-            contentContainerStyle={{ paddingBottom: piso }}
+            contentContainerClassName="items-center px-8 pb-10 pt-6"
           >
-            <View
-              className="w-full gap-6"
-              style={{ maxWidth: 920 }}
-              onLayout={(e) => setAncho(e.nativeEvent.layout.width)}
-            >
-              <View className="gap-1">
-                <Text className="text-foreground text-[24px] font-bold">A tu manera.</Text>
-                <Text className="text-muted-foreground text-[13px]">
-                  Tu escucha, tu espacio y las preferencias de este dispositivo.
-                </Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Editar tu perfil"
-                onPress={() => router.push('/profile')}
-                className="flex-row items-center gap-3.5 rounded-2xl bg-card p-4 active:bg-muted"
-              >
-                <Avatar name={nombre} path={perfil?.avatarPath} size={48} />
-                <View className="min-w-0 flex-1 gap-1">
-                  <Text className="text-foreground text-[16px] font-semibold" numberOfLines={1}>
-                    {nombre}
-                  </Text>
-                  <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
-                    {perfil?.username
-                      ? `@${perfil.username} · Personalizá tu perfil`
-                      : 'Personalizá tu perfil'}
-                  </Text>
-                </View>
-                <IconChevronRight size={17} color={ICON_COLOR.muted} />
-              </Pressable>
-              <View className="gap-3">
-                <View className="min-h-12 flex-row items-center gap-3 rounded-full bg-card pl-4 pr-1">
-                  <IconSearch size={17} color={ICON_COLOR.muted} />
-                  <TextInput
-                    accessibilityLabel="Buscar en ajustes"
-                    placeholder="Buscar un ajuste"
-                    placeholderTextColor={ICON_COLOR.muted}
-                    value={busqueda}
-                    onChangeText={setBusqueda}
-                    autoCorrect={false}
-                    className="min-w-0 flex-1 py-3 text-foreground text-[14px]"
-                  />
-                  {busqueda ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Limpiar búsqueda"
-                      onPress={() => setBusqueda('')}
-                      className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-                    >
-                      <IconClose size={16} color={ICON_COLOR.muted} />
-                    </Pressable>
-                  ) : null}
-                </View>
-                <View className="flex-row flex-wrap gap-2">
-                  {CATEGORIAS.map((c) => (
-                    <Pressable
-                      key={c}
-                      accessibilityRole="button"
-                      aria-selected={categoria === c}
-                      onPress={() => setCategoria(c)}
-                      className={`min-h-11 items-center justify-center rounded-full px-4 ${categoria === c ? 'bg-primary' : 'bg-card active:bg-muted'}`}
-                    >
-                      <Text
-                        className={`text-[13px] font-semibold ${categoria === c ? 'text-primary-foreground' : 'text-muted-foreground'}`}
-                      >
-                        {c}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-              <View className="flex-row flex-wrap items-start gap-5">
-                {grupos.map((grupo) => (
-                  <View key={grupo.id} style={{ width: ancho >= 760 ? (ancho - 20) / 2 : '100%' }}>
-                    {grupo.contenido}
-                  </View>
-                ))}
-                {grupos.length === 0 ? (
-                  <View className="w-full items-center gap-3 py-8">
-                    <Text className="text-foreground text-[15px]">No encontramos ese ajuste</Text>
-                    <Text className="text-muted-foreground text-[13px]">
-                      Probá otra palabra o mirá todas las categorías.
+            <View className="w-full gap-6" style={{ maxWidth: MAX_W }}>
+              <Text className="text-foreground text-[24px] font-bold">
+                {buscando ? `Resultados de «${busqueda.trim()}»` : actual?.titulo}
+              </Text>
+              {mostradas.map((c) => (
+                <View key={c.id} className="gap-6">
+                  {buscando ? (
+                    <Text className="px-1 text-muted-foreground text-[13px] font-semibold uppercase tracking-[1.2px]">
+                      {c.titulo}
                     </Text>
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => {
-                        setBusqueda('')
-                        setCategoria('Todo')
-                      }}
-                      className="min-h-11 justify-center rounded-full bg-muted px-4"
-                    >
-                      <Text className="text-foreground text-[13px]">Ver todos los ajustes</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-              </View>
+                  ) : null}
+                  {c.bloques}
+                </View>
+              ))}
+              {buscando && mostradas.length === 0 ? sinResultados : null}
+              {!buscando && actual?.id === 'app' ? novedades : null}
             </View>
           </ScrollView>
         </Panel>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </Shell>
   )
 }

@@ -1,0 +1,161 @@
+{
+  "_": "El catálogo de decoraciones en imagen. `importar.mjs` sube cada archivo al bucket `decoraciones` y registra la fila. Los de Noto se bajan con `bajar-noto.mjs` (CC BY 4.0, Google) y entran como insignias chicas apoyadas en la foto; los efectos del perfil se dibujan en la app (`ui/EfectosDibujados`) — un efecto en imagen solo tiene sentido con un archivo hecho para la banda entera (`posicion: centro`).",
+  "noto": {
+    "autor": "Google Noto Animated Emoji",
+    "licencia": "CC BY 4.0",
+    "fuente": "https://googlefonts.github.io/noto-emoji-animation/",
+    "base": "https://fonts.gstatic.com/s/e/notoemoji/latest/{cp}/512.webp"
+  },
+  "decoraciones": [
+    {
+      "id": "chispas",
+      "tipo": "marco",
+      "nombre": "Chispas",
+      "familia": "fiesta",
+      "noto": "2728",
+      "escala": 0.55,
+      "posicion": "arriba-derecha",
+      "orden": 10
+    },
+    {
+      "id": "fuego",
+      "tipo": "marco",
+      "nombre": "Fuego",
+      "familia": "energia",
+      "noto": "1f525",
+      "escala": 0.6,
+      "posicion": "abajo",
+      "orden": 11
+    },
+    {
+      "id": "coronita",
+      "tipo": "marco",
+      "nombre": "Coronita",
+      "familia": "realeza",
+      "noto": "1f451",
+      "escala": 0.6,
+      "posicion": "arriba",
+      "orden": 12
+    },
+    {
+      "id": "corazon-brillante",
+      "tipo": "marco",
+      "nombre": "Corazón brillante",
+      "familia": "fiesta",
+      "noto": "1f496",
+      "escala": 0.55,
+      "posicion": "arriba-derecha",
+      "orden": 13
+    },
+    {
+      "id": "estrella-fugaz",
+      "tipo": "marco",
+      "nombre": "Estrella",
+      "familia": "cielo",
+      "noto": "1f31f",
+      "escala": 0.55,
+      "posicion": "arriba-izquierda",
+      "orden": 14
+    },
+    {
+      "id": "relampago",
+      "tipo": "marco",
+      "nombre": "Relámpago",
+      "familia": "energia",
+      "noto": "26a1",
+      "escala": 0.55,
+      "posicion": "arriba-derecha",
+      "orden": 15
+    },
+    {
+      "id": "mariposa",
+      "tipo": "marco",
+      "nombre": "Mariposa",
+      "familia": "naturaleza",
+      "noto": "1f98b",
+      "escala": 0.55,
+      "posicion": "arriba-derecha",
+      "orden": 16
+    },
+    {
+      "id": "lunita",
+      "tipo": "marco",
+      "nombre": "Lunita",
+      "familia": "cielo",
+      "noto": "1f31a",
+      "escala": 0.55,
+      "posicion": "arriba-izquierda",
+      "orden": 17
+    },
+    {
+      "id": "saturno",
+      "tipo": "marco",
+      "nombre": "Saturno",
+      "familia": "cielo",
+      "noto": "1fa90",
+      "escala": 0.6,
+      "posicion": "arriba-derecha",
+      "orden": 18
+    },
+    {
+      "id": "gatito",
+      "tipo": "marco",
+      "nombre": "Gatito",
+      "familia": "fiesta",
+      "noto": "1f431",
+      "escala": 0.55,
+      "posicion": "abajo",
+      "orden": 19
+    },
+    {
+      "id": "musica",
+      "tipo": "marco",
+      "nombre": "Notas",
+      "familia": "musica",
+      "noto": "1f3b6",
+      "escala": 0.55,
+      "posicion": "arriba-derecha",
+      "orden": 20
+    },
+    {
+      "id": "auriculares",
+      "tipo": "marco",
+      "nombre": "Guitarra",
+      "familia": "musica",
+      "noto": "1f3b8",
+      "escala": 0.6,
+      "posicion": "arriba",
+      "orden": 21
+    },
+    {
+      "id": "flor",
+      "tipo": "marco",
+      "nombre": "Flor",
+      "familia": "naturaleza",
+      "noto": "1f338",
+      "escala": 0.55,
+      "posicion": "arriba-izquierda",
+      "orden": 22
+    },
+    {
+      "id": "fantasma",
+      "tipo": "marco",
+      "nombre": "Fantasma",
+      "familia": "fiesta",
+      "noto": "1f47b",
+      "escala": 0.55,
+      "posicion": "arriba-derecha",
+      "orden": 23
+    },
+    {
+      "id": "huellas",
+      "tipo": "marco",
+      "nombre": "Huellas",
+      "familia": "naturaleza",
+      "noto": "1f43e",
+      "escala": 0.5,
+      "posicion": "abajo",
+      "orden": 24
+    }
+  ]
+}

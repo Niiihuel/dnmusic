@@ -16,6 +16,13 @@ const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 export const isSupabaseConfigured = Boolean(url && anonKey)
 
 /**
+ * La anon key, para los pedidos que no pasan por el cliente: una subida con
+ * progreso va por `XMLHttpRequest` (storage-js no avisa cuánto subió) y el
+ * gateway igual la pide en la cabecera `apikey`.
+ */
+export const SUPABASE_ANON_KEY = anonKey ?? ''
+
+/**
  * Inicialización perezosa, a propósito: `createClient` con una URL vacía tira
  * en el momento del import y dejaba la app en blanco cuando falta el
  * .env.local, sin chance de renderizar el aviso de configuración.

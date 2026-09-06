@@ -382,47 +382,19 @@ function elegirPesado(artistas: ArtistaEscuchado[]): ArtistaEscuchado | null {
 }
 
 /**
- * Arma la próxima tanda de recomendaciones.
+ * Tus anclas: los artistas que pesan en tu gusto, en la moneda común.
  *
- * Devuelve vacío en cualquier tropiezo —sin historial, sin red, sin catálogo—
- * y eso es deliberado: esto corre solo, cuando la lista se terminó y nadie está
- * mirando. Un error acá no puede convertirse en un cartel; a lo sumo, en
- * silencio, que es exactamente lo que pasaba antes de que esto existiera.
+ * Es la mitad «quién sos» del sorteo de la radio —historial, corazones,
+ * semillas y listas, en ese orden de peso— sacada a una función porque el
+ * inicio la necesita para **decir por qué** recomienda lo que recomienda:
+ * «según X, Y y Z» son los primeros de esta lista. Vacío sin sesión o sin
+ * ninguna señal; ordenada de más a menos peso.
  */
-export async function proximasRecomendadas(
-  yaEnCola: string[] = [],
-  /**
-   * Los artistas de la cola que está sonando: **la mitad del sorteo**.
-   *
-   * Antes eran solo el respaldo para cuentas sin historial, y los adicionales
-   * de una playlist de cumbia podían salir del rock de tu historial general.
-   * Ahora la cola entra normalizada al peso de la historia (ver
-   * `mezclarConLaCola`): la tanda suena a lo que acabás de escuchar sin dejar
-   * de sonar a vos. Si el historial no dice nada, manda la cola sola, que es
-   * lo que ya pasaba.
-   */
-  delaCola: ArtistaEscuchado[] = [],
-  /**
-   * Si hay que traer el audio antes de devolver la tanda.
-   *
-   * Resolver es descargar la canción entera a Storage la primera vez: varios
-   * segundos POR canción, y era lo que hacía que la tanda «tardara en cargar»
-   * — saltear rápido agotaba la cola y los saltos quedaban muertos esperando
-   * las descargas. Por defecto la tanda vuelve **al toque, sin audio**
-   * (`audioPath` vacío): el motor lo resuelve recién cuando la canción va a
-   * sonar, y precarga la siguiente mientras suena la actual.
-   *
-   * El Jam sí resuelve antes (`resolver: true`): su cola vive en el servidor
-   * y `jam_agregar` exige el audio — una fila compartida sin audio no le
-   * sonaría a nadie.
-   */
-  opciones: { resolver?: boolean } = {},
-): Promise<PlaylistTrack[]> {
+export async function anclasPersonales(): Promise<ArtistaEscuchado[]> {
   try {
     const supabase = getSupabase()
-    const [{ data: artistas }, { data: recientes }, { data: gustadas }] = await Promise.all([
+    const [{ data: artistas }, { data: gustadas }] = await Promise.all([
       supabase.rpc('artistas_mas_escuchados', { p_limite: ARTISTAS }),
-      supabase.rpc('escuchadas_recientes', { p_dias: DIAS_RECIENTES }),
       /* El gusto explícito, directo de la tabla: los corazones son pocos y
          propios, y RLS ya recorta a los tuyos. Se agrupan acá porque traer
          las filas es más simple que otra función SQL para una suma. */
@@ -467,7 +439,56 @@ export async function proximasRecomendadas(
       if (previo) previo.ms += a.ms
       else porIdListas.set(a.artist_id, a)
     }
-    const conSemillas = [...porIdListas.values()]
+    /* De más a menos peso: el inicio nombra a los primeros. */
+    return [...porIdListas.values()].sort((a, b) => b.ms - a.ms)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Arma la próxima tanda de recomendaciones.
+ *
+ * Devuelve vacío en cualquier tropiezo —sin historial, sin red, sin catálogo—
+ * y eso es deliberado: esto corre solo, cuando la lista se terminó y nadie está
+ * mirando. Un error acá no puede convertirse en un cartel; a lo sumo, en
+ * silencio, que es exactamente lo que pasaba antes de que esto existiera.
+ */
+export async function proximasRecomendadas(
+  yaEnCola: string[] = [],
+  /**
+   * Los artistas de la cola que está sonando: **la mitad del sorteo**.
+   *
+   * Antes eran solo el respaldo para cuentas sin historial, y los adicionales
+   * de una playlist de cumbia podían salir del rock de tu historial general.
+   * Ahora la cola entra normalizada al peso de la historia (ver
+   * `mezclarConLaCola`): la tanda suena a lo que acabás de escuchar sin dejar
+   * de sonar a vos. Si el historial no dice nada, manda la cola sola, que es
+   * lo que ya pasaba.
+   */
+  delaCola: ArtistaEscuchado[] = [],
+  /**
+   * Si hay que traer el audio antes de devolver la tanda.
+   *
+   * Resolver es descargar la canción entera a Storage la primera vez: varios
+   * segundos POR canción, y era lo que hacía que la tanda «tardara en cargar»
+   * — saltear rápido agotaba la cola y los saltos quedaban muertos esperando
+   * las descargas. Por defecto la tanda vuelve **al toque, sin audio**
+   * (`audioPath` vacío): el motor lo resuelve recién cuando la canción va a
+   * sonar, y precarga la siguiente mientras suena la actual.
+   *
+   * El Jam sí resuelve antes (`resolver: true`): su cola vive en el servidor
+   * y `jam_agregar` exige el audio — una fila compartida sin audio no le
+   * sonaría a nadie.
+   */
+  opciones: { resolver?: boolean } = {},
+): Promise<PlaylistTrack[]> {
+  try {
+    /* Tus anclas y lo que no se puede volver a ofrecer, en paralelo. */
+    const [conSemillas, { data: recientes }] = await Promise.all([
+      anclasPersonales(),
+      getSupabase().rpc('escuchadas_recientes', { p_dias: DIAS_RECIENTES }),
+    ])
 
     /* Mitad lo que estás escuchando, mitad lo que sos. Ver `mezclarConLaCola`. */
     const candidatos = mezclarConLaCola(conSemillas, delaCola)

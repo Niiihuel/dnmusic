@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   Text,
@@ -21,13 +20,16 @@ import Animated, {
 import { mensajeError } from '../../src/lib/mensajeError'
 import { volver } from '../../src/lib/volver'
 import { avatarUrl, saveMyProfile, type Encuadre } from '../../src/services/profile'
-import { ilustracionUrl } from '../../src/services/showcases'
+import { ilustracionUrl, uploadIlustracionConProgreso } from '../../src/services/showcases'
 import { avisar } from '../../src/state/aviso'
+import { fondoPendiente, soltarFondoPendiente } from '../../src/state/fondoPendiente'
 import { usePiso } from '../../src/state/shell'
-import { setMyProfile, useMyProfile } from '../../src/state/session'
+import { setMyProfile, useMyProfile, useUser } from '../../src/state/session'
 import { actualizarBorrador, useBorrador } from '../../src/state/vitrinaBorrador'
+import { BotonConfirmar, BotonHoja, EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
 import { escalaQueCubre } from '../../src/ui/Encuadre'
 import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
+import { BarraDeProgreso, porciento } from '../../src/ui/Progreso'
 import { ICON_COLOR, IconGirarDer, IconGirarIzq } from '../../src/ui/icons'
 
 /** Hasta dónde se puede acercar. Más allá, cualquier foto se ve rota. */
@@ -41,11 +43,12 @@ const PX_POR_GRADO = 4
 const IMAN = 1.5
 
 /**
- * Qué se está encuadrando. Las dos primeras viven en el perfil; las otras dos
- * en el borrador de la pieza (`state/vitrinaBorrador`), que todavía no llegó a
- * la base.
+ * Qué se está encuadrando. Las dos primeras viven en el perfil; `fondo-nuevo`
+ * es un fondo recién elegido que todavía no subió (ver `state/fondoPendiente`);
+ * las otras dos, en el borrador de la pieza (`state/vitrinaBorrador`), que
+ * todavía no llegó a la base.
  */
-type Que = 'foto' | 'fondo' | 'vitrina' | 'vitrina-imagen'
+type Que = 'foto' | 'fondo' | 'fondo-nuevo' | 'vitrina' | 'vitrina-imagen'
 
 /**
  * Elegir cómo se ve la foto, el fondo o la imagen de una pieza: arrastrar
@@ -63,24 +66,44 @@ type Que = 'foto' | 'fondo' | 'vitrina' | 'vitrina-imagen'
  * la base sino en el borrador, como el resto del editor: nada llega hasta
  * «Agregar al mosaico».
  *
+ * **Un fondo recién elegido se encuadra antes de subir** (`fondo-nuevo`): la
+ * pantalla trabaja sobre el archivo local, y el tilde sube el archivo —con
+ * una barra de cuánto va— y recién entonces guarda la ruta con el encuadre.
+ * Antes el fondo subía al toque y encuadrarlo era otra fila aparte, que casi
+ * nadie encontraba.
+ *
  * La rotación es la que abre Airbuds después de elegir la foto —pasos de 90°
  * y un dial fino—, pero sigue la regla de acá: es un número más del encuadre,
  * no un archivo nuevo.
+ *
+ * Es una hoja de las de siempre: la cruz cancela, el tilde guarda
+ * (`EncabezadoHoja`), y abajo queda solo «Centrar».
  */
 export default function Encuadrar() {
   const router = useRouter()
   const perfil = useMyProfile()
+  const user = useUser()
   const borrador = useBorrador()
   const { width, height } = useWindowDimensions()
   const modal = useHojaModal()
   const piso = usePiso(24)
   const { que: queCrudo } = useLocalSearchParams<{ que?: string }>()
   const que: Que =
-    queCrudo === 'fondo' || queCrudo === 'vitrina' || queCrudo === 'vitrina-imagen' ? queCrudo : 'foto'
+    queCrudo === 'fondo' ||
+    queCrudo === 'fondo-nuevo' ||
+    queCrudo === 'vitrina' ||
+    queCrudo === 'vitrina-imagen'
+      ? queCrudo
+      : 'foto'
   const esVitrina = que === 'vitrina' || que === 'vitrina-imagen'
+  const esFondo = que === 'fondo' || que === 'fondo-nuevo'
   const redondo = que === 'foto'
+  /* A dónde se vuelve: la pieza a su editor, lo del perfil a «Editar perfil». */
+  const destino = esVitrina ? '/profile/vitrina' : '/profile/editar'
 
   const [guardando, setGuardando] = useState(false)
+  /** Cuánto subió el fondo nuevo, de 0 a 1; `null` mientras no se sube. */
+  const [progreso, setProgreso] = useState<number | null>(null)
 
   /* De dónde sale la imagen y con qué encuadre arranca, según qué se encuadra. */
   const imagenDeVitrina =
@@ -89,18 +112,23 @@ export default function Encuadrar() {
       : que === 'vitrina-imagen' && borrador?.contenido?.kind === 'imagen'
         ? borrador.contenido.imagen
         : null
+  const pendiente = que === 'fondo-nuevo' ? fondoPendiente() : null
   const uri = esVitrina
     ? imagenDeVitrina
       ? ilustracionUrl(imagenDeVitrina.path)
       : null
-    : que === 'fondo'
-      ? perfil?.bannerPath
-        ? ilustracionUrl(perfil.bannerPath)
-        : null
-      : avatarUrl(perfil?.avatarPath)
+    : que === 'fondo-nuevo'
+      ? (pendiente?.uri ?? null)
+      : que === 'fondo'
+        ? perfil?.bannerPath
+          ? ilustracionUrl(perfil.bannerPath)
+          : null
+        : avatarUrl(perfil?.avatarPath)
   const inicial: Encuadre | null = esVitrina
     ? (imagenDeVitrina?.encuadre ?? null)
-    : ((que === 'fondo' ? perfil?.bannerEncuadre : perfil?.avatarEncuadre) ?? null)
+    : que === 'fondo-nuevo'
+      ? null
+      : ((que === 'fondo' ? perfil?.bannerEncuadre : perfil?.avatarEncuadre) ?? null)
 
   /*
    * El recuadro de trabajo: cuadrado para la foto —así se ve en todos lados—,
@@ -269,9 +297,9 @@ export default function Encuadrar() {
    * una esquina un instante, pero donde cae está bien.
    */
   function girar(paso: number) {
-    const destino = normalizarGiro(giro.value + paso)
-    giro.value = withTiming(destino, { duration: 220 })
-    acomodar(destino + fino.value)
+    const destinoGiro = normalizarGiro(giro.value + paso)
+    giro.value = withTiming(destinoGiro, { duration: 220 })
+    acomodar(destinoGiro + fino.value)
   }
 
   /** Vuelve a meter el corrimiento adentro para la rotación dada. */
@@ -343,35 +371,78 @@ export default function Encuadrar() {
     }
   }
 
-  async function guardar() {
+  /** La cruz: nada se guarda, y el fondo que esperaba deja de esperar. */
+  function cancelar() {
     if (guardando) return
+    if (que === 'fondo-nuevo') soltarFondoPendiente()
+    volver(router, destino)
+  }
+
+  async function guardar() {
+    if (guardando || !uri) return
     if (esVitrina) {
       escribirEnBorrador(armarEncuadre())
       avisar('Imagen encuadrada')
-      volver(router, '/profile/vitrina')
+      volver(router, destino)
       return
     }
     setGuardando(true)
     try {
       const encuadre = armarEncuadre()
-      const guardado = await saveMyProfile(
-        que === 'fondo' ? { bannerEncuadre: encuadre } : { avatarEncuadre: encuadre },
-      )
-      setMyProfile(guardado)
-      avisar(que === 'fondo' ? 'Fondo encuadrado' : 'Foto encuadrada')
-      volver(router, '/')
+      if (que === 'fondo-nuevo') {
+        /* Primero el archivo, con la barra; después la ruta junto al encuadre,
+           así el perfil nunca apunta a un fondo que todavía no existe. */
+        if (!pendiente || !user) throw new Error('No hay ningún fondo por subir.')
+        setProgreso(0)
+        const ruta = await uploadIlustracionConProgreso(
+          user.id,
+          pendiente.blob,
+          pendiente.fileName,
+          pendiente.mime,
+          setProgreso,
+        )
+        setMyProfile(await saveMyProfile({ bannerPath: ruta, bannerEncuadre: encuadre }))
+        soltarFondoPendiente()
+        avisar('Fondo puesto')
+      } else {
+        setMyProfile(
+          await saveMyProfile(que === 'fondo' ? { bannerEncuadre: encuadre } : { avatarEncuadre: encuadre }),
+        )
+        avisar(que === 'fondo' ? 'Fondo encuadrado' : 'Foto encuadrada')
+      }
+      volver(router, destino)
     } catch (e) {
       avisar(mensajeError(e), true)
       setGuardando(false)
+      setProgreso(null)
     }
   }
 
+  /**
+   * Volver al centro. Para lo que ya está guardado, borra el encuadre en su
+   * lugar y sale; para lo que todavía no subió no hay nada guardado que
+   * borrar: se reponen los valores en pantalla y se sigue encuadrando.
+   */
   async function centrar() {
     if (guardando) return
+    if (que === 'fondo-nuevo') {
+      /* Los shared values se escriben a mano, como en `acercar`. */
+      // eslint-disable-next-line react-hooks/immutability
+      x.value = 0
+      // eslint-disable-next-line react-hooks/immutability
+      y.value = 0
+      // eslint-disable-next-line react-hooks/immutability
+      escalaPedida.value = 1
+      // eslint-disable-next-line react-hooks/immutability
+      giro.value = withTiming(0, { duration: 220 })
+      // eslint-disable-next-line react-hooks/immutability
+      fino.value = 0
+      return
+    }
     if (esVitrina) {
       escribirEnBorrador(null)
       avisar('Volvió al centro')
-      volver(router, '/profile/vitrina')
+      volver(router, destino)
       return
     }
     setGuardando(true)
@@ -381,31 +452,54 @@ export default function Encuadrar() {
       )
       setMyProfile(guardado)
       avisar('Volvió al centro')
-      volver(router, '/')
+      volver(router, destino)
     } catch (e) {
       avisar(mensajeError(e), true)
       setGuardando(false)
     }
   }
 
+  const titulo =
+    que === 'vitrina'
+      ? 'Fondo de la pieza'
+      : que === 'vitrina-imagen'
+        ? 'Imagen'
+        : esFondo
+          ? 'Tu fondo'
+          : 'Tu foto'
+
+  const encabezado = (
+    <EncabezadoHoja
+      titulo={titulo}
+      sobre="Encuadrar"
+      izquierda={<BotonHoja tipo="cerrar" onPress={cancelar} />}
+      derecha={
+        <BotonConfirmar
+          label="Guardar"
+          activo={!!uri && !guardando}
+          ocupado={guardando}
+          onPress={() => void guardar()}
+        />
+      }
+    />
+  )
+
   if (!uri) {
     return (
       <Hoja>
-        <View className="flex-1 items-center justify-center gap-4 bg-background px-8">
-          <Text className="text-muted-foreground text-center text-[13px]">
-            {esVitrina
-              ? 'Todavía no pusiste una imagen.'
-              : que === 'fondo'
-                ? 'Todavía no pusiste un fondo.'
-                : 'Todavía no pusiste una foto.'}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => volver(router, esVitrina ? '/profile/vitrina' : '/')}
-            className="rounded-full bg-muted px-5 py-2.5 active:opacity-80"
-          >
-            <Text className="text-foreground text-[13px] font-semibold">Volver</Text>
-          </Pressable>
+        <View className="flex-1 bg-background">
+          {encabezado}
+          <View className="flex-1 items-center justify-center gap-4 px-8">
+            <Text className="text-muted-foreground text-center text-[13px]">
+              {esVitrina
+                ? 'Todavía no pusiste una imagen.'
+                : que === 'fondo-nuevo'
+                  ? 'No hay ningún fondo por subir. Volvé y elegí uno.'
+                  : esFondo
+                    ? 'Todavía no pusiste un fondo.'
+                    : 'Todavía no pusiste una foto.'}
+            </Text>
+          </View>
         </View>
       </Hoja>
     )
@@ -413,33 +507,24 @@ export default function Encuadrar() {
 
   return (
     <Hoja>
-      {/* Scroll por si aun acotado no entra (una ventana muy baja): mejor
-          desplazar que superponer. El piso solo se reserva en la sábana — en
-          el modal el reproductor queda afuera. */}
-      <ScrollView
-        className="flex-1 bg-background"
-        contentContainerClassName="items-center gap-6 px-6 pt-6"
-        contentContainerStyle={{
-          paddingBottom: modal ? 24 : piso,
-          maxWidth: ANCHO_HOJA,
-          width: '100%',
-          alignSelf: 'center',
-        }}
-      >
-          <View className="items-center gap-1">
-            <Text className="text-foreground text-[17px] font-bold">
-              {que === 'vitrina'
-                ? 'Encuadrá el fondo de la pieza'
-                : que === 'vitrina-imagen'
-                  ? 'Encuadrá la imagen'
-                  : que === 'fondo'
-                    ? 'Encuadrá tu fondo'
-                    : 'Encuadrá tu foto'}
-            </Text>
-            <Text className="text-muted-foreground text-center text-[12px] leading-4">
-              Arrastrá para mover, pellizcá para acercar y girá con el dial.
-            </Text>
-          </View>
+      <View className="flex-1 bg-background">
+        {encabezado}
+        {/* Scroll por si aun acotado no entra (una ventana muy baja): mejor
+            desplazar que superponer. El piso solo se reserva en la sábana — en
+            el modal el reproductor queda afuera. */}
+        <ScrollView
+          className="flex-1"
+          contentContainerClassName="items-center gap-6 px-6 pt-4"
+          contentContainerStyle={{
+            paddingBottom: modal ? 24 : piso,
+            maxWidth: ANCHO_HOJA,
+            width: '100%',
+            alignSelf: 'center',
+          }}
+        >
+          <Text className="text-muted-foreground text-center text-[13px] leading-[18px]">
+            Arrastrá para mover, pellizcá para acercar y girá con el dial.
+          </Text>
 
           {/*
            * El recuadro es la máscara: la imagen es más grande y lo que sobra
@@ -460,11 +545,22 @@ export default function Encuadrar() {
             </View>
           </GestureDetector>
 
+          {/* Mientras sube, cuánto va: la barra ocupa el ancho del recuadro. */}
+          {progreso !== null ? (
+            <View style={{ width: lado }}>
+              <BarraDeProgreso
+                valor={progreso}
+                rotulo={progreso >= 1 ? 'Guardando…' : `Subiendo el fondo… ${porciento(progreso)}`}
+              />
+            </View>
+          ) : null}
+
           {/* Acercar y alejar, para quien no tiene con qué pellizcar. */}
           <View className="flex-row items-center gap-4">
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Alejar"
+              disabled={guardando}
               onPress={() => acercar(-0.25)}
               className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-70"
             >
@@ -476,6 +572,7 @@ export default function Encuadrar() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Acercar"
+              disabled={guardando}
               onPress={() => acercar(0.25)}
               className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-70"
             >
@@ -493,6 +590,7 @@ export default function Encuadrar() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Girar un cuarto a la izquierda"
+              disabled={guardando}
               onPress={() => girar(-90)}
               className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-70"
             >
@@ -530,6 +628,7 @@ export default function Encuadrar() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Girar un cuarto a la derecha"
+              disabled={guardando}
               onPress={() => girar(90)}
               className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-70"
             >
@@ -537,33 +636,19 @@ export default function Encuadrar() {
             </Pressable>
           </View>
 
-          <View className="flex-row items-center gap-3">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Volver al centro"
-              disabled={guardando}
-              onPress={() => void centrar()}
-              className="h-12 items-center justify-center rounded-full bg-muted px-5 active:opacity-80"
-            >
-              <Text className="text-foreground text-[14px] font-semibold">Centrar</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Guardar el encuadre"
-              disabled={guardando}
-              onPress={() => void guardar()}
-              className="h-12 min-w-[132px] items-center justify-center rounded-full bg-primary px-8 active:opacity-80"
-            >
-              {guardando ? (
-                <ActivityIndicator color="#121212" />
-              ) : (
-                <Text className="text-primary-foreground text-[15px] font-bold">
-                  {esVitrina ? 'Listo' : 'Guardar'}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-      </ScrollView>
+          {/* Centrar es la única acción que queda abajo: guardar vive en el
+              tilde de arriba, como en cualquier hoja. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Volver al centro"
+            disabled={guardando}
+            onPress={() => void centrar()}
+            className="h-11 items-center justify-center rounded-full bg-muted px-5 active:opacity-80"
+          >
+            <Text className="text-foreground text-[14px] font-semibold">Centrar</Text>
+          </Pressable>
+        </ScrollView>
+      </View>
     </Hoja>
   )
 }

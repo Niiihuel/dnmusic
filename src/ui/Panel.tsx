@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react'
-import { useWindowDimensions, View } from 'react-native'
+import { useWindowDimensions, View, type ViewStyle } from 'react-native'
 
 /** Debajo de esto el contenido va de borde a borde. Igual que en el layout. */
 const SHELL_PX = 780
@@ -26,16 +26,20 @@ export function Panel({
   children,
   className = '',
   tone = 'contenido',
+  style,
 }: PropsWithChildren<{
   className?: string
   /** `lateral` es la columna oscura de los costados; `contenido` la del medio. */
   tone?: 'contenido' | 'lateral'
+  /** Medidas que no salen de una clase: el ancho fijo de una barra lateral. */
+  style?: ViewStyle
 }>) {
   const { width } = useWindowDimensions()
   const suelto = width < SHELL_PX
 
   return (
     <View
+      style={style}
       className={`overflow-hidden ${
         suelto
           ? 'bg-background'

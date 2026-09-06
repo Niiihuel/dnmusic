@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { invitarAColaborar } from '../../src/lib/compartirLista'
 import { mensajeError } from '../../src/lib/mensajeError'
@@ -12,15 +12,23 @@ import {
   type Colaborador,
 } from '../../src/services/playlists'
 import { avisar } from '../../src/state/aviso'
-import { useUser } from '../../src/state/session'
+import { useMyProfile, useUser } from '../../src/state/session'
 import { usePiso, useKeyboardH } from '../../src/state/shell'
 import { Avatar } from '../../src/ui/Avatar'
 import { ES_WEB } from '../../src/ui/Glass'
+import { BotonHoja, EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
 import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
-import { ICON_COLOR, IconCheck, IconClose, IconSearch, IconShare } from '../../src/ui/icons'
+import { SearchField } from '../../src/ui/SearchField'
+import { ICON_COLOR, IconCheck, IconClose, IconShare, IconUsers } from '../../src/ui/icons'
 
 /**
  * Quiénes escriben esta lista: el link para sumar gente y la gente ya sumada.
+ *
+ * Es la hoja de «Iniciar colaboración» de Apple Music: arriba el ícono y una
+ * explicación de qué va a poder hacer quien entre, tu propia fila —con qué
+ * nombre y qué cara te van a ver los demás—, y el botón del link. Debajo, lo
+ * que Apple no tiene y acá sí: buscar a alguien por nombre, y la lista de los
+ * que ya están.
  *
  * Dos caminos, y no sobra ninguno. El **link** sirve para quien no tenés
  * agregado —se manda por WhatsApp y listo—, y **buscar por nombre** sirve para
@@ -37,6 +45,7 @@ export default function PersonasDeLista() {
   const teclado = useKeyboardH()
   const modal = useHojaModal()
   const user = useUser()
+  const perfil = useMyProfile()
   const { id, nombre } = useLocalSearchParams<{ id?: string; nombre?: string }>()
 
   const [gente, setGente] = useState<Colaborador[] | null>(null)
@@ -108,6 +117,7 @@ export default function PersonasDeLista() {
   /* Lo que se ve, derivado del texto: con menos de dos letras no hay búsqueda
      que mostrar, aunque el estado todavía guarde el resultado anterior. */
   const resultados = busqueda.trim().length >= 2 ? encontrados : []
+  const miNombre = perfil?.displayName?.trim() || perfil?.username || 'Vos'
 
   async function sumar(contacto: ContactResult) {
     if (!id) return
@@ -151,139 +161,176 @@ export default function PersonasDeLista() {
 
   return (
     <Hoja>
-      <ScrollView
-        className="flex-1 bg-background"
-        contentContainerClassName="gap-6 px-5 pt-6"
-        /* Acotado en el escritorio, como el resto de las hojas de formulario. */
-        contentContainerStyle={{
-          paddingBottom: modal ? 24 : piso + teclado,
-          maxWidth: ANCHO_HOJA,
-          width: '100%',
-          alignSelf: 'center',
-        }}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View className="items-center gap-1">
-          <Text className="text-foreground text-lg font-bold">Armenla entre todos</Text>
-          <Text className="text-muted-foreground text-center text-[12px] leading-4">
-            Quien entre puede sumar canciones y sacar las que sobren.
-          </Text>
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Compartir el link para sumarse"
-          onPress={() => void invitarAColaborar(id, nombre || 'la lista')}
-          className="flex-row items-center justify-center gap-2 self-center rounded-full bg-primary px-6 py-3 active:opacity-80"
-        >
-          <IconShare size={16} color={ICON_COLOR.onPrimary} />
-          <Text className="text-primary-foreground text-[14px] font-semibold">
-            {ES_WEB ? 'Copiar el link' : 'Compartir el link'}
-          </Text>
-        </Pressable>
-
-        {/* Buscar por nombre es solo del dueño, como sumar a mano en la base. */}
-        {soyDueño ? (
-          <View className="gap-2">
-            <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-              O sumalos por nombre
-            </Text>
-            <View className="flex-row items-center gap-2 rounded-full bg-muted px-4">
-              <IconSearch size={15} color={ICON_COLOR.muted} />
-              <TextInput
-                value={busqueda}
-                onChangeText={setBusqueda}
-                placeholder="Buscá a alguien"
-                placeholderTextColor="#6A6A6A"
-                autoCapitalize="none"
-                autoCorrect={false}
-                accessibilityLabel="Buscar a alguien para sumar"
-                className="text-foreground h-11 flex-1 text-[14px]"
-              />
-              {buscando ? <ActivityIndicator size="small" color={ICON_COLOR.muted} /> : null}
+      <View className="flex-1 bg-background">
+        <View className="w-full flex-1 self-center" style={{ maxWidth: ANCHO_HOJA }}>
+          <EncabezadoHoja
+            titulo="Colaborar"
+            sobre={nombre ? `«${nombre}»` : undefined}
+            izquierda={<BotonHoja tipo="cerrar" onPress={() => volver(router, '/')} />}
+          />
+          <ScrollView
+            className="flex-1"
+            contentContainerClassName="gap-6 px-5 pt-1"
+            /* Acotado en el escritorio, como el resto de las hojas de formulario. */
+            contentContainerStyle={{ paddingBottom: (modal ? 24 : piso) + teclado }}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/*
+             * La presentación: qué es esto y qué va a poder hacer quien entre.
+             * Es el bloque centrado de la hoja de Apple Music —ícono, título,
+             * dos líneas— y va primero porque es lo que le da sentido al botón
+             * de abajo: nadie manda un link sin saber a qué invita.
+             */}
+            <View className="items-center gap-2 pt-2">
+              <View className="h-14 w-14 items-center justify-center rounded-full bg-muted">
+                <IconUsers size={24} color={ICON_COLOR.foreground} />
+              </View>
+              <Text className="pt-1 text-foreground text-center text-[19px] font-bold">
+                Invitá a participar
+              </Text>
+              <Text className="max-w-sm text-muted-foreground text-center text-[13px] leading-5">
+                Cualquier persona con el link va a poder sumar canciones y sacar las que
+                sobren. Tu nombre y tu foto se van a ver junto a la lista.
+              </Text>
             </View>
 
-            {resultados.map((c) => {
-              const dentro = yaEstan.has(c.id)
-              return (
-                <Pressable
-                  key={c.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={dentro ? `${c.username} ya está` : `Sumar a ${c.username}`}
-                  disabled={dentro}
-                  onPress={() => void sumar(c)}
-                  className="flex-row items-center gap-3 rounded-2xl px-2 py-2 active:bg-muted"
-                >
-                  <Avatar name={c.displayName || c.username} path={c.avatarPath} size={34} />
-                  <View className="min-w-0 flex-1">
-                    <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
-                      {c.displayName?.trim() || `@${c.username}`}
-                    </Text>
-                    <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-                      @{c.username}
-                    </Text>
+            {/*
+             * Cómo te van a ver: tu fila, con «Editar» para ir al perfil. Es la
+             * fila de identidad de la hoja de Apple Music y responde a la
+             * duda que tiene cualquiera antes de mandar el link — «¿con qué
+             * nombre me van a ver?».
+             */}
+            <View className="flex-row items-center gap-3 rounded-2xl bg-card px-4 py-3">
+              <Avatar name={miNombre} path={perfil?.avatarPath} size={40} />
+              <View className="min-w-0 flex-1">
+                <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
+                  {miNombre}
+                </Text>
+                {perfil?.username ? (
+                  <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+                    @{perfil.username}
+                  </Text>
+                ) : null}
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Editar tu perfil"
+                onPress={() => router.push('/profile/editar')}
+                className="min-h-9 justify-center rounded-full px-3 active:bg-muted"
+              >
+                <Text className="text-foreground text-[13px] font-semibold">Editar</Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Compartir el link para sumarse"
+              onPress={() => void invitarAColaborar(id, nombre || 'la lista')}
+              className="h-12 flex-row items-center justify-center gap-2 rounded-full bg-primary px-6 active:opacity-80"
+            >
+              <IconShare size={16} color={ICON_COLOR.onPrimary} />
+              <Text className="text-primary-foreground text-[14px] font-semibold">
+                {ES_WEB ? 'Copiar el link' : 'Compartir el link'}
+              </Text>
+            </Pressable>
+
+            {/* Buscar por nombre es solo del dueño, como sumar a mano en la base. */}
+            {soyDueño ? (
+              <View className="gap-2">
+                <Text className="px-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                  O sumalos por nombre
+                </Text>
+                <SearchField
+                  value={busqueda}
+                  onChangeText={setBusqueda}
+                  placeholder="Buscá a alguien"
+                  loading={buscando}
+                />
+
+                {resultados.length ? (
+                  <View className="overflow-hidden rounded-2xl bg-card">
+                    {resultados.map((c) => {
+                      const dentro = yaEstan.has(c.id)
+                      return (
+                        <Pressable
+                          key={c.id}
+                          accessibilityRole="button"
+                          accessibilityLabel={dentro ? `${c.username} ya está` : `Sumar a ${c.username}`}
+                          disabled={dentro}
+                          onPress={() => void sumar(c)}
+                          className="flex-row items-center gap-3 px-4 py-2.5 active:bg-muted"
+                        >
+                          <Avatar name={c.displayName || c.username} path={c.avatarPath} size={36} />
+                          <View className="min-w-0 flex-1">
+                            <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
+                              {c.displayName?.trim() || `@${c.username}`}
+                            </Text>
+                            <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+                              @{c.username}
+                            </Text>
+                          </View>
+                          {dentro ? (
+                            <IconCheck size={16} color={ICON_COLOR.muted} />
+                          ) : (
+                            <View className="rounded-full bg-muted px-3 py-1.5">
+                              <Text className="text-foreground text-[12px] font-semibold">Sumar</Text>
+                            </View>
+                          )}
+                        </Pressable>
+                      )
+                    })}
                   </View>
-                  {dentro ? (
-                    <IconCheck size={16} color={ICON_COLOR.muted} />
-                  ) : (
-                    <Text className="text-foreground text-[12px] font-semibold">Sumar</Text>
-                  )}
-                </Pressable>
-              )
-            })}
-          </View>
-        ) : null}
+                ) : null}
+              </View>
+            ) : null}
 
-        <View className="gap-2">
-          <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-            En la lista · {gente?.length ?? 0}
-          </Text>
-          {gente === null ? (
-            <View className="py-6">
-              <ActivityIndicator color={ICON_COLOR.muted} />
+            <View className="gap-2">
+              <Text className="px-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                En la lista · {gente?.length ?? 0}
+              </Text>
+              {gente === null ? (
+                <View className="py-6">
+                  <ActivityIndicator color={ICON_COLOR.muted} />
+                </View>
+              ) : (
+                <View className="overflow-hidden rounded-2xl bg-card">
+                  {gente.map((g) => {
+                    const soyYo = g.id === user?.id
+                    /* La cruz aparece si sos el dueño —sacás a cualquiera menos a
+                       vos, que no te podés echar de tu propia lista— o si es tu
+                       propia fila y estás de invitado: eso es irse. */
+                    const puedoSacar = (soyDueño && !g.esDueño) || (soyYo && !g.esDueño)
+                    return (
+                      <View key={g.id} className="flex-row items-center gap-3 px-4 py-3">
+                        <Avatar name={g.displayName || g.username} path={g.avatarPath} size={36} />
+                        <View className="min-w-0 flex-1">
+                          <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
+                            {g.displayName?.trim() || `@${g.username}`}
+                            {soyYo ? ' (vos)' : ''}
+                          </Text>
+                          <Text className="text-muted-foreground text-[12px]">
+                            {g.esDueño ? 'Armó la lista' : 'Colabora'}
+                          </Text>
+                        </View>
+                        {puedoSacar ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={soyYo ? 'Salir de la lista' : `Sacar a ${g.username}`}
+                            onPress={() => void sacar(g)}
+                            className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
+                          >
+                            <IconClose size={15} color={ICON_COLOR.muted} />
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    )
+                  })}
+                </View>
+              )}
             </View>
-          ) : (
-            <View className="rounded-2xl bg-card">
-              {gente.map((g, i) => {
-                const soyYo = g.id === user?.id
-                /* La cruz aparece si sos el dueño —sacás a cualquiera menos a
-                   vos, que no te podés echar de tu propia lista— o si es tu
-                   propia fila y estás de invitado: eso es irse. */
-                const puedoSacar = (soyDueño && !g.esDueño) || (soyYo && !g.esDueño)
-                return (
-                  <View
-                    key={g.id}
-                    className={`flex-row items-center gap-3 px-4 py-3 ${
-                      i > 0 ? 'border-t border-background' : ''
-                    }`}
-                  >
-                    <Avatar name={g.displayName || g.username} path={g.avatarPath} size={36} />
-                    <View className="min-w-0 flex-1">
-                      <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
-                        {g.displayName?.trim() || `@${g.username}`}
-                        {soyYo ? ' (vos)' : ''}
-                      </Text>
-                      <Text className="text-muted-foreground text-[11px]">
-                        {g.esDueño ? 'Armó la lista' : 'Colabora'}
-                      </Text>
-                    </View>
-                    {puedoSacar ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={soyYo ? 'Salir de la lista' : `Sacar a ${g.username}`}
-                        onPress={() => void sacar(g)}
-                        className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
-                      >
-                        <IconClose size={15} color={ICON_COLOR.muted} />
-                      </Pressable>
-                    ) : null}
-                  </View>
-                )
-              })}
-            </View>
-          )}
+          </ScrollView>
         </View>
-      </ScrollView>
+      </View>
     </Hoja>
   )
 }

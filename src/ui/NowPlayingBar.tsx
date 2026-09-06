@@ -19,6 +19,7 @@ import {
   togglePlayback,
   toggleView,
   useHaySiguiente,
+  usePlaybackOriginName,
   usePlaybackState,
 } from '../state/playback'
 import { crearJamActual, salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
@@ -153,6 +154,9 @@ export function NowPlayingBar({
   const router = useRouter()
   const { width } = useWindowDimensions()
   const wide = width >= WIDE_PX
+  /* El nombre de la lista de la que salió la cola, para el subtítulo de «Ver
+     la lista». Vacío con algo encolado a mano o sin origen. */
+  const listName = usePlaybackOriginName()
   const enJam = useJamActivo()
   const cuantosJam = useCuantosJam()
   /*
@@ -223,9 +227,10 @@ export function NowPlayingBar({
    */
   const menu: MenuItem[] = [
     /*
-     * El Jam va primero: es la única entrada que cambia **quiénes** escuchan,
-     * y con uno abierto dice cuántos son — que es lo que uno quiere saber sin
-     * abrir nada.
+     * Arriba, las tres acciones rápidas del menú de Apple Music: el Jam —la
+     * única que cambia **quiénes** escuchan—, la cola y compartir. Después a
+     * dónde ir, después qué hacer con la reproducción, y al final lo que la
+     * cierra.
      */
     {
       /*
@@ -234,9 +239,9 @@ export function NowPlayingBar({
        * cuántos son. Es el mismo par de estados de la píldora del reproductor
        * del teléfono.
        */
-      label: enJam
-        ? `Ver el Jam · ${cuantosJam} ${cuantosJam === 1 ? 'persona' : 'personas'}`
-        : 'Crear un Jam',
+      label: enJam ? `Jam · ${cuantosJam}` : 'Jam',
+      rapida: true,
+      selected: enJam || undefined,
       /* Con panel, el Jam se abre ahí al lado; sin panel, en su pantalla. */
       onPress: () => {
         const abrir = () => {
@@ -252,17 +257,11 @@ export function NowPlayingBar({
         })
       },
       icon: <IconUsers size={15} color={enJam ? ICON_COLOR.foreground : ICON_COLOR.muted} />,
-      sfSymbol: 'person.2',
+      sfSymbol: enJam ? 'person.2.fill' : 'person.2',
     },
     {
-      label: 'Ver la lista',
-      onPress: openSoundingPlaylist,
-      disabled: !canOpenPlaylist(),
-      icon: <IconMusic size={15} color={ICON_COLOR.muted} />,
-      sfSymbol: 'music.note.list',
-    },
-    {
-      label: 'Ver la cola',
+      label: 'Cola',
+      rapida: true,
       /* Como el Jam: con panel al lado, la cola se abre ahí — un drawer es un
          gesto de teléfono, no de una ventana grande. Sin panel, su pantalla. */
       onPress: () => {
@@ -271,6 +270,24 @@ export function NowPlayingBar({
       },
       icon: <IconCola size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'list.bullet',
+    },
+    /* La tarjeta 1080×1920 de lo que suena: en el teléfono abre la hoja de
+       compartir (Instagram ofrece «Agregar a tu historia»); en la web se
+       descarga el PNG. Ver `CompartirHistoria`. */
+    {
+      label: 'Compartir',
+      rapida: true,
+      onPress: () => compartirHistoria(current),
+      icon: <IconShare size={15} color={ICON_COLOR.muted} />,
+      sfSymbol: 'square.and.arrow.up',
+    },
+    {
+      label: 'Ver la lista',
+      subtitle: listName || undefined,
+      onPress: openSoundingPlaylist,
+      disabled: !canOpenPlaylist(),
+      icon: <IconMusic size={15} color={ICON_COLOR.muted} />,
+      sfSymbol: 'music.note.list',
     },
     {
       // Spotify Connect: mover la música entre los aparatos de la cuenta. El
@@ -295,6 +312,7 @@ export function NowPlayingBar({
       : [
           {
             label: shuffle ? 'Aleatorio: activado' : 'Aleatorio',
+            separadorAntes: true,
             onPress: toggleShuffle,
             icon: (
               <IconShuffle size={15} color={shuffle ? ICON_COLOR.foreground : ICON_COLOR.muted} />
@@ -304,6 +322,7 @@ export function NowPlayingBar({
         ]),
     {
       label: 'Volver a empezar',
+      separadorAntes: wide,
       onPress: () => seekToMs(0),
       icon: <IconRepeat size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'arrow.counterclockwise',
@@ -314,15 +333,6 @@ export function NowPlayingBar({
       disabled: last,
       icon: <IconNext size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'forward.end',
-    },
-    /* La tarjeta 1080×1920 de lo que suena: en el teléfono abre la hoja de
-       compartir (Instagram ofrece «Agregar a tu historia»); en la web se
-       descarga el PNG. Ver `CompartirHistoria`. */
-    {
-      label: 'Compartir en una historia',
-      onPress: () => compartirHistoria(current),
-      icon: <IconShare size={15} color={ICON_COLOR.muted} />,
-      sfSymbol: 'square.and.arrow.up',
     },
     /* En un Jam, «cerrar» es irse de él: cerrar solo el reproductor dejaría
        la membresía viva y la cola volvería sola con el próximo evento. */

@@ -15,9 +15,11 @@ Son ortogonales y se combinan. El caso normal de una colaborativa es
 
 | Archivo | Qué hace |
 | --- | --- |
-| `app/lista/nueva.tsx` | Elegir la clase de lista: común o colaborativa |
-| `app/lista/nombre.tsx` | Ponerle nombre; es acá donde recién se crea |
-| `app/lista/personas.tsx` | El link para sumar, buscar contactos, y quiénes están |
+| `app/lista/nueva.tsx` | Crear una lista: portada, nombre y si es colaborativa, en una hoja |
+| `app/lista/agregar.tsx` | «Agregar música»: elegir varias canciones para una lista y confirmar de una |
+| `app/lista/elegir.tsx` | «Agregar a una lista»: elegir a qué lista va una canción (el teléfono) |
+| `app/lista/personas.tsx` | Colaborar: el link para sumar, buscar contactos, y quiénes están |
+| `src/state/listas.ts` | El aviso «esta lista cambió» de las hojas a la pantalla, y la canción pendiente |
 | `app/lista/[id].tsx` | La lista por link — y la puerta de `?colaborar=1` |
 | `src/services/playlists.ts` | `createPlaylist`, `joinPlaylist`, los colaboradores |
 | `src/lib/compartirLista.ts` | Los dos links: el de mirar y el de sumarse |
@@ -27,7 +29,7 @@ Son ortogonales y se combinan. El caso normal de una colaborativa es
 ## El flujo de crear
 
 ```
-  «+»  →  ¿qué clase?  →  ponele nombre  →  [si es colaborativa] sumá gente
+  «+»  →  una hoja: portada · nombre · ¿colaborativa?  →  [si lo es] sumá gente
 ```
 
 **El «+» ya no crea nada.** Antes creaba «Mi lista #N» y te dejaba adentro —era
@@ -35,16 +37,42 @@ lo que hacía Spotify entonces, y tenía razón: el nombre se sabe después, cua
 ya viste en qué terminó. Eso vale mientras haya una sola clase de lista.
 
 Con las colaborativas hay una decisión que no es el nombre —a quién dejás
-entrar— y que no se arregla igual de fácil después. De paso se arregla algo que
-molestaba: la lista **nace con el nombre puesto**, así que arrepentirse a mitad
-de camino ya no deja una «Mi lista #4» vacía en la biblioteca para siempre.
+entrar— y que no se arregla igual de fácil después. Primero fueron dos hojas
+(elegir la clase, ponerle nombre); ahora es **una**, la «Nueva playlist» de
+Apple Music: la portada arriba y grande, el nombre centrado con su subrayado, y
+la pregunta de colaborativa como interruptor con su consecuencia escrita. Una
+hoja entera para un sí o no era una pantalla de más.
+
+La lista **nace con el nombre puesto** y recién al confirmar: arrepentirse a
+mitad de camino no deja una «Mi lista #4» vacía en la biblioteca. La portada se
+sube después de que la lista existe, y si falla se avisa sin frenar nada.
 
 El nombre sugerido lo calcula `app/index.tsx` y viaja en la ruta: la biblioteca
 ya está en memoria y pedirla de nuevo desde la hoja sería un viaje a la red para
-escribir un número.
+escribir un número. Si es colaborativa, la hoja se **reemplaza** por la de
+sumar gente (`router.replace`): cerrar esa no te devuelve a crear de nuevo.
 
-Las tres hojas se **reemplazan** (`router.replace`), no se apilan: cerrar la de
-nombre te devuelve a la app, no a elegir de nuevo algo que ya elegiste.
+## Sumar canciones
+
+Dos hojas, una por cada lado de la misma pregunta, como en Apple Music:
+
+- **«Agregar música»** (`lista/agregar`), desde la fila «+ Agregar música» al
+  pie de una lista o desde su menú: un buscador arriba y, mientras no escribís,
+  las sugeridas para esa lista (`sugerenciasParaLista`) y lo que escuchaste
+  últimamente (`ultimasEscuchas`). Cada fila tiene su «⊕» que se vuelve «✓»;
+  arriba se cuenta —«3 canciones a “Mi lista”»— y la marca de la derecha las
+  guarda todas. Elegir es instantáneo y el trabajo (resolver el audio, escribir)
+  se hace al confirmar. Cerrar con algo elegido pregunta antes de tirarlo.
+- **«Agregar a una lista»** (`lista/elegir`), desde el menú de cualquier
+  canción en el teléfono: tus listas con buscador, la tapa y cuántas tienen, y
+  «Nueva lista» primera. Tocar una agrega y cierra. En la compu sigue siendo el
+  submenú del menú, que con mouse es más rápido. La canción llega por
+  `state/listas` (`dejarCancionPendiente`) y no por la URL: tiene diez campos.
+
+Las dos hojas son rutas apiladas sobre la pantalla principal y no pueden tocar
+su estado: al terminar llaman `avisarListaCambiada(id)`, y la pantalla, que
+está suscripta (`suscribirListaCambiada`), relee la biblioteca y la lista
+abierta. Es el mismo par de relecturas que al volver a primer plano.
 
 ## Cómo se suma alguien
 
@@ -57,6 +85,11 @@ lista no está disponible». El `?colaborar=1` hace que la pantalla pida entrar
 
 Tener el link **es** la invitación, como en el Jam. No hay aprobación del dueño;
 si se fue de las manos, el dueño saca a quien sobre.
+
+La hoja de colaborar (`lista/personas`) tiene la anatomía de «Iniciar
+colaboración» de Apple Music: el ícono, qué va a poder hacer quien entre, tu
+propia fila —con qué nombre y qué cara te van a ver— y el botón del link.
+Debajo, lo que Apple no tiene: buscar por nombre y la lista de los que están.
 
 **Por nombre.** Solo el dueño, desde `app/lista/personas.tsx`, con el mismo
 `searchContacts` del resto de la app. Que sumar a mano sea del dueño es lo que
@@ -131,6 +164,9 @@ el motivo equivocado.
   sería el mismo camino.
 - **No muestra quién agregó cada canción.** El dato está en `added_by` desde el
   primer día; falta la columna en la fila.
-- **«Empezar una lista con esta canción»**, desde el menú de un tema, sigue
-  creando «Mi lista #N» sin preguntar: pasar por la hoja de nombre perdería la
-  canción, que es justo el punto de esa acción.
+- **«Nueva lista con esta canción»**, desde el menú de un tema o desde la hoja
+  de elegir lista, sigue creando «Mi lista #N» sin preguntar: pasar por la hoja
+  de crear perdería la canción, que es justo el punto de esa acción.
+- **No hay aprobación de colaboradores.** Apple Music tiene el interruptor
+  «Aprobar colaboradores»; acá tener el link es entrar. Haría falta una
+  columna y una cola de pedidos en la base.

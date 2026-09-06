@@ -138,7 +138,7 @@ export function AppDrawer({
               vez en cuando, y no compite con lo que uno viene a hacer. */}
           <Fila
             icon={<IconSliders size={20} color={ICON_COLOR.foreground} />}
-            label="Ajustes"
+            label="Configuración"
             onPress={onAjustes}
           />
         </View>

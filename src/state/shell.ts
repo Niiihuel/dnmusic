@@ -134,6 +134,24 @@ export function abrirLista(id: string) {
 }
 
 /*
+ * Abrir la página de un artista, desde afuera de la pantalla principal.
+ *
+ * Lo pide el menú de «Sonando» («Ir al artista»): esa pantalla es una ruta
+ * apilada sobre la principal y no sabe qué panel mostrar ni qué historial
+ * dejar. Mismo puente que `abrirLista`, con el nombre además del id porque la
+ * página lo muestra antes de que llegue la ficha.
+ */
+let onAbrirArtista: ((id: string, nombre: string) => void) | null = null
+
+export function registerAbrirArtista(handler: ((id: string, nombre: string) => void) | null) {
+  onAbrirArtista = handler
+}
+
+export function abrirArtista(id: string, nombre: string) {
+  onAbrirArtista?.(id, nombre)
+}
+
+/*
  * Abrir una conversación por pairId, desde afuera de la pantalla principal.
  *
  * Lo usa el toque de una notificación push. Es el mismo puente que

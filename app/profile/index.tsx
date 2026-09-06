@@ -358,6 +358,7 @@ export default function ProfileScreen() {
             <FondoPerfil
               bannerPath={profile?.bannerPath ?? null}
               encuadre={profile?.bannerEncuadre ?? null}
+              efecto={profile?.efecto ?? null}
             />
 
             {/*

@@ -1133,13 +1133,13 @@ function SessionGate() {
       />
       <Stack.Screen name="jam/[code]" />
       {/*
-        Crear una lista, en tres hojas que se reemplazan una a la otra: elegir
-        qué clase, ponerle nombre y —solo si es colaborativa— sumar gente.
+        Crear una lista es **una** hoja —portada, nombre y si es colaborativa—
+        como la «Nueva playlist» de Apple Music; si es colaborativa, al crear
+        se reemplaza por la de sumar gente. Va llena porque abre el teclado.
 
-        La de elegir se mide sola: son dos filas y una hoja con altura fija
-        dejaría medio teléfono vacío abajo. La de nombre va **llena** porque
-        abre el teclado y centra el campo; con un detent parcial, el campo
-        quedaría pegado al teclado con el título fuera de la vista.
+        «Agregar música» y «Agregar a una lista» son las otras dos hojas de las
+        listas: la primera elige varias canciones para una lista; la segunda,
+        una lista para una canción. Las dos llenas: traen buscador y lista.
       */}
       <Stack.Screen
         name="lista/nueva"
@@ -1148,20 +1148,34 @@ function SessionGate() {
             ? HOJA_WEB
             : {
                 presentation: 'formSheet',
-                sheetAllowedDetents: 'fitToContents',
+                sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
                 sheetCornerRadius: 24,
               }
         }
       />
       <Stack.Screen
-        name="lista/nombre"
+        name="lista/agregar"
         options={
           ES_WEB
             ? HOJA_WEB
             : {
                 presentation: 'formSheet',
                 sheetAllowedDetents: [1],
+                sheetGrabberVisible: true,
+                sheetCornerRadius: 24,
+              }
+        }
+      />
+      <Stack.Screen
+        name="lista/elegir"
+        options={
+          ES_WEB
+            ? HOJA_WEB
+            : {
+                presentation: 'formSheet',
+                sheetAllowedDetents: [0.85, 1],
+                sheetInitialDetentIndex: 1,
                 sheetGrabberVisible: true,
                 sheetCornerRadius: 24,
               }
@@ -1177,7 +1191,7 @@ function SessionGate() {
             ? HOJA_WEB
             : {
                 presentation: 'formSheet',
-                sheetAllowedDetents: [0.75, 1],
+                sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
                 sheetCornerRadius: 24,
               }

@@ -10,7 +10,11 @@ ahora, y lo que le dejaron.
 | Archivo | Qué hace |
 | --- | --- |
 | `app/profile/index.tsx` | Tu perfil, como lo ve cualquiera — y el **modo de edición** del mosaico |
-| `app/profile/editar/index.tsx` | La identidad: foto, nombre, línea, fondo, marco |
+| `app/profile/editar/index.tsx` | La identidad: foto, nombre, línea, fondo, marco — lista agrupada en el teléfono, barra lateral con secciones en la compu |
+| `src/ui/EditorDeCampo.tsx` | El campo de texto del perfil con su validación: pantalla apilada en el teléfono, fila de Ajustes del Sistema en la compu (`FilaCampo`) |
+| `app/perfil/encuadrar.tsx` | Encuadrar la foto, el fondo o la imagen de una pieza; con `que=fondo-nuevo` encuadra el fondo recién elegido y lo sube al confirmar, con barra de progreso |
+| `src/state/fondoPendiente.ts` | El fondo elegido que espera encuadre antes de subir |
+| `src/ui/Progreso.tsx` | La barra de progreso determinada, para lo que se sube |
 | `app/profile/agregar.tsx` | La hoja del «+»: qué pieza sumar |
 | `app/profile/vitrina.tsx` | El editor de una pieza: vista previa, tema, imagen de fondo |
 | `app/profile/elegir.tsx` | El buscador que elige la canción, el artista o el álbum |
@@ -32,13 +36,15 @@ que te deja mirar lo que muestra tu perfil sin la interfaz de armarlo delante.
 **Armar es un modo de esa misma pantalla**, el «modo de edición» del Space de
 Airbuds. Se entra manteniendo apretada cualquier pieza —como los widgets del
 iPhone— o desde «Editar perfil → Armar el mosaico», y se sale con «Hecho». Las
-piezas tiemblan apenas, y cada una muestra sus controles en las esquinas: el
-«−» que la saca (con un «¿seguro?»), el lápiz que la abre y cuatro asas
-sólidas, una en el medio de cada lado, que se arrastran para cambiarle el
-tamaño: hacia afuera crece, hacia adentro se achica; los lados ensanchan y
-arriba/abajo dan altura. La tarjeta entera es lo
-que se agarra para reordenar. Abajo flota la barra: el tema del perfil, el «+»
-y «Hecho».
+piezas tiemblan apenas, y cada una muestra sus controles: el «−» arriba a la
+izquierda que la saca (con un «¿seguro?»), el lápiz arriba a la derecha que la
+abre —dos discos del fondo de la app, medio afuera de la esquina, como los
+widgets del iPhone— y **el asa** abajo a la derecha, que se arrastra para
+cambiarle el tamaño: una banda punteada sigue al dedo con el tamaño crudo y la
+pieza salta al tamaño que ese rectángulo implica (media fila, la fila entera,
+el doble de alto); tocarla sin arrastrar pasa al tamaño siguiente. La tarjeta
+entera es lo que se agarra para reordenar. Abajo flota la barra: el tema del
+perfil, el «+» y «Hecho».
 
 Se arma **sobre el perfil y no en una pantalla aparte** porque cómo queda una
 pieza depende de lo que tiene alrededor: el fondo, el tema, las vecinas. La
@@ -134,13 +140,20 @@ tamaños arbitrarios cada perfil necesita su propio criterio de qué entra en un
 fila, y lo que se gana en libertad se pierde en que ningún perfil se ve bien
 sin trabajarlo. El chip de la tarjeta (1×1 → 2×1 → 2×2) los cicla.
 
-**Se reordena arrastrando la manija**, en el editor. La física es la de la cola
-(`EncoladaArrastrable`) adaptada a dos dimensiones: la celda agarrada sigue al
-puntero apenas agrandada, las demás se apagan un poco —con alturas variables y
-filas de a dos, la corrida en vivo miente más de lo que ayuda— y al soltar cae
-en la celda cuyo centro quede más cerca. Las medidas se toman al **empezar**
-cada arrastre (`measureInWindow`), así el scroll previo no las deja viejas; y
-mientras se arrastra, el scroll del editor se congela.
+**Se reordena arrastrando la pieza entera**, armando, con la mecánica de
+react-grid-layout: la pieza agarrada sigue al puntero apenas agrandada y por
+encima, y su **hueco** —un rectángulo punteado de su tamaño— se mueve en vivo
+a la celda sobre la que está, corriendo a las demás con su animación de
+layout. Al soltar no pasa nada nuevo: la pieza ya está donde el hueco decía, y
+recién ahí se guarda el orden. El destino se decide en el hilo de la interfaz
+con las medidas que cada celda informa por `onLayout` (en coordenadas del
+mosaico, el mismo sistema en que se mueve el dedo): la celda cuyo centro quede
+más cerca del centro de la pieza. Cada reacomodo marca las medidas como viejas
+hasta que las celdas vuelven a medirse, para no decidir dos veces con los
+mismos números. La pieza agarrada no anima su layout —cuando su hueco salta,
+ella salta con él y la compensación `origen − rect actual` la deja quieta bajo
+el dedo—; las demás sí. Mientras se arrastra, el scroll del editor se congela.
+Todo vive en `CeldaDeMosaico` (`src/ui/PerfilPublico.tsx`).
 
 **Las tarjetas muestran contenido, no marco.** El relleno es corto (12px), y
 una **imagen fuera de edición va a sangre**: sin borde de relleno, la foto es
@@ -216,8 +229,11 @@ como son rutas distintas no se la pueden pasar por props. Nada llega a la base
 hasta «Agregar al mosaico» / «Guardar»; editar una existente arranca copiándola
 al borrador.
 
-La vista previa es **la misma `Vitrina`** del perfil alimentada con el
-borrador, así que lo que se ve es lo que queda. Las piezas de texto —encabezado,
+La hoja arranca como todas las de la app (`EncabezadoHoja`): cerrar a la
+izquierda, el título, y **guardar a la derecha** como marca; «Cómo se muestra»
+es un control segmentado —el del sistema en iOS— y no chips. La vista previa
+es **la misma `Vitrina`** del perfil alimentada con el borrador, así que lo
+que se ve es lo que queda. Las piezas de texto —encabezado,
 texto, letras— se escriben encima de la vista previa: la tarjeta es el campo.
 Elegir un tema desde la hoja cambia el borrador al toque y la vista previa se
 pinta detrás; cancelar devuelve el que había.
@@ -239,11 +255,19 @@ flotan arriba y a media fila se montaban sobre el texto.
 
 ## El marco de la foto
 
-Dieciocho decoraciones dibujadas en SVG y animadas con Reanimated
-(`src/ui/Marco.tsx`), en cinco familias: **Clásicos** (aro, pulso, órbita,
-trazos, destello, los ids de siempre con el dibujo mejorado), **Música**
-(vinilo, ecualizador, ondas, notas), **Naturaleza** (llamas, pétalos, nubes),
-**Cielo** (estrellas, aureola, luna) y **Realeza** (corona, alas, laurel).
+Treinta y cuatro decoraciones dibujadas en SVG y animadas con Reanimated,
+en siete familias: **Clásicos** (aro, pulso, órbita, trazos, destello, los ids
+de siempre con el dibujo mejorado, más cromo), **Música** (vinilo,
+ecualizador, ondas, notas), **Naturaleza** (llamas, pétalos, nubes, nieve,
+luciérnagas, zarza, jardín), **Cielo** (estrellas, aureola, luna, planetas,
+aurora, eclipse, astral), **Realeza** (corona, alas, laurel, reliquia),
+**Fiesta** (confeti, corazones, burbujas, orejas de gato) y **Energía** (neón,
+rayo). Lo compartido —geometría, tonos, primitivas y las tres formas de
+moverse— vive en `src/ui/marcoBase.tsx`; los clásicos en `Marco.tsx` y los
+diez **al estilo Discord** en `MarcosAnimados.tsx`: cosas que *pasan*
+alrededor de la foto en bucles de dos a cuatro segundos (chispas que suben,
+corazones que flotan, un neón que parpadea, orejas que dan un tirón), que es
+lo que se miró de las decoraciones de Discord antes de dibujar.
 Cero assets: la lección de decoprofile fue no depender de archivos ajenos. La
 interfaz sigue acromática, pero el marco es contenido de la persona como su
 foto o el tema de sus vitrinas, y por eso puede tener color con criterio: dos
@@ -255,8 +279,12 @@ apila el marco deja `overflow: visible` y puede reservar el aire con
 `aireDelMarco`. Todo se mueve con `withRepeat`/`withTiming` en el hilo de UI,
 nunca por cuadro, con a lo sumo una docena de nodos animados por marco. En la
 base es solo un nombre (`profiles.marco`); uno desconocido se dibuja como
-ninguno. Se elige en «Editar perfil → Marco de la foto», agrupado por familia
-y con cada opción puesta sobre tu propia foto.
+ninguno. Se elige en «Editar perfil → Marco de la foto», en la hoja de siempre
+(cruz, título, tilde para aplicar): la vista previa animada arriba, píldoras
+por familia, buscador, y la grilla con «Ninguno» como primera celda; la
+elegida se marca por luminancia y un tilde, nunca por borde. Como en la
+tienda de Discord, la grilla se ve quieta y se anima solo la elegida y, con
+cursor, la que tiene el cursor encima.
 
 Dos trampas de SVG en web que costaron una tarde: `strokeDashoffset` corre la
 fase módulo el período del patrón —un hueco arbitrario hace aparecer un
@@ -314,3 +342,72 @@ ruta, porque entre la hoja, el buscador y el editor hay tres pantallas.
 Borrarlo borra lo de adentro (cascada) y el «¿seguro?» dice cuántas piezas se
 lleva. El tema del dueño ajeno llega por `usuario` en la query —`profiles`
 solo se lee por nombre—; sin él, las piezas heredan vidrio.
+
+## El fondo: se encuadra antes de subir
+
+Elegir un fondo ya no lo sube al toque. Una imagen o un GIF se deja esperando
+(`state/fondoPendiente`) y se abre la pantalla de encuadre sobre el archivo
+local; el tilde sube el archivo con `uploadIlustracionConProgreso` —una URL
+firmada de subida y un `XMLHttpRequest`, porque storage-js no cuenta bytes— y
+recién con la ruta en mano guarda el perfil con el encuadre. Mientras sube se
+ve la barra debajo del recuadro. Un clip no se encuadra (el reproductor lo
+dibuja a sangre): sube directo desde el editor, con la misma barra en el
+bloque. El bloque del fondo muestra la **vista previa** con el mismo
+`FondoPerfil` del perfil, velo incluido, y debajo las filas: cambiar,
+encuadrar (solo una imagen) y quitar, que va última y sin flecha.
+
+La pantalla de encuadre es una hoja de las de siempre: la cruz cancela (y
+suelta el fondo pendiente), el tilde guarda, y abajo queda solo «Centrar».
+
+## Decoraciones en imagen: marcos y efectos del catálogo
+
+Además de los marcos dibujados, el perfil acepta **decoraciones en imagen
+animada** (WebP, APNG, GIF): marcos que se apoyan sobre la foto y **efectos**
+que se dibujan encima del fondo, arriba, como los «profile effects» de
+Discord. Viven en la tabla `decoraciones` y en el bucket del mismo nombre
+(migración `decoraciones`), y la app solo las lee: escribe el script
+`scripts/decoraciones/importar.mjs`, con la service_role key, a partir de
+`catalogo.json` y los archivos de `archivos/`. Cada fila trae su autor, su
+licencia y su fuente, y la vidriera los muestra debajo de la vista previa —lo
+que CC BY pide. Nunca un enlace a un CDN ajeno: la lección de decoprofile.
+
+Un marco de imagen dice cómo se apoya: `escala` (el lado de la imagen en veces
+el lado de la foto; 1,2 es un marco entero al estilo Discord, 0,5 una
+insignia) y `posicion` (centro, arriba, arriba-derecha, arriba-izquierda,
+abajo). `ui/Marco` lo dibuja cuando el id no es un marco dibujado
+(`ui/DecoracionImagen`, con `expo-image`, porque un WebP animado en iOS solo se
+mueve con este). El efecto se guarda en `profiles.efecto` y lo dibuja
+`FondoPerfil` sobre el velo; se elige en «Editar perfil → Efecto del
+perfil», que es la misma hoja del marco con `?tipo=efecto` y la vista previa
+sobre tu fondo.
+
+**Lo que hay y lo que no.** No existe un paquete abierto de decoraciones al
+estilo Discord: los repositorios que las «ofrecen» son copias de los
+activos de Discord y de sus artistas, y las de Decor son de cada creador. Lo
+abierto y con licencia clara es Google Noto Animated Emoji (CC BY 4.0), con
+lo que arranca el catálogo en imagen: quince insignias chicas apoyadas en la
+foto, bajadas con `bajar-noto.mjs`. Como efectos de banda entera los emoji
+quedaban genéricos, así que los efectos se dibujan en la app. Para sumar
+propias o de otra fuente libre (LottieFiles exporta a GIF bajo su Lottie
+Simple License; Kenney publica sprites CC0), alcanza con dejar el archivo en
+`archivos/`, agregar la entrada al catálogo y correr el importador.
+
+## Colecciones temáticas
+
+La vidriera se recorre **por colecciones**, como la tienda de Discord: cada
+una (`src/ui/colecciones.ts`) tiene nombre, lema y sus piezas —marcos y
+efectos— que comparten paleta y manera de moverse. Arcade (menta y lila,
+todo a saltos: Píxeles, Invasor, Corazones de 8 bits, y la Lluvia de
+píxeles), Gótico (plata sobre humo: Murciélagos, Telaraña, Velas, y la
+Bandada), Después de medianoche, Neón y tormenta, Cosmos, Fiesta, Bosque de
+noche, Sala de máquinas, La corte y Clásicos. Las piezas nuevas de Arcade y
+Gótico están en `src/ui/MarcosTematicos.tsx`.
+
+Los **efectos del perfil** (`src/ui/EfectosDibujados.tsx`) son partículas que
+cruzan la banda de arriba del fondo —nevada, lluvia de confeti, luciérnagas,
+estrellas fugaces, lluvia, lluvia de píxeles, bandada— con a lo sumo veinte
+nodos animados, repartidas por la razón áurea para que no formen columnas.
+El id va en `profiles.efecto` y lo dibuja `FondoPerfil` sobre el velo; se
+elige en «Editar perfil → Efecto del perfil», la misma hoja del marco con
+`?tipo=efecto` y la vista previa sobre tu fondo.
+

@@ -237,6 +237,7 @@ export default function PerfilAjeno() {
             <FondoPerfil
               bannerPath={perfil?.bannerPath ?? null}
               encuadre={perfil?.bannerEncuadre ?? null}
+              efecto={perfil?.efecto ?? null}
             />
 
             {ancho ? (

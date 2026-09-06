@@ -10,8 +10,8 @@ import {
 import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { avisar } from '../state/aviso'
-import { usePlaybackState } from '../state/playback'
-import { Lyrics } from './Lyrics'
+import { posicionSV, usePlaybackState } from '../state/playback'
+import { Lyrics, type LyricsSize } from './Lyrics'
 import { Popover } from './Popover'
 import { ICON_COLOR, IconLanguages, IconMusic } from './icons'
 
@@ -34,10 +34,20 @@ import { ICON_COLOR, IconLanguages, IconMusic } from './icons'
 export function LyricsView({
   track,
   translatable = false,
+  size = 'lg',
+  onTap,
 }: {
   track: { title: string; artist: string; durationMs: number }
   /** Muestra el botón de traducir. En el panel angosto no entra. */
   translatable?: boolean
+  /**
+   * `xl` es la pantalla entera de «Sonando»: la letra a la izquierda con el
+   * karaoke, y el traductor flotando arriba a la derecha en vez de al pie —
+   * ahí abajo están los controles.
+   */
+  size?: Extract<LyricsSize, 'lg' | 'xl'>
+  /** Un toque sobre la letra. Lo usa «Sonando» para pedir los controles. */
+  onTap?: () => void
 }) {
   const { positionMs } = usePlaybackState()
 
@@ -144,6 +154,58 @@ export function LyricsView({
 
   const lines = (lang === 'off' ? base : byLang[lang]) ?? base
 
+  const traductor = translatable ? (
+    <View className="flex-row items-center gap-2">
+      <Popover
+        value={lang}
+        options={LYRIC_LANGS.map((l) => ({ value: l.value, label: l.label }))}
+        onChange={setLang}
+        display={LYRIC_LANGS.find((l) => l.value === lang)?.short || 'Traducir'}
+        accessibilityLabel="Traducir la letra"
+        sfSymbol="globe"
+        icon={
+          <IconLanguages
+            size={15}
+            color={lang === 'off' ? ICON_COLOR.muted : ICON_COLOR.foreground}
+          />
+        }
+      />
+      {traduciendo ? <ActivityIndicator size="small" color={ICON_COLOR.muted} /> : null}
+    </View>
+  ) : null
+
+  const letra = (
+    <Lyrics
+      lines={lines}
+      atMs={positionMs}
+      posicion={size === 'xl' ? posicionSV : undefined}
+      size={size}
+      onTap={onTap}
+      /* Sostener fija **la línea original**, no la traducción: se busca por
+         su tiempo en la letra base — lo que la canción dice, no lo que el
+         traductor entendió. */
+      onHoldLine={(texto, atMs) => {
+        const original = base.find((l) => l.atMs === atMs)?.text ?? texto
+        void fijarVerso(original)
+      }}
+    />
+  )
+
+  if (size === 'xl') {
+    /*
+     * En la pantalla entera la letra llega hasta los bordes y el traductor
+     * **flota** arriba a la derecha, como el botón de cantar de Apple Music:
+     * al pie están los controles, y una fila más entre la letra y ellos era
+     * una franja que no era de nadie.
+     */
+    return (
+      <View className="min-h-0 flex-1 px-6">
+        {letra}
+        {traductor ? <View className="absolute right-6 top-0">{traductor}</View> : null}
+      </View>
+    )
+  }
+
   return (
     <View className="min-h-0 flex-1 px-5 pb-5">
       {/* La letra se queda con **todo** el alto que sobra y el control de
@@ -151,40 +213,9 @@ export function LyricsView({
           otro, así que el botón terminaba justo debajo del último renglón —a
           media pantalla si la canción tenía pocas líneas— y competía con lo que
           uno está leyendo. Con el hueco vacío abajo, no. */}
-      <View className="min-h-0 flex-1">
-        <Lyrics
-          lines={lines}
-          atMs={positionMs}
-          size="lg"
-          /* Sostener fija **la línea original**, no la traducción: se busca por
-             su tiempo en la letra base — lo que la canción dice, no lo que el
-             traductor entendió. */
-          onHoldLine={(texto, atMs) => {
-            const original = base.find((l) => l.atMs === atMs)?.text ?? texto
-            void fijarVerso(original)
-          }}
-        />
-      </View>
+      <View className="min-h-0 flex-1">{letra}</View>
 
-      {translatable ? (
-        <View className="flex-row items-center justify-center gap-2 pt-6">
-          <Popover
-            value={lang}
-            options={LYRIC_LANGS.map((l) => ({ value: l.value, label: l.label }))}
-            onChange={setLang}
-            display={LYRIC_LANGS.find((l) => l.value === lang)?.short || 'Traducir'}
-            accessibilityLabel="Traducir la letra"
-            sfSymbol="globe"
-            icon={
-              <IconLanguages
-                size={15}
-                color={lang === 'off' ? ICON_COLOR.muted : ICON_COLOR.foreground}
-              />
-            }
-          />
-          {traduciendo ? <ActivityIndicator size="small" color={ICON_COLOR.muted} /> : null}
-        </View>
-      ) : null}
+      {traductor ? <View className="items-center pt-6">{traductor}</View> : null}
     </View>
   )
 }

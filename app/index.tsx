@@ -33,7 +33,6 @@ import { useRouter } from 'expo-router'
 import { contactInitial, formatMessageDate } from '../src/ui/MessageCard'
 import { ChatBubble } from '../src/ui/ChatBubble'
 import { Onda, usePicos } from '../src/ui/Onda'
-import { SearchField } from '../src/ui/SearchField'
 import { SkeletonList } from '../src/ui/Skeleton'
 import { ResizableRegion } from '../src/ui/ResizableRegion'
 import { AnimatedSidebarTitle, CollapsedSidebar } from '../src/ui/SidebarMotion'
@@ -95,6 +94,7 @@ import { pickImage } from '../src/lib/pickImage'
 import { useSnippetPlayer } from '../src/state/player'
 import {
   registerAbrirChat,
+  registerAbrirArtista,
   registerAbrirLista,
   registerNewPlaylist,
   registerTabHandler,
@@ -102,16 +102,15 @@ import {
   setEnChat,
   setTab,
   setTechoH,
-  useKeyboardH,
   usePiso,
   useTecho,
 } from '../src/state/shell'
+import { dejarCancionPendiente, suscribirListaCambiada } from '../src/state/listas'
 import {
   abrirBusqueda,
   cerrarBusqueda,
   setTermino,
   useConsulta,
-  useTermino,
 } from '../src/state/busqueda'
 import {
   detachOrigin,
@@ -133,6 +132,8 @@ import { BotonVidrio, Glass, HAY_VIDRIO } from '../src/ui/Glass'
 import { recordarBusqueda } from '../src/state/recientes'
 import { addShowcase } from '../src/services/showcases'
 import { Menu, type MenuItem } from '../src/ui/Menu'
+import { BarraLateral, CampoBusquedaLateral } from '../src/ui/BarraLateral'
+import { compartirHistoria } from '../src/ui/CompartirHistoria'
 import {
   addTrack,
   createPlaylist,
@@ -173,6 +174,7 @@ import {
   IconMusic,
   IconPause,
   IconPlay,
+  IconPencil,
   IconPlus,
   IconQueue,
   IconSearch,
@@ -196,29 +198,6 @@ const DETAIL_PX = 1120
  * teclear redibuja este campo chico y no el árbol entero de la pantalla. Ver
  * `state/busqueda`; misma idea que el campo del layout.
  */
-function CampoBusquedaArriba({
-  inputRef,
-  onChangeText,
-  placeholder,
-  loading,
-}: {
-  inputRef: RefObject<TextInput | null>
-  onChangeText: (v: string) => void
-  placeholder: string
-  loading: boolean
-}) {
-  const value = useTermino()
-  return (
-    <SearchField
-      inputRef={inputRef}
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      loading={loading}
-    />
-  )
-}
-
 /** Una colección de YouTube: un álbum o una lista ajena. */
 type Coleccion = {
   kind: 'album' | 'playlist'
@@ -288,7 +267,7 @@ export default function Home() {
   const [solicitando, setSolicitando] = useState<string | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [leftWidth, setLeftWidth] = useState(340)
+  const [leftWidth, setLeftWidth] = useState(260)
   const [rightWidth, setRightWidth] = useState(360)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightPlegado, setRightPlegado] = useState(false)
@@ -418,7 +397,6 @@ export default function Home() {
    * encabezado. Antes en chats se quedaba arriba, y quedaban dos buscadores con
    * dos formas distintas en la misma app.
    */
-  const buscadorArriba = showSidebar
   /*
    * Cuánto sube el campo de escribir para no quedar debajo de la cáscara.
    *
@@ -732,6 +710,19 @@ export default function Home() {
   })
 
   /*
+   * Ir a un artista desde «Sonando», que es una hoja apilada sobre esta
+   * pantalla y no sabe de paneles. Se entra a música y se apila la ficha sobre
+   * lo que hubiera: volver atrás te deja donde estabas antes de abrir la hoja.
+   */
+  useEffect(() => {
+    registerAbrirArtista((id, name) => {
+      setMusic(true)
+      go({ kind: 'artist', id, name })
+    })
+    return () => registerAbrirArtista(null)
+  })
+
+  /*
    * Abrir una conversación desde una notificación push.
    *
    * `setTab('chats')` primero: su handler resetea `chatAbierto`, así que el
@@ -872,6 +863,21 @@ export default function Home() {
     })
     return () => sub.remove()
   }, [loadPlaylists])
+
+  /*
+   * Una hoja escribió una lista —«Agregar música», «Agregar a una lista»— y
+   * avisa por `state/listas`. Es el mismo par de relecturas que al volver a
+   * primer plano: la biblioteca, por el conteo, y la lista abierta, por sus
+   * canciones. Sin esto la hoja se cerraba sobre una lista que seguía vieja.
+   */
+  useEffect(
+    () =>
+      suscribirListaCambiada(() => {
+        void loadPlaylists()
+        setReloadToken((n) => n + 1)
+      }),
+    [loadPlaylists],
+  )
 
   // «Ver la lista», desde el menú de la barra de abajo. La barra vive en el
   // layout y no sabe mostrar listas; esta pantalla sí.
@@ -1264,23 +1270,52 @@ export default function Home() {
    * vez de la abierta — de ahí que no haga falta cablear nada nuevo.
    */
   function menuForPlaylist(p: Playlist): MenuItem[] {
+    const publica = p.visibilidad === 'publica'
+    /*
+     * La anatomía del menú de Apple Music: arriba las acciones rápidas —abrir,
+     * publicar o compartir—, después lo que le cambia la cara a la lista,
+     * después la gente, y al final lo que la borra.
+     */
     return [
-      ...(p.mia && !p.colaborativa
-        ? [
-            {
-              label: 'Hacer colaborativa',
-              onPress: () => void hacerColaborativa(p),
-              icon: <IconUsers size={15} color={ICON_COLOR.muted} />,
-              sfSymbol: 'person.2.badge.plus' as const,
-            },
-          ]
-        : []),
       {
-        label: 'Abrir la lista',
+        label: 'Abrir',
+        rapida: true,
         onPress: () => go({ kind: 'playlist', id: p.id }),
         icon: <IconMusic size={15} color={ICON_COLOR.muted} />,
         sfSymbol: 'music.note.list',
       },
+      /*
+       * Publicar y compartir, en ese orden. La fila dice a qué estado te lleva
+       * —«Hacer pública» cuando es privada—, no en cuál estás. «Compartir»
+       * aparece **solo si ya es pública**: un link a algo que nadie más puede
+       * abrir es un link roto.
+       */
+      ...(p.mia && !publica
+        ? [
+            {
+              label: 'Hacer pública',
+              rapida: true,
+              onPress: async () => {
+                await setPlaylistVisibility(p.id, 'publica')
+                await loadPlaylists()
+                avisar('Lista pública. Ya podés compartir el link.')
+              },
+              icon: <IconGlobe size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'globe' as const,
+            },
+          ]
+        : []),
+      ...(publica
+        ? [
+            {
+              label: 'Compartir',
+              rapida: true,
+              onPress: () => void compartirLista(p.id, p.name),
+              icon: <IconShare size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'square.and.arrow.up' as const,
+            },
+          ]
+        : []),
       ...(p.mia
         ? [
             {
@@ -1289,35 +1324,32 @@ export default function Home() {
               icon: <IconImage size={15} color={ICON_COLOR.muted} />,
               sfSymbol: 'photo' as const,
             },
+          ]
+        : []),
+      ...(p.mia && publica
+        ? [
             {
-              label: p.visibilidad === 'publica' ? 'Hacer privada' : 'Hacer pública',
+              label: 'Hacer privada',
+              subtitle: 'El link deja de andar',
               onPress: async () => {
-                const visibilidad = p.visibilidad === 'publica' ? 'privada' : 'publica'
-                await setPlaylistVisibility(p.id, visibilidad)
+                await setPlaylistVisibility(p.id, 'privada')
                 await loadPlaylists()
-                avisar(
-                  visibilidad === 'publica'
-                    ? 'Lista pública. Ya podés compartir el link.'
-                    : 'Lista privada de nuevo. El link dejó de andar.',
-                )
+                avisar('Lista privada de nuevo. El link dejó de andar.')
               },
-              icon:
-                p.visibilidad === 'publica' ? (
-                  <IconLock size={15} color={ICON_COLOR.muted} />
-                ) : (
-                  <IconGlobe size={15} color={ICON_COLOR.muted} />
-                ),
-              sfSymbol: (p.visibilidad === 'publica' ? 'lock' : 'globe') as 'lock' | 'globe',
+              icon: <IconLock size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'lock' as const,
             },
           ]
         : []),
-      ...(p.visibilidad === 'publica'
+      ...(p.mia && !p.colaborativa
         ? [
             {
-              label: 'Compartir el link',
-              onPress: () => void compartirLista(p.id, p.name),
-              icon: <IconShare size={15} color={ICON_COLOR.muted} />,
-              sfSymbol: 'square.and.arrow.up' as const,
+              label: 'Hacer colaborativa',
+              subtitle: 'Armala con otras personas',
+              separadorAntes: true,
+              onPress: () => void hacerColaborativa(p),
+              icon: <IconUsers size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'person.2.badge.plus' as const,
             },
           ]
         : []),
@@ -1325,6 +1357,8 @@ export default function Home() {
         ? [
             {
               label: p.mia ? 'Gente de la lista' : 'Quiénes la escriben',
+              subtitle: `${p.colaboradores + 1} ${p.colaboradores + 1 === 1 ? 'persona' : 'personas'}`,
+              separadorAntes: true,
               onPress: () =>
                 router.push({
                   pathname: '/lista/personas',
@@ -1340,6 +1374,7 @@ export default function Home() {
         ? [
             {
               label: 'Agregar un archivo de audio',
+              separadorAntes: true,
               onPress: () => void subirArchivoALista(p),
               icon: <IconPlus size={15} color={ICON_COLOR.muted} />,
               sfSymbol: 'square.and.arrow.down' as const,
@@ -1381,6 +1416,14 @@ export default function Home() {
         })),
     ]
     const gustada = gustos.some((g) => g.videoId === track.videoId)
+    /*
+     * La anatomía del menú de una canción en Apple Music: arriba las tres
+     * acciones rápidas —el corazón, encolar, compartir—, después dónde
+     * guardarla, después a dónde te lleva (con el nombre del disco y del
+     * artista debajo, para no tener que abrir para saber), y al final lo que
+     * la deja en tu perfil. Quien la muestre en una lista le suma abajo lo que
+     * solo se puede hacer desde adentro: bajarla, quitarla.
+     */
     return [
       /*
        * El corazón, primero de todo.
@@ -1388,14 +1431,15 @@ export default function Home() {
        * Estaba solo en los dos reproductores —la píldora de escritorio y la
        * pantalla «Sonando»—, así que marcar algo obligaba a ponerlo a sonar
        * antes. Acá alcanza con verlo en una lista, en el buscador o en el top
-       * de un artista, que es donde uno se encuentra las canciones. Va arriba
-       * porque es lo más liviano y lo más frecuente del menú.
+       * de un artista, que es donde uno se encuentra las canciones.
        *
        * La fila dice a qué estado te lleva, como el resto del menú, y el ícono
        * repite el mismo lenguaje que el botón: relleno es marcado.
        */
       {
-        label: gustada ? 'Quitar de tus me gusta' : 'Me gusta',
+        label: gustada ? 'Quitar de me gusta' : 'Me gusta',
+        rapida: true,
+        selected: gustada || undefined,
         onPress: () => void alternarGusto(track, gustada),
         icon: gustada ? (
           <IconHeartFilled size={15} color={ICON_COLOR.foreground} />
@@ -1405,17 +1449,47 @@ export default function Home() {
         sfSymbol: gustada ? 'heart.fill' : 'heart',
       },
       {
-        label: 'Ir al artista',
-        onPress: () =>
-          track.artistId
-            ? go({ kind: 'artist', id: track.artistId, name: track.artist })
-            : undefined,
-        disabled: !track.artistId,
-        icon: <IconUser size={15} color={ICON_COLOR.muted} />,
-        sfSymbol: 'person',
+        label: 'Agregar a la cola',
+        rapida: true,
+        onPress: () => void enqueueSearchResult(track),
+        icon: <IconQueue size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'text.badge.plus',
       },
+      /* La tarjeta de historia de la canción: en el teléfono abre la hoja de
+         compartir, en la web baja el PNG. Ver `CompartirHistoria`. */
+      {
+        label: 'Compartir',
+        rapida: true,
+        onPress: () => compartirHistoria(playlistTrackDeResultado(track)),
+        icon: <IconShare size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'square.and.arrow.up',
+      },
+      /*
+       * Dónde guardarla. En el teléfono abre **la hoja** de elegir lista —con
+       * buscador, tapas y «Nueva lista» primera, como en Apple Music—; en la
+       * compu sigue siendo un submenú, que con el mouse es más rápido y la
+       * HIG de menús lo pide así. Ver `app/lista/elegir`.
+       */
+      suelto
+        ? {
+            label: 'Agregar a una lista',
+            onPress: () => {
+              dejarCancionPendiente(track)
+              router.push('/lista/elegir')
+            },
+            icon: <IconPlus size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'text.badge.plus',
+          }
+        : {
+            label: 'Agregar a una lista',
+            icon: <IconPlus size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'plus',
+            items: aLista,
+          },
       {
         label: 'Ir al álbum',
+        subtitle: track.album || undefined,
+        separadorAntes: true,
         onPress: () =>
           track.albumId
             ? go({
@@ -1433,19 +1507,19 @@ export default function Home() {
         sfSymbol: 'opticaldisc',
       },
       {
-        label: 'Agregar a la cola',
-        onPress: () => void enqueueSearchResult(track),
-        icon: <IconQueue size={15} color={ICON_COLOR.muted} />,
-        sfSymbol: 'text.badge.plus',
-      },
-      {
-        label: 'Agregar a una lista',
-        icon: <IconPlus size={15} color={ICON_COLOR.muted} />,
-        sfSymbol: 'plus',
-        items: aLista,
+        label: 'Ir al artista',
+        subtitle: track.artist || undefined,
+        onPress: () =>
+          track.artistId
+            ? go({ kind: 'artist', id: track.artistId, name: track.artist })
+            : undefined,
+        disabled: !track.artistId,
+        icon: <IconUser size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'music.microphone',
       },
       {
         label: 'Fijar en mi perfil',
+        separadorAntes: true,
         onPress: () => void fijarEnPerfil(track),
         icon: <IconUser size={15} color={ICON_COLOR.muted} />,
         sfSymbol: 'pin',
@@ -1810,6 +1884,20 @@ export default function Home() {
     setSearchingContacts(false)
   }
 
+  /**
+   * Lo que se teclea en el buscador de la barra lateral.
+   *
+   * Es el gesto de Música en la Mac: la primera letra lleva al panel del
+   * medio a la pantalla de resultados —que es la misma que usa el teléfono—
+   * y las siguientes solo cambian la consulta. Vaciar no vuelve solo: uno se
+   * va de la búsqueda navegando, como de cualquier otra parada del historial.
+   * En conversaciones no hay pantalla que empujar: la lista se filtra sola.
+   */
+  function buscarDesdeLateral(value: string) {
+    changeGlobalSearch(value)
+    if (music && value.trim() && view.kind !== 'search') go({ kind: 'search' })
+  }
+
   function chooseGlobalResult(result: ContactResult) {
     changeGlobalSearch('')
     if (result.pairId) {
@@ -1961,17 +2049,15 @@ export default function Home() {
                 : 'absolute inset-x-0 items-center px-20'
             }
           >
-            <View pointerEvents="auto" className="relative w-full max-w-xl">
+            {/*
+             * En la compu el campo ya no vive acá: está arriba de la barra
+             * lateral, como en Música para Mac, y los resultados toman el panel
+             * del medio. El encabezado queda para lo que es del contenido —las
+             * flechas del historial y el inicio—, centrado sobre la ventana.
+             */}
+            <View pointerEvents="auto" className="flex-row items-center justify-center">
               {width >= 620 ? (
-                <View
-                  className="flex-row items-center gap-1"
-                  style={{
-                    position: 'absolute',
-                    right: '100%',
-                    top: 2,
-                    marginRight: 8,
-                  }}
-                >
+                <View className="flex-row items-center gap-1">
                   {/* Las flechas recorren el historial del panel del medio;
                       inicio no vuelve a ningún lado, arranca de cero. Van
                       juntas porque son la misma idea: dónde estoy parado. */}
@@ -2027,65 +2113,6 @@ export default function Home() {
                   />
                 </View>
               ) : null}
-              {/* En el teléfono y en música el buscador es una pestaña, no un
-                  campo acá arriba: en 390px competía con el logo, el avatar y
-                  el botón de salir, y el desplegable de resultados —pensado
-                  para flotar sobre una ventana grande— no entraba. En chats se
-                  queda, porque ahí filtra la lista de conversaciones. */}
-              {buscadorArriba ? (
-              <CampoBusquedaArriba
-                inputRef={searchRef}
-                onChangeText={changeGlobalSearch}
-                placeholder={
-                  music
-                    ? openPlaylist
-                      ? `Buscá una canción para «${openPlaylist.name}»`
-                      : 'Buscá una canción'
-                    : width < 620
-                      ? 'Buscar mensajes'
-                      : 'Buscar en tus conversaciones'
-                }
-                loading={searchingContacts}
-              />
-              ) : null}
-              {buscadorArriba && conversationQuery.trim() ? (
-                music ? (
-                  <SearchDropdown
-                    visible
-                    loading={searchingContacts}
-                    results={trackResults}
-                    error={searchError}
-                    /* Tocar la fila hace lo mismo que el «+»: sumar a la lista
-                       que estás mirando. Sin ninguna abierta, el destino se
-                       elige desde los tres puntos. */
-                    /* Tocar la fila reproduce, no guarda: escuchar es lo que
-                       uno viene a hacer con un resultado. Guardar es el «+». */
-                    onSelect={(track) => void playSearchResult(track)}
-                    onPlay={(track) => void playSearchResult(track)}
-                    artists={artistResults}
-                    onOpenArtist={(a) => {
-                      changeGlobalSearch('')
-                      go({ kind: 'artist', id: a.id, name: a.name })
-                    }}
-                    pendingId={addingTrack}
-                    quickAddLabel={openPlaylist ? `Agregar a ${openPlaylist.name}` : undefined}
-                    onQuickAdd={
-                      openPlaylist ? (track) => void addToPlaylist(openPlaylist, track) : undefined
-                    }
-                    menuFor={menuForTrack}
-                  />
-                ) : (
-                  <GlobalSearchResults
-                    loading={searchingContacts}
-                    results={searchResults}
-                    error={searchError}
-                    onSelect={chooseGlobalResult}
-                    solicitando={solicitando}
-                    onSolicitar={(cuenta) => void solicitarContacto(cuenta)}
-                    onAceptar={(cuenta) => void aceptarDeBusqueda(cuenta)}
-                  />
-                )
-              ) : null}
               {/* Acá había un cartel con un spinner mientras se preparaba una
                   canción. Se fue: colgaba del encabezado, lejos de lo que
                   tocaste, tapando la primera fila y sin decir *cuál* canción
@@ -2133,7 +2160,7 @@ export default function Home() {
                   sfSymbol: 'person',
                 },
                 {
-                  label: 'Ajustes',
+                  label: 'Configuración',
                   onPress: () => router.push('/ajustes'),
                   icon: <IconSliders size={15} color={ICON_COLOR.muted} />,
                   sfSymbol: 'slider.horizontal.3',
@@ -2232,8 +2259,8 @@ export default function Home() {
             <ResizableRegion
               width={leftWidth}
               collapsed={leftCollapsed}
-              minWidth={330}
-              maxWidth={480}
+              minWidth={220}
+              maxWidth={360}
               resizeEdge="right"
               onWidthChange={setLeftWidth}
             >
@@ -2246,20 +2273,63 @@ export default function Home() {
                  * izquierda en modo música asomaba un chat que no estaba a la
                  * vista, y el panel mentía sobre lo que había abajo.
                  */
+                const nada = () => undefined
                 const panel = (vivo: boolean) =>
                   music ? (
-                    /* En modo música la izquierda es la biblioteca, como en
-                       Spotify: es de donde se elige qué mirar en el medio. */
-                    <PlaylistLibrary
+                    /*
+                     * En modo música la izquierda es **la navegación**, como
+                     * la barra lateral de Música en la Mac: a dónde ir —la
+                     * portada, los chats, la biblioteca, cada lista— y al pie
+                     * la configuración y la cuenta. Ver `BarraLateral`.
+                     */
+                    <BarraLateral
                       playlists={playlists}
                       openId={openPlaylist?.id ?? null}
+                      seccion={
+                        view.kind === 'home'
+                          ? 'inicio'
+                          : view.kind === 'gustos'
+                            ? 'gustos'
+                            : view.kind === 'library'
+                              ? 'listas'
+                              : 'otra'
+                      }
                       soundingId={soundingPlaylistId}
+                      pendientesChats={pendientesChats}
+                      nombre={myLabel}
+                      usuario={myUsername}
+                      avatarPath={myProfile?.avatarPath}
                       showCollapse={vivo && hovered}
-                      onCollapse={vivo ? () => setLeftCollapsed(true) : () => undefined}
-                      onOpen={vivo ? (p) => go({ kind: 'playlist', id: p.id }) : () => undefined}
-                      onCreate={vivo ? createAndOpen : async () => undefined}
-                      onOpenGustos={vivo ? () => go({ kind: 'gustos' }) : () => undefined}
-                      onImportar={vivo ? () => router.push('/importar') : () => undefined}
+                      onCollapse={vivo ? () => setLeftCollapsed(true) : nada}
+                      onBuscar={vivo ? buscarDesdeLateral : nada}
+                      inputRef={vivo ? searchRef : undefined}
+                      placeholderBusqueda={
+                        openPlaylist ? `Buscar para «${openPlaylist.name}»` : 'Buscar canciones y artistas'
+                      }
+                      buscando={searchingContacts}
+                      onInicio={vivo ? () => setTab('inicio') : nada}
+                      onChats={
+                        vivo
+                          ? () => {
+                              /* Lo mismo que el botón del encabezado: cambiar
+                                 de modo es navegar, y la letra no puede quedar
+                                 tapando el modo al que acabás de entrar. */
+                              dejarCara()
+                              setMusic(false)
+                              setStack([{ kind: 'home', section: null }])
+                              setAt(0)
+                              changeGlobalSearch('')
+                            }
+                          : nada
+                      }
+                      onGustos={vivo ? () => go({ kind: 'gustos' }) : nada}
+                      onListas={vivo ? () => go({ kind: 'library' }) : nada}
+                      onImportar={vivo ? () => router.push('/importar') : nada}
+                      onNuevaLista={vivo ? createAndOpen : async () => undefined}
+                      onOpen={vivo ? (p) => go({ kind: 'playlist', id: p.id }) : nada}
+                      onConfiguracion={vivo ? () => router.push('/ajustes') : nada}
+                      onPerfil={vivo ? () => router.push('/profile') : nada}
+                      onSalir={vivo ? () => void endSession() : nada}
                       /* Como el resto: en la vista previa del panel plegado no
                          se ofrece nada, que es lo que hace `vivo`. */
                       menuFor={vivo ? menuForPlaylist : undefined}
@@ -2277,6 +2347,19 @@ export default function Home() {
                       onCollapse={vivo ? () => setLeftCollapsed(true) : () => undefined}
                       onSelect={vivo ? changeConversation : () => undefined}
                       onNew={vivo ? () => openComposer(false) : () => undefined}
+                      /* El buscador va arriba de la lista, como en Mensajes:
+                         filtra lo que tenés y, debajo, la gente nueva que
+                         coincide. Antes colgaba del encabezado con un
+                         desplegable propio. */
+                      onBuscar={vivo ? buscarDesdeLateral : nada}
+                      inputRef={vivo ? searchRef : undefined}
+                      buscando={searchingContacts}
+                      cuentas={cuentasNuevas}
+                      buscandoCuentas={searchingContacts}
+                      solicitando={solicitando}
+                      onAbrirCuenta={vivo ? chooseGlobalResult : undefined}
+                      onSolicitar={(cuenta) => void solicitarContacto(cuenta)}
+                      onAceptarCuenta={(cuenta) => void aceptarDeBusqueda(cuenta)}
                     />
                   )
 
@@ -2357,6 +2440,14 @@ export default function Home() {
               }
               onClose={goBack}
               onSearch={() => searchRef.current?.focus()}
+              /* «+ Agregar música»: la hoja de elegir varias, como en Apple
+                 Music. En la compu se abre como ventana centrada (ver `Hoja`). */
+              onAgregar={() =>
+                router.push({
+                  pathname: '/lista/agregar',
+                  params: { id: openPlaylist.id, nombre: openPlaylist.name },
+                })
+              }
               /* Elegir un archivo pide un sistema de archivos a mano: la fila
                  solo existe en la web. */
               onSubirArchivo={
@@ -3117,6 +3208,9 @@ function ConversationSidebar({
   onAbrirCuenta,
   onSolicitar,
   onAceptarCuenta,
+  onBuscar,
+  inputRef,
+  buscando = false,
 }: {
   conversations: Conversation[]
   /** Solicitudes que esperan respuesta; con alguna, la sección va arriba. */
@@ -3145,6 +3239,13 @@ function ConversationSidebar({
   onAbrirCuenta?: (cuenta: ContactResult) => void
   onSolicitar?: (cuenta: ContactResult) => void
   onAceptarCuenta?: (cuenta: ContactResult) => void
+  /**
+   * El buscador arriba de la lista, solo en la compu: en el teléfono el campo
+   * lo dibuja la cáscara, abajo, y acá no va otro.
+   */
+  onBuscar?: (termino: string) => void
+  inputRef?: RefObject<TextInput | null>
+  buscando?: boolean
 }) {
   /* En el teléfono esto es la pestaña «Chats» y llega hasta el borde. */
   const piso = usePiso(8)
@@ -3155,35 +3256,62 @@ function ConversationSidebar({
 
   return (
     <Panel tone="lateral" className="flex-1">
-      <View className="flex-row items-center justify-between gap-4 px-4 pb-2" style={{ paddingTop: techo }}>
-        <AnimatedSidebarTitle
-          visible={hovered}
-          label="Colapsar conversaciones"
-          icon={<IconCollapseLeft size={17} color={ICON_COLOR.muted} />}
-          onPress={onCollapse}
-          alignIconToFirstLine
-        >
+      {onBuscar ? (
+        /*
+         * En la compu, la cabecera de Mensajes en la Mac: el buscador y el
+         * botón de escribir, nada de título —la barra lateral ya dice qué es
+         * por lo que lista—. Contraer aparece bajo el cursor, a la izquierda.
+         */
+        <View className="flex-row items-center gap-2 px-2 pb-2 pt-2">
+          {hovered ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Colapsar conversaciones"
+              onPress={onCollapse}
+              className="h-9 w-9 items-center justify-center rounded-md active:bg-muted hover:bg-white/5"
+            >
+              <IconCollapseLeft size={15} color={ICON_COLOR.muted} />
+            </Pressable>
+          ) : null}
+          <View className="min-w-0 flex-1">
+            <CampoBusquedaLateral
+              onBuscar={onBuscar}
+              inputRef={inputRef}
+              placeholder="Buscar"
+              buscando={buscando}
+            />
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Agregar un contacto"
+            onPress={onNew}
+            className="h-9 w-9 items-center justify-center rounded-md active:bg-muted hover:bg-white/5"
+          >
+            <IconPencil size={16} color={ICON_COLOR.foreground} />
+          </Pressable>
+        </View>
+      ) : (
+        /* En el teléfono, la cabecera de Mensajes en iOS: el título grande y
+           el lápiz de escribir a la derecha. El buscador lo pone la cáscara. */
+        <View className="flex-row items-end justify-between gap-4 px-4 pb-2" style={{ paddingTop: techo }}>
           <View className="gap-0.5">
-            <Text className="text-foreground text-lg font-bold" numberOfLines={1}>
-              Conversaciones
+            <Text className="text-foreground text-[34px] font-bold tracking-[-0.4px]" numberOfLines={1}>
+              Chats
             </Text>
             <Text className="text-muted-foreground text-xs" numberOfLines={1}>
               {conversations.length} {conversations.length === 1 ? 'contacto' : 'contactos'}
             </Text>
           </View>
-        </AnimatedSidebarTitle>
-        <View className="shrink-0 flex-row items-center">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Agregar un contacto"
+          <BotonVidrio
+            label="Agregar un contacto"
             onPress={onNew}
-            className="h-10 flex-row items-center justify-center gap-1.5 rounded-full bg-muted px-3 active:opacity-80"
+            radius={22}
+            style={{ width: 44, height: 44 }}
           >
-            <IconPlus size={16} color={ICON_COLOR.foreground} />
-            <Text className="text-foreground text-xs font-semibold">Contacto</Text>
-          </Pressable>
+            <IconPencil size={17} color={ICON_COLOR.foreground} />
+          </BotonVidrio>
         </View>
-      </View>
+      )}
 
       <FlatList
         data={conversations}
@@ -3328,61 +3456,6 @@ function ConversationSidebar({
         )}
       />
     </Panel>
-  )
-}
-
-function GlobalSearchResults({
-  loading,
-  results,
-  error,
-  onSelect,
-  solicitando,
-  onSolicitar,
-  onAceptar,
-}: {
-  loading: boolean
-  results: ContactResult[]
-  error: string | null
-  onSelect: (result: ContactResult) => void
-  /** Cuenta cuya solicitud está saliendo, para la espera en su fila. */
-  solicitando: string | null
-  onSolicitar: (result: ContactResult) => void
-  onAceptar: (result: ContactResult) => void
-}) {
-  /* Igual que los resultados de canciones: la lista termina antes del teclado
-     en vez de seguir por debajo, donde no se llega. */
-  const teclado = useKeyboardH()
-
-  return (
-    <View
-      className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[420px] overflow-hidden rounded-xl bg-card p-2"
-      style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
-    >
-      {loading ? (
-        <SkeletonList rows={5} />
-      ) : error ? (
-        <Text className="px-4 py-8 text-center text-muted-foreground text-sm">{error}</Text>
-      ) : (
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: teclado }}
-        >
-          {/* La misma fila que usa el teléfono en «Más gente»: una cuenta con
-              su acción a la vista — mandar la solicitud o aceptarla, sin pasar
-              por la pantalla de redactar solo para eso. */}
-          {results.map((result) => (
-            <FilaCuenta
-              key={result.id}
-              cuenta={result}
-              busy={solicitando === result.id}
-              onAbrir={() => onSelect(result)}
-              onSolicitar={() => onSolicitar(result)}
-              onAceptar={() => onAceptar(result)}
-            />
-          ))}
-        </ScrollView>
-      )}
-    </View>
   )
 }
 

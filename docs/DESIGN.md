@@ -149,8 +149,30 @@ la HIG de Liquid Glass y **corrige** al de Tahoe:
 - **Las columnas van de borde a borde**, sin huecos, sin tarjetas redondeadas y
   sin sombras entre paneles (los sidebars flotantes de Tahoe se descartaron por
   eso mismo). La separación es un escalón de luminancia: los laterales
-  —biblioteca, inspector— en `canvas` (negro), el contenido del medio en
-  `background`. Lo decide `tone` en `src/ui/Panel.tsx`.
+  —la barra de navegación, el inspector— en `canvas` (negro), el contenido del
+  medio en `background`. Lo decide `tone` en `src/ui/Panel.tsx`.
+- **La columna izquierda es la navegación**, no solo la biblioteca: la *source
+  list* de Música en la Mac (`src/ui/BarraLateral.tsx`). Filas de 30 con el
+  ícono de 16 y el rótulo de 13, secciones con rótulo en gris —Biblioteca,
+  Listas con su «+»—, cada lista con su tapa chica, la elegida en `muted`, y al
+  pie la configuración y la cuenta. Es la *navigation split view* de la HIG: a
+  la izquierda a dónde ir, a la derecha lo que se mira; el encabezado queda para
+  lo que es del contenido (atrás, adelante, inicio).
+- **Estantes para el contenido, cajas para los formularios.** Es la regla de
+  Apple y vale en el teléfono y más en la compu: las pantallas de contenido
+  —Inicio, un artista, el perfil— son estantes (título en negrita y una fila
+  de tapas que se desplaza) apoyados sobre el fondo, sin encerrar nada. Las
+  listas agrupadas con placa —las «cards»— quedan para lo que es un
+  formulario o una lista de controles: Ajustes, Editar perfil, una hoja. Una
+  portada hecha de cajas se lee como un panel de control, no como música.
+- **El buscador vive arriba de la barra lateral**, como en Música y en Mensajes
+  para Mac, y no en el encabezado. En música la primera letra lleva el panel
+  del medio a la pantalla de resultados —la misma del teléfono— y las
+  siguientes solo cambian la consulta; en conversaciones filtra la lista y
+  debajo muestra la gente nueva que coincide. Las pantallas con secciones
+  —Configuración, Editar perfil— son la misma *split view*: la barra con las
+  secciones y su placa, el detalle al lado, y los campos de texto editándose
+  ahí mismo en vez de empujar una pantalla por campo.
 - **Una pantalla es una sola superficie.** El `canvas` negro es *solo* de las
   columnas laterales del layout; una pantalla de detalle —Ajustes, una lista, un
   perfil, novedades— es una superficie continua en `background`, con su
@@ -170,6 +192,54 @@ la HIG de Liquid Glass y **corrige** al de Tahoe:
   llevan material — la misma regla de siempre.
 - **Radios contenidos y parejos**: la píldora del reproductor es la pieza más
   redondeada; los paneles no se redondean. Nada de vidrio sobre vidrio.
+
+## Menús
+
+La anatomía es la del menú contextual de iOS 26 (Apple Music):
+
+- **Arriba, una fila de hasta cuatro acciones rápidas** —ícono arriba, rótulo
+  abajo—: lo que se toca todo el tiempo y se entiende por el ícono (el corazón,
+  encolar, compartir). En iOS es un `ControlGroup` adentro del menú y lo dibuja
+  el sistema; en el nuestro, celdas parejas. Se marcan con `rapida: true`.
+- **Después, la lista por grupos**, con un corte (`separadorAntes`) entre lo que
+  hacés con la cosa, a dónde te lleva, y lo que la saca de acá. Los menús del
+  sistema no separan ítem por ítem: separan grupos. Lo destructivo va al final
+  y trae su corte solo.
+- **Ícono a la izquierda y subtítulo en gris** cuando la fila lleva a algún
+  lado: «Ir al álbum» dice debajo el nombre del disco, «Ver la lista» el de la
+  lista. Así no hay que abrir para saber.
+- Panel de vidrio, radio 20, filas de 44 (54 con subtítulo), sin bordes.
+
+Una canción ofrece **el mismo menú en toda la app**: el buscador, una lista, el
+top de un artista, la barra y «Sonando» arman la misma lista de filas (ver
+`menuForTrack` en `app/index.tsx`); quien la muestra desde adentro de una lista
+le suma abajo bajarla y quitarla. En el teléfono, «Agregar a una lista» abre la
+hoja de elegir; en la compu, el submenú.
+
+## Hojas
+
+Toda hoja arranca igual: **cerrar a la izquierda, el título en el medio, la
+acción a la derecha** (`EncabezadoHoja`), con una línea chica encima del título
+para el resumen vivo («3 canciones a “Mi lista”»). La marca de confirmar es un
+redondel que está gris hasta que hay algo que confirmar, y se vuelve el blanco
+del acento cuando lo hay; mientras guarda, la rueda ocupa su lugar sin mover
+nada. Una hoja de tres opciones mide su contenido; una con buscador o teclado
+va llena. Cerrar con algo a medio hacer pregunta antes de tirarlo.
+
+## Letra
+
+La pantalla de letra es la de Apple Music: **a la izquierda, en negrita
+pareja**, la línea que suena arriba del medio de la ventana y las demás
+retrocediendo — las que ya pasaron apagadas, las que vienen apagadas **y
+desenfocadas**, más cuanto más lejos, como si estuvieran a otra distancia. La
+que suena se enciende **palabra por palabra**: LRCLIB trae el tiempo de cada
+línea y no de cada palabra, así que el reparto se estima por letras entre el
+principio de la línea y el de la siguiente; sigue la canción lo suficiente
+para acompañar. Con la letra puesta, la pantalla es la letra: el encabezado se
+achica a una miniatura con el nombre, y los controles se dibujan encima, abajo,
+y se van solos a los cuatro segundos hasta que se toca la letra. Todo esto es
+`size="xl"` de `Lyrics`; los otros dos tamaños siguen centrados porque
+acompañan a otra cosa.
 
 ## Trampa: NativeWind y los componentes animados
 

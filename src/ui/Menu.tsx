@@ -13,11 +13,12 @@ import {
 } from 'react-native'
 import type { SFSymbol } from 'sf-symbols-typescript'
 import { BORDE_REFERENTE, ES_WEB, Glass } from './Glass'
-import { ICON_COLOR, IconChevronRight, IconMore } from './icons'
+import { ICON_COLOR, IconCheck, IconChevronRight, IconMore } from './icons'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { TECLADO_FISICO } from '../lib/teclado'
 import { useConTooltip } from './Tooltip'
 import { HAY_MENU_NATIVO, MenuNativo } from './MenuNativo'
+import { llevaCorte, repartirMenu } from './menuReparto'
 export { HAY_MENU_NATIVO } from './MenuNativo'
 
 export type MenuItem = {
@@ -50,20 +51,57 @@ export type MenuItem = {
    * laberinto, no un menú.
    */
   items?: MenuItem[]
+  /**
+   * La segunda línea, en gris: el nombre del disco debajo de «Ir al álbum»,
+   * el de la lista debajo de «Ver la lista».
+   *
+   * Es lo que hace el menú de Apple Music con las filas que llevan a algún
+   * lado: la fila dice el verbo y el subtítulo dice el objeto, así no hay que
+   * abrir para saber a dónde te lleva. En iOS lo dibuja el sistema —un menú
+   * acepta un segundo `Text` como subtítulo—; en el nuestro va debajo.
+   */
+  subtitle?: string
+  /**
+   * Un corte antes de esta fila: acá empieza otro grupo.
+   *
+   * Los menús de iOS no separan ítem por ítem sino **por grupos** —lo que
+   * hacés con la canción, a dónde te lleva, lo que la saca de acá— y el corte
+   * es lo que hace legible un menú de diez filas. Quien arma el menú decide
+   * dónde van; el grupo destructivo del final trae el suyo solo.
+   */
+  separadorAntes?: boolean
+  /**
+   * Acción rápida: va en la **fila de íconos de arriba**, no en la lista.
+   *
+   * Es la fila de tres botones con que abre el menú de Apple Music (agregar,
+   * favorito, compartir): lo que se toca todo el tiempo y no necesita una
+   * fila entera de texto para entenderse. Máximo cuatro; las de más caen a la
+   * lista. En iOS es un `ControlGroup` adentro del menú y lo dibuja el
+   * sistema; acá es una fila de celdas con el ícono arriba y el rótulo abajo.
+   */
+  rapida?: boolean
 }
 
 /* Ancho pensado para la etiqueta más larga que usamos hoy («Nueva lista con
  * esta canción»): más angosto, el texto saltaba de línea y se desbordaba de su
- * fila, que tiene alto fijo para poder ubicar el menú antes de dibujarlo. */
-const MENU_W = 288
-const ROW_H = 42
-/** El divisor del grupo destructivo: 1px de línea + 4px de margen por lado. */
+ * fila, que tiene alto fijo para poder ubicar el menú antes de dibujarlo. Un
+ * poco más ancho que antes por los subtítulos: «Cigarettes After Sex» debajo
+ * de «Ir al artista» tiene que entrar en una línea. */
+const MENU_W = 272
+/** Alto de una fila sin subtítulo, y con él. */
+const ROW_H = 44
+const ROW_SUB_H = 54
+/** La fila de acciones rápidas: ícono arriba, rótulo abajo. */
+const RAPIDAS_H = 66
+/** El divisor de un grupo: 1px de línea + 4px de margen por lado. */
 const DIVISOR_H = 9
 /** Aire interno del panel, arriba y abajo de las filas. */
 const PAD = 6
 const GAP = 6
 /** Aire mínimo contra cualquier borde de la pantalla. */
 const MARGIN = 8
+/** Radio del panel. El de los menús de iOS 26, que redondean más que antes. */
+const RADIO = 20
 
 /**
  * La curva de todo el menú: salida firme, sin rebote.
@@ -206,12 +244,17 @@ function animContenido(cerrando: boolean): Record<string, string> | undefined {
   return { anim: cerrando ? 'contenido-cierra' : 'contenido-abre' }
 }
 
+export { repartirMenu, llevaCorte } from './menuReparto'
+
+const altoFila = (item: MenuItem) => (item.subtitle ? ROW_SUB_H : ROW_H)
+
 /**
  * Menú de acciones colgado de un botón de tres puntos.
  *
  * En iOS es **el menú del sistema** —`UIMenu`, el mismo de Apple Music— y en
  * todo lo demás uno nuestro, anclado a mano. Los dos reciben la misma lista
- * de `items`, incluidos submenús y acciones destructivas.
+ * de `items`, incluidos submenús, acciones rápidas, subtítulos, cortes y
+ * acciones destructivas.
  *
  * Es el hermano de `Popover`: comparten la forma de anclarse pero no la
  * semántica. `Popover` elige un valor entre varios y marca el elegido; esto
@@ -339,17 +382,21 @@ export function Menu({
   const window = useWindowDimensions()
 
   const usable = items.filter((item) => !item.disabled)
+  const { rapidas, lista } = repartirMenu(items)
   /*
-   * El alto ideal cuenta TODO lo que se dibuja: filas, respiro, y también los
-   * divisores antes del grupo destructivo. Sin contarlos, el contenido medía
-   * unos píxeles más que el panel y la última fila quedaba recortada — antes
-   * lo disimulaba la barra de scroll (que aparecía por esos mismos píxeles),
-   * y sin barra se veía a «Salir del Jam» comido por el borde.
+   * El alto ideal cuenta TODO lo que se dibuja: la fila de acciones rápidas,
+   * las filas —más altas las que llevan subtítulo—, el respiro, y los cortes
+   * entre grupos. Sin contarlos, el contenido medía unos píxeles más que el
+   * panel y la última fila quedaba recortada — antes lo disimulaba la barra de
+   * scroll (que aparecía por esos mismos píxeles), y sin barra se veía a
+   * «Salir del Jam» comido por el borde.
    */
-  const cortes = usable.filter(
-    (item, i) => i > 0 && item.destructive && !usable[i - 1]?.destructive,
-  ).length
-  const idealH = usable.length * ROW_H + cortes * DIVISOR_H + PAD * 2
+  const cortes = lista.filter((_, i) => llevaCorte(lista, i)).length
+  const idealH =
+    (rapidas.length ? RAPIDAS_H + DIVISOR_H : 0) +
+    lista.reduce((suma, item) => suma + altoFila(item), 0) +
+    cortes * DIVISOR_H +
+    PAD * 2
 
   if (HAY_MENU_NATIVO && !sinDisparador) {
     return (
@@ -402,14 +449,21 @@ export function Menu({
    * porque los tres puntos suelen vivir contra el borde derecho y el menú ya
    * está pegado ahí. Acotado a la ventana igual que el principal.
    */
-  const subItems = sub != null ? (usable[sub]?.items ?? []).filter((s) => !s.disabled) : []
-  const subMaxH = Math.min(subItems.length * ROW_H + PAD * 2, window.height - 2 * MARGIN)
+  const subItems = sub != null ? (lista[sub]?.items ?? []).filter((s) => !s.disabled) : []
+  const subMaxH = Math.min(
+    subItems.reduce((suma, item) => suma + altoFila(item), 0) + PAD * 2,
+    window.height - 2 * MARGIN,
+  )
   const subLeft =
     left - MENU_W - GAP >= MARGIN
       ? left - MENU_W - GAP
       : Math.min(left + MENU_W + GAP, window.width - MENU_W - MARGIN)
+  /* La altura de la fila que lo abrió: lo que hay arriba de ella en el panel. */
+  const arribaDeSub =
+    (rapidas.length ? RAPIDAS_H + DIVISOR_H : 0) +
+    lista.slice(0, sub ?? 0).reduce((suma, item, i) => suma + altoFila(item) + (llevaCorte(lista, i) ? DIVISOR_H : 0), 0)
   const subTop = Math.min(
-    Math.max(MARGIN, top + (sub ?? 0) * ROW_H),
+    Math.max(MARGIN, top + PAD + arribaDeSub),
     Math.max(MARGIN, window.height - subMaxH - MARGIN),
   )
 
@@ -438,6 +492,18 @@ export function Menu({
     setOpen(false)
     setSub(null)
     soltar()
+  }
+
+  /** Ejecuta una fila y cierra. La que tiene submenú lo abre en vez de correr. */
+  const elegir = (item: MenuItem, i: number) => {
+    /* La fila con submenú no ejecuta nada: lo abre o lo cierra.
+       Es lo que la hace funcionar igual con dedo y con cursor. */
+    if (item.items?.length) {
+      setSub((actual) => (actual === i ? null : i))
+      return
+    }
+    cerrar()
+    item.onPress?.()
   }
 
   return (
@@ -482,13 +548,12 @@ export function Menu({
             className="absolute inset-0"
           />
           {/*
-           * El panel es **vidrio**, como los menús de macOS 26: flota sobre el
+           * El panel es **vidrio**, como los menús de iOS 26: flota sobre el
            * contenido, que se lee difuminado a través suyo, con el filo del
-           * referente y una sombra pesada que lo despega. Las filas ya no van
+           * referente y una sombra pesada que lo despega. Las filas no van
            * separadas por líneas —los menús del sistema no dividen ítem por
-           * ítem— sino que cada una se enciende bajo el cursor; la única
-           * hairline queda antes del grupo destructivo, que es donde la HIG
-           * pone el corte.
+           * ítem— sino que cada una se enciende bajo el cursor; las hairlines
+           * quedan entre grupos, que es donde la HIG pone el corte.
            */}
           <Animated.View
             style={{
@@ -522,7 +587,7 @@ export function Menu({
             }}
           >
           <Glass
-            radius={13}
+            radius={RADIO}
             dataSet={animPanel(cerrando, above)}
             style={{
               maxHeight: menuH,
@@ -530,48 +595,16 @@ export function Menu({
             }}
           >
             <Filas alto={menuH} cerrando={cerrando}>
-            {usable.map((item, i) => (
+            {rapidas.length ? (
+              <>
+                <FilaRapidas items={rapidas} onElegir={(item) => elegir(item, -1)} />
+                <Divisor />
+              </>
+            ) : null}
+            {lista.map((item, i) => (
               <Fragment key={item.label}>
-              {/* El corte antes del grupo destructivo, como los menús del
-                  sistema: un divisor propio e inset, no un borde pegado a la
-                  fila — así no corta el panel de lado a lado. */}
-              {i > 0 && item.destructive && !usable[i - 1]?.destructive ? (
-                <View
-                  className="mx-3 my-1 h-px bg-white/10"
-                />
-              ) : null}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={item.items?.length ? { expanded: sub === i } : undefined}
-                onPress={() => {
-                  /* La fila con submenú no ejecuta nada: lo abre o lo cierra.
-                     Es lo que la hace funcionar igual con dedo y con cursor. */
-                  if (item.items?.length) {
-                    setSub((actual) => (actual === i ? null : i))
-                    return
-                  }
-                  cerrar()
-                  item.onPress?.()
-                }}
-                style={{ height: ROW_H }}
-                className={`mx-1.5 flex-row items-center gap-3 rounded-lg px-3 hover:bg-white/10 active:bg-white/15 ${
-                  sub === i ? 'bg-white/10' : ''
-                }`}
-              >
-                {item.icon}
-                <Text
-                  numberOfLines={1}
-                  className={`flex-1 text-[14px] ${
-                    item.destructive ? 'text-muted-foreground' : 'text-foreground'
-                  }`}
-                >
-                  {item.label}
-                </Text>
-                {/* El chevron anuncia el submenú, como pide la HIG. */}
-                {item.items?.length ? (
-                  <IconChevronRight size={14} color={ICON_COLOR.muted} />
-                ) : null}
-              </Pressable>
+              {llevaCorte(lista, i) ? <Divisor /> : null}
+              <Fila item={item} abierto={sub === i} onPress={() => elegir(item, i)} />
               </Fragment>
             ))}
             </Filas>
@@ -611,7 +644,7 @@ export function Menu({
               }}
             >
             <Glass
-              radius={13}
+              radius={RADIO}
               dataSet={animPanel(cerrando, false)}
               style={{
                 maxHeight: subMaxH,
@@ -620,26 +653,17 @@ export function Menu({
             >
               <Filas alto={subMaxH} cerrando={cerrando}>
                 {subItems.map((item, i) => (
-                  <Pressable
-                    key={item.label}
-                    accessibilityRole="button"
-                    onPress={() => {
-                      cerrar()
-                      item.onPress?.()
-                    }}
-                    style={{ height: ROW_H }}
-                    className="mx-1.5 flex-row items-center gap-3 rounded-lg px-3 hover:bg-white/10 active:bg-white/15"
-                  >
-                    {item.icon}
-                    <Text
-                      numberOfLines={1}
-                      className={`flex-1 text-[14px] ${
-                        item.destructive ? 'text-muted-foreground' : 'text-foreground'
-                      }`}
-                    >
-                      {item.label}
-                    </Text>
-                  </Pressable>
+                  <Fragment key={item.label}>
+                    {llevaCorte(subItems, i) ? <Divisor /> : null}
+                    <Fila
+                      item={item}
+                      abierto={false}
+                      onPress={() => {
+                        cerrar()
+                        item.onPress?.()
+                      }}
+                    />
+                  </Fragment>
                 ))}
               </Filas>
             </Glass>
@@ -648,6 +672,96 @@ export function Menu({
         </View>
       </Modal>
     </>
+  )
+}
+
+/**
+ * El corte entre grupos: un divisor propio e inset, no un borde pegado a la
+ * fila — así no corta el panel de lado a lado. Mide `DIVISOR_H` en total.
+ */
+function Divisor() {
+  return <View className="mx-3 my-1 h-px bg-white/10" />
+}
+
+/**
+ * Una fila del menú: ícono a la izquierda, rótulo, subtítulo si lo trae, y a
+ * la derecha el chevron del submenú o la marca del elegido.
+ *
+ * El ícono va **a la izquierda**, como en los menús de iOS 26 (antes iban a la
+ * derecha): con subtítulos, el texto necesita arrancar siempre en la misma
+ * columna para que las dos líneas se lean como una fila y no como dos.
+ */
+function Fila({ item, abierto, onPress }: { item: MenuItem; abierto: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={
+        item.items?.length ? { expanded: abierto } : item.selected !== undefined ? { selected: item.selected } : undefined
+      }
+      onPress={onPress}
+      style={{ height: altoFila(item) }}
+      className={`mx-1.5 flex-row items-center gap-3 rounded-xl px-3 hover:bg-white/10 active:bg-white/15 ${
+        abierto ? 'bg-white/10' : ''
+      }`}
+    >
+      {item.icon ? <View className="w-5 items-center">{item.icon}</View> : null}
+      <View className="min-w-0 flex-1">
+        <Text
+          numberOfLines={1}
+          className={`text-[15px] ${item.destructive ? 'text-muted-foreground' : 'text-foreground'}`}
+        >
+          {item.label}
+        </Text>
+        {item.subtitle ? (
+          <Text numberOfLines={1} className="text-muted-foreground text-[12px]">
+            {item.subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {/* El chevron anuncia el submenú, como pide la HIG; la marca, el elegido. */}
+      {item.items?.length ? (
+        <IconChevronRight size={14} color={ICON_COLOR.muted} />
+      ) : item.selected ? (
+        <IconCheck size={14} color={ICON_COLOR.foreground} />
+      ) : null}
+    </Pressable>
+  )
+}
+
+/**
+ * La fila de acciones rápidas: celdas parejas con el ícono arriba y el rótulo
+ * abajo, como la que abre el menú de Apple Music.
+ *
+ * El ícono llega del tamaño de una fila común (15) y acá se agranda un poco:
+ * son SVG y escalan sin perder el trazo. El rótulo va en dos líneas como
+ * mucho — «Agregar a Favoritos» ya se parte así en el referente.
+ */
+function FilaRapidas({ items, onElegir }: { items: MenuItem[]; onElegir: (item: MenuItem) => void }) {
+  return (
+    <View className="mx-1.5 flex-row" style={{ height: RAPIDAS_H }}>
+      {items.map((item) => (
+        <Pressable
+          key={item.label}
+          accessibilityRole="button"
+          accessibilityLabel={item.label}
+          accessibilityState={item.selected !== undefined ? { selected: item.selected } : undefined}
+          onPress={() => onElegir(item)}
+          className="flex-1 items-center justify-center gap-1.5 rounded-xl px-1 hover:bg-white/10 active:bg-white/15"
+        >
+          <View className="h-6 items-center justify-center" style={{ transform: [{ scale: 1.35 }] }}>
+            {item.icon}
+          </View>
+          <Text
+            numberOfLines={2}
+            className={`text-center text-[11px] leading-[13px] ${
+              item.selected ? 'text-foreground' : 'text-muted-foreground'
+            }`}
+          >
+            {item.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
   )
 }
 

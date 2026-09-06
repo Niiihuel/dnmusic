@@ -1,5 +1,5 @@
 import { artworkSource } from '../lib/artwork'
-import { getSupabase } from '../lib/supabase'
+import { getSupabase, SUPABASE_ANON_KEY } from '../lib/supabase'
 import { temaDe, type Tema } from '../lib/tema'
 import type { Encuadre } from './profile'
 
@@ -587,8 +587,67 @@ export async function uploadIlustracion(
   /* Igual que el avatar: el tipo lo trae el selector, no el Blob. */
   mime = file instanceof Blob ? file.type : '',
 ): Promise<string> {
-  /* Espejo de lo que acepta el bucket: rechazar acá evita mandar veinte megas
-     para que el servidor diga que no. */
+  validarIlustracion(file, mime)
+  const path = rutaDeIlustracion(ownerId, fileName)
+  const { error } = await getSupabase()
+    .storage.from('showcases')
+    .upload(path, file, { contentType: mime, upsert: true })
+  if (error) throw error
+  return path
+}
+
+/**
+ * La misma subida, **avisando cuánto va**.
+ *
+ * storage-js sube con `fetch` y no cuenta bytes. Para ver una barra de verdad
+ * —el fondo del perfil puede ser un clip de 25 MB— se pide una URL firmada
+ * de subida y se manda el archivo con `XMLHttpRequest`, que sí avisa
+ * (`upload.onprogress`). Es el mismo camino que usan los aportes de canciones
+ * (URL firmada → PUT → confirmar), acá con el progreso en el medio.
+ *
+ * `onProgreso` recibe una fracción de 0 a 1, y 1 al terminar, siempre.
+ */
+export async function uploadIlustracionConProgreso(
+  ownerId: string,
+  file: Blob | ArrayBuffer,
+  fileName: string,
+  mime: string,
+  onProgreso: (fraccion: number) => void,
+): Promise<string> {
+  validarIlustracion(file, mime)
+  const path = rutaDeIlustracion(ownerId, fileName)
+  const supabase = getSupabase()
+  const { data, error } = await supabase.storage
+    .from('showcases')
+    .createSignedUploadUrl(path, { upsert: true })
+  if (error || !data) throw error ?? new Error('No se pudo preparar la subida.')
+  const { data: sesion } = await supabase.auth.getSession()
+  const token = sesion.session?.access_token
+
+  await new Promise<void>((resolver, rechazar) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', data.signedUrl)
+    xhr.setRequestHeader('Content-Type', mime)
+    xhr.setRequestHeader('x-upsert', 'true')
+    if (SUPABASE_ANON_KEY) xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY)
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) onProgreso(Math.min(0.99, e.loaded / e.total))
+    }
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolver()
+        : rechazar(new Error(`No se pudo subir (${xhr.status}).`))
+    xhr.onerror = () => rechazar(new Error('No se pudo subir. ¿Hay conexión?'))
+    xhr.send(file)
+  })
+  onProgreso(1)
+  return path
+}
+
+/** Espejo de lo que acepta el bucket: rechazar acá evita mandar veinte megas
+ *  para que el servidor diga que no. */
+function validarIlustracion(file: Blob | ArrayBuffer, mime: string) {
   if (!TIPOS_VITRINA.includes(mime)) {
     throw new Error('Tiene que ser una imagen (JPG, PNG, WebP, GIF) o un video MP4.')
   }
@@ -596,17 +655,13 @@ export async function uploadIlustracion(
   if (peso > VITRINA_MAX_BYTES) {
     throw new Error('No puede pesar más de 25 MB.')
   }
+}
 
+/** La carpeta es el id de quien sube: la policy del bucket lo exige, y es lo
+ *  que impide pisar la ilustración de otro. */
+function rutaDeIlustracion(ownerId: string, fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
-  /* La carpeta es el id de quien sube: la policy del bucket lo exige, y es lo
-     que impide pisar la ilustración de otro. */
-  const path = `${ownerId}/${Date.now()}.${ext}`
-
-  const { error } = await getSupabase()
-    .storage.from('showcases')
-    .upload(path, file, { contentType: mime, upsert: true })
-  if (error) throw error
-  return path
+  return `${ownerId}/${Date.now()}.${ext}`
 }
 
 /** La URL pública de una ilustración. El bucket es público, no hay que firmar. */

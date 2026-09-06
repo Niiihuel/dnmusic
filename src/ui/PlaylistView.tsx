@@ -74,6 +74,7 @@ import {
   IconUser,
   IconUsers,
   IconLogOut,
+  IconMinus,
 } from './icons'
 import {
   descargar,
@@ -127,6 +128,7 @@ export function PlaylistView({
   onClose,
   onSearch,
   onSubirArchivo,
+  onAgregar,
   menuFor,
   onAddSugerencia,
   onPlaySugerencia,
@@ -176,6 +178,13 @@ export function PlaylistView({
    * de escritorio: sin esto, la fila del menú no existe.
    */
   onSubirArchivo?: () => void
+  /**
+   * Abrir la hoja de «Agregar música»: elegir varias canciones para esta lista.
+   *
+   * Es la fila «+ Agregar música» al pie de las canciones y la acción de la
+   * lista vacía, como en Apple Music. La abre la pantalla porque es una ruta.
+   */
+  onAgregar?: () => void
   /**
    * Las opciones de una canción: ir al artista, encolarla, sumarla a otra lista.
    *
@@ -366,12 +375,16 @@ export function PlaylistView({
           descargas[track.audioPath]
             ? {
                 label: 'Quitar la descarga',
+                separadorAntes: true,
                 onPress: () => quitarDescarga(track.audioPath),
+                icon: <IconDownloaded size={15} color={ICON_COLOR.muted} />,
                 sfSymbol: 'arrow.down.circle.fill' as const,
               }
             : {
                 label: 'Descargar',
+                separadorAntes: true,
                 onPress: () => descargar(track),
+                icon: <IconDownload size={15} color={ICON_COLOR.muted} />,
                 sfSymbol: 'arrow.down.circle' as const,
               },
         ]
@@ -380,6 +393,7 @@ export function PlaylistView({
       label: 'Quitar de la lista',
       onPress: () => void drop(track.id),
       destructive: true,
+      icon: <IconMinus size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'minus.circle' as const,
     },
   ]
@@ -528,76 +542,98 @@ export function PlaylistView({
    */
   const mia = playlist.mia
   const menu: MenuItem[] = [
-    ...(mia
+    /*
+     * La anatomía del menú de Apple Music: arriba las acciones rápidas —sumar
+     * música, publicar o compartir, la gente—, después lo que le cambia la cara
+     * a la lista, después lo que la deja en el perfil o la cierra, y al final lo
+     * que la borra (o te saca de ella).
+     */
+    ...(onAgregar
       ? [
           {
-            label: 'Cambiar la portada',
-            onPress: onPickCover,
-            icon: <IconImage size={15} color={ICON_COLOR.muted} />,
-            sfSymbol: 'photo' as const,
-          },
-          {
-            label: 'Cambiar el nombre',
-            onPress: () => setRenaming(playlist.id),
-            icon: <IconPencil size={15} color={ICON_COLOR.muted} />,
-            sfSymbol: 'pencil' as const,
-          },
-        ]
-      : []),
-    ...(mia && !playlist.colaborativa && onColaborar
-      ? [
-          {
-            label: 'Hacer colaborativa',
-            onPress: onColaborar,
-            icon: <IconUsers size={15} color={ICON_COLOR.muted} />,
-            sfSymbol: 'person.2.badge.plus' as const,
-          },
-        ]
-      : []),
-    /* La gente, solo si es colaborativa. En una lista común no hay a quién
-       mostrar, y la fila sería una promesa vacía. */
-    ...(playlist.colaborativa
-      ? [
-          {
-            label: mia ? 'Gente de la lista' : 'Quiénes la escriben',
-            onPress: () => onVerGente?.(),
-            icon: <IconUsers size={15} color={ICON_COLOR.muted} />,
-            sfSymbol: 'person.2' as const,
+            label: 'Agregar música',
+            rapida: true,
+            onPress: onAgregar,
+            icon: <IconPlus size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'plus' as const,
           },
         ]
       : []),
     /*
-     * Publicar y compartir, en ese orden y juntas.
-     *
-     * La fila dice a qué estado te lleva —«Hacer pública» cuando es privada—,
-     * no en cuál estás: es el mismo criterio que el resto del menú, donde cada
-     * fila nombra lo que va a pasar al tocarla.
-     *
-     * «Compartir el link» aparece **solo si ya es pública**. Un link a algo
-     * que nadie más puede abrir es un link roto, y ofrecerlo antes empujaría a
-     * mandarlo sin haber publicado.
+     * Publicar y compartir. La fila dice a qué estado te lleva —«Hacer
+     * pública» cuando es privada—, no en cuál estás. «Compartir» aparece
+     * **solo si ya es pública**: un link a algo que nadie más puede abrir es un
+     * link roto, y ofrecerlo antes empujaría a mandarlo sin haber publicado.
      */
-    ...(mia
+    ...(mia && !publica
       ? [
           {
-            label: publica ? 'Hacer privada' : 'Hacer pública',
-            onPress: () => void onPublicar(publica ? 'privada' : 'publica'),
-            icon: publica ? (
-              <IconLock size={15} color={ICON_COLOR.muted} />
-            ) : (
-              <IconGlobe size={15} color={ICON_COLOR.muted} />
-            ),
-            sfSymbol: (publica ? 'lock' : 'globe') as 'lock' | 'globe',
+            label: 'Hacer pública',
+            rapida: true,
+            onPress: () => void onPublicar('publica'),
+            icon: <IconGlobe size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'globe' as const,
           },
         ]
       : []),
     ...(publica
       ? [
           {
-            label: 'Compartir el link',
+            label: 'Compartir',
+            rapida: true,
             onPress: () => void compartirLista(playlist.id, playlist.name),
             icon: <IconShare size={15} color={ICON_COLOR.muted} />,
             sfSymbol: 'square.and.arrow.up' as const,
+          },
+        ]
+      : []),
+    /* La gente, o volverla colaborativa. En una lista común y ajena no hay
+       nada que mostrar, y la fila sería una promesa vacía. */
+    ...(playlist.colaborativa && onVerGente
+      ? [
+          {
+            label: 'Gente',
+            rapida: true,
+            onPress: onVerGente,
+            icon: <IconUsers size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'person.2' as const,
+          },
+        ]
+      : mia && onColaborar
+        ? [
+            {
+              label: 'Colaborar',
+              rapida: true,
+              onPress: onColaborar,
+              icon: <IconUsers size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'person.2.badge.plus' as const,
+            },
+          ]
+        : []),
+    ...(mia
+      ? [
+          {
+            label: 'Cambiar el nombre',
+            onPress: () => setRenaming(playlist.id),
+            icon: <IconPencil size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'pencil' as const,
+          },
+          {
+            label: 'Cambiar la portada',
+            onPress: onPickCover,
+            icon: <IconImage size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'photo' as const,
+          },
+        ]
+      : []),
+    ...(mia && publica
+      ? [
+          {
+            label: 'Hacer privada',
+            subtitle: 'El link deja de andar',
+            onPress: () => void onPublicar('privada'),
+            icon: <IconLock size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'lock' as const,
           },
         ]
       : []),
@@ -608,25 +644,31 @@ export function PlaylistView({
           {
             label: 'Agregar un archivo de audio',
             onPress: onSubirArchivo,
-            icon: <IconPlus size={15} color={ICON_COLOR.muted} />,
+            icon: <IconDisk size={15} color={ICON_COLOR.muted} />,
             sfSymbol: 'square.and.arrow.down' as const,
+          },
+        ]
+      : []),
+    ...(mia
+      ? [
+          {
+            label: 'Fijar en mi perfil',
+            separadorAntes: true,
+            onPress: () => void fijarLista(),
+            icon: <IconUser size={15} color={ICON_COLOR.muted} />,
+            sfSymbol: 'pin' as const,
           },
         ]
       : []),
     {
       label: 'Cerrar la lista',
+      separadorAntes: !mia,
       onPress: onClose,
       icon: <IconClose size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'xmark',
     },
     ...(mia
       ? [
-          {
-            label: 'Fijar en mi perfil',
-            onPress: () => void fijarLista(),
-            icon: <IconUser size={15} color={ICON_COLOR.muted} />,
-            sfSymbol: 'pin' as const,
-          },
           {
             label: 'Borrar la lista',
             onPress: onDelete,
@@ -706,14 +748,27 @@ export function PlaylistView({
            * Spotify y donde uno ya está mirando cuando se le acabó lo suyo.
            */
           ListFooterComponent={
-            tracks?.length && onAddSugerencia && onPlaySugerencia ? (
-              <Sugerencias
-                playlistId={playlist.id}
-                enLista={tracks}
-                onAdd={onAddSugerencia}
-                onPlay={onPlaySugerencia}
-                pendingId={pendingId}
-              />
+            tracks?.length ? (
+              <>
+                {/*
+                 * «+ Agregar música», al pie de las canciones: es la fila de
+                 * Apple Music, y va acá porque es donde uno está mirando
+                 * cuando se le acabó la lista. Con el resumen debajo —cuántas
+                 * son y cuánto duran—, que antes solo vivía en la cabecera.
+                 */}
+                {onAgregar ? (
+                  <FilaAgregarMusica onPress={onAgregar} total={total} totalMs={tracks.reduce((s, t) => s + t.durationMs, 0)} />
+                ) : null}
+                {onAddSugerencia && onPlaySugerencia ? (
+                  <Sugerencias
+                    playlistId={playlist.id}
+                    enLista={tracks}
+                    onAdd={onAddSugerencia}
+                    onPlay={onPlaySugerencia}
+                    pendingId={pendingId}
+                  />
+                ) : null}
+              </>
             ) : null
           }
           ListEmptyComponent={
@@ -742,8 +797,14 @@ export function PlaylistView({
                 compacto
                 icono={<IconMusic size={20} color={ICON_COLOR.muted} />}
                 titulo="La lista está vacía"
-                detalle={`Todavía no hay nada en «${playlist.name}». Buscá una canción y sumala.`}
-                accion={onSearch ? { rotulo: 'Buscá una canción', onPress: onSearch } : undefined}
+                detalle={`Todavía no hay nada en «${playlist.name}». Buscá canciones y sumalas.`}
+                accion={
+                  onAgregar
+                    ? { rotulo: 'Agregar música', onPress: onAgregar }
+                    : onSearch
+                      ? { rotulo: 'Buscá una canción', onPress: onSearch }
+                      : undefined
+                }
               />
             )
           }
@@ -784,6 +845,50 @@ export function PlaylistView({
         />
       </View>
     </Panel>
+  )
+}
+
+/**
+ * La fila «+ Agregar música» al pie de la lista, con el resumen debajo.
+ *
+ * Es la de Apple Music: un cuadrado con el más, el rótulo, y abajo en gris
+ * «9 canciones, 40 minutos». El cuadrado es `muted` —un escalón de luminancia,
+ * como el ícono de una fila de Ajustes— y no el blanco del acento: la acción
+ * principal de la pantalla sigue siendo reproducir.
+ */
+function FilaAgregarMusica({
+  onPress,
+  total,
+  totalMs,
+}: {
+  onPress: () => void
+  total: number
+  totalMs: number
+}) {
+  const suelto = useAngosto()
+  return (
+    <View className={`pt-2 ${suelto ? 'px-3' : 'px-6'}`}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Agregar música a la lista"
+        onPress={onPress}
+        className="flex-row items-center gap-3 rounded-lg px-2 py-2 active:bg-muted"
+      >
+        <View
+          className="items-center justify-center rounded bg-muted"
+          style={{ width: suelto ? 52 : 40, height: suelto ? 52 : 40 }}
+        >
+          <IconPlus size={suelto ? 22 : 18} color={ICON_COLOR.foreground} />
+        </View>
+        <Text className={`text-foreground ${suelto ? 'text-[16px]' : 'text-[14px]'}`}>
+          Agregar música
+        </Text>
+      </Pressable>
+      <Text className="px-2 pt-3 text-muted-foreground text-[13px]">
+        {total} {total === 1 ? 'canción' : 'canciones'}
+        {totalMs > 0 ? `, ${formatLength(totalMs)}` : ''}
+      </Text>
+    </View>
   )
 }
 

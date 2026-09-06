@@ -72,7 +72,8 @@
       ],
       "expo-video",
       "expo-sharing",
-      "expo-font"
+      "expo-font",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true

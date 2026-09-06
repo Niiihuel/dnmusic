@@ -94,7 +94,7 @@ export function FilaSostener({
       accessibilityHint="Mantené apretado para confirmar"
       onPressIn={empezar}
       onPressOut={soltar}
-      className="flex-row items-center gap-3 px-4"
+      className="flex-row items-center gap-3 pl-4"
     >
       {/* El relleno va por `style`: NativeWind no procesa clases en componentes
           animados (docs/DESIGN.md). Blanco al 10% — el acento del sistema,
@@ -119,15 +119,17 @@ export function FilaSostener({
       {icono ? <IconoAjuste>{icono}</IconoAjuste> : null}
 
       <View
-        className={`min-w-0 flex-1 gap-0.5 py-3.5 ${ultima ? '' : 'border-b border-muted'}`}
+        className={`min-h-[52px] min-w-0 flex-1 justify-center gap-0.5 py-2.5 pr-4 ${
+          ultima ? '' : 'border-b border-muted'
+        }`}
       >
-        <Text className="text-foreground text-[15px]">{rotulo}</Text>
+        <Text className="text-foreground text-[17px]">{rotulo}</Text>
         {pista ? (
-          <Text className="text-muted-foreground text-[12px] leading-4">
+          <Text className="text-muted-foreground text-[13px] leading-[18px]">
             Mantené apretado para confirmar
           </Text>
         ) : detalle ? (
-          <Text className="text-muted-foreground text-[12px] leading-4">{detalle}</Text>
+          <Text className="text-muted-foreground text-[13px] leading-[18px]">{detalle}</Text>
         ) : null}
       </View>
     </Pressable>

@@ -1,5 +1,14 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
-import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import {
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { artworkSource, artworkUrlAtSize } from '../lib/artwork'
 import {
@@ -23,9 +32,11 @@ import {
 } from '../state/playback'
 import { abrirLista, usePiso, useTecho } from '../state/shell'
 import {
+  anclasPersonales,
   mezclasPersonales,
   proximasRecomendadas,
   tandaDeMix,
+  type ArtistaEscuchado,
   type MixPersonal,
 } from '../services/recomendaciones'
 import { listPlaylists, type Playlist, type PlaylistTrack } from '../services/playlists'
@@ -38,7 +49,6 @@ import {
   type OrigenReciente,
 } from '../services/plays'
 import { listarSemillas, type Semilla } from '../services/semillas'
-import { useMyProfile } from '../state/session'
 import { PlaylistCover } from './PlaylistCover'
 import { useColapso } from './useColapso'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
@@ -46,30 +56,76 @@ import { Panel } from './Panel'
 import { VacioError } from './Vacio'
 import { EstadoTapa } from './CoverState'
 import { Skeleton } from './Skeleton'
-import { ICON_COLOR, IconBack, IconChevronRight, IconHeart, IconMusic, IconPause, IconPlay, IconWave } from './icons'
+import {
+  ICON_COLOR,
+  IconBack,
+  IconChevronRight,
+  IconHeart,
+  IconMusic,
+  IconPause,
+  IconPlay,
+  IconWave,
+} from './icons'
 
-/** Lado de una tapa en el carrusel, y el tamaño deseable en la grilla. */
-const CARD = 168
-/** La primera sección lleva tapas más grandes: es la vidriera de la portada,
- *  como el «Latest» de Apple Music, que agranda justo lo más nuevo. */
-const CARD_GRANDE = 214
-/** Qué secciones son un chart: llevan el puesto adelante, como Apple Music. */
-const ES_CHART = /trending|éxitos|exitos|\btop\b|charts?/i
+/**
+ * Desde qué ancho el inicio se dibuja con las medidas de la compu.
+ *
+ * Es el mismo corte que el resto del escritorio (`ESCRITORIO_PX` de Ajustes):
+ * a partir de ahí las tapas crecen un poco, como en Música para Mac, donde
+ * la fila tiene espacio de sobra y una tapa de teléfono queda chica.
+ */
+const ESCRITORIO_PX = 780
 /** El hueco entre tapas de la grilla. Es el `gap-4` de su contenedor. */
 const GRID_GAP = 16
 /** Cuántas canciones apiladas por columna, como en Apple Music. */
 const ROWS = 4
+/** Qué secciones son un chart: llevan el puesto adelante, como Apple Music. */
+const ES_CHART = /trending|tendencia|éxitos|exitos|\btop\b|charts?/i
+/** Medida deseable de una tarjeta de género; la grilla la recalcula. */
+const GENERO_W = 260
+/** Proporción apaisada, como las tarjetas de género de Apple Music. */
+const GENERO_RATIO = 0.58
+/** Lado de la cara de un artista en su fila. Más chico que una tapa: es un redondel. */
+const ARTISTA_LADO = 140
+/** El id de origen con que la radio personal entra a la cola. */
+const ORIGEN_RADIO = 'radio-personal'
+/** Cuántas tarjetas grandes lleva «Sugerencias destacadas», como mucho. */
+const MAX_DESTACADAS = 6
 
 /**
- * La portada del modo música: novedades, lo que suena, listas.
+ * Las medidas del inicio, por ancho de ventana.
  *
- * Ocupa el panel del medio cuando no hay ninguna lista abierta. Antes ahí
- * había un cartel diciendo «elegí una lista», que es pedirle al que llega que
- * ya sepa qué quiere; esto le da algo para mirar.
+ * Son las de la portada de Apple Music: las tapas cuadradas de las filas
+ * (dos enteras y el asomo de la tercera en un teléfono), y la tarjeta alta
+ * de «Sugerencias destacadas», que es la única que no es cuadrada — una
+ * vertical de tres por cuatro con el texto adentro. En la compu todo crece
+ * un poco porque hay lugar; la proporción es la misma.
+ */
+function useMedidas() {
+  const { width } = useWindowDimensions()
+  const grande = width >= ESCRITORIO_PX
+  const lado = grande ? 184 : 160
+  const destacadaW = grande ? 280 : 250
+  return { grande, lado, destacadaW, destacadaH: Math.round(destacadaW * 1.32) }
+}
+
+/**
+ * El inicio: lo tuyo primero, la portada después.
  *
- * Todo sale de `/home`, que junta la portada de YouTube Music con su sección
- * de exploración. Cada sección viene armada por ellos, así que acá no se
- * inventa ningún criterio de recomendación — solo se dibuja.
+ * Es el «Inicio» de Apple Music en iOS 26, con la anatomía de allá y el
+ * criterio de acá: arriba las **sugerencias destacadas**, tarjetas altas que
+ * dicen *por qué* están —«Porque escuchaste X», «Porque elegiste rock»—,
+ * después lo escuchado recientemente, lo hecho para vos, tus artistas y lo
+ * que se desprende de ellos, y recién al final lo que YouTube Music publica
+ * para todo el mundo, con las tendencias adelante. Cada fila se calla si no
+ * tiene con qué: una cuenta nueva ve el título y la portada.
+ *
+ * Nada de acá es una tarjeta con borde: son estantes —título y una fila que
+ * se desplaza—, que es como Apple arma las pantallas de contenido. Las
+ * cajas agrupadas quedan para los formularios (Ajustes, Editar perfil).
+ *
+ * Toda la recomendación propia sale de `services/recomendaciones`: el
+ * inicio no inventa criterios, los muestra y los explica.
  */
 export function HomeFeed({
   section: openSection,
@@ -99,7 +155,7 @@ export function HomeFeed({
   onOpenPlaylist: (item: HomeItem) => void
   /** La ficha de un artista: «Tus artistas» y «Porque escuchaste…» llevan ahí. */
   onOpenArtist?: (artistId: string, nombre: string) => void
-  /** «Tus me gusta», desde la grilla de accesos. */
+  /** «Tus me gusta», desde lo escuchado recientemente. */
   onOpenGustos?: () => void
   onPlaySong: (item: HomeItem) => void
   menuForSong: (item: HomeItem) => MenuItem[]
@@ -122,6 +178,7 @@ export function HomeFeed({
   const techo = useTecho(24)
   /* Bajando, la cáscara se pliega; subiendo, vuelve. Ver `useColapso`. */
   const colapso = useColapso()
+  const { grande } = useMedidas()
 
   /* La página de un género, encima de todo: es una parada del historial. */
   if (genero) {
@@ -177,37 +234,41 @@ export function HomeFeed({
     )
   }
 
+  /* La portada de YouTube, en dos: los charts primero —«Tendencias» es lo
+     que uno espera ver arriba— y el resto en el orden en que ellos lo mandan. */
+  const tendencias = inicio?.sections.filter((s) => ES_CHART.test(s.title)) ?? []
+  const resto = inicio?.sections.filter((s) => !ES_CHART.test(s.title)) ?? []
+
   return (
     <Panel className="flex-1">
       <ScrollView
         className="min-h-0 flex-1"
-        contentContainerClassName="gap-7"
+        contentContainerClassName="gap-8"
         contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
         {...colapso}
       >
-        {/*
-         * El home tiene dos mitades independientes: **lo tuyo** —«Hecho para
-         * vos» y las filas de tus géneros— y **la portada** de YouTube Music.
-         * La primera no depende de la segunda: antes, cuando la portada no
-         * llegaba, se comía también lo tuyo con un cartel de error a pantalla
-         * completa. Ahora lo tuyo se muestra igual, y la portada que falla es a
-         * lo sumo un renglón chico —o nada, si tenés con qué llenar el inicio.
-         */}
+        {/* El título grande de la pantalla, como «Inicio» en Apple Music: en
+            el teléfono a la medida del título de una pestaña, en la compu a
+            la del título del panel. */}
+        <Text
+          className={`px-6 text-foreground font-bold tracking-[-0.4px] ${
+            grande ? 'text-[28px]' : 'text-[34px]'
+          }`}
+        >
+          Inicio
+        </Text>
+
         {inicio === null ? (
           <Loading />
         ) : (
           <>
-            {/*
-             * El inicio es de cada persona, como el de Spotify: arranca con
-             * el saludo y **lo que usás** —las colecciones que sonaron
-             * últimamente en una grilla, y las canciones donde te quedaste—,
-             * después lo hecho para vos, tus artistas y lo que se desprende
-             * de ellos, y recién al final la portada de YouTube Music, que
-             * es la misma para todo el mundo. Cada sección se calla si no
-             * tiene con qué: una cuenta nueva ve el saludo y la portada.
-             */}
-            <Saludo />
-            <AccesosRapidos
+            <Destacadas
+              inicio={inicio}
+              onOpenAlbum={onOpenAlbum}
+              onOpenPlaylist={onOpenPlaylist}
+              onOpenArtist={onOpenArtist}
+            />
+            <EscuchadoRecientemente
               origenes={inicio.origenes}
               listas={inicio.listas}
               onOpenGustos={onOpenGustos}
@@ -218,11 +279,10 @@ export function HomeFeed({
               menuForSong={menuForSong}
               pendingId={pendingId}
             />
-            {/* «Hecho para vos» habla de quién sos, y va antes de lo que habla
-                del mundo. */}
-            <ParaVos
+            <HechoParaVos radio={inicio.radio} mixes={inicio.mixes} anclas={inicio.anclas} />
+            <Recomendadas
               radio={inicio.radio}
-              mixes={inicio.mixes}
+              anclas={inicio.anclas}
               onPlaySong={onPlaySong}
               menuForSong={menuForSong}
               pendingId={pendingId}
@@ -234,13 +294,14 @@ export function HomeFeed({
               onOpenArtist={onOpenArtist}
               onOpenAlbum={onOpenAlbum}
             />
-            {/* Lo tuyo: una fila de listas por cada género que elegiste. Tocar
-                «ver todo» abre la página del género, reconstruida desde la
-                semilla. */}
+            {/* Lo tuyo: una fila de listas por cada género que elegiste. El
+                título dice por qué está —«Rock para vos»— y «ver todo» abre
+                la página del género, reconstruida desde la semilla. */}
             {inicio.misGeneros.map((section) => (
               <Section
                 key={`mio-${section.title}`}
                 section={section}
+                titulo={`${section.title} para vos`}
                 onOpen={() => {
                   const semilla = inicio.semillas.find(
                     (s: Semilla) => s.kind === 'genero' && s.name === section.title,
@@ -255,11 +316,24 @@ export function HomeFeed({
                 pendingId={pendingId}
               />
             ))}
+            {tendencias.map((section) => (
+              <Section
+                key={section.title}
+                section={section}
+                titulo={/^trending$/i.test(section.title) ? 'Tendencias' : section.title}
+                onOpen={() => onOpenSection(section.title)}
+                onOpenAlbum={onOpenAlbum}
+                onOpenPlaylist={onOpenPlaylist}
+                onPlaySong={onPlaySong}
+                menuForSong={menuForSong}
+                pendingId={pendingId}
+              />
+            ))}
             {/* La portada que no llegó solo grita si no hay nada más para
                 mostrar; con filas propias arriba, se calla. Y mientras viene
                 —se pasó del tope— un esqueleto abajo, no un error. */}
             {inicio.portadaPendiente ? (
-              <Loading filas={1} />
+              <Loading filas={1} sinDestacadas />
             ) : inicio.sections.length === 0 && !inicio.misGeneros.length && !hayLoTuyo(inicio) ? (
               <VacioError
                 icono={<IconMusic size={22} color={ICON_COLOR.muted} />}
@@ -268,12 +342,10 @@ export function HomeFeed({
                 onReintentar={recargar}
               />
             ) : null}
-            {inicio.sections.map((section, i) => (
+            {resto.map((section, i) => (
               <Fragment key={section.title}>
                 <Section
                   section={section}
-                  /* La primera sección es la vidriera: tapas más grandes. */
-                  destacada={i === 0}
                   onOpen={() => onOpenSection(section.title)}
                   onOpenAlbum={onOpenAlbum}
                   onOpenPlaylist={onOpenPlaylist}
@@ -296,9 +368,53 @@ export function HomeFeed({
   )
 }
 
+/* ── El estante ───────────────────────────────────────────────────────────── */
+
+/**
+ * El título de un estante, como en Apple Music: negrita, con el chevron que
+ * anuncia que abre la sección entera, y debajo —solo cuando hace falta— una
+ * línea apagada que dice **de dónde sale** lo que sigue.
+ */
+function Encabezado({
+  titulo,
+  detalle,
+  onPress,
+}: {
+  titulo: string
+  detalle?: string | null
+  onPress?: () => void
+}) {
+  const texto = (
+    <View className="min-w-0 flex-1 gap-0.5">
+      <View className="flex-row items-center gap-1.5">
+        <Text className="shrink text-foreground text-[20px] font-bold" numberOfLines={1}>
+          {titulo}
+        </Text>
+        {onPress ? <IconChevronRight size={17} color={ICON_COLOR.muted} /> : null}
+      </View>
+      {detalle ? (
+        <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+          {detalle}
+        </Text>
+      ) : null}
+    </View>
+  )
+  if (!onPress) return <View className="px-6">{texto}</View>
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Ver todo: ${titulo}`}
+      onPress={onPress}
+      className="flex-row items-center self-start px-6 active:opacity-70"
+    >
+      {texto}
+    </Pressable>
+  )
+}
+
 function Section({
   section,
-  destacada = false,
+  titulo,
   onOpen,
   onOpenAlbum,
   onOpenPlaylist,
@@ -307,8 +423,8 @@ function Section({
   pendingId,
 }: {
   section: HomeSection
-  /** Con tapas más grandes: la primera sección de la portada. */
-  destacada?: boolean
+  /** Con otro título que el de la sección: «Rock para vos» sobre «Rock». */
+  titulo?: string
   onOpen: () => void
   onOpenAlbum: (item: HomeItem) => void
   onOpenPlaylist: (item: HomeItem) => void
@@ -317,20 +433,11 @@ function Section({
   pendingId: string | null
 }) {
   const songs = section.items.every((item) => item.kind === 'song')
+  const { lado } = useMedidas()
 
   return (
     <View className="gap-3">
-      {/* El título es el botón que abre la sección entera, con el chevron
-          que lo anuncia — igual que en Apple Music. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Ver todo: ${section.title}`}
-        onPress={onOpen}
-        className="flex-row items-center gap-1.5 self-start px-6 active:opacity-70"
-      >
-        <Text className="text-foreground text-[19px] font-bold">{section.title}</Text>
-        <IconChevronRight size={17} color={ICON_COLOR.muted} />
-      </Pressable>
+      <Encabezado titulo={titulo ?? section.title} onPress={onOpen} />
       {/*
        * Una fila desplazable por sección, como en Apple Music: los costados se
        * desvanecen en vez de cortarse contra el borde del panel, y con el
@@ -351,7 +458,7 @@ function Section({
             <Card
               key={item.id}
               item={item}
-              width={destacada ? CARD_GRANDE : CARD}
+              width={lado}
               onPress={() => (item.kind === 'album' ? onOpenAlbum(item) : onOpenPlaylist(item))}
             />
           ))
@@ -361,47 +468,85 @@ function Section({
   )
 }
 
-/** Tapa cuadrada con su título debajo: álbumes y listas. */
+/**
+ * Tapa cuadrada con su título debajo: álbumes y listas.
+ *
+ * Es la unidad de casi todo el inicio. La tapa se separa del fondo por su
+ * propia imagen y nada más: sin borde, sin caja, como en Apple Music.
+ */
 function Card({
   item,
   onPress,
-  width = CARD,
+  width,
 }: {
   item: HomeItem
   onPress: () => void
-  /** En la grilla lo decide la fila; en el carrusel es la medida fija. */
-  width?: number
+  /** En la grilla lo decide la fila; en el carrusel es la medida de la fila. */
+  width: number
+}) {
+  return (
+    <TarjetaCuadrada
+      lado={width}
+      label={item.title}
+      titulo={item.title}
+      detalle={item.subtitle}
+      onPress={onPress}
+      tapa={
+        item.artworkUrl ? (
+          <Image
+            source={{ uri: proxiedImage(artworkUrlAtSize(item.artworkUrl, 400)) }}
+            style={{ width, height: width }}
+          />
+        ) : null
+      }
+    />
+  )
+}
+
+/**
+ * La tapa cuadrada genérica: lo que va adentro lo pone quien la usa —una
+ * carátula, el collage de una lista, un corazón— y el texto debajo es
+ * siempre igual: título en negrita, detalle apagado.
+ */
+function TarjetaCuadrada({
+  lado,
+  label,
+  titulo,
+  detalle,
+  tapa,
+  onPress,
+}: {
+  lado: number
+  label: string
+  titulo: string
+  detalle?: string | null
+  tapa: ReactNode
+  onPress: () => void
 }) {
   const [over, setOver] = useState(false)
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={item.title}
+      accessibilityLabel={label}
       onPress={onPress}
       onPointerEnter={() => setOver(true)}
       onPointerLeave={() => setOver(false)}
-      style={{ width }}
+      style={{ width: lado }}
       className="gap-2"
     >
-      <View className="overflow-hidden rounded-lg bg-card" style={{ width, height: width }}>
-        {item.artworkUrl ? (
-          <Image
-            source={{ uri: proxiedImage(artworkUrlAtSize(item.artworkUrl, 400)) }}
-            style={{ width, height: width, opacity: over ? 0.75 : 1 }}
-          />
-        ) : (
-          <View className="flex-1 items-center justify-center">
-            <IconMusic size={26} color={ICON_COLOR.muted} />
-          </View>
-        )}
+      <View
+        className="items-center justify-center overflow-hidden rounded-lg bg-card"
+        style={{ width: lado, height: lado, opacity: over ? 0.8 : 1 }}
+      >
+        {tapa ?? <IconMusic size={26} color={ICON_COLOR.muted} />}
       </View>
       <View className="gap-0.5">
-        <Text className="text-foreground text-[13px] font-semibold" numberOfLines={2}>
-          {item.title}
+        <Text className="text-foreground text-[14px] font-semibold" numberOfLines={2}>
+          {titulo}
         </Text>
-        {item.subtitle ? (
-          <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
-            {item.subtitle}
+        {detalle ? (
+          <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+            {detalle}
           </Text>
         ) : null}
       </View>
@@ -507,11 +652,11 @@ function SongRow({
         </View>
 
         <View className="min-w-0 flex-1 gap-0.5">
-          <Text className="text-foreground text-[14px]" numberOfLines={1}>
+          <Text className="text-foreground text-[15px]" numberOfLines={1}>
             {item.title}
           </Text>
           {item.subtitle ? (
-            <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+            <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
               {item.subtitle}
             </Text>
           ) : null}
@@ -529,12 +674,725 @@ function SongRow({
     : fila
 }
 
-/* ── Géneros ──────────────────────────────────────────────────────────────── */
+/* ── Sugerencias destacadas ───────────────────────────────────────────────── */
 
-/** Medida deseable de una tarjeta de género; la grilla la recalcula. */
-const GENERO_W = 260
-/** Proporción apaisada, como las tarjetas de género de Apple Music. */
-const GENERO_RATIO = 0.58
+/** Una tarjeta alta de la vidriera: qué es, por qué está y a dónde lleva. */
+type Destacada = {
+  id: string
+  /** La razón, arriba del título: «Porque escuchaste X», «Hecho para vos». */
+  motivo: string
+  titulo: string
+  /** Una línea más, debajo del título: qué vas a encontrar. */
+  detalle: string
+  tapa: string | null
+  /** Esta tarjeta pone algo a sonar en vez de abrir una página. */
+  suena?: boolean
+  onPress: () => void
+}
+
+/**
+ * «Sugerencias destacadas para vos»: la vidriera del inicio.
+ *
+ * Es la primera fila del Inicio de Apple Music: tarjetas altas con la imagen
+ * a sangre y el texto encima —la razón en chico, el título en negrita, una
+ * línea de detalle—. Acá cada tarjeta es una salida del motor propio, y la
+ * razón es literal: tu radio (según tus artistas), tu mix más pesado, lo que
+ * se desprende de tu artista más escuchado, la lista del género que
+ * elegiste, y una novedad de la portada. Sin motor —cuenta nueva, sin
+ * portada— la fila no aparece.
+ */
+function Destacadas({
+  inicio,
+  onOpenAlbum,
+  onOpenPlaylist,
+  onOpenArtist,
+}: {
+  inicio: Inicio
+  onOpenAlbum: (item: HomeItem) => void
+  onOpenPlaylist: (item: HomeItem) => void
+  onOpenArtist?: (artistId: string, nombre: string) => void
+}) {
+  const { destacadaW, destacadaH } = useMedidas()
+  const soundingTrack = usePlaybackTrack()
+  const wantPlay = useWantPlay()
+  const originId = usePlaybackOriginId()
+
+  const abrir = (item: HomeItem) => {
+    if (item.kind === 'artist') onOpenArtist?.(item.id, item.title)
+    else if (item.kind === 'album') onOpenAlbum(item)
+    else onOpenPlaylist(item)
+  }
+
+  const tarjetas: Destacada[] = []
+
+  if (inicio.radio.length) {
+    const sonando = originId === ORIGEN_RADIO && !!soundingTrack
+    tarjetas.push({
+      id: 'radio',
+      motivo: 'Hecho para vos',
+      titulo: 'Tu radio',
+      detalle: segunAnclas(inicio.anclas),
+      tapa: inicio.radio[0].artworkUrl ?? null,
+      suena: true,
+      onPress: () =>
+        sonando ? togglePlayback() : playQueue(inicio.radio, 0, { id: ORIGEN_RADIO, name: 'Tu radio' }),
+    })
+  }
+
+  const ancla = inicio.artistas[0]
+  const pariente = inicio.porque[0]
+  if (ancla && pariente) {
+    tarjetas.push({
+      id: `porque:${pariente.id}`,
+      motivo: `Porque escuchaste ${ancla.nombre}`,
+      titulo: pariente.title,
+      detalle:
+        pariente.kind === 'artist'
+          ? 'Lo escucha la misma gente que a tu artista'
+          : pariente.subtitle || 'Un disco suyo',
+      tapa: pariente.artworkUrl || null,
+      onPress: () => abrir(pariente),
+    })
+  }
+
+  for (const mix of inicio.mixes.slice(0, 2)) {
+    tarjetas.push({
+      id: `mix:${mix.artist_id}`,
+      motivo: 'Mix de artista',
+      titulo: `Mix de ${mix.artist}`,
+      detalle: 'Todo suyo y lo que escucha su gente',
+      tapa: mix.artworkUrl || null,
+      suena: true,
+      onPress: () => tocarMix(mix, originId === `mix:${mix.artist_id}` && !!soundingTrack),
+    })
+  }
+
+  const genero = inicio.misGeneros[0]
+  const deGenero = genero?.items.find((i) => i.kind === 'playlist' || i.kind === 'album')
+  if (genero && deGenero) {
+    tarjetas.push({
+      id: `genero:${deGenero.id}`,
+      motivo: `Porque elegiste ${genero.title}`,
+      titulo: deGenero.title,
+      detalle: deGenero.subtitle || genero.title,
+      tapa: deGenero.artworkUrl || null,
+      onPress: () => abrir(deGenero),
+    })
+  }
+
+  const novedad = inicio.sections.find((s) => !ES_CHART.test(s.title))
+  const deNovedad = novedad?.items.find((i) => i.kind === 'playlist' || i.kind === 'album')
+  if (novedad && deNovedad) {
+    tarjetas.push({
+      id: `novedad:${deNovedad.id}`,
+      motivo: novedad.title,
+      titulo: deNovedad.title,
+      detalle: deNovedad.subtitle || 'Lo nuevo de la portada',
+      tapa: deNovedad.artworkUrl || null,
+      onPress: () => abrir(deNovedad),
+    })
+  }
+
+  if (!tarjetas.length) return null
+
+  return (
+    <View className="gap-3">
+      <Encabezado titulo="Sugerencias destacadas para vos" />
+      <FadingRow gap={16} padding={24}>
+        {tarjetas.slice(0, MAX_DESTACADAS).map((t) => (
+          <TarjetaDestacada
+            key={t.id}
+            tarjeta={t}
+            ancho={destacadaW}
+            alto={destacadaH}
+            sonando={
+              t.id === 'radio'
+                ? originId === ORIGEN_RADIO && !!soundingTrack && wantPlay
+                : originId === t.id && !!soundingTrack && wantPlay
+            }
+          />
+        ))}
+      </FadingRow>
+    </View>
+  )
+}
+
+/**
+ * La tarjeta alta: la imagen a sangre, un velo abajo y el texto encima.
+ *
+ * Es la tarjeta de «Sugerencias destacadas» de Apple Music traducida al
+ * sistema de acá: sin color de marca, el color lo trae la tapa y el velo
+ * garantiza que el texto se lea sobre cualquiera. Cuando la tarjeta pone algo
+ * a sonar, lleva el redondel de reproducir abajo a la derecha, que es lo que
+ * la distingue de una que abre una página.
+ */
+function TarjetaDestacada({
+  tarjeta,
+  ancho,
+  alto,
+  sonando,
+}: {
+  tarjeta: Destacada
+  ancho: number
+  alto: number
+  /** Ya es la cola que suena: el redondel muestra pausa. */
+  sonando: boolean
+}) {
+  const [over, setOver] = useState(false)
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${tarjeta.motivo}: ${tarjeta.titulo}`}
+      onPress={tarjeta.onPress}
+      onPointerEnter={() => setOver(true)}
+      onPointerLeave={() => setOver(false)}
+      className="overflow-hidden rounded-2xl bg-card active:opacity-90"
+      style={{ width: ancho, height: alto }}
+    >
+      {tarjeta.tapa ? (
+        <Image
+          source={{ uri: proxiedImage(artworkUrlAtSize(tarjeta.tapa, 640)) }}
+          resizeMode="cover"
+          style={[StyleSheet.absoluteFill, { opacity: over ? 0.85 : 1 }]}
+        />
+      ) : (
+        <View className="flex-1 items-center justify-center">
+          <IconMusic size={30} color={ICON_COLOR.muted} />
+        </View>
+      )}
+      {/* El velo: tres paradas para que no se vea la línea, y más alto que en
+          una tapa chica porque acá hay tres renglones que leer. */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.86)']}
+        locations={[0.4, 0.62, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <View className="absolute inset-x-0 bottom-0 flex-row items-end gap-3 p-4">
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text
+            className="text-[12px] font-semibold"
+            numberOfLines={1}
+            style={{ color: 'rgba(255,255,255,0.72)' }}
+          >
+            {tarjeta.motivo}
+          </Text>
+          <Text
+            className="text-[18px] font-bold leading-[22px]"
+            numberOfLines={2}
+            style={{ color: '#fff', textShadowColor: 'rgba(0,0,0,0.45)', textShadowRadius: 6 }}
+          >
+            {tarjeta.titulo}
+          </Text>
+          <Text
+            className="text-[13px] leading-[17px]"
+            numberOfLines={2}
+            style={{ color: 'rgba(255,255,255,0.8)' }}
+          >
+            {tarjeta.detalle}
+          </Text>
+        </View>
+        {tarjeta.suena ? <RedondelDePlay sonando={sonando} /> : null}
+      </View>
+    </Pressable>
+  )
+}
+
+/** El redondel de reproducir sobre una tapa: blanco pleno, el único acento. */
+function RedondelDePlay({ sonando, lado = 40 }: { sonando: boolean; lado?: number }) {
+  return (
+    <View
+      className="items-center justify-center rounded-full bg-primary"
+      style={{ width: lado, height: lado }}
+    >
+      {sonando ? (
+        <IconPause size={Math.round(lado * 0.42)} color={ICON_COLOR.onPrimary} />
+      ) : (
+        <View style={{ paddingLeft: 2 }}>
+          <IconPlay size={Math.round(lado * 0.42)} color={ICON_COLOR.onPrimary} />
+        </View>
+      )}
+    </View>
+  )
+}
+
+/* ── Escuchado recientemente ──────────────────────────────────────────────── */
+
+/**
+ * «Escuchado recientemente»: las colecciones que **usás**, como cuadrados.
+ *
+ * Son las de la fila de Apple Music, y la regla es la de siempre: no son las
+ * listas que tenés sino las que sonaron últimamente, del historial. Entran tus
+ * listas, tus mixes, la radio y tus me gusta, cada una con su tapa y su tipo
+ * debajo. Antes era la grilla de losas de Spotify —tapa chica y nombre al
+ * lado, en cajas—; Apple no encierra nada: la tapa cuadrada y el texto abajo.
+ */
+function EscuchadoRecientemente({
+  origenes,
+  listas,
+  onOpenGustos,
+}: {
+  origenes: OrigenReciente[] | null
+  listas: Playlist[] | null
+  onOpenGustos?: () => void
+}) {
+  const { lado } = useMedidas()
+  if (!origenes?.length) return null
+
+  const tarjetas: ReactNode[] = []
+  for (const o of origenes) {
+    if (tarjetas.length >= 10) break
+    if (o.id === 'gustos') {
+      if (!onOpenGustos) continue
+      tarjetas.push(
+        <TarjetaCuadrada
+          key={o.id}
+          lado={lado}
+          label="Tus me gusta"
+          titulo="Tus me gusta"
+          detalle="Lo que marcaste"
+          onPress={onOpenGustos}
+          tapa={<IconHeart size={Math.round(lado * 0.28)} color={ICON_COLOR.foreground} />}
+        />,
+      )
+      continue
+    }
+    const lista = listas?.find((l) => l.id === o.id)
+    if (lista) {
+      tarjetas.push(
+        <TarjetaCuadrada
+          key={o.id}
+          lado={lado}
+          label={lista.name}
+          titulo={lista.name}
+          detalle="Lista"
+          onPress={() => abrirLista(lista.id)}
+          tapa={<PlaylistCover covers={lista.covers} coverPath={lista.coverPath} size={lado} />}
+        />,
+      )
+      continue
+    }
+    const tapaUri = artworkSource(o.artworkPath, o.artworkUrl, 400)
+    const tapa = tapaUri ? (
+      <Image source={{ uri: tapaUri }} style={{ width: lado, height: lado }} />
+    ) : (
+      <IconWave size={Math.round(lado * 0.24)} color={ICON_COLOR.muted} />
+    )
+    if (o.id.startsWith('mix:')) {
+      const artistId = o.id.slice(4)
+      const artista = o.nombre.replace(/^Mix de /, '')
+      tarjetas.push(
+        <TarjetaCuadrada
+          key={o.id}
+          lado={lado}
+          label={o.nombre || 'Mix'}
+          titulo={o.nombre || 'Mix'}
+          detalle="Mix"
+          tapa={tapa}
+          onPress={() => tocarMix({ artist_id: artistId, artist: artista, artworkUrl: tapaUri ?? '' }, false)}
+        />,
+      )
+    } else if (o.id === ORIGEN_RADIO) {
+      tarjetas.push(
+        <TarjetaCuadrada
+          key={o.id}
+          lado={lado}
+          label="Tu radio"
+          titulo="Tu radio"
+          detalle="Radio"
+          tapa={tapa}
+          onPress={() => {
+            void proximasRecomendadas().then(
+              (tanda) => tanda.length && playQueue(tanda, 0, { id: ORIGEN_RADIO, name: 'Tu radio' }),
+            )
+          }}
+        />,
+      )
+    }
+    /* Otros orígenes —una lista que ya borraste, algo de otra versión— no
+       tienen a dónde llevar y no se ofrecen. */
+  }
+  if (!tarjetas.length) return null
+
+  return (
+    <View className="gap-3">
+      <Encabezado titulo="Escuchado recientemente" />
+      <FadingRow gap={16} padding={24}>
+        {tarjetas}
+      </FadingRow>
+    </View>
+  )
+}
+
+/** De una escucha del historial a lo que dibuja la portada. */
+function escuchaComoItem(e: EscuchaReciente): HomeItem {
+  return {
+    kind: 'song',
+    id: e.videoId,
+    title: e.title,
+    subtitle: e.artist,
+    artworkUrl: artworkSource(e.artworkPath, e.artworkUrl, 128) ?? '',
+    artistId: e.artistId,
+    year: null,
+  }
+}
+
+/**
+ * «Seguir escuchando»: lo último que sonó, sin repetir. Son las columnas de
+ * canciones de la portada, alimentadas por tu historial y no por el de todos.
+ */
+function SeguirEscuchando({
+  escuchas,
+  onPlaySong,
+  menuForSong,
+  pendingId,
+}: {
+  escuchas: EscuchaReciente[] | null
+  onPlaySong: (item: HomeItem) => void
+  menuForSong: (item: HomeItem) => MenuItem[]
+  pendingId: string | null
+}) {
+  if (!escuchas?.length) return null
+  return (
+    <View className="gap-3">
+      <Encabezado titulo="Seguir escuchando" />
+      <FadingRow gap={16} padding={24}>
+        <SongColumns
+          items={escuchas.map(escuchaComoItem)}
+          onPlay={onPlaySong}
+          menuFor={menuForSong}
+          pendingId={pendingId}
+        />
+      </FadingRow>
+    </View>
+  )
+}
+
+/* ── Hecho para vos ───────────────────────────────────────────────────────── */
+
+/** Pone a sonar el mix de un artista; si ya suena, pausa o sigue. */
+function tocarMix(mix: MixPersonal, yaSuena: boolean) {
+  if (yaSuena) {
+    togglePlayback()
+    return
+  }
+  void tandaDeMix({ artist_id: mix.artist_id, artist: mix.artist, ms: 1 }).then((tanda) => {
+    if (tanda.length) playQueue(tanda, 0, { id: `mix:${mix.artist_id}`, name: `Mix de ${mix.artist}` })
+  })
+}
+
+/** «A, B y C» — los nombres de tus primeras anclas, para decir de dónde sale algo. */
+function enumerar(nombres: string[]): string {
+  if (nombres.length <= 1) return nombres[0] ?? ''
+  return `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`
+}
+
+/** La razón de la radio y la tanda: los tres artistas que más pesan en vos. */
+function segunAnclas(anclas: ArtistaEscuchado[]): string {
+  const nombres = anclas.slice(0, 3).map((a) => a.artist)
+  return nombres.length ? `Según ${enumerar(nombres)}` : 'Según tus me gusta y tus listas'
+}
+
+/**
+ * «Hecho para vos»: tu radio y tus mixes, como los mixes de Apple Music.
+ *
+ * Tapas cuadradas con el nombre **adentro**, abajo a la izquierda sobre el
+ * velo, y el redondel de reproducir: se distinguen de un disco en que tocarlas
+ * no abre nada, pone la cola a sonar. Debajo, en apagado, de dónde sale cada
+ * una. Los mixes son los artistas que más pesan en tu biblioteca
+ * (`mezclasPersonales`); la radio, el motor entero.
+ */
+function HechoParaVos({
+  radio,
+  mixes,
+  anclas,
+}: {
+  radio: PlaylistTrack[]
+  mixes: MixPersonal[]
+  anclas: ArtistaEscuchado[]
+}) {
+  const soundingTrack = usePlaybackTrack()
+  const wantPlay = useWantPlay()
+  const originId = usePlaybackOriginId()
+  const { lado } = useMedidas()
+
+  if (!radio.length && !mixes.length) return null
+
+  const sonandoRadio = originId === ORIGEN_RADIO && !!soundingTrack
+
+  return (
+    <View className="gap-3">
+      <Encabezado titulo="Hecho para vos" />
+      <FadingRow gap={16} padding={24}>
+        {radio.length ? (
+          <TarjetaConNombre
+            lado={lado}
+            tapa={radio[0].artworkUrl ?? ''}
+            nombre="Tu radio"
+            detalle={segunAnclas(anclas)}
+            sonando={sonandoRadio && wantPlay}
+            onPress={() =>
+              sonandoRadio ? togglePlayback() : playQueue(radio, 0, { id: ORIGEN_RADIO, name: 'Tu radio' })
+            }
+          />
+        ) : null}
+        {mixes.map((mix) => {
+          const suena = originId === `mix:${mix.artist_id}` && !!soundingTrack
+          return (
+            <TarjetaConNombre
+              key={mix.artist_id}
+              lado={lado}
+              tapa={mix.artworkUrl}
+              nombre={`Mix de ${mix.artist}`}
+              detalle="Por tus me gusta y tus listas"
+              sonando={suena && wantPlay}
+              onPress={() => tocarMix(mix, suena)}
+            />
+          )
+        })}
+      </FadingRow>
+    </View>
+  )
+}
+
+/**
+ * Una tapa con el nombre adentro: la radio y los mixes.
+ *
+ * El color lo trae la imagen y el velo oscuro garantiza la lectura, igual que
+ * en las tarjetas de género; el redondel dice sin palabras que acá se toca
+ * para escuchar, no para abrir nada.
+ */
+function TarjetaConNombre({
+  lado,
+  tapa,
+  nombre,
+  detalle,
+  sonando,
+  onPress,
+}: {
+  lado: number
+  tapa: string
+  nombre: string
+  detalle: string
+  /** Esta cola es la que está sonando ahora mismo, y no en pausa. */
+  sonando: boolean
+  onPress: () => void
+}) {
+  const [over, setOver] = useState(false)
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={sonando ? `Pausar ${nombre}` : `Reproducir ${nombre}`}
+      onPress={onPress}
+      onPointerEnter={() => setOver(true)}
+      onPointerLeave={() => setOver(false)}
+      className="gap-2 active:opacity-80"
+      style={{ width: lado }}
+    >
+      <View
+        className="items-center justify-center overflow-hidden rounded-lg bg-card"
+        style={{ width: lado, height: lado }}
+      >
+        {tapa ? (
+          <Image
+            source={{ uri: proxiedImage(artworkUrlAtSize(tapa, 400)) }}
+            style={{ width: lado, height: lado, opacity: over ? 0.85 : 1 }}
+          />
+        ) : (
+          <IconMusic size={26} color={ICON_COLOR.muted} />
+        )}
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.8)']}
+          locations={[0.35, 0.62, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View className="absolute inset-x-0 bottom-0 flex-row items-end gap-2 p-3">
+          <Text
+            numberOfLines={2}
+            className="min-w-0 flex-1 text-[16px] font-bold leading-[19px]"
+            style={{ color: '#fff', textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 6 }}
+          >
+            {nombre}
+          </Text>
+          <RedondelDePlay sonando={sonando} lado={34} />
+        </View>
+      </View>
+      <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+        {detalle}
+      </Text>
+    </Pressable>
+  )
+}
+
+/**
+ * «Recomendadas para vos»: la tanda concreta del motor, canción por canción.
+ *
+ * Es la misma cola que arranca «Tu radio», mostrada como las columnas de
+ * canciones de Apple Music para que se pueda ir de a una. El renglón debajo
+ * del título dice de dónde sale: tus tres anclas más pesadas y lo que
+ * escucha la gente que las escucha, que es exactamente cómo se armó.
+ */
+function Recomendadas({
+  radio,
+  anclas,
+  onPlaySong,
+  menuForSong,
+  pendingId,
+}: {
+  radio: PlaylistTrack[]
+  anclas: ArtistaEscuchado[]
+  onPlaySong: (item: HomeItem) => void
+  menuForSong: (item: HomeItem) => MenuItem[]
+  pendingId: string | null
+}) {
+  if (!radio.length) return null
+  const items: HomeItem[] = radio.map((t) => ({
+    kind: 'song' as const,
+    id: t.videoId,
+    title: t.title,
+    subtitle: t.artist,
+    artworkUrl: t.artworkUrl ?? '',
+    artistId: t.artistId,
+    year: null,
+  }))
+  const nombres = anclas.slice(0, 3).map((a) => a.artist)
+  return (
+    <View className="gap-3">
+      <Encabezado
+        titulo="Recomendadas para vos"
+        detalle={
+          nombres.length
+            ? `Según ${enumerar(nombres)}, y lo que escucha su gente`
+            : 'Según tus me gusta y tus listas'
+        }
+      />
+      <FadingRow gap={16} padding={24}>
+        <SongColumns items={items} onPlay={onPlaySong} menuFor={menuForSong} pendingId={pendingId} />
+      </FadingRow>
+    </View>
+  )
+}
+
+/* ── Artistas ─────────────────────────────────────────────────────────────── */
+
+/** Un artista en una fila: la cara redonda y el nombre debajo, centrado. */
+function TarjetaArtista({
+  nombre,
+  tapa,
+  onPress,
+}: {
+  nombre: string
+  tapa: string | null
+  onPress?: () => void
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={nombre}
+      onPress={onPress}
+      disabled={!onPress}
+      className="items-center gap-2 active:opacity-80"
+      style={{ width: ARTISTA_LADO }}
+    >
+      <View
+        className="items-center justify-center overflow-hidden bg-card"
+        style={{ width: ARTISTA_LADO, height: ARTISTA_LADO, borderRadius: ARTISTA_LADO / 2 }}
+      >
+        {tapa ? (
+          <Image
+            source={{ uri: proxiedImage(artworkUrlAtSize(tapa, 320)) }}
+            style={{ width: ARTISTA_LADO, height: ARTISTA_LADO }}
+          />
+        ) : (
+          <IconMusic size={26} color={ICON_COLOR.muted} />
+        )}
+      </View>
+      <Text className="text-center text-foreground text-[14px] font-semibold" numberOfLines={2}>
+        {nombre}
+      </Text>
+    </Pressable>
+  )
+}
+
+/**
+ * «Tus artistas»: los que más sonaron en tu historial reciente, por tiempo
+ * real. La cara es la tapa de la canción suya que más escuchaste — es la que
+ * le conocés, y no depende de que la foto del canal esté en caché.
+ */
+function TusArtistas({
+  artistas,
+  onOpenArtist,
+}: {
+  artistas: ArtistaReciente[] | null
+  onOpenArtist?: (artistId: string, nombre: string) => void
+}) {
+  if (!artistas?.length) return null
+  return (
+    <View className="gap-3">
+      <Encabezado titulo="Tus artistas" detalle="Los que más escuchaste últimamente" />
+      <FadingRow gap={16} padding={24}>
+        {artistas.map((a) => (
+          <TarjetaArtista
+            key={a.artistId}
+            nombre={a.nombre}
+            tapa={artworkSource(a.artworkPath, a.artworkUrl, 320)}
+            onPress={onOpenArtist ? () => onOpenArtist(a.artistId, a.nombre) : undefined}
+          />
+        ))}
+      </FadingRow>
+    </View>
+  )
+}
+
+/**
+ * «Porque escuchaste X»: los artistas parecidos a tu más escuchado.
+ *
+ * Es la segunda capa de la radio (ver `services/recomendaciones`) puesta como
+ * fila: el ancla sale de tu historial y los parecidos los publica YouTube en
+ * la ficha del artista como «Fans might also like». Ninguna inferencia propia,
+ * ningún dato tuyo afuera. Si la ficha no trae parecidos, van sus discos.
+ */
+function PorqueEscuchaste({
+  ancla,
+  items,
+  onOpenArtist,
+  onOpenAlbum,
+}: {
+  ancla: ArtistaReciente | null
+  /** Los parecidos, ya cargados con el resto del inicio. */
+  items: HomeItem[]
+  onOpenArtist?: (artistId: string, nombre: string) => void
+  onOpenAlbum: (item: HomeItem) => void
+}) {
+  const { lado } = useMedidas()
+  if (!ancla || !items.length) return null
+
+  return (
+    <View className="gap-3">
+      <Encabezado
+        titulo={`Porque escuchaste ${ancla.nombre}`}
+        detalle="Lo que escucha la misma gente"
+      />
+      <FadingRow gap={16} padding={24}>
+        {items.map((item) =>
+          item.kind === 'artist' ? (
+            <TarjetaArtista
+              key={item.id}
+              nombre={item.title}
+              tapa={item.artworkUrl || null}
+              onPress={onOpenArtist ? () => onOpenArtist(item.id, item.title) : undefined}
+            />
+          ) : (
+            <Card key={item.id} item={item} width={lado} onPress={() => onOpenAlbum(item)} />
+          ),
+        )}
+      </FadingRow>
+    </View>
+  )
+}
+
+/* ── Géneros ──────────────────────────────────────────────────────────────── */
 
 /**
  * La tarjeta de un género: la foto ocupa todo, el nombre abajo a la izquierda.
@@ -610,15 +1468,7 @@ function GenerosRow({
 }) {
   return (
     <View className="gap-3">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Ver todos los géneros"
-        onPress={onVerTodo}
-        className="flex-row items-center gap-1.5 self-start px-6 active:opacity-70"
-      >
-        <Text className="text-foreground text-[19px] font-bold">Géneros y momentos</Text>
-        <IconChevronRight size={17} color={ICON_COLOR.muted} />
-      </Pressable>
+      <Encabezado titulo="Géneros y momentos" onPress={onVerTodo} />
       <FadingRow gap={16} padding={24}>
         {generos.map((genero) => (
           <GeneroCard key={genero.params} genero={genero} onPress={() => onOpen(genero)} />
@@ -656,19 +1506,7 @@ function GenerosPage({
       contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
       {...colapso}
     >
-      <View className="flex-row items-center gap-3 pb-4">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Volver a la portada"
-          onPress={onBack}
-          className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
-        >
-          <IconBack size={15} color={ICON_COLOR.muted} />
-        </Pressable>
-        <Text className="text-foreground text-2xl font-bold" numberOfLines={1}>
-          Géneros y momentos
-        </Text>
-      </View>
+      <CabeceraDePagina titulo="Géneros y momentos" onBack={onBack} />
 
       {generos === null ? (
         <View className="flex-row flex-wrap gap-4">
@@ -723,6 +1561,7 @@ function GeneroPage({
   const fresco = cargado?.params === genero.params
   const piso = usePiso(24)
   const techo = useTecho(24)
+  const { lado } = useMedidas()
 
   useEffect(() => {
     if (fresco) return
@@ -737,8 +1576,7 @@ function GeneroPage({
     /*
      * El esqueleto calca la página que viene: la misma cabecera —la flecha y
      * el nombre, que ya se saben— y una grilla de cuadrados donde van a estar
-     * las tapas. Antes se prestaba el esqueleto de la portada, sin techo:
-     * quedaba pegado al reloj y con la forma de otra pantalla.
+     * las tapas.
      */
     return (
       <ScrollView
@@ -746,24 +1584,12 @@ function GeneroPage({
         contentContainerClassName="px-6"
         contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
       >
-        <View className="flex-row items-center gap-3 pb-4">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver a la portada"
-            onPress={onBack}
-            className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
-          >
-            <IconBack size={15} color={ICON_COLOR.muted} />
-          </Pressable>
-          <Text className="text-foreground text-2xl font-bold" numberOfLines={1}>
-            {genero.name}
-          </Text>
-        </View>
+        <CabeceraDePagina titulo={genero.name} onBack={onBack} />
         <View className="flex-row flex-wrap gap-4">
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
             <View key={i} className="gap-2">
-              <Skeleton width={CARD} height={CARD} radius={8} />
-              <Skeleton width={CARD * 0.7} height={13} />
+              <Skeleton width={lado} height={lado} radius={8} />
+              <Skeleton width={lado * 0.7} height={13} />
             </View>
           ))}
         </View>
@@ -790,6 +1616,36 @@ function GeneroPage({
   )
 }
 
+/** La cabecera de una página apilada del inicio: la flecha y el título. */
+function CabeceraDePagina({
+  titulo,
+  detalle,
+  onBack,
+}: {
+  titulo: string
+  detalle?: string
+  onBack: () => void
+}) {
+  return (
+    <View className="flex-row items-center gap-3 pb-4">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Volver a la portada"
+        onPress={onBack}
+        className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
+      >
+        <IconBack size={15} color={ICON_COLOR.muted} />
+      </Pressable>
+      <View className="min-w-0 flex-1">
+        <Text className="text-foreground text-2xl font-bold" numberOfLines={1}>
+          {titulo}
+        </Text>
+        {detalle ? <Text className="text-muted-foreground text-xs">{detalle}</Text> : null}
+      </View>
+    </View>
+  )
+}
+
 /** Si el inicio tiene algo propio que mostrar: con eso, la portada que falta no es un error. */
 function hayLoTuyo(i: Inicio): boolean {
   return (
@@ -801,19 +1657,33 @@ function hayLoTuyo(i: Inicio): boolean {
   )
 }
 
-function Loading({ filas = 2 }: { filas?: number }) {
+function Loading({ filas = 2, sinDestacadas = false }: { filas?: number; sinDestacadas?: boolean }) {
+  const { lado, destacadaW, destacadaH } = useMedidas()
   return (
-    <View className="gap-7">
+    <View className="gap-8">
+      {/* Calca la fila de arriba: las tarjetas altas de la vidriera. */}
+      {sinDestacadas ? null : (
+        <View className="gap-3">
+          <View className="px-6">
+            <Skeleton width={260} height={20} />
+          </View>
+          <View className="flex-row gap-4 px-6">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} width={destacadaW} height={destacadaH} radius={16} />
+            ))}
+          </View>
+        </View>
+      )}
       {Array.from({ length: filas }, (_, row) => row).map((row) => (
         <View key={row} className="gap-3">
           <View className="px-6">
-            <Skeleton width={200} height={19} />
+            <Skeleton width={200} height={20} />
           </View>
           <View className="flex-row gap-4 px-6">
             {[0, 1, 2, 3, 4].map((i) => (
               <View key={i} className="gap-2">
-                <Skeleton width={CARD} height={CARD} radius={8} />
-                <Skeleton width={CARD * 0.8} height={13} />
+                <Skeleton width={lado} height={lado} radius={8} />
+                <Skeleton width={lado * 0.8} height={13} />
               </View>
             ))}
           </View>
@@ -846,18 +1716,19 @@ function SectionPage({
   /* La cabecera de la sección arranca debajo del encabezado flotante. */
   const techo = useTecho(24)
   const colapso = useColapso()
+  const { lado: deseable } = useMedidas()
 
   /*
    * Cuántas tapas por fila, y cuánto mide cada una.
    *
-   * `CARD` deja de ser el ancho y pasa a ser lo que era en realidad: el tamaño
-   * *deseable* de una tapa. Con eso se calcula cuántas entran —nunca menos de
-   * dos, o en un teléfono angosto quedaría una sola gigante por fila— y recién
-   * ahí se reparte el ancho sobrante entre ellas, descontando los huecos.
+   * El lado de la fila es el tamaño *deseable* de una tapa. Con eso se
+   * calcula cuántas entran —nunca menos de dos, o en un teléfono angosto
+   * quedaría una sola gigante por fila— y recién ahí se reparte el ancho
+   * sobrante entre ellas, descontando los huecos.
    */
   const [ancho, setAncho] = useState(0)
-  const columnas = Math.max(2, Math.floor((ancho + GRID_GAP) / (CARD + GRID_GAP)))
-  const lado = ancho > 0 ? (ancho - GRID_GAP * (columnas - 1)) / columnas : CARD
+  const columnas = Math.max(2, Math.floor((ancho + GRID_GAP) / (deseable + GRID_GAP)))
+  const lado = ancho > 0 ? (ancho - GRID_GAP * (columnas - 1)) / columnas : deseable
 
   /* Un chart abierto conserva sus puestos: el número es parte de la sección. */
   const ranking = ES_CHART.test(section.title)
@@ -877,24 +1748,11 @@ function SectionPage({
       contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
       {...colapso}
     >
-      <View className="flex-row items-center gap-3 pb-4">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Volver a la portada"
-          onPress={onBack}
-          className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
-        >
-          <IconBack size={15} color={ICON_COLOR.muted} />
-        </Pressable>
-        <View className="min-w-0 flex-1">
-          <Text className="text-foreground text-2xl font-bold" numberOfLines={1}>
-            {section.title}
-          </Text>
-          <Text className="text-muted-foreground text-xs">
-            {section.items.length} {section.items.length === 1 ? 'cosa' : 'cosas'}
-          </Text>
-        </View>
-      </View>
+      <CabeceraDePagina
+        titulo={section.title}
+        detalle={`${section.items.length} ${section.items.length === 1 ? 'cosa' : 'cosas'}`}
+        onBack={onBack}
+      />
 
       {songs ? (
           <View className="gap-1">
@@ -911,17 +1769,10 @@ function SectionPage({
           </View>
         ) : (
           /*
-           * Grilla que **llena la fila**.
-           *
-           * Antes las tapas tenían el ancho fijo del carrusel y el `flex-wrap`
-           * decidía cuántas entraban: en el teléfono entraban dos y lo que
-           * sobraba quedaba como una franja muerta contra el borde derecho,
-           * más ancha cuanto más grande el teléfono. El ancho de la tapa no
-           * puede ser un número puesto a mano — es lo que queda de dividir la
-           * fila entre las que entran.
-           *
-           * Se mide el contenedor en vez de la ventana porque en escritorio
-           * esto vive adentro de un panel que no la ocupa entera.
+           * Grilla que **llena la fila**: el ancho de la tapa no es un número
+           * puesto a mano, es lo que queda de dividir la fila entre las que
+           * entran. Se mide el contenedor en vez de la ventana porque en
+           * escritorio esto vive adentro de un panel que no la ocupa entera.
            */
           <View className="flex-row flex-wrap gap-4" onLayout={(e) => setAncho(e.nativeEvent.layout.width)}>
             {section.items.map((item) => (
@@ -935,208 +1786,6 @@ function SectionPage({
           </View>
         )}
     </ScrollView>
-  )
-}
-
-/* ── Hecho para vos ───────────────────────────────────────────────────────── */
-
-/** El id de origen con que la radio personal entra a la cola. */
-const ORIGEN_RADIO = 'radio-personal'
-
-/**
- * La fila que habla de **vos**, ahora en tres capas.
- *
- * · **Tu radio**: una tarjeta grande que arranca la tanda del motor — anclas
- *   del historial, tus corazones, tus listas y tus semillas, con su mitad de
- *   exploración. Es la puerta grande al algoritmo propio.
- * · **Tus mixes**: un mix por artista que pesa en tu biblioteca (corazones +
- *   listas, ver `mezclasPersonales`). Tocarlo suena la radio anclada solo en
- *   ese artista — «todo suyo y lo cercano a él», sin pasar por la búsqueda.
- * · **La tanda**: las canciones concretas del motor, como siempre.
- *
- * Si el motor no tiene nada que decir —cuenta sin corazones, sin listas, sin
- * escucha y sin red— la fila entera no aparece: la portada vuelve a ser la
- * vidriera de YouTube, que es lo que era.
- *
- * No se recarga al volver a la portada: se pide una vez por montado y listo,
- * porque cada pieza cuesta varios pedidos al catálogo y esto no es más que
- * un aperitivo de la radio.
- */
-function ParaVos({
-  radio,
-  mixes,
-  onPlaySong,
-  menuForSong,
-  pendingId,
-}: {
-  /** La tanda de tu radio, ya cargada con el resto del inicio. */
-  radio: PlaylistTrack[]
-  mixes: MixPersonal[]
-  onPlaySong: (item: HomeItem) => void
-  menuForSong: (item: HomeItem) => MenuItem[]
-  pendingId: string | null
-}) {
-  const soundingTrack = usePlaybackTrack()
-  const wantPlay = useWantPlay()
-  const originId = usePlaybackOriginId()
-
-  if (!radio.length && !mixes.length) return null
-
-  const sonandoRadio = originId === ORIGEN_RADIO && !!soundingTrack
-  const tocarRadio = () => {
-    /* Ya es tu cola: tocarla pausa o sigue, como cualquier colección. */
-    if (sonandoRadio) {
-      togglePlayback()
-      return
-    }
-    if (radio.length) playQueue(radio, 0, { id: ORIGEN_RADIO, name: 'Tu radio' })
-  }
-
-  const itemsTanda: HomeItem[] | null = radio.length
-    ? radio.map((t) => ({
-        kind: 'song' as const,
-        id: t.videoId,
-        title: t.title,
-        subtitle: t.artist,
-        artworkUrl: t.artworkUrl ?? '',
-        artistId: t.artistId,
-        year: null,
-      }))
-    : null
-
-  const taparMix = (mix: MixPersonal) => {
-    void tandaDeMix({ artist_id: mix.artist_id, artist: mix.artist, ms: 1 }).then((tanda) => {
-      if (tanda.length)
-        playQueue(tanda, 0, { id: `mix:${mix.artist_id}`, name: `Mix de ${mix.artist}` })
-    })
-  }
-
-  return (
-    <View className="gap-3">
-      <Text className="px-6 text-foreground text-[19px] font-bold">Hecho para vos</Text>
-      {/* Radio y mixes comparten carrusel: la tarjeta grande abre la fila y
-          los mixes la siguen, como el hero + tiles de Apple Music. */}
-      <FadingRow gap={16} padding={24}>
-        {radio.length ? (
-          <TarjetaRadio
-            tapa={radio[0].artworkUrl ?? ''}
-            sonando={sonandoRadio}
-            playing={wantPlay}
-            onPress={tocarRadio}
-          />
-        ) : null}
-        {mixes.map((mix) => (
-          <TarjetaMix key={mix.artist_id} mix={mix} onPress={() => taparMix(mix)} />
-        ))}
-      </FadingRow>
-      {itemsTanda ? (
-        <FadingRow gap={16} padding={24}>
-          <SongColumns
-            items={itemsTanda}
-            onPlay={onPlaySong}
-            menuFor={menuForSong}
-            pendingId={pendingId}
-          />
-        </FadingRow>
-      ) : null}
-    </View>
-  )
-}
-
-/** Lado de la tarjeta de radio: la misma medida que la vidriera. */
-const RADIO_LADO = CARD_GRANDE
-
-/**
- * La tarjeta de Tu radio: la tapa de la primera canción, el botón encima.
- *
- * El color lo trae la imagen y el velo oscuro garantiza la lectura, igual que
- * en las tarjetas de género; el botón centrado dice sin palabras que acá se
- * toca para escuchar, no para abrir nada.
- */
-function TarjetaRadio({
-  tapa,
-  sonando,
-  playing,
-  onPress,
-}: {
-  tapa: string
-  /** Esta cola es la que está sonando ahora mismo. */
-  sonando: boolean
-  playing: boolean
-  onPress: () => void
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={sonando && playing ? 'Pausar tu radio' : 'Reproducir tu radio'}
-      onPress={onPress}
-      className="gap-2 active:opacity-80"
-      style={{ width: RADIO_LADO }}
-    >
-      <View
-        className="overflow-hidden rounded-lg bg-card"
-        style={{ width: RADIO_LADO, height: RADIO_LADO }}
-      >
-        {tapa ? (
-          <Image
-            source={{ uri: proxiedImage(artworkUrlAtSize(tapa, 400)) }}
-            style={{ width: RADIO_LADO, height: RADIO_LADO }}
-          />
-        ) : (
-          <View className="flex-1 items-center justify-center">
-            <IconMusic size={26} color={ICON_COLOR.muted} />
-          </View>
-        )}
-        <LinearGradient
-          pointerEvents="none"
-          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.28)', 'rgba(0,0,0,0.78)']}
-          locations={[0.35, 0.62, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-        <View className="absolute inset-0 items-center justify-center">
-          <View className="h-16 w-16 items-center justify-center rounded-full bg-black/45">
-            {sonando && playing ? (
-              <IconPause size={24} color="#fff" />
-            ) : (
-              <View style={{ paddingLeft: 3 }}>
-                <IconPlay size={24} color="#fff" />
-              </View>
-            )}
-          </View>
-        </View>
-        <Text
-          numberOfLines={1}
-          className="absolute bottom-2.5 left-3 right-3 text-foreground text-[15px] font-bold"
-          style={{ textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 6 }}
-        >
-          Tu radio
-        </Text>
-      </View>
-      <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
-        según tus me gusta y tus listas
-      </Text>
-    </Pressable>
-  )
-}
-
-/**
- * Un mix de artista, con la forma de las tarjetas de álbum.
- *
- * Se distingue de un disco en el título («Mix de …») y en el comportamiento:
- * tocarlo no abre página alguna, pone la cola a sonar — el mix es un destino
- * audible, no una pantalla más que atravesar.
- */
-function TarjetaMix({ mix, onPress }: { mix: MixPersonal; onPress: () => void }) {
-  return (
-    <Card item={{
-      kind: 'playlist',
-      id: `mix:${mix.artist_id}`,
-      title: `Mix de ${mix.artist}`,
-      subtitle: mix.artist,
-      artworkUrl: mix.artworkUrl,
-      artistId: null,
-      year: null,
-    }} width={CARD} onPress={onPress} />
   )
 }
 
@@ -1154,6 +1803,8 @@ type Inicio = {
   listas: Playlist[]
   radio: PlaylistTrack[]
   mixes: MixPersonal[]
+  /** Tus anclas, de más a menos peso: con ellas el inicio dice «según X, Y y Z». */
+  anclas: ArtistaEscuchado[]
   /** Lo que se desprende de tu artista más escuchado. */
   porque: HomeItem[]
   /**
@@ -1178,13 +1829,13 @@ function oVacio<T>(p: Promise<T>, vacio: T): Promise<T> {
 /**
  * Todo lo que dibuja el inicio, leído junto.
  *
- * Son nueve pedidos —la portada, los géneros, las semillas y sus filas, tu
- * historial en tres vistas, tus listas, la radio y los mixes, y los parecidos
- * de tu artista más escuchado— que antes llegaban cada uno por su lado y hoy
- * salen en paralelo y se entregan de una sola vez. `null` mientras no está
- * todo; después, la portada entera. Lo que falló o tardó de más llega vacío y
- * su fila no se dibuja: el historial es un lujo, la portada un adorno, y
- * ninguno de los dos puede dejar la pantalla en blanco.
+ * Son diez pedidos —la portada, los géneros, las semillas y sus filas, tu
+ * historial en tres vistas, tus listas, la radio, los mixes, tus anclas y
+ * los parecidos de tu artista más escuchado— que salen en paralelo y se
+ * entregan de una sola vez. `null` mientras no está todo; después, la
+ * portada entera. Lo que falló o tardó de más llega vacío y su fila no se
+ * dibuja: el historial es un lujo, la portada un adorno, y ninguno de los
+ * dos puede dejar la pantalla en blanco.
  */
 function useInicio(): { inicio: Inicio | null; recargar: () => void } {
   const [inicio, setInicio] = useState<Inicio | null>(null)
@@ -1206,7 +1857,7 @@ function useInicio(): { inicio: Inicio | null; recargar: () => void } {
           portadaLlego = true
           return secs
         })
-      const [sections, generos, semillas, escuchas, origenes, artistas, listas, radio, mixes] =
+      const [sections, generos, semillas, escuchas, origenes, artistas, listas, radio, mixes, anclas] =
         await Promise.all([
           oVacio(portada, []),
           oVacio(fetchGeneros(), []),
@@ -1217,6 +1868,7 @@ function useInicio(): { inicio: Inicio | null; recargar: () => void } {
           oVacio(listPlaylists(), []),
           oVacio(proximasRecomendadas(), []),
           oVacio(mezclasPersonales(6), []),
+          oVacio(anclasPersonales(), []),
         ])
       /* Dos pedidos dependen de lo anterior: las filas de los géneros
          elegidos y los parecidos del artista más escuchado. Van juntos. */
@@ -1238,7 +1890,8 @@ function useInicio(): { inicio: Inicio | null; recargar: () => void } {
         artistas,
         listas,
         radio,
-        mixes: conTapa(mixes, artistas, escuchas),
+        mixes: conTapa(mixes, artistas, escuchas, radio),
+        anclas,
         porque,
         portadaPendiente: !portadaLlego,
       })
@@ -1266,317 +1919,28 @@ function useInicio(): { inicio: Inicio | null; recargar: () => void } {
  * Los mixes con tapa, sí o sí.
  *
  * `mezclasPersonales` toma la primera carátula que encuentra entre tus
- * corazones y tus listas; si el artista entró solo por tiempo escuchado, no
- * hay ninguna. El historial sí la tiene —guarda la tapa de cada escucha— y de
- * ahí se completa. Un mix sin tapa era el cuadrado gris que se veía antes.
+ * corazones y tus listas; si esas filas no la guardaron —son viejas, o el
+ * artista entró solo por tiempo escuchado— no hay ninguna. El historial sí
+ * la tiene —guarda la tapa de cada escucha—, y si tampoco, la tanda de la
+ * radio: viene del catálogo con carátula fresca y casi siempre trae una
+ * canción del mismo artista. Un mix sin tapa era el cuadrado gris que se
+ * veía antes.
  */
 function conTapa(
   mixes: MixPersonal[],
   artistas: ArtistaReciente[],
   escuchas: EscuchaReciente[],
+  radio: PlaylistTrack[],
 ): MixPersonal[] {
   return mixes.map((m) => {
     if (m.artworkUrl) return m
     const del =
       artistas.find((a) => a.artistId === m.artist_id) ??
       escuchas.find((e) => e.artistId === m.artist_id)
-    const tapa = del ? artworkSource(del.artworkPath, del.artworkUrl, 400) : null
+    const tapa =
+      (del ? artworkSource(del.artworkPath, del.artworkUrl, 400) : null) ??
+      radio.find((t) => t.artistId === m.artist_id && t.artworkUrl)?.artworkUrl ??
+      null
     return tapa ? { ...m, artworkUrl: tapa } : m
   })
-}
-
-/**
- * El saludo, por la hora: es lo primero que dice el inicio de Spotify, y es la
- * forma más barata de que la pantalla sea de alguien y no de todos. Con el
- * nombre visible si lo puso; si no, a secas.
- */
-function Saludo() {
-  const perfil = useMyProfile()
-  const hora = new Date().getHours()
-  const saludo = hora < 6 ? 'Buenas noches' : hora < 13 ? 'Buenos días' : hora < 20 ? 'Buenas tardes' : 'Buenas noches'
-  const nombre = perfil?.displayName?.trim()
-  return (
-    <Text className="px-6 text-foreground text-[26px] font-bold">
-      {nombre ? `${saludo}, ${nombre.split(' ')[0]}` : saludo}
-    </Text>
-  )
-}
-
-/** Lo que una losa de la grilla puede abrir o poner a sonar. */
-type Acceso = {
-  id: string
-  nombre: string
-  tapa: ReactNode
-  onPress: () => void
-}
-
-/**
- * La grilla de accesos: las colecciones que **usás**, dos por fila.
- *
- * Es la grilla de arriba del inicio de Spotify, y su regla es la misma: no son
- * las listas que tenés sino las que sonaron últimamente, del historial. Entran
- * tus listas, tus mixes y la radio; «Tus me gusta» va siempre primero porque
- * es la colección que todo el mundo tiene. Sin historial, la grilla es esa
- * sola losa —una fila de una— y no se dibuja: una grilla de uno no es grilla.
- */
-function AccesosRapidos({
-  origenes,
-  listas,
-  onOpenGustos,
-}: {
-  origenes: OrigenReciente[] | null
-  listas: Playlist[] | null
-  onOpenGustos?: () => void
-}) {
-  if (!origenes?.length) return null
-
-  const accesos: Acceso[] = []
-  if (onOpenGustos) {
-    accesos.push({
-      id: 'gustos',
-      nombre: 'Tus me gusta',
-      tapa: (
-        <View className="h-14 w-14 items-center justify-center rounded-l-lg bg-muted">
-          <IconHeart size={20} color={ICON_COLOR.foreground} />
-        </View>
-      ),
-      onPress: onOpenGustos,
-    })
-  }
-  for (const o of origenes) {
-    if (accesos.length >= 6) break
-    if (o.id === 'gustos') continue
-    const lista = listas?.find((l) => l.id === o.id)
-    if (lista) {
-      accesos.push({
-        id: o.id,
-        nombre: lista.name,
-        tapa: <PlaylistCover covers={lista.covers} coverPath={lista.coverPath} size={56} rounded="rounded-l-lg" />,
-        onPress: () => abrirLista(lista.id),
-      })
-      continue
-    }
-    const tapaUri = artworkSource(o.artworkPath, o.artworkUrl, 128)
-    const tapa = tapaUri ? (
-      <Image source={{ uri: tapaUri }} className="h-14 w-14 rounded-l-lg bg-muted" />
-    ) : (
-      <View className="h-14 w-14 items-center justify-center rounded-l-lg bg-muted">
-        <IconWave size={20} color={ICON_COLOR.muted} />
-      </View>
-    )
-    if (o.id.startsWith('mix:')) {
-      const artistId = o.id.slice(4)
-      accesos.push({
-        id: o.id,
-        nombre: o.nombre || 'Mix',
-        tapa,
-        onPress: () => {
-          void tandaDeMix({ artist_id: artistId, artist: o.nombre.replace(/^Mix de /, ''), ms: 1 }).then(
-            (tanda) => tanda.length && playQueue(tanda, 0, { id: o.id, name: o.nombre }),
-          )
-        },
-      })
-    } else if (o.id === ORIGEN_RADIO) {
-      accesos.push({
-        id: o.id,
-        nombre: 'Tu radio',
-        tapa,
-        onPress: () => {
-          void proximasRecomendadas().then(
-            (tanda) => tanda.length && playQueue(tanda, 0, { id: ORIGEN_RADIO, name: 'Tu radio' }),
-          )
-        },
-      })
-    }
-    /* Otros orígenes —una lista que ya borraste, algo de otra versión— no
-       tienen a dónde llevar y no se ofrecen. */
-  }
-  if (accesos.length < 2) return null
-
-  return (
-    <View className="flex-row flex-wrap gap-2 px-6">
-      {accesos.map((a) => (
-        <Losa key={a.id} acceso={a} />
-      ))}
-    </View>
-  )
-}
-
-/** Una losa de la grilla: tapa a la izquierda, nombre al lado. Media fila. */
-function Losa({ acceso }: { acceso: Acceso }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={acceso.nombre}
-      onPress={acceso.onPress}
-      className="h-14 flex-row items-center overflow-hidden rounded-lg bg-card active:opacity-80"
-      style={{ width: '48.5%' }}
-    >
-      {acceso.tapa}
-      <Text className="min-w-0 flex-1 px-3 text-foreground text-[13px] font-semibold" numberOfLines={2}>
-        {acceso.nombre}
-      </Text>
-    </Pressable>
-  )
-}
-
-/** De una escucha del historial a lo que dibuja la portada. */
-function escuchaComoItem(e: EscuchaReciente): HomeItem {
-  return {
-    kind: 'song',
-    id: e.videoId,
-    title: e.title,
-    subtitle: e.artist,
-    artworkUrl: artworkSource(e.artworkPath, e.artworkUrl, 128) ?? '',
-    artistId: e.artistId,
-    year: null,
-  }
-}
-
-/**
- * «Seguir escuchando»: lo último que sonó, sin repetir. Son las columnas de
- * canciones de la portada, alimentadas por tu historial y no por el de todos.
- */
-function SeguirEscuchando({
-  escuchas,
-  onPlaySong,
-  menuForSong,
-  pendingId,
-}: {
-  escuchas: EscuchaReciente[] | null
-  onPlaySong: (item: HomeItem) => void
-  menuForSong: (item: HomeItem) => MenuItem[]
-  pendingId: string | null
-}) {
-  if (!escuchas?.length) return null
-  return (
-    <View className="gap-3">
-      <Text className="px-6 text-foreground text-[19px] font-bold">Seguir escuchando</Text>
-      <FadingRow gap={16} padding={24}>
-        <SongColumns
-          items={escuchas.map(escuchaComoItem)}
-          onPlay={onPlaySong}
-          menuFor={menuForSong}
-          pendingId={pendingId}
-        />
-      </FadingRow>
-    </View>
-  )
-}
-
-/** Lado de la cara de un artista en su fila. Más chico que una tapa: es un redondel. */
-const ARTISTA_LADO = 140
-
-/** Un artista en una fila: la cara redonda y el nombre debajo, centrado. */
-function TarjetaArtista({
-  nombre,
-  tapa,
-  onPress,
-}: {
-  nombre: string
-  tapa: string | null
-  onPress?: () => void
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={nombre}
-      onPress={onPress}
-      disabled={!onPress}
-      className="items-center gap-2 active:opacity-80"
-      style={{ width: ARTISTA_LADO }}
-    >
-      <View
-        className="items-center justify-center overflow-hidden bg-card"
-        style={{ width: ARTISTA_LADO, height: ARTISTA_LADO, borderRadius: ARTISTA_LADO / 2 }}
-      >
-        {tapa ? (
-          <Image
-            source={{ uri: proxiedImage(artworkUrlAtSize(tapa, 320)) }}
-            style={{ width: ARTISTA_LADO, height: ARTISTA_LADO }}
-          />
-        ) : (
-          <IconMusic size={26} color={ICON_COLOR.muted} />
-        )}
-      </View>
-      <Text className="text-center text-foreground text-[13px] font-semibold" numberOfLines={2}>
-        {nombre}
-      </Text>
-    </Pressable>
-  )
-}
-
-/**
- * «Tus artistas»: los que más sonaron en tu historial reciente, por tiempo
- * real. La cara es la tapa de la canción suya que más escuchaste — es la que
- * le conocés, y no depende de que la foto del canal esté en caché.
- */
-function TusArtistas({
-  artistas,
-  onOpenArtist,
-}: {
-  artistas: ArtistaReciente[] | null
-  onOpenArtist?: (artistId: string, nombre: string) => void
-}) {
-  if (!artistas?.length) return null
-  return (
-    <View className="gap-3">
-      <Text className="px-6 text-foreground text-[19px] font-bold">Tus artistas</Text>
-      <FadingRow gap={16} padding={24}>
-        {artistas.map((a) => (
-          <TarjetaArtista
-            key={a.artistId}
-            nombre={a.nombre}
-            tapa={artworkSource(a.artworkPath, a.artworkUrl, 320)}
-            onPress={onOpenArtist ? () => onOpenArtist(a.artistId, a.nombre) : undefined}
-          />
-        ))}
-      </FadingRow>
-    </View>
-  )
-}
-
-/**
- * «Porque escuchaste X»: los artistas parecidos a tu más escuchado.
- *
- * Es la segunda capa de la radio (ver `services/recomendaciones`) puesta como
- * fila: el ancla sale de tu historial y los parecidos los publica YouTube en
- * la ficha del artista como «Fans might also like». Ninguna inferencia propia,
- * ningún dato tuyo afuera. Si la ficha no trae parecidos, van sus discos.
- */
-function PorqueEscuchaste({
-  ancla,
-  items,
-  onOpenArtist,
-  onOpenAlbum,
-}: {
-  ancla: ArtistaReciente | null
-  /** Los parecidos, ya cargados con el resto del inicio. */
-  items: HomeItem[]
-  onOpenArtist?: (artistId: string, nombre: string) => void
-  onOpenAlbum: (item: HomeItem) => void
-}) {
-  if (!ancla || !items.length) return null
-
-  return (
-    <View className="gap-3">
-      <Text className="px-6 text-foreground text-[19px] font-bold" numberOfLines={1}>
-        Porque escuchaste {ancla.nombre}
-      </Text>
-      <FadingRow gap={16} padding={24}>
-        {items.map((item) =>
-          item.kind === 'artist' ? (
-            <TarjetaArtista
-              key={item.id}
-              nombre={item.title}
-              tapa={item.artworkUrl || null}
-              onPress={onOpenArtist ? () => onOpenArtist(item.id, item.title) : undefined}
-            />
-          ) : (
-            <Card key={item.id} item={item} onPress={() => onOpenAlbum(item)} />
-          ),
-        )}
-      </FadingRow>
-    </View>
-  )
 }

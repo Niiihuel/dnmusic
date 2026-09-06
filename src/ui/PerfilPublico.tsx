@@ -14,6 +14,7 @@ import Animated, {
   runOnJS,
   LinearTransition,
   ReduceMotion,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -49,11 +50,13 @@ import { useMyProfile } from '../state/session'
 import type { Encuadre } from '../services/profile'
 import { Avatar } from './Avatar'
 import { Glass } from './Glass'
+import { IconRedimensionar } from './icons'
 import { estiloEncuadrado } from './Encuadre'
 import { aireDelMarco, Marco } from './Marco'
 import { Confirmar } from './Confirmar'
+import { EfectoPerfil } from './DecoracionImagen'
 import { EMOJIS } from './Reacciones'
-import { Vitrina, type Redimension } from './Vitrina'
+import { Vitrina } from './Vitrina'
 
 /**
  * El fondo del perfil: la imagen entera, detrás de todo.
@@ -111,10 +114,13 @@ export function alturaDeHeroe(
 export function FondoPerfil({
   bannerPath,
   encuadre = null,
+  efecto = null,
 }: {
   bannerPath: string | null
   /** Cómo mirar el fondo. Solo se aplica a imágenes: un clip va tal cual. */
   encuadre?: Encuadre | null
+  /** El efecto animado encima del fondo, arriba. Ver `ui/DecoracionImagen`. */
+  efecto?: string | null
 }) {
   const ruta = hayFondo(bannerPath) ? bannerPath! : null
   const uri = ruta ? ilustracionUrl(ruta) : null
@@ -140,6 +146,7 @@ export function FondoPerfil({
           locations={[0, 0.6, 1]}
           style={{ flex: 1 }}
         />
+        <EfectoPerfil id={efecto} alto={300} />
       </View>
     )
   }
@@ -184,6 +191,8 @@ export function FondoPerfil({
         locations={[0, 0.45, 1]}
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 300 }}
       />
+      {/* El efecto va sobre el velo, no debajo: es lo que hay que ver. */}
+      <EfectoPerfil id={efecto} alto={320} />
     </View>
   )
 }
@@ -689,100 +698,110 @@ export function Vitrinas({
   }, [necesitaListas, listas, esMio, ownerId])
 
   /*
-   * El agarre: lo que las celdas comparten para arrastrarse.
+   * El agarre: lo que las celdas comparten para arrastrarse y estirarse.
    *
    * Los valores del gesto viven en shared values —decenas de eventos por
    * segundo, un render por cada uno mataría la lista— y las medidas de las
-   * celdas en refs: se toman **al empezar cada arrastre** con
-   * `measureInWindow`, así el scroll previo no las deja viejas.
+   * celdas también: cada celda informa su `onLayout` (en coordenadas del
+   * mosaico, que es el mismo sistema en el que se mueve el dedo) y el worklet
+   * del arrastre las lee para decidir **en vivo** sobre qué celda está la
+   * pieza. Es la mecánica de react-grid-layout: mientras arrastrás, el hueco
+   * donde va a caer se corre con vos y las demás piezas se acomodan alrededor;
+   * al soltar, la pieza ya está donde la ves.
    */
   const activa = useSharedValue(-1)
   const dx = useSharedValue(0)
   const dy = useSharedValue(0)
+  /** La celda agarrada, tal como estaba al empezar: de ahí sale a dónde va la
+   *  pieza que sigue al dedo aunque su hueco ya se haya movido. */
+  const origen = useSharedValue<Rect>({ x: 0, y: 0, w: 0, h: 0 })
+  const rects = useSharedValue<Rect[]>([])
+  /** Hubo un reacomodo y las medidas todavía son las viejas: no se decide con ellas. */
+  const pendiente = useSharedValue(false)
+  /** El estirado: qué celda, y el rectángulo de la banda que sigue al dedo. */
+  const estirando = useSharedValue(-1)
+  const banda = useSharedValue<{ w: number; h: number } | null>(null)
+  const anchoMosaico = useSharedValue(0)
   const refs = useRef(new Map<number, MedibleRef>())
-  const rects = useRef(new Map<number, Rect>())
+  const rectsRef = useRef<Rect[]>([])
+  /* Lo que se ve, siempre a mano para los callbacks del gesto: un `useState`
+     leído desde un closure viejo mostraría el orden de antes de arrastrar. */
+  const vitrinasRef = useRef<Showcase[] | null>(null)
+  useEffect(() => {
+    vitrinasRef.current = vitrinas
+  }, [vitrinas])
+  const ordenInicial = useRef<Showcase[] | null>(null)
+  const tamanoInicial = useRef<{ id: string; ancho: ShowcaseAncho } | null>(null)
 
-  const medir = useCallback(() => {
-    rects.current.clear()
-    refs.current.forEach((ref, i) => {
-      ref?.measureInWindow?.((x, y, w, h) => rects.current.set(i, { x, y, w, h }))
-    })
-  }, [])
+  const onLayoutCelda = useCallback(
+    (i: number, r: Rect) => {
+      rectsRef.current[i] = r
+      // eslint-disable-next-line react-hooks/immutability -- API de un SharedValue
+      rects.value = [...rectsRef.current]
+    },
+    [rects],
+  )
 
-  /*
-   * Dónde cayó: la celda cuyo centro quede más cerca del centro de la
-   * arrastrada. Distancia y no contención porque entre celdas hay huecos de
-   * grilla, y soltar en un hueco tiene que caer en la vecina más cercana, no
-   * en la nada.
+  /**
+   * Mover una es reescribir el orden de todas, **en pantalla al toque**.
+   *
+   * Durante el arrastre esto corre cada vez que la pieza cruza a otra celda:
+   * el orden cambia, las demás se corren (con su animación de layout) y el
+   * hueco aparece donde va a caer. Al servidor no se le dice nada hasta
+   * soltar. Las medidas quedan marcadas como viejas hasta que las celdas
+   * vuelvan a medirse: decidir el próximo destino con las de antes hacía que
+   * la pieza fuera y volviera entre dos huecos.
    */
-  function soltar(desde: number, tx: number, ty: number) {
-    // El gesto y el orden se actualizan juntos, sin volver primero al origen.
-    activa.value = -1
-    dx.value = 0
-    dy.value = 0
-    const propio = rects.current.get(desde)
-    if (!propio) {
-      onArrastre?.(false)
-      return
-    }
-    const cx = propio.x + propio.w / 2 + tx
-    const cy = propio.y + propio.h / 2 + ty
-    let mejor = desde
-    let distancia = Infinity
-    rects.current.forEach((r, i) => {
-      const d = (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2
-      if (d < distancia) {
-        distancia = d
-        mejor = i
-      }
-    })
-    if (mejor !== desde) mover(desde, mejor)
+  const moverA = useCallback(
+    (desde: number, hacia: number) => {
+      setVitrinas((prev) => {
+        if (!prev || hacia < 0 || hacia >= prev.length || desde === hacia) return prev
+        const proximo = [...prev]
+        const [sacada] = proximo.splice(desde, 1)
+        proximo.splice(hacia, 0, sacada)
+        return proximo
+      })
+      // eslint-disable-next-line react-hooks/immutability -- API de un SharedValue
+      pendiente.value = true
+      setTimeout(() => {
+        pendiente.value = false
+      }, 90)
+    },
+    [pendiente],
+  )
+
+  const empezar = useCallback(
+    (i: number) => {
+      ordenInicial.current = vitrinasRef.current
+      onArrastre?.(true)
+    },
+    [onArrastre],
+  )
+
+  /** Soltar: el orden que se ve es el que queda; recién ahora se guarda. */
+  const soltar = useCallback(() => {
+    const inicial = ordenInicial.current
+    ordenInicial.current = null
+    const actual = vitrinasRef.current
     onArrastre?.(false)
-  }
-
-  function empezarArrastre() {
-    medir()
-    onArrastre?.(true)
-  }
-
-  const cancelarArrastre = () => onArrastre?.(false)
-
-  const agarre: Agarre = {
-    activa,
-    dx,
-    dy,
-    refs,
-    empezar: empezarArrastre,
-    soltar,
-    cancelar: cancelarArrastre,
-  }
-
-  if (vitrinas === null) return null
-  if (!vitrinas.length) return <>{vacio}</>
-
-  /*
-   * Mover una es reescribir el orden de todas.
-   *
-   * Las posiciones son relativas entre sí, así que subir la tercera cambia
-   * también el lugar de la segunda. Se manda la lista entera y no la que se
-   * movió — es lo que espera `reorderShowcases`.
-   *
-   * Se reordena en pantalla al toque y se guarda después: esperar la respuesta
-   * del servidor para mover una tarjeta hace que el botón se sienta roto.
-   */
-  function mover(desde: number, hacia: number) {
-    if (!vitrinas || hacia < 0 || hacia >= vitrinas.length) return
-    const proximo = [...vitrinas]
-    const [sacada] = proximo.splice(desde, 1)
-    proximo.splice(hacia, 0, sacada)
-    setVitrinas(proximo)
-    reorderShowcases(proximo.map((v) => v.id)).catch((e: unknown) => {
+    if (!inicial || !actual) return
+    const cambio = inicial.some((v, i) => v.id !== actual[i]?.id)
+    if (!cambio) return
+    reorderShowcases(actual.map((v) => v.id)).catch((e: unknown) => {
       /* Se vuelve a leer para que la pantalla no quede mostrando un orden que
          el servidor no aceptó. */
       onCambio()
       avisar(mensajeError(e), true)
     })
-  }
+  }, [onArrastre, onCambio])
+
+  /** El gesto se cortó: vuelve el orden de antes de agarrar. */
+  const cancelar = useCallback(() => {
+    const inicial = ordenInicial.current
+    ordenInicial.current = null
+    if (inicial) setVitrinas(inicial)
+    onArrastre?.(false)
+  }, [onArrastre])
 
   /**
    * Cambiar cuánto ocupa una: en pantalla al toque, en el servidor después.
@@ -799,19 +818,77 @@ export function Vitrinas({
     })
   }
 
-  /**
-   * La manija se arrastró: hacia la derecha ensancha, hacia abajo agranda,
-   * y en sentido contrario achica. Un paso por arrastre, dentro de lo que el
-   * tipo admite —un encabezado no tiene «grande»—; si no hay a dónde ir, no
-   * pasa nada.
+  /*
+   * El estirado, en vivo: mientras arrastrás el asa, una banda sigue al dedo
+   * con el tamaño crudo y la pieza **salta al tamaño que ese rectángulo
+   * implica** —media fila, la fila, el doble—, como el placeholder de
+   * react-grid-layout. Al soltar se guarda lo que quedó.
    */
-  function redimensionar(v: Showcase, direccion: Redimension) {
+  const empezarEstirar = useCallback(
+    (i: number) => {
+      const v = vitrinasRef.current?.[i]
+      if (v) tamanoInicial.current = { id: v.id, ancho: v.ancho }
+      onArrastre?.(true)
+    },
+    [onArrastre],
+  )
+  const estirarA = useCallback((i: number, cols: number, filas: number) => {
+    const actual = vitrinasRef.current
+    const v = actual?.[i]
+    if (!actual || !v) return
     const anchos = anchosDe(v.kind)
-    const i = anchos.indexOf(v.ancho)
-    const crece = direccion === 'ancho' || direccion === 'alto'
-    const siguiente = anchos[i + (crece ? 1 : -1)]
-    if (siguiente && siguiente !== v.ancho) cambiarAncho(v.id, siguiente)
+    const deseado: ShowcaseAncho =
+      cols >= 2 && filas >= 2 && anchos.includes('grande')
+        ? 'grande'
+        : cols >= 2
+          ? 'entero'
+          : 'mitad'
+    if (v.ancho === deseado) return
+    setVitrinas(actual.map((x) => (x.id === v.id ? { ...x, ancho: deseado } : x)))
+  }, [])
+  const soltarEstirar = useCallback(() => {
+    const inicial = tamanoInicial.current
+    tamanoInicial.current = null
+    onArrastre?.(false)
+    if (!inicial) return
+    const v = vitrinasRef.current?.find((x) => x.id === inicial.id)
+    if (!v || v.ancho === inicial.ancho) return
+    setShowcaseAncho(v.id, v.ancho).catch((e: unknown) => {
+      onCambio()
+      avisar(mensajeError(e), true)
+    })
+  }, [onArrastre, onCambio])
+  /** Tocar el asa sin arrastrar: el tamaño siguiente. Es la puerta del teclado y del toque corto. */
+  const tocarAsa = useCallback((i: number) => {
+    const v = vitrinasRef.current?.[i]
+    if (v) cambiarAncho(v.id, siguienteAncho(v.ancho, v.kind))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lee del ref, no de `vitrinas`
+  }, [])
+
+  const agarre: Agarre = {
+    activa,
+    dx,
+    dy,
+    origen,
+    rects,
+    pendiente,
+    estirando,
+    banda,
+    anchoMosaico,
+    refs,
+    onLayoutCelda,
+    empezar,
+    moverA,
+    soltar,
+    cancelar,
+    empezarEstirar,
+    estirarA,
+    soltarEstirar,
+    tocarAsa,
   }
+
+  if (vitrinas === null) return null
+  if (!vitrinas.length) return <>{vacio}</>
 
   function sacar(v: Showcase) {
     setPorSacar(null)
@@ -905,12 +982,18 @@ export function Vitrinas({
   return (
     /* Las celdas mantienen su identidad al cambiar de fila: el layout puede
        animarse sin desmontar reproductores ni volver a pedir imágenes. */
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
+    <View
+      style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}
+      onLayout={(e) => {
+        anchoMosaico.value = e.nativeEvent.layout.width
+      }}
+    >
       {vitrinas.map((v, i) => (
         <CeldaDeMosaico
           key={v.id}
           indice={i}
           mitad={v.ancho === 'mitad'}
+          filas={v.ancho === 'grande' ? 2 : 1}
           agarre={agarre}
           editando={editando}
           onApreton={apretonDe(v, i)}
@@ -944,10 +1027,6 @@ export function Vitrinas({
             editando={editando}
             onRemove={editando ? () => pedirSacar(v) : undefined}
             onEditar={editando ? onEditar : undefined}
-            onRedimensionar={editando ? (d) => redimensionar(v, d) : undefined}
-            onAncho={
-              editando ? () => cambiarAncho(v.id, siguienteAncho(v.ancho, v.kind)) : undefined
-            }
           />
         </CeldaDeMosaico>
       ))}
@@ -1072,39 +1151,69 @@ type MedibleRef = {
 
 type Rect = { x: number; y: number; w: number; h: number }
 
-/** Lo que las celdas comparten para arrastrarse. Lo arma `Vitrinas`. */
+/** Lo que las celdas comparten para arrastrarse y estirarse. Lo arma `Vitrinas`. */
 type Agarre = {
   activa: SharedValue<number>
   dx: SharedValue<number>
   dy: SharedValue<number>
+  origen: SharedValue<Rect>
+  rects: SharedValue<Rect[]>
+  pendiente: SharedValue<boolean>
+  estirando: SharedValue<number>
+  banda: SharedValue<{ w: number; h: number } | null>
+  anchoMosaico: SharedValue<number>
   refs: MutableRefObject<Map<number, MedibleRef>>
-  empezar: () => void
-  soltar: (desde: number, tx: number, ty: number) => void
+  onLayoutCelda: (i: number, r: Rect) => void
+  empezar: (i: number) => void
+  moverA: (desde: number, hacia: number) => void
+  soltar: () => void
   cancelar: () => void
+  empezarEstirar: (i: number) => void
+  estirarA: (i: number, cols: number, filas: number) => void
+  soltarEstirar: () => void
+  tocarAsa: (i: number) => void
 }
 
+/** El aire alrededor de cada pieza: la mitad del hueco entre dos. */
+const AIRE_CELDA = 6
+/** Cuánto hay que pasar de la mitad de una columna o una fila para que la pieza cambie de tamaño. */
+const UMBRAL = 0.5
+
 /**
- * Una celda del mosaico que sabe seguir al dedo.
+ * Una celda del mosaico que sabe seguir al dedo, **y decir dónde va a caer**.
  *
- * La física es la de la cola (`EncoladaArrastrable`), adaptada a dos
- * dimensiones: la celda agarrada sigue al puntero apenas agrandada y por
- * encima, y las demás **se apagan un poco** en vez de correrse — con alturas
- * variables y filas de a dos, la corrida en vivo miente más de lo que ayuda, y
- * el reacomodo real se ve al soltar, animado por el re-render.
+ * Es la mecánica de react-grid-layout traída al mosaico: la pieza agarrada
+ * sigue al puntero apenas agrandada y por encima, y su **hueco** —un
+ * rectángulo punteado del tamaño de la pieza— se mueve en vivo a la celda
+ * sobre la que está, corriendo a las demás con su animación de layout. Al
+ * soltar no pasa nada nuevo: la pieza ya está donde el hueco decía. Antes las
+ * demás solo se apagaban y el reacomodo se veía recién al soltar, que es
+ * exactamente lo que hace dudar antes de soltar.
  *
- * Armando, **la tarjeta entera es la manija**: antes había un ícono de tres
- * líneas en la esquina, y era el único lugar de donde se podía tirar. Con el
- * contenido quieto (ver `Vitrina`), no hay toques que robar, y agarrar la
- * pieza de donde sea es lo que uno espera de un mosaico. Y tiembla apenas, como
- * los widgets del iPhone: es lo que dice «ahora se mueven».
+ * El destino se decide en el hilo de la interfaz con las medidas de las celdas
+ * (`rects`, que cada una informa por `onLayout` en coordenadas del mosaico):
+ * la celda cuyo centro quede más cerca del centro de la pieza arrastrada.
+ * Cada reacomodo marca las medidas como viejas hasta que las celdas vuelven a
+ * medirse, para no decidir dos veces con los mismos números.
  *
- * Mirando, la misma celda escucha el apretón largo: en el perfil propio entra
- * a armar, en el ajeno abre la fila de emojis. La celda no sabe cuál de las
- * dos es — solo avisa, y `Vitrinas` decide.
+ * La pieza agarrada **no anima su layout**: cuando su hueco salta a otro
+ * lugar, la celda salta con él y la compensación (`origen − rect actual`) la
+ * deja quieta debajo del dedo. Las demás sí animan, que es lo que se ve
+ * acomodarse.
+ *
+ * **Estirar** es el asa de abajo a la derecha: una banda punteada sigue al
+ * dedo con el tamaño crudo y la pieza salta al tamaño que ese rectángulo
+ * implica —media fila, la fila entera, el doble de alto—; tocarla sin
+ * arrastrar pasa al tamaño siguiente.
+ *
+ * Armando, **la tarjeta entera es la manija**. Mirando, la misma celda escucha
+ * el apretón largo: en el perfil propio entra a armar, en el ajeno abre la fila
+ * de emojis. La celda no sabe cuál de las dos es — solo avisa.
  */
 function CeldaDeMosaico({
   indice,
   mitad,
+  filas,
   agarre,
   editando,
   onApreton,
@@ -1112,6 +1221,8 @@ function CeldaDeMosaico({
 }: {
   indice: number
   mitad: boolean
+  /** Cuántas filas ocupa hoy: 2 en «grande», 1 en el resto. */
+  filas: number
   agarre: Agarre
   editando: boolean
   /** Se mantuvo apretada, mirando. */
@@ -1120,53 +1231,116 @@ function CeldaDeMosaico({
 }) {
   // El worklet solo recibe SharedValues. `agarre` también contiene refs a
   // vistas nativas que deben permanecer en el runtime de React.
-  const { activa, dx, dy, empezar, soltar, cancelar } = agarre
+  const {
+    activa,
+    dx,
+    dy,
+    origen,
+    rects,
+    pendiente,
+    estirando,
+    banda,
+    anchoMosaico,
+    empezar,
+    moverA,
+    soltar,
+    cancelar,
+    empezarEstirar,
+    estirarA,
+    soltarEstirar,
+    tocarAsa,
+  } = agarre
   /* eslint-disable react-hooks/immutability -- escribir `.value` es la API
      imperativa de un SharedValue; es el mismo gesto que `EncoladaArrastrable`
      en la cola, que el analizador acepta con otra forma de llegar al valor. */
   const estilo = useAnimatedStyle(() => {
     if (activa.value === indice) {
+      const o = origen.value
+      const r = rects.value[indice] ?? o
       return {
         transform: [
-          { translateX: dx.value },
-          { translateY: dy.value },
-          { scale: 1.012 },
-          { rotate: '0deg' },
+          { translateX: dx.value + o.x - r.x },
+          { translateY: dy.value + o.y - r.y },
+          { scale: 1.03 },
         ],
-        zIndex: 20,
+        zIndex: 30,
         opacity: 1,
       }
     }
     return {
       transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }],
-      zIndex: 0,
-      opacity: withTiming(activa.value >= 0 ? 0.9 : 1, { duration: 160 }),
+      zIndex: estirando.value === indice ? 20 : 0,
+      opacity: withTiming(activa.value >= 0 ? 0.92 : 1, { duration: 160 }),
     }
+  })
+  /* El hueco: se ve solo bajo la pieza agarrada, que ya no está ahí. */
+  const hueco = useAnimatedStyle(() => ({
+    opacity: withTiming(activa.value === indice ? 1 : 0, { duration: 120 }),
+  }))
+  /* La banda del estirado: el tamaño crudo que sigue al dedo. */
+  const bandaEstilo = useAnimatedStyle(() => {
+    const b = banda.value
+    if (estirando.value !== indice || !b) return { opacity: 0, width: 0, height: 0 }
+    return { opacity: 1, width: b.w, height: b.h }
   })
 
   /*
    * El arrastre, solo armando. En web agarra apenas se mueve el cursor (con
-   * mouse no hay scroll que ceder); con dedo espera los 130ms de siempre.
+   * mouse no hay scroll que ceder); con dedo espera los 220ms de siempre.
    * Los botones de las esquinas siguen respondiendo al toque: un Pan no se
-   * activa sin desplazamiento, y la manija de tamaño tiene el suyo, que
-   * arranca antes y gana.
+   * activa sin desplazamiento, y el asa de tamaño tiene el suyo, que como
+   * gesto hijo gana.
    */
   const arrastre = (
     TECLADO_FISICO ? Gesture.Pan().minDistance(12) : Gesture.Pan().activateAfterLongPress(220)
   )
     .enabled(editando)
     .onStart(() => {
+      const r = rects.value[indice]
+      if (r) origen.value = r
       activa.value = indice
       dx.value = 0
       dy.value = 0
-      runOnJS(empezar)()
+      pendiente.value = false
+      runOnJS(empezar)(indice)
     })
     .onUpdate((e) => {
       dx.value = e.translationX
       dy.value = e.translationY
+      if (pendiente.value) return
+      /*
+       * Dónde caería: la celda cuyo centro quede más cerca del centro de la
+       * pieza. Distancia y no contención porque entre celdas hay huecos, y
+       * soltar en un hueco tiene que caer en la vecina más cercana. Si es
+       * otra que la de ahora, el orden cambia **ya**.
+       */
+      const o = origen.value
+      const cx = o.x + o.w / 2 + e.translationX
+      const cy = o.y + o.h / 2 + e.translationY
+      const rs = rects.value
+      let mejor = -1
+      let distancia = Infinity
+      for (let i = 0; i < rs.length; i++) {
+        const r = rs[i]
+        if (!r) continue
+        const d = (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2
+        if (d < distancia) {
+          distancia = d
+          mejor = i
+        }
+      }
+      if (mejor >= 0 && mejor !== activa.value) {
+        const desde = activa.value
+        activa.value = mejor
+        pendiente.value = true
+        runOnJS(moverA)(desde, mejor)
+      }
     })
-    .onEnd((e) => {
-      runOnJS(soltar)(indice, e.translationX, e.translationY)
+    .onEnd(() => {
+      activa.value = -1
+      dx.value = 0
+      dy.value = 0
+      runOnJS(soltar)()
     })
     .onFinalize((e) => {
       if (e.state !== State.END) {
@@ -1174,6 +1348,49 @@ function CeldaDeMosaico({
         dx.value = 0
         dy.value = 0
         runOnJS(cancelar)()
+      }
+    })
+
+  /*
+   * El asa: arrastrarla estira. La banda sigue al dedo con el tamaño crudo; el
+   * tamaño de la pieza sale de ese rectángulo contra la mitad de una columna y
+   * la mitad de una fila (`UMBRAL`): cruzar la mitad de la columna de al lado
+   * es querer la fila entera, y bajar más de media fila es querer el doble de
+   * alto. Se avisa solo cuando cambia, no por cuadro.
+   */
+  const asa = Gesture.Pan()
+    .enabled(editando)
+    .minDistance(4)
+    .onStart(() => {
+      const r = rects.value[indice]
+      estirando.value = indice
+      banda.value = r ? { w: r.w - AIRE_CELDA * 2, h: r.h - AIRE_CELDA * 2 } : null
+      runOnJS(empezarEstirar)(indice)
+    })
+    .onUpdate((e) => {
+      const r = rects.value[indice]
+      if (!r) return
+      const w = Math.max(72, r.w - AIRE_CELDA * 2 + e.translationX)
+      const h = Math.max(48, r.h - AIRE_CELDA * 2 + e.translationY)
+      banda.value = { w, h }
+      const columna = anchoMosaico.value / 2
+      /* La fila base es lo que mide la pieza hoy con una fila; en «grande» se
+         estima como la mitad de lo que mide ahora. */
+      const filaBase = filas === 2 ? r.h / 2 : r.h
+      const cols = w > columna * (1 + UMBRAL) ? 2 : 1
+      const nuevasFilas = h > filaBase * (1 + UMBRAL) ? 2 : 1
+      runOnJS(estirarA)(indice, cols, nuevasFilas)
+    })
+    .onEnd(() => {
+      estirando.value = -1
+      banda.value = null
+      runOnJS(soltarEstirar)()
+    })
+    .onFinalize((e) => {
+      if (e.state !== State.END) {
+        estirando.value = -1
+        banda.value = null
+        runOnJS(soltarEstirar)()
       }
     })
   /* eslint-enable react-hooks/immutability */
@@ -1189,19 +1406,117 @@ function CeldaDeMosaico({
       runOnJS(apretar)()
     })
 
+  /*
+   * La pieza agarrada no anima su layout (ver arriba); las demás sí. Se lee
+   * del estado de React y no del shared value porque `layout` es una prop de
+   * montaje: cambia con el render, que es cuando el orden cambió.
+   */
+  const [agarrada, setAgarrada] = useState(false)
+  useAnimatedReaction(
+    () => activa.value === indice,
+    (ahora, antes) => {
+      if (ahora !== antes) runOnJS(setAgarrada)(ahora)
+    },
+    [indice],
+  )
+
   return (
     <Animated.View
-      layout={LinearTransition.duration(180).reduceMotion(ReduceMotion.System)}
-      style={{ width: mitad ? '50%' : '100%', padding: 6 }}
+      /* La transición se acorta a nada en vez de sacarse: cambiar la prop
+         `layout` de una transición a ninguna rehace la vista en web y el
+         gesto que la estaba arrastrando se pierde en el acto. */
+      layout={LinearTransition.duration(agarrada ? 1 : 180).reduceMotion(ReduceMotion.System)}
+      style={{ width: mitad ? '50%' : '100%', padding: AIRE_CELDA }}
+      onLayout={(e) => {
+        const { x, y, width, height } = e.nativeEvent.layout
+        agarre.onLayoutCelda(indice, { x, y, w: width, h: height })
+      }}
       ref={(r: unknown) => {
         agarre.refs.current.set(indice, r as MedibleRef)
       }}
     >
+      {/* El hueco donde va a caer: punteado, del tamaño de la celda, detrás
+          de la pieza. Es el placeholder de react-grid-layout dicho en este
+          sistema — sin color, solo un trazo a media luz sobre el fondo. */}
+      {editando ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            {
+              position: 'absolute',
+              left: AIRE_CELDA,
+              right: AIRE_CELDA,
+              top: AIRE_CELDA,
+              bottom: AIRE_CELDA,
+              borderRadius: 16,
+              borderWidth: 1.5,
+              borderStyle: 'dashed',
+              borderColor: 'rgba(255,255,255,0.35)',
+              backgroundColor: 'rgba(255,255,255,0.05)',
+            },
+            hueco,
+          ]}
+        />
+      ) : null}
       <GestureDetector gesture={Gesture.Race(arrastre, apreton)}>
         <Animated.View
-          style={[estilo, editando && TECLADO_FISICO ? ({ cursor: 'grab' } as object) : null]}
+          style={[
+            estilo,
+            /* Armando, el texto de la pieza no se selecciona: arrastrar con el
+               mouse sobre una palabra elegía el texto en vez de mover la pieza. */
+            editando ? ({ userSelect: 'none' } as object) : null,
+            editando && TECLADO_FISICO ? ({ cursor: 'grab' } as object) : null,
+          ]}
         >
           {children}
+          {editando ? (
+            <>
+              {/* La banda del estirado, desde la esquina de arriba a la
+                  izquierda de la pieza hasta el dedo. */}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  {
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    borderRadius: 16,
+                    borderWidth: 1.5,
+                    borderStyle: 'dashed',
+                    borderColor: 'rgba(255,255,255,0.55)',
+                    backgroundColor: 'rgba(255,255,255,0.06)',
+                  },
+                  bandaEstilo,
+                ]}
+              />
+              <GestureDetector gesture={asa}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Cambiar el tamaño"
+                  accessibilityHint="Arrastrá para elegir el tamaño, o tocá para pasar al siguiente"
+                  onPress={() => tocarAsa(indice)}
+                  hitSlop={8}
+                  style={[
+                    {
+                      position: 'absolute',
+                      right: -4,
+                      bottom: -4,
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(18,18,18,0.94)',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
+                    },
+                    TECLADO_FISICO ? ({ cursor: 'nwse-resize' } as object) : null,
+                  ]}
+                >
+                  <IconRedimensionar size={13} color="#FFFFFF" />
+                </Pressable>
+              </GestureDetector>
+            </>
+          ) : null}
         </Animated.View>
       </GestureDetector>
     </Animated.View>

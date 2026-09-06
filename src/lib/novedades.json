@@ -1,5 +1,21 @@
 [
   {
+    "version": "1.10.0",
+    "fecha": "6 de septiembre de 2026",
+    "titulo": "Al estilo de Apple Music, con tu propio catálogo de marcos.",
+    "cambios": [
+      "El inicio se rehízo con la anatomía del Inicio de Apple Music: sugerencias destacadas que dicen por qué están, lo escuchado recientemente, lo hecho para vos con «según tus artistas», tendencias adelante y la portada al final.",
+      "Los menús de canciones y listas tienen acciones rápidas arriba y grupos con subtítulos; la letra va centrada, en negrita y con desenfoque por distancia, con karaoke palabra por palabra.",
+      "Nuevas hojas para crear una lista, agregar música con selección múltiple y elegir a qué lista va una canción; una lista puede hacerse colaborativa desde su menú.",
+      "Configuración y Editar perfil, desde cero: listas agrupadas en el teléfono y barra lateral con secciones en la computadora, con los campos editándose en el lugar.",
+      "En la computadora el buscador vive arriba de la barra lateral, como en Música para Mac, y los chats tienen la cabecera de Mensajes.",
+      "El mosaico del perfil se arma con vista previa antes de soltar y estirado en vivo.",
+      "El fondo del perfil se encuadra antes de subir y sube con barra de progreso; el bloque muestra la vista previa.",
+      "Marcos por colecciones, como una tienda: Arcade, Gótico, Después de medianoche, Neón y tormenta, Cosmos, Fiesta, Bosque de noche y más, con dieciséis marcos animados nuevos y efectos que pasan sobre el fondo del perfil: nevada, lluvia de confeti, luciérnagas, estrellas fugaces, lluvia, píxeles y una bandada.",
+      "Insignias en imagen animada con su autor y licencia a la vista, y un catálogo listo para sumar decoraciones propias."
+    ]
+  },
+  {
     "version": "1.9.4",
     "fecha": "5 de septiembre de 2026",
     "titulo": "Más fluido al escuchar y explorar.",

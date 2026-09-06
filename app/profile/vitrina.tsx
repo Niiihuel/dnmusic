@@ -32,7 +32,8 @@ import { useMyProfile, useUser } from '../../src/state/session'
 import { usePiso } from '../../src/state/shell'
 import { actualizarBorrador, limpiarBorrador, useBorrador } from '../../src/state/vitrinaBorrador'
 import { FilaAjuste, GrupoAjustes, IconoAjuste } from '../../src/ui/Ajustes'
-import { PrimaryButton } from '../../src/ui/Button'
+import { BotonConfirmar, BotonHoja, EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
+import { Segmentado } from '../../src/ui/Segmentado'
 import { PLACEHOLDER_COLOR } from '../../src/ui/Field'
 import { Menu } from '../../src/ui/Menu'
 import { Hoja, useHojaModal } from '../../src/ui/Hoja'
@@ -40,7 +41,6 @@ import { Panel } from '../../src/ui/Panel'
 import { GrillaDeMiniaturas, rotuloDePiezas, Superficie, useMiniaturas, Vitrina } from '../../src/ui/Vitrina'
 import {
   ICON_COLOR,
-  IconBack,
   IconBan,
   IconCamera,
   IconChevronRight,
@@ -223,20 +223,33 @@ export default function EditarVitrina() {
       <Hoja>
         <SafeAreaView className="flex-1 bg-background" edges={['top']}>
           <View className="flex-1">
-            <View className="flex-row items-center gap-3 px-3 py-1">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Volver sin guardar"
-                onPress={() => {
-                  limpiarBorrador()
-                  volver(router, '/profile')
-                }}
-                className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-              >
-                <IconBack size={19} color={ICON_COLOR.foreground} />
-              </Pressable>
-              <Text className="text-foreground text-[15px] font-semibold">{titulo}</Text>
-            </View>
+            {/*
+             * La cabecera de hoja de toda la app: cerrar a la izquierda, el
+             * título en el medio y **guardar a la derecha**, como la marca de
+             * «Agregar a la lista». Antes el guardar era un botón grande al
+             * pie del formulario, debajo del teclado la mitad de las veces.
+             */}
+            <EncabezadoHoja
+              titulo={titulo}
+              izquierda={
+                <BotonHoja
+                  tipo="cerrar"
+                  label="Cerrar sin guardar"
+                  onPress={() => {
+                    limpiarBorrador()
+                    volver(router, '/profile')
+                  }}
+                />
+              }
+              derecha={
+                <BotonConfirmar
+                  label={nueva ? 'Agregar al mosaico' : 'Guardar'}
+                  activo={completa}
+                  ocupado={guardando}
+                  onPress={() => void guardar()}
+                />
+              }
+            />
 
             <Panel className="flex-1">
               <KeyboardAvoidingView
@@ -322,38 +335,21 @@ export default function EditarVitrina() {
 
                     {kind === 'cancion' || kind === 'fragmento' ? (
                       <View className="gap-2">
-                        <Text className="text-muted-foreground text-[11px]">Cómo se muestra</Text>
-                        <View className="flex-row flex-wrap gap-2">
-                          {(['portada', 'reproductor', 'completa'] as const).map((modo, i) => (
-                            <Pressable
-                              key={modo}
-                              accessibilityRole="button"
-                              accessibilityState={{
-                                selected: (estilo.presentacion ?? 'completa') === modo,
-                              }}
-                              onPress={() =>
-                                actualizarBorrador((b) => ({
-                                  estilo: { ...b.estilo, presentacion: modo },
-                                }))
-                              }
-                              className={
-                                (estilo.presentacion ?? 'completa') === modo
-                                  ? 'min-h-11 flex-1 items-center justify-center rounded-xl bg-primary px-3'
-                                  : 'min-h-11 flex-1 items-center justify-center rounded-xl bg-card px-3'
-                              }
-                            >
-                              <Text
-                                className={
-                                  (estilo.presentacion ?? 'completa') === modo
-                                    ? 'text-primary-foreground text-[12px] font-semibold'
-                                    : 'text-foreground text-[12px]'
-                                }
-                              >
-                                {['Portada', 'Reproductor', 'Ambas'][i]}
-                              </Text>
-                            </Pressable>
-                          ))}
-                        </View>
+                        <Text className="px-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                          Cómo se muestra
+                        </Text>
+                        <Segmentado
+                          label="Cómo se muestra la canción"
+                          value={estilo.presentacion ?? 'completa'}
+                          options={[
+                            { value: 'portada', label: 'Portada' },
+                            { value: 'reproductor', label: 'Reproductor' },
+                            { value: 'completa', label: 'Ambas' },
+                          ]}
+                          onChange={(modo) =>
+                            actualizarBorrador((b) => ({ estilo: { ...b.estilo, presentacion: modo } }))
+                          }
+                        />
                       </View>
                     ) : null}
                     <GrupoAjustes>
@@ -433,12 +429,6 @@ export default function EditarVitrina() {
                       ) : null}
                     </GrupoAjustes>
 
-                    <PrimaryButton
-                      label={guardando ? 'Guardando…' : nueva ? 'Agregar al mosaico' : 'Guardar'}
-                      onPress={() => void guardar()}
-                      disabled={!completa}
-                      busy={guardando}
-                    />
                   </View>
                 </ScrollView>
               </KeyboardAvoidingView>

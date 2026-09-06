@@ -47,6 +47,12 @@ export type PickedImage = {
    * `URL.createObjectURL` no existe en React Native.
    */
   alto?: number
+  /**
+   * Dónde mirarla antes de subirla: la ruta local del selector en el teléfono,
+   * un `blob:` en la web. Es para la **vista previa** —la portada elegida en la
+   * hoja de crear una lista— y nada más: a Storage viaja `blob`.
+   */
+  uri?: string
 }
 
 export type PickOptions = {
@@ -175,6 +181,7 @@ async function desdeAsset(asset: ImagePicker.ImagePickerAsset): Promise<PickedIm
     mime: mimeDe(fileName, asset.mimeType ?? ''),
     /* El selector ya las midió: no hay que volver a abrir la imagen. */
     alto: asset.width > 0 && asset.height > 0 ? asset.height / asset.width : undefined,
+    uri: asset.uri,
   }
 }
 
@@ -191,20 +198,22 @@ function pickOnWeb(conVideo: boolean, desdeCamara = false): Promise<PickedImage 
       if (!file) return resolve(null)
       /* En el navegador hay que cargarla para preguntarle sus medidas. Si no se
          puede, se devuelve sin `alto` y quien la use decide qué hacer. */
+      /* La URL se queda viva: es la vista previa de quien la pidió. Es una
+         imagen por elección y se va con la página; revocarla acá dejaría al
+         que la muestra con un `blob:` muerto. */
       const url = URL.createObjectURL(file)
       const img = new window.Image()
       img.onload = () => {
-        URL.revokeObjectURL(url)
         resolve({
           blob: file,
           fileName: file.name,
           mime: mimeDe(file.name, file.type),
           alto: img.width > 0 && img.height > 0 ? img.height / img.width : undefined,
+          uri: url,
         })
       }
       img.onerror = () => {
-        URL.revokeObjectURL(url)
-        resolve({ blob: file, fileName: file.name, mime: mimeDe(file.name, file.type) })
+        resolve({ blob: file, fileName: file.name, mime: mimeDe(file.name, file.type), uri: url })
       }
       img.src = url
     }
