@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { TECLADO_FISICO } from '../../src/lib/teclado'
@@ -16,29 +17,33 @@ import { avisar } from '../../src/state/aviso'
 import { setMyProfile, useMyProfile } from '../../src/state/session'
 import { usePiso } from '../../src/state/shell'
 import { Avatar } from '../../src/ui/Avatar'
-import { COLECCIONES } from '../../src/ui/colecciones'
+import { COLECCIONES, type Coleccion } from '../../src/ui/colecciones'
 import { Atribucion } from '../../src/ui/DecoracionImagen'
 import { EFECTOS, EfectoDibujado, esEfectoDibujado } from '../../src/ui/EfectosDibujados'
 import { BotonConfirmar, BotonHoja, EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
 import { FadingRow } from '../../src/ui/FadingScroll'
 import { Hoja, useHojaModal } from '../../src/ui/Hoja'
-import { aireDelMarco, FAMILIAS_MARCO, Marco, MARCOS } from '../../src/ui/Marco'
+import { aireDelMarco, Marco, MARCOS } from '../../src/ui/Marco'
+import { alfa } from '../../src/ui/marcoBase'
 import { FondoPerfil } from '../../src/ui/PerfilPublico'
 import { SearchField } from '../../src/ui/SearchField'
+import { Segmentado } from '../../src/ui/Segmentado'
 import { ICON_COLOR, IconCheck } from '../../src/ui/icons'
 
-/** El hueco entre celdas de la grilla. */
+/** El hueco entre celdas. */
 const HUECO = 10
-/** Lo que mide, como mucho, una celda: de ahí sale cuántas entran por fila. */
+/** Lo que mide, como mucho, una celda de la grilla de búsqueda. */
 const CELDA_MAX = 118
-/** La celda de un estante de colección: fija, porque el estante se desplaza. */
+/** La celda de un estante: fija, porque el estante se desplaza. */
 const CELDA_ESTANTE = 104
-/** La foto de la vista previa, arriba. */
-const PREVIA = 128
+/** La foto en la tarjeta de perfil de la vista previa. */
+const FOTO = 76
 /** La foto adentro de cada celda. */
 const MUESTRA = 56
+/** El ancho de la tarjeta de perfil y de los banners. */
+const ANCHO_TARJETA = 560
 
-/** Una opción de la vidriera: un marco o efecto dibujado, o una decoración en imagen. */
+/** Una opción de la tienda: un marco o efecto dibujado, o una decoración en imagen. */
 type Opcion = {
   id: string
   nombre: string
@@ -48,49 +53,51 @@ type Opcion = {
 }
 
 /**
- * Elegir el marco de la foto, o el efecto del perfil (`?tipo=efecto`).
+ * La tienda de decoraciones del perfil: marcos y efectos.
  *
- * Es la hoja de siempre (`EncabezadoHoja`): la cruz cierra, el tilde aplica,
- * y nada flota al pie tapando la grilla. Arriba la vista previa —tu foto con
- * el marco elegido, o tu fondo con el efecto—, después los filtros y el
- * buscador, y abajo la vidriera.
+ * Es la tienda de Discord con las reglas de acá. Arriba, **la tarjeta de tu
+ * perfil** como vista previa —el fondo con el efecto, la foto con el marco,
+ * tu nombre—, que es lo que Discord muestra a la derecha mientras elegís:
+ * se ve la decoración puesta, no suelta. Debajo, Marcos / Efectos como un
+ * segmentado, el buscador, y **las colecciones**, cada una con su banner
+ * (nombre, lema y un par de piezas de muestra sobre el tinte de su paleta)
+ * y su estante que se desplaza. Buscar muestra la grilla plana.
  *
- * **La vidriera se recorre por colecciones**, como la tienda de Discord: cada
- * colección (`ui/colecciones`) es un estante con su nombre, su lema y sus
- * piezas en una fila que se desplaza — Arcade, Gótico, Después de
- * medianoche… Una colección se reconoce de lejos porque sus piezas
- * comparten paleta y manera de moverse. «Todos» y las familias muestran la
- * grilla plana, con «Ninguno» como primera celda, que es el selector de
- * fondos de iOS.
+ * La hoja es la de siempre (`EncabezadoHoja`): la cruz cierra, el tilde
+ * aplica lo que haya cambiado —marco, efecto o los dos— y nada flota al pie.
  *
- * Las decoraciones en imagen del catálogo (`services/decoraciones`) entran
- * en las mismas colecciones y muestran su autor y su licencia debajo de la
- * vista previa, que es lo que CC BY pide.
+ * Las decoraciones en imagen del catálogo (`services/decoraciones`) entran en
+ * las mismas colecciones y muestran su autor y su licencia debajo de la
+ * tarjeta, que es lo que CC BY pide.
  *
- * La vidriera se ve quieta: se anima la celda elegida y, con cursor, la que
- * tiene el cursor encima. Animar cincuenta a la vez tartamudeaba.
+ * La tienda se ve quieta: se anima la celda elegida y, con cursor, la que
+ * tiene el cursor encima; la tarjeta de arriba siempre.
  */
-export default function ElegirMarco() {
+export default function Tienda() {
   const router = useRouter()
   const perfil = useMyProfile()
   const piso = usePiso(24)
   const modal = useHojaModal()
   const { tipo: tipoCrudo } = useLocalSearchParams<{ tipo?: string }>()
-  const tipo: TipoDecoracion = tipoCrudo === 'efecto' ? 'efecto' : 'marco'
-  const esEfecto = tipo === 'efecto'
+  const [pestana, setPestana] = useState<TipoDecoracion>(tipoCrudo === 'efecto' ? 'efecto' : 'marco')
+  const esEfecto = pestana === 'efecto'
   const decoraciones = useDecoraciones()
 
-  const actual = (esEfecto ? perfil?.efecto : perfil?.marco) ?? null
-  const [seleccion, setSeleccion] = useState<string | null>(actual)
-  const [familia, setFamilia] = useState('colecciones')
+  const marcoActual = perfil?.marco ?? null
+  const efectoActual = perfil?.efecto ?? null
+  const [marcoSel, setMarcoSel] = useState<string | null>(marcoActual)
+  const [efectoSel, setEfectoSel] = useState<string | null>(efectoActual)
+  const seleccion = esEfecto ? efectoSel : marcoSel
+  const elegir = (id: string | null) => (esEfecto ? setEfectoSel(id) : setMarcoSel(id))
+  const cambiado = marcoSel !== marcoActual || efectoSel !== efectoActual
+
   const [busqueda, setBusqueda] = useState('')
   const [guardando, setGuardando] = useState(false)
   const nombre = perfil?.displayName?.trim() || perfil?.username || 'Vos'
-  const cambiado = seleccion !== actual
 
-  /* La vidriera entera: los dibujados primero, después los del catálogo. */
+  /* La vidriera de la pestaña: los dibujados primero, después los del catálogo. */
   const deImagen: Opcion[] = (decoraciones ?? [])
-    .filter((d) => d.tipo === tipo)
+    .filter((d) => d.tipo === pestana)
     .map((d) => ({ id: d.id, nombre: d.nombre, familia: d.familia, imagen: d }))
   const dibujados: Opcion[] = esEfecto
     ? EFECTOS.map((e) => ({ id: e.id, nombre: e.nombre, familia: e.familia }))
@@ -98,15 +105,10 @@ export default function ElegirMarco() {
   const opciones: Opcion[] = [...dibujados, ...deImagen]
   const porId = new Map(opciones.map((o) => [o.id, o]))
   const elegido = porId.get(seleccion ?? '')
+  const coleccionDe = (id: string) =>
+    COLECCIONES.find((c) => (esEfecto ? c.efectos : c.marcos).includes(id))
 
-  /* Las familias: las de siempre, más las que traiga el catálogo. */
-  const familias: { id: string; titulo: string }[] = [...FAMILIAS_MARCO]
-  for (const o of deImagen) {
-    if (!familias.some((f) => f.id === o.familia)) familias.push({ id: o.familia, titulo: rotulo(o.familia) })
-  }
-  const familiaDe = (id: string) => familias.find((f) => f.id === id)?.titulo ?? rotulo(id)
-
-  /* Las colecciones con lo que tienen de este tipo, en su orden. */
+  /* Las colecciones con lo que tienen de esta pestaña, en su orden. */
   const estantes = COLECCIONES.map((c) => ({
     ...c,
     piezas: (esEfecto ? c.efectos : c.marcos).map((id) => porId.get(id)).filter((o): o is Opcion => !!o),
@@ -114,12 +116,7 @@ export default function ElegirMarco() {
 
   const texto = busqueda.trim().toLocaleLowerCase()
   const buscando = texto.length > 0
-  const enGrilla = buscando || familia !== 'colecciones'
-  const tarjetas = opciones.filter(
-    (o) =>
-      (familia === 'todos' || familia === 'colecciones' || o.familia === familia) &&
-      o.nombre.toLocaleLowerCase().includes(texto),
-  )
+  const encontradas = opciones.filter((o) => o.nombre.toLocaleLowerCase().includes(texto))
 
   /* Cuántas celdas entran en la grilla: nunca menos de tres, y el sobrante repartido. */
   const [anchoGrilla, setAnchoGrilla] = useState(0)
@@ -132,18 +129,8 @@ export default function ElegirMarco() {
     if (guardando || !cambiado) return
     setGuardando(true)
     try {
-      setMyProfile(
-        await saveMyProfile(esEfecto ? { efecto: seleccion ?? '' } : { marco: seleccion ?? '' }),
-      )
-      avisar(
-        esEfecto
-          ? seleccion
-            ? 'Efecto aplicado'
-            : 'Efecto quitado'
-          : seleccion
-            ? 'Marco aplicado'
-            : 'Marco quitado',
-      )
+      setMyProfile(await saveMyProfile({ marco: marcoSel ?? '', efecto: efectoSel ?? '' }))
+      avisar('Decoraciones aplicadas')
       cerrar()
     } catch (e) {
       avisar(mensajeError(e), true)
@@ -158,7 +145,7 @@ export default function ElegirMarco() {
     </View>
   )
 
-  /** Lo que va adentro de una celda, según qué se elige. */
+  /** Lo que va adentro de una celda, según la pestaña. */
   const muestra = (o: Opcion | null, lado: number, animada: boolean): ReactNode => {
     if (!esEfecto) return foto(o?.id ?? null, MUESTRA, animada)
     if (!o) return <View className="h-14 w-14 rounded-full bg-muted" />
@@ -181,21 +168,13 @@ export default function ElegirMarco() {
     return null
   }
 
-  /* La vista previa del efecto: tu fondo como se ve en el perfil, con el
-     efecto encima; en una banda apaisada, que es donde el efecto vive. */
-  const previaDeEfecto = (efecto: string | null) => (
-    <View className="w-full overflow-hidden rounded-2xl bg-muted" style={{ maxWidth: 520, aspectRatio: 16 / 9 }}>
-      <FondoPerfil bannerPath={perfil?.bannerPath ?? null} encuadre={perfil?.bannerEncuadre ?? null} efecto={efecto} />
-    </View>
-  )
-
   const celdaDe = (o: Opcion | null, lado: number) => (
     <Celda
       key={o?.id ?? 'ninguno'}
       lado={lado}
       nombre={o?.nombre ?? 'Ninguno'}
       seleccionada={seleccion === (o?.id ?? null)}
-      onPress={() => setSeleccion(o?.id ?? null)}
+      onPress={() => elegir(o?.id ?? null)}
     >
       {(animada) => muestra(o, lado, animada)}
     </Celda>
@@ -205,11 +184,11 @@ export default function ElegirMarco() {
     <Hoja anchoMaximo={720}>
       <View className="flex-1 bg-background">
         <EncabezadoHoja
-          titulo={esEfecto ? 'Efecto' : 'Marco'}
+          titulo="Decoraciones"
           izquierda={<BotonHoja tipo="cerrar" onPress={cerrar} />}
           derecha={
             <BotonConfirmar
-              label={seleccion ? 'Aplicar' : 'Quitar'}
+              label="Aplicar"
               activo={cambiado}
               ocupado={guardando}
               onPress={() => void guardar()}
@@ -222,64 +201,43 @@ export default function ElegirMarco() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* La vista previa, con el aire que un marco necesita para
-              desbordar (las alas salen más allá). */}
-          <View
-            className="items-center gap-3 px-6"
-            style={{ paddingVertical: esEfecto ? 16 : aireDelMarco(PREVIA) + 12 }}
-          >
-            {esEfecto ? previaDeEfecto(seleccion) : foto(seleccion, PREVIA, true)}
-            <View className="items-center gap-0.5" style={{ marginTop: esEfecto ? 0 : aireDelMarco(PREVIA) - 6 }}>
-              <Text className="text-foreground text-[17px] font-semibold">
+          {/* La tarjeta de tu perfil, con lo elegido puesto. */}
+          <View className="items-center px-4 pt-3">
+            <TarjetaDePerfil
+              bannerPath={perfil?.bannerPath ?? null}
+              encuadre={perfil?.bannerEncuadre ?? null}
+              efecto={efectoSel}
+              foto={foto(marcoSel, FOTO, true)}
+              nombre={nombre}
+              usuario={perfil?.username ?? ''}
+              bio={perfil?.bio ?? ''}
+            />
+            <View className="items-center gap-0.5 pt-3">
+              <Text className="text-foreground text-[15px] font-semibold">
                 {elegido?.nombre ?? (esEfecto ? 'Sin efecto' : 'Sin marco')}
               </Text>
               {elegido?.imagen ? (
                 <Atribucion decoracion={elegido.imagen} />
               ) : (
                 <Text className="text-muted-foreground text-[13px]">
-                  {elegido
-                    ? (COLECCIONES.find((c) => (esEfecto ? c.efectos : c.marcos).includes(elegido.id))?.nombre ??
-                      familiaDe(elegido.familia))
-                    : esEfecto
-                      ? 'Tu fondo, tal cual'
-                      : 'Tu foto, tal cual'}
+                  {elegido ? (coleccionDe(elegido.id)?.nombre ?? 'Sin colección') : 'Tocá una pieza para probarla'}
                 </Text>
               )}
             </View>
           </View>
 
-          {/* Los filtros: píldoras que se desplazan, como las de Música. Solo
-              las familias que tienen algo que mostrar en esta vidriera. */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}
-          >
-            {[{ id: 'colecciones', titulo: 'Colecciones' }, { id: 'todos', titulo: 'Todos' }, ...familias]
-              .filter((f) => f.id === 'colecciones' || f.id === 'todos' || opciones.some((o) => o.familia === f.id))
-              .map((f) => {
-                const activa = familia === f.id
-                return (
-                  <Pressable
-                    key={f.id}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: activa }}
-                    onPress={() => setFamilia(f.id)}
-                    className={`h-9 items-center justify-center rounded-full px-4 ${
-                      activa ? 'bg-primary' : 'bg-card active:bg-muted'
-                    }`}
-                  >
-                    <Text
-                      className={`text-[13px] font-semibold ${
-                        activa ? 'text-primary-foreground' : 'text-foreground'
-                      }`}
-                    >
-                      {f.titulo}
-                    </Text>
-                  </Pressable>
-                )
-              })}
-          </ScrollView>
+          {/* Marcos o efectos: dos vidrieras, una tarjeta. */}
+          <View className="px-4 pt-4">
+            <Segmentado
+              label="Qué decorar"
+              value={pestana}
+              options={[
+                { value: 'marco', label: 'Marcos' },
+                { value: 'efecto', label: 'Efectos' },
+              ]}
+              onChange={setPestana}
+            />
+          </View>
 
           <View className="px-4 pt-3">
             <SearchField
@@ -289,51 +247,53 @@ export default function ElegirMarco() {
             />
           </View>
 
-          {enGrilla ? (
-            /* La grilla plana. El ancho se mide adentro del margen: las
-               celdas se reparten lo que queda entre los 16px de cada lado. */
+          {buscando ? (
+            /* La grilla plana con lo encontrado. El ancho se mide adentro del
+               margen: las celdas se reparten lo que queda entre los 16px. */
             <View className="px-4 pt-4">
               <View
                 className="flex-row flex-wrap"
                 style={{ gap: HUECO }}
                 onLayout={(e) => setAnchoGrilla(e.nativeEvent.layout.width)}
               >
-                {familia === 'todos' && !buscando ? celdaDe(null, celda) : null}
-                {tarjetas.map((o) => celdaDe(o, celda))}
+                {encontradas.map((o) => celdaDe(o, celda))}
               </View>
-              {!tarjetas.length ? (
+              {!encontradas.length ? (
                 <Text className="text-muted-foreground px-2 py-8 text-center text-[13px]">
-                  {decoraciones === null && esEfecto && !dibujados.length
-                    ? 'Cargando…'
-                    : esEfecto
-                      ? 'No hay efectos con ese nombre.'
-                      : 'No hay marcos con ese nombre.'}
+                  {esEfecto ? 'No hay efectos con ese nombre.' : 'No hay marcos con ese nombre.'}
                 </Text>
               ) : null}
             </View>
           ) : (
-            /* Los estantes: una colección por fila, como la tienda de Discord. */
+            /* Las colecciones: banner y estante, como la tienda de Discord. */
             <View className="gap-7 pt-5">
-              {/* «Ninguno» va primero, solo, con su estante propio y sin lema:
-                  es una opción, no una colección. */}
-              <View className="gap-3">
-                <FadingRow gap={HUECO} padding={16}>
-                  {celdaDe(null, CELDA_ESTANTE)}
-                </FadingRow>
-              </View>
+              <FadingRow gap={HUECO} padding={16}>
+                {celdaDe(null, CELDA_ESTANTE)}
+              </FadingRow>
               {estantes.map((c) => (
                 <View key={c.id} className="gap-3">
-                  <View className="px-4">
-                    <Text className="text-foreground text-[17px] font-semibold">{c.nombre}</Text>
-                    <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
-                      {c.lema}
-                    </Text>
-                  </View>
+                  <BannerDeColeccion
+                    coleccion={c}
+                    muestras={c.piezas.slice(0, 2).map((o) =>
+                      esEfecto ? (
+                        <View key={o.id} className="overflow-hidden rounded-xl" style={{ width: 56, height: 56 }}>
+                          {muestra(o, 56, false)}
+                        </View>
+                      ) : (
+                        <View key={o.id} style={{ width: 44, height: 44, margin: aireDelMarco(44) }}>
+                          {foto(o.id, 44, false)}
+                        </View>
+                      ),
+                    )}
+                  />
                   <FadingRow gap={HUECO} padding={16}>
                     {c.piezas.map((o) => celdaDe(o, CELDA_ESTANTE))}
                   </FadingRow>
                 </View>
               ))}
+              {decoraciones === null && !estantes.length ? (
+                <Text className="text-muted-foreground px-6 py-8 text-center text-[13px]">Cargando…</Text>
+              ) : null}
             </View>
           )}
         </ScrollView>
@@ -342,9 +302,84 @@ export default function ElegirMarco() {
   )
 }
 
-/** «insignias» → «Insignias»: el rótulo de una familia que solo trae el catálogo. */
-function rotulo(familia: string): string {
-  return familia.charAt(0).toLocaleUpperCase() + familia.slice(1)
+/**
+ * La tarjeta de perfil de la vista previa: el fondo con el efecto, la foto
+ * con el marco asomando sobre el borde del fondo, el nombre y la línea. Es
+ * la tarjeta que Discord muestra al lado de la tienda, y es la misma
+ * anatomía del perfil de acá en chico.
+ */
+function TarjetaDePerfil({
+  bannerPath,
+  encuadre,
+  efecto,
+  foto,
+  nombre,
+  usuario,
+  bio,
+}: {
+  bannerPath: string | null
+  encuadre: Parameters<typeof FondoPerfil>[0]['encuadre']
+  efecto: string | null
+  foto: ReactNode
+  nombre: string
+  usuario: string
+  bio: string
+}) {
+  return (
+    <View className="w-full overflow-hidden rounded-[22px] bg-card" style={{ maxWidth: ANCHO_TARJETA }}>
+      <View className="overflow-hidden" style={{ aspectRatio: 16 / 7 }}>
+        <FondoPerfil bannerPath={bannerPath} encuadre={encuadre} efecto={efecto} />
+      </View>
+      {/* La foto pisa el borde del fondo, como en el perfil de Discord y en el
+          de acá; el marco desborda y el aire lo reserva `aireDelMarco`. */}
+      <View className="px-5 pb-5" style={{ marginTop: -(FOTO / 2) }}>
+        <View style={{ width: FOTO, height: FOTO, marginBottom: aireDelMarco(FOTO) - 4 }}>{foto}</View>
+        <Text className="text-foreground text-[17px] font-bold" numberOfLines={1}>
+          {nombre}
+        </Text>
+        <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+          @{usuario}
+        </Text>
+        {bio ? (
+          <Text className="pt-2 text-foreground text-[13px]" numberOfLines={2}>
+            {bio}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  )
+}
+
+/**
+ * El banner de una colección: el nombre y el lema sobre el tinte de su
+ * paleta, con un par de piezas de muestra a la derecha. El tinte va muy
+ * diluido sobre la placa —la interfaz sigue acromática— y lo que tiene color
+ * de verdad son las piezas, que son contenido.
+ */
+function BannerDeColeccion({ coleccion, muestras }: { coleccion: Coleccion; muestras: ReactNode[] }) {
+  const [a, b] = coleccion.tonos
+  return (
+    <View className="mx-4 overflow-hidden rounded-2xl bg-card" style={{ minHeight: 88 }}>
+      <LinearGradient
+        colors={[alfa(a, 0.28), alfa(b, 0.1), 'rgba(24,24,24,0)']}
+        locations={[0, 0.55, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View className="flex-row items-center justify-between gap-3 px-4 py-4">
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text className="text-foreground text-[17px] font-bold" numberOfLines={1}>
+            {coleccion.nombre}
+          </Text>
+          <Text className="text-muted-foreground text-[13px]" numberOfLines={2}>
+            {coleccion.lema}
+          </Text>
+        </View>
+        <View className="flex-row items-center">{muestras}</View>
+      </View>
+    </View>
+  )
 }
 
 /**

@@ -407,7 +407,15 @@ Los **efectos del perfil** (`src/ui/EfectosDibujados.tsx`) son partículas que
 cruzan la banda de arriba del fondo —nevada, lluvia de confeti, luciérnagas,
 estrellas fugaces, lluvia, lluvia de píxeles, bandada— con a lo sumo veinte
 nodos animados, repartidas por la razón áurea para que no formen columnas.
-El id va en `profiles.efecto` y lo dibuja `FondoPerfil` sobre el velo; se
-elige en «Editar perfil → Efecto del perfil», la misma hoja del marco con
-`?tipo=efecto` y la vista previa sobre tu fondo.
+El id va en `profiles.efecto` y lo dibuja `FondoPerfil` sobre el velo.
+
+**La tienda** (`app/profile/marco.tsx`) es una sola hoja «Decoraciones», con
+la anatomía de la tienda de Discord: arriba la **tarjeta de tu perfil** como
+vista previa (el fondo con el efecto, la foto con el marco pisando el borde
+del fondo, nombre, usuario y línea), el segmentado Marcos / Efectos, el
+buscador, y las colecciones cada una con su **banner** (nombre, lema y dos
+piezas de muestra sobre el tinte diluido de su paleta, `tonos` en
+`colecciones.ts`) y su estante. El tilde aplica marco y efecto juntos. Las
+dos filas del editor abren la misma hoja, «Efecto del perfil» con
+`?tipo=efecto`.
 

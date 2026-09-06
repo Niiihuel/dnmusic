@@ -17,11 +17,19 @@ export type Coleccion = {
   lema: string
   marcos: string[]
   efectos: string[]
+  /**
+   * Los dos tonos del banner de la colección en la tienda, de la misma
+   * escala que `marcoBase` (Tailwind v4, 300 y 800). Van muy diluidos sobre
+   * la placa: tiñen, no pintan — la interfaz sigue acromática y el color es
+   * de la colección, como la tapa de un disco.
+   */
+  tonos: [string, string]
 }
 
 export const COLECCIONES: Coleccion[] = [
   {
     id: 'arcade',
+    tonos: ['#5EE9B5', '#C4B4FF'] /* menta y lila */,
     nombre: 'Arcade',
     lema: 'Ocho bits, dos tonos y todo a saltos.',
     marcos: ['pixeles', 'invasor', 'corazones8bit'],
@@ -29,6 +37,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'gotico',
+    tonos: ['#D6D3D1', '#292524'] /* plata y humo */,
     nombre: 'Gótico',
     lema: 'Plata sobre humo: murciélagos, telarañas y velas.',
     marcos: ['murcielagos', 'telarana', 'velas'],
@@ -36,6 +45,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'medianoche',
+    tonos: ['#deddf5', '#333d49'] /* luna y acero */,
     nombre: 'Después de medianoche',
     lema: 'Plata, órbitas y jardines nocturnos.',
     marcos: ['eclipse', 'astral', 'zarza', 'jardin', 'cromo', 'reliquia'],
@@ -43,6 +53,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'tormenta',
+    tonos: ['#46ECD5', '#74D4FF'] /* agua y cielo */,
     nombre: 'Neón y tormenta',
     lema: 'Luz que zumba y cielo que se parte.',
     marcos: ['neon', 'rayo', 'trazos', 'pulso'],
@@ -50,6 +61,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'cosmos',
+    tonos: ['#C4B4FF', '#74D4FF'] /* lila y cielo */,
     nombre: 'Cosmos',
     lema: 'Órbitas, satélites y auroras.',
     marcos: ['planetas', 'aurora', 'estrellas', 'luna', 'orbita', 'destello', 'saturno', 'lunita', 'estrella-fugaz'],
@@ -57,6 +69,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'fiesta',
+    tonos: ['#FDA5D5', '#FEE685'] /* rosa y oro */,
     nombre: 'Fiesta',
     lema: 'Papelitos, corazones y burbujas.',
     marcos: ['confeti', 'corazones', 'burbujas', 'orejas', 'chispas', 'corazon-brillante', 'fantasma', 'gatito'],
@@ -64,6 +77,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'bosque',
+    tonos: ['#5EE9B5', '#006045'] /* menta y bosque */,
     nombre: 'Bosque de noche',
     lema: 'Lo que crece, cae y brilla cuando oscurece.',
     marcos: ['luciernagas', 'petalos', 'nieve', 'nubes', 'llamas', 'mariposa', 'flor', 'huellas', 'fuego'],
@@ -71,6 +85,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'maquinas',
+    tonos: ['#D6D3D1', '#46ECD5'] /* plata y agua */,
     nombre: 'Sala de máquinas',
     lema: 'Surcos, barras y corcheas.',
     marcos: ['vinilo', 'ecualizador', 'ondas', 'notas', 'musica', 'auriculares'],
@@ -78,6 +93,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'corte',
+    tonos: ['#FEE685', '#973C00'] /* oro y cobre */,
     nombre: 'La corte',
     lema: 'Oro, plumas y laureles.',
     marcos: ['corona', 'alas', 'laurel', 'aureola', 'coronita'],
@@ -85,6 +101,7 @@ export const COLECCIONES: Coleccion[] = [
   },
   {
     id: 'clasicos',
+    tonos: ['#FFFFFF', '#D6D3D1'] /* blanco y plata */,
     nombre: 'Clásicos',
     lema: 'Anillos, para quien quiere marco sin espectáculo.',
     marcos: ['aro', 'pulso', 'orbita', 'trazos', 'destello', 'cromo'],

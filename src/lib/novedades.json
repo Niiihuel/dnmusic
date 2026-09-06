@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.10.1",
+    "fecha": "6 de septiembre de 2026",
+    "titulo": "La tienda de decoraciones.",
+    "cambios": [
+      "Marcos y efectos viven en una sola tienda, como la de Discord: arriba la tarjeta de tu perfil con lo elegido puesto —fondo, efecto, foto con marco y nombre—, el selector Marcos / Efectos, y cada colección con su banner y su estante.",
+      "El tilde aplica lo que haya cambiado, sea el marco, el efecto o los dos."
+    ]
+  },
+  {
     "version": "1.10.0",
     "fecha": "6 de septiembre de 2026",
     "titulo": "Al estilo de Apple Music, con tu propio catálogo de marcos.",
