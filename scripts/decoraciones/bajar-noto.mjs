@@ -8,6 +8,7 @@
  *
  *   node scripts/decoraciones/bajar-noto.mjs
  */
+import { Buffer } from 'node:buffer'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

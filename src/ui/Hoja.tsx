@@ -1,13 +1,15 @@
+import { estadoControlWeb } from './estadoControl'
 import { useEffect, type ReactNode } from 'react'
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native'
+import { Modal as ModalSistema, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native'
 import Animated, {
   Easing,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  useReducedMotion,
   withTiming,
 } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
+import { useIsFocused } from 'expo-router/react-navigation'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { volver } from '../lib/volver'
 import { ES_WEB } from './Glass'
@@ -28,7 +30,6 @@ const ESCRITORIO_PX = 780
 
 /** Lo que tarda en subir y en volver a bajar. Los mismos de «Sonando». */
 const SUBE_MS = 380
-const BAJA_MS = 280
 /** El modal aparece más rápido que la hoja: no viaja, solo se presenta. */
 const MODAL_MS = 200
 /** La franja de app que queda a la vista por encima de la hoja. */
@@ -50,6 +51,13 @@ export type MedidaHoja = 'llena' | 'contenido'
 export function useHojaModal(): boolean {
   const ancho = useWindowDimensions().width >= ESCRITORIO_PX
   return ES_WEB && ancho
+}
+
+/** El reproductor queda detrás de una hoja; sólo se reserva su propia área segura. */
+export function usePisoHoja(extra = 20): number {
+  const insets = useSafeAreaInsets()
+  const modal = useHojaModal()
+  return extra + (modal ? 0 : insets.bottom)
 }
 
 /**
@@ -76,20 +84,24 @@ export function Hoja({
   children,
   medida = 'llena',
   anchoMaximo = ANCHO_HOJA,
+  titulo,
+  onCerrar,
 }: {
+  onCerrar?: () => void
   children: ReactNode
   medida?: MedidaHoja
   anchoMaximo?: number
+  titulo?: string
 }) {
   const ancho = useWindowDimensions().width >= ESCRITORIO_PX
   if (!ES_WEB) return <>{children}</>
   if (ancho)
     return (
-      <Modal medida={medida} anchoMaximo={anchoMaximo}>
+      <Modal medida={medida} anchoMaximo={anchoMaximo} titulo={titulo} onCerrar={onCerrar}>
         {children}
       </Modal>
     )
-  return <Sabana medida={medida}>{children}</Sabana>
+  return <Sabana medida={medida} titulo={titulo} onCerrar={onCerrar}>{children}</Sabana>
 }
 
 /**
@@ -104,45 +116,29 @@ function Modal({
   children,
   medida,
   anchoMaximo,
+  titulo,
+  onCerrar,
 }: {
+  onCerrar?: () => void
   children: ReactNode
   medida: MedidaHoja
   anchoMaximo: number
+  titulo?: string
 }) {
   const router = useRouter()
+  const enfocado = useIsFocused()
   const { height } = useWindowDimensions()
-  const entrada = useSharedValue(0)
+  const reducirMovimiento = useReducedMotion()
+  const entrada = useSharedValue(reducirMovimiento ? 1 : 0)
 
   useEffect(() => {
-    entrada.value = withTiming(1, { duration: MODAL_MS, easing: Easing.out(Easing.cubic) })
-  }, [entrada])
+    entrada.value = withTiming(1, { duration: reducirMovimiento ? 0 : MODAL_MS, easing: Easing.out(Easing.cubic) })
+  }, [entrada, reducirMovimiento])
 
-  const cerrar = () => {
-    // eslint-disable-next-line react-hooks/immutability -- API de un SharedValue
-    entrada.value = withTiming(
-      0,
-      { duration: MODAL_MS * 0.8, easing: Easing.in(Easing.cubic) },
-      (fin) => {
-        if (fin) runOnJS(volver)(router, '/')
-      },
-    )
-  }
+  // Navegar primero permite que usePreventRemove conserve visible el borrador.
+  const cerrar = onCerrar ?? (() => volver(router, '/'))
 
-  /* Escape cierra, como cualquier diálogo. El listener vive y muere con el
-     modal: dos apilados se cierran de a uno, del último para atrás, porque el
-     de arriba se desmonta y deja de comerse la tecla. */
-  useEffect(() => {
-    const onTecla = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        cerrar()
-      }
-    }
-    window.addEventListener('keydown', onTecla)
-    return () => window.removeEventListener('keydown', onTecla)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- cerrar es estable en la práctica
-  }, [])
-
+  // ModalSistema administra foco, Escape y el orden de las hojas apiladas.
   const velo = useAnimatedStyle(() => ({ opacity: entrada.value * 0.45 }))
   const tarjeta = useAnimatedStyle(() => ({
     opacity: entrada.value,
@@ -155,13 +151,15 @@ function Modal({
   const alto = Math.min(Math.round(height * 0.82), 720)
 
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <ModalSistema visible={enfocado} transparent animationType="none" onRequestClose={cerrar} accessibilityLabel={titulo}>
+    <View style={{ flex: 1 }}>
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }, velo]}
       />
       <Pressable
         accessibilityRole="button"
+        {...estadoControlWeb('none')}
         accessibilityLabel="Cerrar"
         onPress={cerrar}
         style={StyleSheet.absoluteFill}
@@ -175,10 +173,10 @@ function Modal({
             {
               width: anchoMaximo,
               maxWidth: '92%' as const,
-              borderRadius: 24,
+              borderRadius: 28,
               overflow: 'hidden',
-              backgroundColor: '#121212',
-              boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
+              backgroundColor: '#18181b',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)',
               ...(medida === 'llena' ? { height: alto } : { maxHeight: alto }),
             },
             tarjeta,
@@ -188,6 +186,7 @@ function Modal({
         </Animated.View>
       </View>
     </View>
+    </ModalSistema>
   )
 }
 
@@ -205,8 +204,9 @@ function Modal({
  * todo, y la franja de app que queda a la vista es lo que la hace leerse como
  * una hoja y no como otra pantalla. La llena sigue midiendo hasta el tope.
  */
-function Sabana({ children, medida }: { children: ReactNode; medida: MedidaHoja }) {
+function Sabana({ children, medida, titulo, onCerrar }: { children: ReactNode; medida: MedidaHoja; titulo?: string; onCerrar?: () => void }) {
   const router = useRouter()
+  const enfocado = useIsFocused()
   const { height } = useWindowDimensions()
   /*
    * El tope respeta el safe area: en un iPhone con la web instalada como app,
@@ -216,23 +216,15 @@ function Sabana({ children, medida }: { children: ReactNode; medida: MedidaHoja 
   const insets = useSafeAreaInsets()
   const tope = Math.max(TOPE, insets.top + 12)
   const recorrido = Math.max(1, height - tope)
-  const y = useSharedValue(recorrido)
+  const reducirMovimiento = useReducedMotion()
+  const y = useSharedValue(reducirMovimiento ? 0 : recorrido)
 
   useEffect(() => {
-    y.value = withTiming(0, { duration: SUBE_MS, easing: Easing.out(Easing.cubic) })
-  }, [y])
+    y.value = withTiming(0, { duration: reducirMovimiento ? 0 : SUBE_MS, easing: Easing.out(Easing.cubic) })
+  }, [y, reducirMovimiento])
 
-  const cerrar = () => {
-    /* La salida es imperativa a propósito: es la API de un SharedValue. */
-    // eslint-disable-next-line react-hooks/immutability
-    y.value = withTiming(
-      recorrido,
-      { duration: BAJA_MS, easing: Easing.in(Easing.cubic) },
-      (fin) => {
-        if (fin) runOnJS(volver)(router, '/')
-      },
-    )
-  }
+  // Navegar primero permite que usePreventRemove conserve visible el borrador.
+  const cerrar = onCerrar ?? (() => volver(router, '/'))
 
   const panel = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }] }))
   const velo = useAnimatedStyle(() => ({
@@ -240,6 +232,7 @@ function Sabana({ children, medida }: { children: ReactNode; medida: MedidaHoja 
   }))
 
   return (
+    <ModalSistema visible={enfocado} transparent animationType="none" onRequestClose={cerrar} accessibilityLabel={titulo}>
     <View style={{ flex: 1 }}>
       {/* El velo va aparte del panel: se queda quieto y solo cambia de
           intensidad — un velo que viaja con la hoja oscurecería de a saltos. */}
@@ -252,6 +245,7 @@ function Sabana({ children, medida }: { children: ReactNode; medida: MedidaHoja 
           así que los toques sobre la hoja no llegan acá. */}
       <Pressable
         accessibilityRole="button"
+        {...estadoControlWeb('none')}
         accessibilityLabel="Cerrar"
         onPress={cerrar}
         style={StyleSheet.absoluteFill}
@@ -266,32 +260,18 @@ function Sabana({ children, medida }: { children: ReactNode; medida: MedidaHoja 
             /* Llena: de un tope fijo hasta abajo. A medida: crece desde abajo
                con su contenido y no pasa del mismo tope. */
             ...(medida === 'llena' ? { top: tope } : { maxHeight: height - tope }),
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
             overflow: 'hidden',
-            backgroundColor: '#121212',
+            backgroundColor: '#18181b',
             boxShadow: '0 -12px 40px rgba(0,0,0,0.5)',
           },
           panel,
         ]}
       >
         {children}
-        {/* El grabber, encima del contenido: anuncia que esto es una hoja.
-            El gesto real acá es el click en el fondo — con mouse no se
-            arrastra — pero la pieza es parte del idioma del drawer. */}
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: 8,
-            alignSelf: 'center',
-            height: 5,
-            width: 36,
-            borderRadius: 999,
-            backgroundColor: 'rgba(255,255,255,0.25)',
-          }}
-        />
       </Animated.View>
     </View>
+    </ModalSistema>
   )
 }

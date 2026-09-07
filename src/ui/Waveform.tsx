@@ -126,7 +126,7 @@ export function Waveform({
 
   useEffect(() => {
     if (!pxPerMs) return
-    translate.value = windowLeft - startMs * pxPerMs
+    translate.set(windowLeft - startMs * pxPerMs)
   }, [startMs, pxPerMs, windowLeft, translate])
 
   const commit = (tx: number) => {
@@ -166,7 +166,7 @@ export function Waveform({
         scrubMs.value = timeAt(e.x)
         return
       }
-      translate.value = Math.max(minTranslate, Math.min(windowLeft, dragFrom.value + e.translationX))
+      translate.set(Math.max(minTranslate, Math.min(windowLeft, dragFrom.value + e.translationX)))
     })
     .onEnd(() => {
       if (scrubbing.value) runOnJS(scrub)(scrubMs.value)

@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ActivityIndicator,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -13,14 +12,17 @@ import {
   View,
 } from 'react-native'
 import { useRouter } from 'expo-router'
+import { useNavigation, usePreventRemove, type NavigationAction } from 'expo-router/react-navigation'
+import { CabeceraSocial, AccionSocial, SeccionSocial } from '../src/ui/Social'
+import { Confirmar } from '../src/ui/Confirmar'
 import { volver } from '../src/lib/volver'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Panel } from '../src/ui/Panel'
+import { Hoja, useHojaModal } from '../src/ui/Hoja'
+import { Menu } from '../src/ui/Menu'
 import { Avatar } from '../src/ui/Avatar'
 import { FilaCuenta } from '../src/ui/FilaCuenta'
 import { Vacio } from '../src/ui/Vacio'
-import { ResizableRegion } from '../src/ui/ResizableRegion'
-import { AnimatedSidebarTitle, CollapsedSidebar } from '../src/ui/SidebarMotion'
+import { ScrollArea } from '../src/ui/ScrollArea'
 import { SearchField } from '../src/ui/SearchField'
 import { SkeletonList } from '../src/ui/Skeleton'
 import { sendMessage } from '../src/services/messages'
@@ -42,14 +44,9 @@ import {
   useConversations,
 } from '../src/state/session'
 import { resetDraft, setDraft, useDraft } from '../src/state/draft'
-import { usePiso } from '../src/state/shell'
 import { artworkSource } from '../src/lib/artwork'
 import {
   ICON_COLOR,
-  IconCollapseLeft,
-  IconCollapseRight,
-  IconClose,
-  IconHome,
   IconInbox,
   IconMusic,
   IconSend,
@@ -57,25 +54,13 @@ import {
 
 const MAX_MESSAGE_LENGTH = 2000
 const SEARCH_DEBOUNCE_MS = 250
-const WIDE_COMPOSER_PX = 820
 
 export default function Compose() {
   const draft = useDraft()
   const activeContact = useContact()
   const conversations = useConversations()
-  const { width } = useWindowDimensions()
-  /** En el teléfono el contenido va de borde a borde. Ver `Panel`. */
-  const suelto = width < 780
-  /* El botón de enviar no puede quedar debajo de lo que flota abajo. Acá no
-     hay pestañas —es una pantalla apilada— así que es solo el reproductor. */
-  const piso = usePiso(16)
-  const wide = width >= WIDE_COMPOSER_PX
-  const showContactSidebar = width >= 900
-  const showSongSidebar = width >= 1180
-  const [leftWidth, setLeftWidth] = useState(320)
-  const [rightWidth, setRightWidth] = useState(320)
-  const [leftCollapsed, setLeftCollapsed] = useState(false)
-  const [rightCollapsed, setRightCollapsed] = useState(false)
+  const modal = useHojaModal()
+  const { height } = useWindowDimensions()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<ContactResult[]>([])
   const [searching, setSearching] = useState(true)
@@ -83,6 +68,10 @@ export default function Compose() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const navigation = useNavigation()
+  const enviando = useRef(false)
+  const enviado = useRef(false)
+  const [salida, setSalida] = useState<NavigationAction | null>(null)
 
   const recipient = draft.recipient ?? (draft.chooseRecipient ? null : activeContact)
   const visibleResults = useMemo(
@@ -148,6 +137,20 @@ export default function Compose() {
       // Con una ya enviada el botón se apaga: reenviarla no haría nada.
       recipient !== null && solicitud !== 'enviada' && !busy
 
+  usePreventRemove(hasContent || busy, ({ data }) => {
+    if (enviado.current) navigation.dispatch(data.action)
+    else if (!enviando.current) setSalida(data.action)
+  })
+  useEffect(() => {
+    if (Platform.OS !== 'web' || (!hasContent && !busy)) return
+    const advertir = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', advertir)
+    return () => window.removeEventListener('beforeunload', advertir)
+  }, [hasContent, busy])
+
   function changeQuery(value: string) {
     setQuery(value)
     setSearching(true)
@@ -155,21 +158,24 @@ export default function Compose() {
   }
 
   function chooseContact(contact: ContactResult) {
+    if (enviando.current) return
     setDraft({
       recipient: toContact(contact),
       chooseRecipient: false,
     })
     setError(null)
-    if (!wide) setQuery('')
+    setQuery('')
   }
 
   async function send() {
+    if (enviando.current || !canSend) return
     const { user } = getSession()
     if (!user || !recipient) {
       setError('Elegí a quién querés enviarle el mensaje.')
       return
     }
 
+    enviando.current = true
     setBusy(true)
     setError(null)
     try {
@@ -181,12 +187,14 @@ export default function Compose() {
         if (estado === 'enviada') {
           avisar(`Solicitud enviada a @${recipient.username}`)
           await refreshConversations()
+          enviado.current = true
           resetDraft()
           volver(router, '/')
           return
         }
         await refreshConversations()
         if (!hasContent) {
+          enviado.current = true
           resetDraft()
           volver(router, '/')
           return
@@ -198,39 +206,24 @@ export default function Compose() {
         song: draft.song ?? undefined,
       })
       await refreshConversations()
+      enviado.current = true
       resetDraft()
       volver(router, '/')
     } catch (cause) {
       setError(`No se pudo enviar: ${(cause as Error).message}`)
+      enviando.current = false
       setBusy(false)
     }
   }
 
   function cancel() {
-    resetDraft()
+    if (enviando.current) return
+    if (!hasContent) resetDraft()
     volver(router, '/')
   }
 
-  /*
-   * El selector de destinatario, con las mismas filas que la búsqueda de
-   * Chats (`FilaCuenta`): avatar, nombre y en qué están — sin botones, porque
-   * acá tocar la fila **elige** y la acción es el botón grande de abajo. En el
-   * teléfono ocupa la pantalla entera hasta que se elige; en escritorio sigue
-   * siendo el panel de la izquierda.
-   */
   const contactPicker = (
-    <View
-      className={`${
-        wide ? 'w-[300px]' : suelto ? 'min-h-0 flex-1' : 'max-h-[300px]'
-      } min-h-0 gap-3`}
-    >
-      {!showContactSidebar ? (
-        <View className="gap-1">
-          <Text className="text-foreground text-lg font-semibold">Destinatario</Text>
-          <Text className="text-muted-foreground text-xs">Buscá una cuenta por su usuario.</Text>
-        </View>
-      ) : null}
-
+    <View className="min-h-0 flex-1 gap-4">
       <SearchField
         value={query}
         onChangeText={changeQuery}
@@ -248,7 +241,7 @@ export default function Compose() {
           <Vacio
             compacto
             icono={<IconInbox size={20} color={ICON_COLOR.muted} />}
-            titulo="Sin resultados"
+            titulo={query.trim().length < MINIMO_BUSQUEDA ? 'Encontrá un contacto' : 'Sin resultados'}
             detalle={searchError}
           />
         ) : visibleResults.length === 0 ? (
@@ -264,12 +257,14 @@ export default function Compose() {
           />
         ) : (
           <FlatList
+            renderScrollComponent={(props) => <ScrollArea {...props} />}
             data={visibleResults}
             keyExtractor={(contact) => contact.id}
             keyboardShouldPersistTaps="handled"
             contentContainerClassName="gap-1"
             renderItem={({ item }) => (
-              <FilaCuenta cuenta={item} onAbrir={() => chooseContact(item)} />
+              <FilaCuenta cuenta={item} onAbrir={() => chooseContact(item)}
+                onVerPerfil={() => router.push({ pathname: '/perfil/[usuario]', params: { usuario: item.username } })} />
             )}
           />
         )}
@@ -277,32 +272,18 @@ export default function Compose() {
     </View>
   )
 
-  /*
-   * El destinatario elegido, como tarjeta con su salida.
-   *
-   * En el teléfono reemplaza al selector: elegir pasa de pantalla, y la cruz
-   * vuelve a la búsqueda. Es el flujo de dos pasos de cualquier «nuevo
-   * mensaje» de iOS — antes convivían el buscador, su esqueleto y el editor
-   * apilados en la misma pantalla, pisándose entre sí.
-   */
   const chipDestinatario = recipient ? (
-    <View className="flex-row items-center gap-3 rounded-xl bg-card p-3">
-      <Avatar name={contactLabel(recipient)} path={recipient.avatarPath} size={44} />
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
-          {contactTitle(recipient)}
-        </Text>
-        <Text className="text-muted-foreground text-[11px]">@{recipient.username}</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="Cambiar destinatario" disabled={busy}
+      onPress={() => setDraft({ recipient: null, chooseRecipient: true })}
+      className="min-h-11 flex-row items-center gap-3 px-1 active:opacity-70">
+      <Text className="text-muted-foreground text-[15px]">Para</Text>
+      <Avatar name={contactLabel(recipient)} path={recipient.avatarPath} size={32} />
+      <View className="min-w-0 flex-1">
+        <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>{contactTitle(recipient)}</Text>
+        <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>@{recipient.username}</Text>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Cambiar el destinatario"
-        onPress={() => setDraft({ recipient: null, chooseRecipient: true })}
-        className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
-      >
-        <IconClose size={15} color={ICON_COLOR.muted} />
-      </Pressable>
-    </View>
+      <Text className="text-muted-foreground text-[13px]">Cambiar</Text>
+    </Pressable>
   ) : null
 
   const messageEditor = (
@@ -311,13 +292,11 @@ export default function Compose() {
       contentContainerClassName="gap-6"
       keyboardShouldPersistTaps="handled"
     >
-      <View className="gap-2">
+      <SeccionSocial>
+        <View className="gap-3 p-4">
         <View className="flex-row items-center justify-between">
           <View className="gap-0.5">
-            <Text className="text-foreground text-lg font-semibold">Tu mensaje</Text>
-            <Text className="text-muted-foreground text-xs">
-              {recipient ? `Para @${recipient.username}` : 'Primero elegí un destinatario'}
-            </Text>
+            <Text className="text-foreground text-[15px] font-semibold">Mensaje</Text>
           </View>
           <Text
             className={`text-xs tabular-nums ${
@@ -330,6 +309,7 @@ export default function Compose() {
           </Text>
         </View>
         <TextInput
+          editable={!busy}
           value={draft.text}
           onChangeText={(text) => setDraft({ text })}
           placeholder={
@@ -341,17 +321,21 @@ export default function Compose() {
           autoFocus={!!recipient}
           maxLength={MAX_MESSAGE_LENGTH + 1}
           textAlignVertical="top"
-          className="min-h-44 rounded-xl bg-muted px-4 py-3.5 text-foreground text-[16px] leading-6"
+          className="min-h-28 text-foreground text-[16px] leading-6"
         />
-      </View>
+        </View>
+      </SeccionSocial>
 
-      {!showSongSidebar ? <View className="gap-2">
-        <Text className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.8px]">
+      <View className="gap-2">
+        <Text className="text-foreground text-[15px] font-semibold">
           Canción
         </Text>
         {draft.song ? (
           <View className="flex-row items-center gap-3 rounded-xl bg-muted p-3">
-            {draft.song.artworkUrl ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Cambiar canción" disabled={busy}
+              onPress={() => router.push('/song')}
+              className="min-h-11 min-w-0 flex-1 flex-row items-center gap-3 active:opacity-75">
+            {(draft.song.artworkPath || draft.song.artworkUrl) ? (
               <Image
                 source={{ uri: artworkSource(draft.song.artworkPath, draft.song.artworkUrl, 128) ?? '' }}
                 className="h-14 w-14 rounded-lg bg-card"
@@ -362,7 +346,7 @@ export default function Compose() {
               </View>
             )}
             <View className="min-w-0 flex-1 gap-0.5">
-              <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
+              <Text className="text-foreground text-[15px] font-semibold" numberOfLines={2}>
                 {draft.song.title}
               </Text>
               <Text className="text-muted-foreground text-xs" numberOfLines={1}>
@@ -370,32 +354,30 @@ export default function Compose() {
                 {draft.song.lyrics?.length ? ' · con letra' : ''}
               </Text>
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Quitar la canción"
-              onPress={() => setDraft({ song: null })}
-              className="h-10 w-10 items-center justify-center rounded-full bg-card active:opacity-70"
-            >
-              <IconClose size={17} color={ICON_COLOR.muted} />
             </Pressable>
+            <Menu label="Opciones de la canción adjunta" items={[
+              { label: 'Cambiar canción', sfSymbol: 'music.note', disabled: busy, onPress: () => router.push('/song') },
+              { label: 'Quitar canción', sfSymbol: 'trash', disabled: busy, destructive: true, onPress: () => setDraft({ song: null }) },
+            ]} />
           </View>
         ) : (
           <Pressable
             accessibilityRole="button"
+            disabled={busy}
             onPress={() => router.push('/song')}
-            className="flex-row items-center justify-center gap-2 rounded-full bg-muted py-3.5 active:opacity-80"
+            className="min-h-11 self-start flex-row items-center justify-center gap-2 rounded-full bg-muted px-4 py-3 active:opacity-80"
           >
             <IconMusic size={18} color={ICON_COLOR.muted} />
-            <Text className="text-muted-foreground text-[14px] font-semibold">
+            <Text className="text-muted-foreground text-[15px] font-semibold">
               Agregar una canción
             </Text>
           </Pressable>
         )}
-      </View> : null}
+      </View>
 
       {error ? (
         <View className="rounded-lg bg-muted px-4 py-3">
-          <Text className="text-destructive text-sm leading-5">{error}</Text>
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="text-destructive text-sm leading-5">{error}</Text>
         </View>
       ) : null}
     </ScrollView>
@@ -417,306 +399,35 @@ export default function Compose() {
       </View>
       {error ? (
         <View className="rounded-lg bg-muted px-4 py-3">
-          <Text className="text-destructive text-sm leading-5">{error}</Text>
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="text-destructive text-sm leading-5">{error}</Text>
         </View>
       ) : null}
     </View>
   ) : null
 
-  const contactPanel = (hovered: boolean, onCollapse: () => void) => (
-    <Panel className="flex-1">
-      <View className="px-5 pb-2 pt-5">
-        <AnimatedSidebarTitle
-          visible={hovered}
-          label="Colapsar destinatarios"
-          icon={<IconCollapseLeft size={17} color={ICON_COLOR.muted} />}
-          onPress={onCollapse}
-          alignIconToFirstLine
-        >
-          <View className="gap-0.5">
-            <Text className="text-foreground text-lg font-semibold">Destinatario</Text>
-            <Text className="text-muted-foreground text-xs">Buscá una cuenta por su usuario.</Text>
-          </View>
-        </AnimatedSidebarTitle>
-      </View>
-      <View className="min-h-0 flex-1 p-5 pt-2">{contactPicker}</View>
-    </Panel>
-  )
-
-  const songPanel = (hovered: boolean, onCollapse: () => void) => (
-    <ComposerSongPanel
-      hovered={hovered}
-      song={draft.song}
-      onCollapse={onCollapse}
-      onAdd={() => router.push('/song')}
-      onRemove={() => setDraft({ song: null })}
-    />
-  )
-
-  /*
-   * En el teléfono el fondo es el mismo del contenido.
-   *
-   * Con el negro puro del escritorio, el encabezado y la zona de las pestañas
-   * quedaban como dos franjas más oscuras contra los paneles: una costura
-   * visible donde no hay ninguna separación real.
-   */
   return (
-    <SafeAreaView
-      className="flex-1 bg-background"
-      edges={['top', 'bottom']}
-    >
-      {/* Sin margen ni hueco en el teléfono: con un solo panel a la vista, el
-          marco negro alrededor no separa nada — ver `Panel`. */}
-      <View className={`flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
-        <View className="relative flex-row items-center justify-between px-2">
-          {/* En el teléfono el logo y el botón de inicio sobran: son 390px y la
-              cruz ya es la salida. Queda la cruz y el título, como cualquier
-              pantalla de redactar del sistema. */}
-          <View className="flex-row items-center gap-3">
-            {suelto ? null : (
-              <View className="h-11 w-11 items-center justify-center rounded-full bg-primary">
-                <IconMusic size={21} color={ICON_COLOR.onPrimary} />
-              </View>
-            )}
-            {wide ? <Text className="text-foreground text-lg font-bold">dnmusic</Text> : null}
+    <Hoja medida={modal ? "contenido" : "llena"} anchoMaximo={640} titulo="Nuevo mensaje">
+      <SafeAreaView className="min-h-0 bg-background" style={modal ? { height: Math.min(560, height - 96) } : { flex: 1 }} edges={Platform.OS === 'web' ? [] : ['bottom']}>
+        <CabeceraSocial titulo="Nuevo mensaje" ocupado={busy} detalle={recipient ? undefined : 'Elegir destinatario'} onCerrar={cancel} />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="min-h-0 flex-1">
+          <View className="min-h-0 flex-1 gap-4 px-5 pb-4">
+            {!recipient ? contactPicker : <>{chipDestinatario}{puedeEscribir ? messageEditor : requestNotice}</>}
           </View>
-
-          <View className="absolute inset-x-0 items-center" pointerEvents="box-none">
-            <View className="flex-row items-center gap-2">
-              {suelto ? null : (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Volver al inicio"
-                  onPress={() => {
-                    resetDraft()
-                    router.replace('/')
-                  }}
-                  className="h-11 w-11 items-center justify-center rounded-full bg-background active:bg-muted"
-                >
-                  <IconHome size={19} color={ICON_COLOR.foreground} />
-                </Pressable>
-              )}
-              <View className={suelto ? 'px-2' : 'rounded-full bg-background px-5 py-2.5'}>
-                <Text className="text-foreground text-[14px] font-semibold">Nuevo mensaje</Text>
-              </View>
-            </View>
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Cancelar"
-            onPress={cancel}
-            className="h-11 w-11 items-center justify-center rounded-full bg-background active:bg-muted"
-          >
-            <IconClose size={17} color={ICON_COLOR.muted} />
-          </Pressable>
-        </View>
-
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          className="min-h-0 flex-1"
-        >
-          <View className="min-h-0 flex-1 flex-row gap-2">
-            {showContactSidebar ? (
-              <ResizableRegion
-                width={leftWidth}
-                collapsed={leftCollapsed}
-                minWidth={300}
-                maxWidth={430}
-                resizeEdge="right"
-                onWidthChange={setLeftWidth}
-              >
-                {({ hovered }) =>
-                  leftCollapsed ? (
-                    <CollapsedSidebar
-                      side="left"
-                      hovered={hovered}
-                      onExpand={() => setLeftCollapsed(false)}
-                      label="Expandir destinatarios"
-                    />
-                  ) : (
-                    contactPanel(hovered, () => setLeftCollapsed(true))
-                  )
-                }
-              </ResizableRegion>
-            ) : null}
-
-            <Panel className="flex-1">
-              {/* Sin línea divisoria: `docs/DESIGN.md` separa por luminancia.
-                  El `bg-card` contra el fondo del panel ya marca el bloque.
-                  En el teléfono, mientras se elige a quién, esta franja sobra:
-                  la pantalla ES el buscador y el título ya dice Nuevo mensaje. */}
-              {suelto && !recipient ? null : (
-              <View className="flex-row items-center justify-between bg-card px-5 py-3.5">
-                <View>
-                  <Text className="text-foreground text-[15px] font-semibold">
-                    {!recipient
-                      ? 'Nueva conversación'
-                      : puedeEscribir
-                        ? `Mensaje para @${recipient.username}`
-                        : `Solicitud para @${recipient.username}`}
-                  </Text>
-                  <Text className="text-muted-foreground text-[11px]">
-                    {!recipient
-                      ? 'Elegí primero un destinatario'
-                      : puedeEscribir
-                        ? 'Escribí y compartí una canción'
-                        : 'Cuando acepte van a poder escribirse'}
-                  </Text>
-                </View>
-                <Text className="text-muted-foreground text-xs tabular-nums">
-                  {draft.text.length}/{MAX_MESSAGE_LENGTH}
-                </Text>
-              </View>
-              )}
-
-              <View className="min-h-0 flex-1 gap-5 p-5">
-                {/* El teléfono va en dos pasos: primero el buscador a pantalla
-                    entera, después el destinatario como tarjeta y el mensaje. */}
-                {!showContactSidebar && !(suelto && recipient) ? contactPicker : null}
-                {suelto && recipient ? chipDestinatario : null}
-                {suelto && !recipient
-                  ? null
-                  : recipient && !puedeEscribir
-                    ? requestNotice
-                    : messageEditor}
-              </View>
-
-              {suelto && !recipient ? null : (
-              <View className="p-4" style={{ paddingBottom: piso }}>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={!canSend}
-                  onPress={send}
-                  className={`h-[48px] flex-row items-center justify-center gap-2 rounded-full ${
-                    canSend ? 'bg-primary active:opacity-80' : 'bg-muted'
-                  }`}
-                >
-                  {busy ? (
-                    <ActivityIndicator color="#121212" />
-                  ) : (
-                    <>
-                      <IconSend
-                        size={16}
-                        color={canSend ? ICON_COLOR.onPrimary : ICON_COLOR.muted}
-                      />
-                      <Text
-                        className={`text-[13px] font-semibold uppercase tracking-[1.4px] ${
-                          canSend ? 'text-primary-foreground' : 'text-muted-foreground'
-                        }`}
-                      >
-                        {!recipient
-                          ? 'Elegí un destinatario'
-                          : puedeEscribir
-                            ? `Enviar a @${recipient.username}`
-                            : solicitud === 'enviada'
-                              ? 'Solicitud enviada'
-                              : 'Enviar solicitud'}
-                      </Text>
-                    </>
-                  )}
-                </Pressable>
-              </View>
-              )}
-            </Panel>
-
-            {showSongSidebar ? (
-              <ResizableRegion
-                width={rightWidth}
-                collapsed={rightCollapsed}
-                minWidth={280}
-                maxWidth={440}
-                resizeEdge="left"
-                onWidthChange={setRightWidth}
-              >
-                {({ hovered }) =>
-                  rightCollapsed ? (
-                    <CollapsedSidebar
-                      side="right"
-                      hovered={hovered}
-                      onExpand={() => setRightCollapsed(false)}
-                      label="Expandir canción"
-                    />
-                  ) : (
-                    songPanel(hovered, () => setRightCollapsed(true))
-                  )
-                }
-              </ResizableRegion>
-            ) : null}
-          </View>
+          {recipient ? <View className="items-end px-5 pt-2" style={{ paddingBottom: 20 }}>
+            <AccionSocial expandida={false} style={{ alignSelf: 'flex-end' }} label={puedeEscribir ? 'Enviar mensaje' : solicitud === 'enviada' ? 'Solicitud enviada' : 'Enviar solicitud'}
+              onPress={send} disabled={!canSend} busy={busy}
+              icono={<IconSend size={18} color={canSend ? ICON_COLOR.onPrimary : ICON_COLOR.muted} />} />
+          </View> : null}
         </KeyboardAvoidingView>
-      </View>
-    </SafeAreaView>
-  )
-}
-
-function ComposerSongPanel({
-  hovered,
-  song,
-  onCollapse,
-  onAdd,
-  onRemove,
-}: {
-  hovered: boolean
-  song: ReturnType<typeof useDraft>['song']
-  onCollapse: () => void
-  onAdd: () => void
-  onRemove: () => void
-}) {
-  return (
-    <Panel className="flex-1">
-      <View className="px-5 pb-2 pt-5">
-        <AnimatedSidebarTitle
-          visible={hovered}
-          label="Colapsar canción"
-          icon={<IconCollapseRight size={17} color={ICON_COLOR.muted} />}
-          onPress={onCollapse}
-        >
-          <Text className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.8px]">
-            Canción
-          </Text>
-        </AnimatedSidebarTitle>
-      </View>
-
-      {song ? (
-        <View className="gap-4 p-5">
-          {song.artworkUrl ? (
-            <Image
-              source={{ uri: artworkSource(song.artworkPath, song.artworkUrl, 640) ?? '' }}
-              className="aspect-square w-full rounded-xl bg-muted"
-            />
-          ) : (
-            <View className="aspect-square w-full items-center justify-center rounded-xl bg-muted">
-              <IconMusic size={30} color={ICON_COLOR.muted} />
-            </View>
-          )}
-          <View className="gap-1">
-            <Text className="text-foreground text-lg font-semibold">{song.title}</Text>
-            <Text className="text-muted-foreground text-xs">{song.artist}</Text>
-          </View>
-          <View className="flex-row gap-2">
-            <Pressable onPress={onAdd} className="flex-1 rounded-full bg-muted py-3">
-              <Text className="text-center text-foreground text-xs font-semibold">Cambiar</Text>
-            </Pressable>
-            <Pressable onPress={onRemove} className="h-10 w-10 items-center justify-center rounded-full bg-muted">
-              <IconClose size={16} color={ICON_COLOR.muted} />
-            </Pressable>
-          </View>
-        </View>
-      ) : (
-        <View className="flex-1 items-center justify-center gap-3 p-8">
-          <View className="h-12 w-12 items-center justify-center rounded-full bg-muted">
-            <IconMusic size={21} color={ICON_COLOR.muted} />
-          </View>
-          <Text className="text-foreground text-center text-sm font-semibold">Sumá una canción</Text>
-          <Text className="text-muted-foreground text-center text-xs leading-5">
-            Elegí un fragmento para acompañar el mensaje.
-          </Text>
-          <Pressable onPress={onAdd} className="rounded-full bg-primary px-5 py-3">
-            <Text className="text-primary-foreground text-xs font-semibold">Buscar canción</Text>
-          </Pressable>
-        </View>
-      )}
-    </Panel>
+        <Confirmar visible={!!salida} titulo="¿Descartar el mensaje?"
+          mensaje="El texto y el fragmento que elegiste todavía no se enviaron."
+          rotulo="Descartar" onCancelar={() => setSalida(null)} onConfirmar={() => {
+            const action = salida
+            setSalida(null)
+            resetDraft()
+            if (action) navigation.dispatch(action)
+          }} />
+      </SafeAreaView>
+    </Hoja>
   )
 }

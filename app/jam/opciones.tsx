@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { ScrollView, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { volver } from '../../src/lib/volver'
 import {
@@ -9,7 +9,8 @@ import {
   useSoyHostJam,
 } from '../../src/state/jam'
 import { GrupoAjustes, FilaInterruptor } from '../../src/ui/Ajustes'
-import { Hoja } from '../../src/ui/Hoja'
+import { AccionSocial, CabeceraSocial } from '../../src/ui/Social'
+import { Hoja, usePisoHoja } from '../../src/ui/Hoja'
 
 /**
  * Las perillas del Jam, en su propia hoja de la pila.
@@ -24,37 +25,29 @@ import { Hoja } from '../../src/ui/Hoja'
  */
 export default function OpcionesJam() {
   const router = useRouter()
+  const piso = usePisoHoja(24)
   const jam = useJam()
   const soyHost = useSoyHostJam()
   const salida = useMiSalidaJam()
 
   if (!jam) {
     return (
-      <Hoja medida="contenido">
-      <View className="flex-1 items-center justify-center gap-4 bg-background">
-        <Text className="text-muted-foreground text-[13px]">El Jam terminó.</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => volver(router, '/')}
-          className="rounded-full bg-muted px-5 py-2.5 active:opacity-80"
-        >
-          <Text className="text-foreground text-[13px] font-semibold">Volver</Text>
-        </Pressable>
-      </View>
+      <Hoja medida="contenido" titulo="Opciones del Jam">
+        <CabeceraSocial titulo="Opciones del Jam" onCerrar={() => volver(router, '/')} />
+        <View className="gap-5 bg-background px-5 pt-3" style={{ paddingBottom: piso }}>
+          <Text className="text-muted-foreground text-[15px]">El Jam terminó.</Text>
+          <AccionSocial label="Volver" secundaria onPress={() => volver(router, '/')} />
+        </View>
       </Hoja>
     )
   }
 
   return (
     /* En web, `Hoja` hace de formSheet: tercera hoja de la pila, un velo más. */
-    <Hoja medida="contenido">
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerClassName="gap-4 px-5 pb-10 pt-6"
-    >
-      <Text className="text-foreground text-center text-lg font-bold">
-        {soyHost ? 'Controles para invitados' : 'Opciones'}
-      </Text>
+    <Hoja medida="contenido" titulo="Opciones del Jam">
+    <View className="bg-background">
+    <CabeceraSocial titulo="Opciones del Jam" onCerrar={() => volver(router, '/jam')} />
+    <ScrollView style={{ flexGrow: 0 }} contentContainerClassName="gap-4 px-5 pt-2" contentContainerStyle={{ paddingBottom: piso }}>
 
       {soyHost ? (
         <>
@@ -76,7 +69,7 @@ export default function OpcionesJam() {
               ultima
             />
           </GrupoAjustes>
-          <Text className="text-muted-foreground px-4 text-[11px] leading-4">
+          <Text className="text-muted-foreground px-4 text-[13px] leading-5">
             Quitar tiene su regla fija: cada uno puede sacar lo que agregó, y vos
             cualquiera. La que está sonando no la saca nadie.
           </Text>
@@ -97,6 +90,7 @@ export default function OpcionesJam() {
         </GrupoAjustes>
       )}
     </ScrollView>
+    </View>
     </Hoja>
   )
 }

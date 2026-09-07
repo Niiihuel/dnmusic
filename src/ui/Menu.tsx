@@ -1,3 +1,4 @@
+import { estadoControlWeb } from './estadoControl'
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Animated,
@@ -516,6 +517,7 @@ export function Menu({
         accessibilityLabel={label}
         accessibilityState={{ expanded: open }}
         onPress={openMenu}
+        style={triggerFullWidth ? { width: '100%' } : undefined}
         /* El tamaño fijo es **de los tres puntos**. Con un `trigger` propio el
            disparador mide lo que mida él: clavado en 36px, un chip más ancho
            se desbordaba y el botón siguiente se dibujaba encima. */
@@ -543,6 +545,7 @@ export function Menu({
         <View className="flex-1">
           <Pressable
             accessibilityRole="button"
+            {...estadoControlWeb('none')}
             accessibilityLabel="Cerrar el menú"
             onPress={cerrar}
             className="absolute inset-0"
@@ -700,7 +703,7 @@ function Fila({ item, abierto, onPress }: { item: MenuItem; abierto: boolean; on
       }
       onPress={onPress}
       style={{ height: altoFila(item) }}
-      className={`mx-1.5 flex-row items-center gap-3 rounded-xl px-3 hover:bg-white/10 active:bg-white/15 ${
+      className={`mx-1.5 flex-row items-center gap-3 rounded-xl px-3 active:bg-white/15 ${
         abierto ? 'bg-white/10' : ''
       }`}
     >
@@ -746,7 +749,7 @@ function FilaRapidas({ items, onElegir }: { items: MenuItem[]; onElegir: (item: 
           accessibilityLabel={item.label}
           accessibilityState={item.selected !== undefined ? { selected: item.selected } : undefined}
           onPress={() => onElegir(item)}
-          className="flex-1 items-center justify-center gap-1.5 rounded-xl px-1 hover:bg-white/10 active:bg-white/15"
+          className="flex-1 items-center justify-center gap-1.5 rounded-xl px-1 active:bg-white/15"
         >
           <View className="h-6 items-center justify-center" style={{ transform: [{ scale: 1.35 }] }}>
             {item.icon}

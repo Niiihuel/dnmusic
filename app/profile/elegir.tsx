@@ -1,3 +1,4 @@
+import { CabeceraSocial } from '../../src/ui/Social'
 import { fotoDelArtista } from '../../src/lib/fotoArtista'
 import { useEffect, useState, type ReactNode } from 'react'
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from 'react-native'
@@ -17,14 +18,14 @@ import { ultimasEscuchas, type EscuchaReciente } from '../../src/services/plays'
 import type { ShowcaseContenido } from '../../src/services/showcases'
 import { avisar } from '../../src/state/aviso'
 import { playQueue, togglePlayback, usePlaybackTrack, useWantPlay } from '../../src/state/playback'
-import { useKeyboardH, usePiso } from '../../src/state/shell'
+import { useKeyboardH } from '../../src/state/shell'
 import { actualizarBorrador, useBorrador } from '../../src/state/vitrinaBorrador'
 import { EstadoTapa } from '../../src/ui/CoverState'
-import { Hoja, useHojaModal } from '../../src/ui/Hoja'
+import { Hoja, useHojaModal, usePisoHoja } from '../../src/ui/Hoja'
 import { Panel } from '../../src/ui/Panel'
 import { SearchField } from '../../src/ui/SearchField'
 import { SkeletonList } from '../../src/ui/Skeleton'
-import { ICON_COLOR, IconBack, IconMusic, IconUser, IconVolume } from '../../src/ui/icons'
+import { ICON_COLOR, IconMusic, IconUser, IconVolume } from '../../src/ui/icons'
 
 const DEBOUNCE_MS = 250
 const MAX_W = 620
@@ -80,7 +81,7 @@ export default function ElegirMusica() {
   const { que: pedido, desde } = useLocalSearchParams<{ que?: string; desde?: string }>()
   const que: Que =
     pedido === 'artista' ? 'artista' : pedido === 'album' ? 'album' : pedido === 'letra' ? 'letra' : 'cancion'
-  const piso = usePiso(24)
+  const piso = usePisoHoja(24)
   const teclado = useKeyboardH()
   /* Ventana en escritorio, como el editor: ver `useHojaModal`. */
   const modal = useHojaModal()
@@ -304,20 +305,10 @@ export default function ElegirMusica() {
   const filaAlbum = (a: AlbumHallado) => <FilaAlbum key={a.albumId} album={a} onPress={() => elegirAlbum(a)} />
 
   return (
-    <Hoja>
+    <Hoja titulo={TITULO[que]}>
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="min-h-0 flex-1">
-        <View className="flex-row items-center gap-3 px-3 py-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver"
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/profile/vitrina'))}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconBack size={19} color={ICON_COLOR.foreground} />
-          </Pressable>
-          <Text className="text-foreground text-[15px] font-semibold">{TITULO[que]}</Text>
-        </View>
+        <CabeceraSocial titulo={TITULO[que]} onCerrar={() => (router.canGoBack() ? router.back() : router.replace('/profile/vitrina'))} />
 
         <Panel className="flex-1">
           <View className="min-h-0 flex-1 items-center">

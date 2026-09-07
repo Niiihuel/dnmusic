@@ -1,3 +1,7 @@
+import { AIRE_CELDA_MOSAICO as AIRE_CELDA, objetivoResizeMosaico } from './mosaicoResize'
+import { MarcoContenidoDiscord } from './DiscordCosmeticos'
+import { usePiezaDiscord } from '../services/discordCatalogo'
+import type { MosaicoPerfil } from './useMosaicoPerfil'
 import { TECLADO_FISICO } from '../lib/teclado'
 import { TextoPerfil as Text } from './FuentePerfil'
 import {
@@ -8,7 +12,7 @@ import {
   type MutableRefObject,
   type ReactNode,
 } from 'react'
-import { Image, Modal, Pressable, useWindowDimensions, View } from 'react-native'
+import { Modal, Pressable, useWindowDimensions, View } from 'react-native'
 import { Gesture, GestureDetector, State } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
@@ -21,6 +25,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
+import { Image as ExpoImage } from 'expo-image'
 import { useVideoPlayer, VideoView } from 'expo-video'
 import {
   anchosDe,
@@ -28,9 +33,6 @@ import {
   esVideo,
   ilustracionUrl,
   listShowcases,
-  removeShowcase,
-  reorderShowcases,
-  setShowcaseAncho,
   siguienteAncho,
   type Showcase,
   type ShowcaseAncho,
@@ -116,12 +118,14 @@ export function FondoPerfil({
   bannerPath,
   encuadre = null,
   efecto = null,
+  animado = true,
 }: {
   bannerPath: string | null
   /** Cómo mirar el fondo. Solo se aplica a imágenes: un clip va tal cual. */
   encuadre?: Encuadre | null
   /** El efecto animado encima del fondo, arriba. Ver `ui/DecoracionImagen`. */
   efecto?: string | null
+  animado?: boolean
 }) {
   const ruta = hayFondo(bannerPath) ? bannerPath! : null
   const uri = ruta ? ilustracionUrl(ruta) : null
@@ -147,7 +151,7 @@ export function FondoPerfil({
           locations={[0, 0.6, 1]}
           style={{ flex: 1 }}
         />
-        <EfectoPerfil id={efecto} alto={300} />
+        <EfectoPerfil id={efecto} alto={300} animado={animado} />
       </View>
     )
   }
@@ -155,9 +159,9 @@ export function FondoPerfil({
   return (
     <View pointerEvents="none" className="absolute inset-0">
       {clip ? (
-        <FondoClip uri={uri} />
+        <FondoClip uri={uri} animado={animado} />
       ) : (
-        <FondoImagen uri={uri} encuadre={encuadre} />
+        <FondoImagen uri={uri} encuadre={encuadre} animado={animado} />
       )}
 
       {/*
@@ -193,7 +197,7 @@ export function FondoPerfil({
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 300 }}
       />
       {/* El efecto va sobre el velo, no debajo: es lo que hay que ver. */}
-      <EfectoPerfil id={efecto} alto={320} />
+      <EfectoPerfil id={efecto} alto={320} animado={animado} />
     </View>
   )
 }
@@ -207,11 +211,11 @@ export function FondoPerfil({
  * —`cover` centrado es lo de siempre— así que el caso normal no paga el
  * compás de espera de la medición.
  */
-function FondoImagen({ uri, encuadre }: { uri: string; encuadre: Encuadre | null }) {
+function FondoImagen({ uri, encuadre, animado }: { uri: string; encuadre: Encuadre | null; animado: boolean }) {
   const [caja, setCaja] = useState<{ w: number; h: number } | null>(null)
 
   if (!encuadre) {
-    return <Image source={{ uri }} className="h-full w-full" resizeMode="cover" />
+    return <ExpoImage source={{ uri }} style={{ width: '100%', height: '100%' }} contentFit="cover" autoplay={animado} />
   }
 
   return (
@@ -225,9 +229,10 @@ function FondoImagen({ uri, encuadre }: { uri: string; encuadre: Encuadre | null
       }}
     >
       {caja ? (
-        <Image
+        <ExpoImage
           source={{ uri }}
-          resizeMode="cover"
+          contentFit="cover"
+          autoplay={animado}
           /* Con el alto: el recuadro del fondo es apaisado y la cuenta del
              encuadre necesita la proporción real para saber cuánto acercar
              una imagen girada. */
@@ -252,13 +257,18 @@ function FondoImagen({ uri, encuadre }: { uri: string; encuadre: Encuadre | null
  * sesión contra lo que ya suena, y un fondo mudo no tiene por qué tocarle el
  * audio a nadie.
  */
-function FondoClip({ uri }: { uri: string }) {
+function FondoClip({ uri, animado }: { uri: string; animado: boolean }) {
   const video = useVideoPlayer(uri, (p) => {
     p.loop = true
     p.muted = true
     p.audioMixingMode = 'mixWithOthers'
-    p.play()
+    if (animado) p.play()
   })
+
+  useEffect(() => {
+    if (animado) video.play()
+    else video.pause()
+  }, [animado, video])
 
   return (
     <VideoView
@@ -288,6 +298,7 @@ export function Identidad({
   centrado = false,
   banda = false,
   accion,
+  animado = true,
 }: {
   nombre: string
   usuario: string
@@ -313,6 +324,8 @@ export function Identidad({
   banda?: boolean
   /** Lo que va contra el borde derecho de la banda (el botón de editar). */
   accion?: ReactNode
+  /** Pausa los cosméticos también en la cabecera sin tarjeta. */
+  animado?: boolean
 }) {
   if (banda) {
     return (
@@ -322,11 +335,12 @@ export function Identidad({
           avatarPath={avatarPath}
           encuadre={encuadre}
           marco={marco}
+          animado={animado}
           size={136}
           aireADerecha
         />
         <View className="min-w-0 flex-1 items-start gap-1">
-          <PlacaDeNombre id={placa}>
+          <PlacaDeNombre id={placa} animado={animado}>
             <Text className="text-foreground text-[32px] font-bold" numberOfLines={1}>
               {nombre}
             </Text>
@@ -350,9 +364,10 @@ export function Identidad({
         avatarPath={avatarPath}
         encuadre={encuadre}
         marco={marco}
+        animado={animado}
         size={centrado ? 120 : 96}
       />
-      <PlacaDeNombre id={placa}>
+      <PlacaDeNombre id={placa} animado={animado}>
         <View className={`gap-0.5 ${centrado ? 'items-center' : ''}`}>
           <Text className="text-foreground text-[26px] font-bold" numberOfLines={1}>
             {nombre}
@@ -393,6 +408,7 @@ function FotoDeHeroe({
   marco,
   size,
   aireADerecha = false,
+  animado = true,
 }: {
   nombre: string
   avatarPath: string | null
@@ -406,6 +422,7 @@ function FotoDeHeroe({
    * falta correr nada.
    */
   aireADerecha?: boolean
+  animado?: boolean
 }) {
   /* El +8 cuenta el anillo de 4px de cada lado. */
   const lado = size + 8
@@ -415,103 +432,55 @@ function FotoDeHeroe({
         <Avatar name={nombre} path={avatarPath} size={size} encuadre={encuadre} />
       </View>
       {/* Por fuera y por encima, desbordando la foto. */}
-      <Marco marco={marco} size={lado} />
+      <Marco marco={marco} size={lado} animado={animado} />
     </View>
   )
 }
 
-/**
- * El resumen: los números del perfil.
- *
- * Es la columna derecha de Steam, y como la de Steam **no es una tarjeta**: son
- * bloques sueltos apoyados sobre el fondo, separados por aire. Encerrarlos en un
- * rectángulo gris los volvía un ladrillo compacto contra la imagen, y la imagen
- * dejaba de tener algo encima para pasar por detrás.
- *
- * Lleva solo lo que podemos afirmar: los minutos y el artista más escuchado
- * salen del historial de reproducciones; el resto se cuenta de la biblioteca. Un
- * número inventado en un perfil es peor que un número ausente, así que lo que no
- * se sabe todavía va con una raya.
+/** Estadísticas reales. Los conteos privados se omiten en el perfil público.
+ * Sólo este bloque recibe el marco Discord, a escala de tarjeta vertical.
  */
-export function Resumen({
-  ownerId,
-  listas,
-  canciones,
-  vitrinas,
-  desde,
-  sinEscucha = false,
-}: {
-  /** De quién son los números. Los agregados se piden por función. */
+export function Resumen({ ownerId, listas, canciones, vitrinas = null, desde, sinEscucha = false, marcoPerfil, animado = true }: {
   ownerId: string
-  listas: number | null
-  canciones: number | null
-  vitrinas: number | null
+  listas?: number | null
+  canciones?: number | null
+  vitrinas?: number | null
   desde: string | null
-  /**
-   * Sin los minutos ni el artista: solo los números de la biblioteca.
-   *
-   * En el teléfono la pestaña «Reciente» ya abre con esos dos (ver
-   * `ResumenCorto` en `ui/PestanasPerfil`), y repetirlos al pie de la misma
-   * pestaña era mostrar el mismo dato dos veces en una pantalla.
-   */
   sinEscucha?: boolean
+  marcoPerfil?: string | null
+  animado?: boolean
 }) {
-  const [stats, setStats] = useState<EstadisticasPerfil | null>(null)
-
+  const [resultado, setResultado] = useState<{ ownerId: string; stats: EstadisticasPerfil | null } | null>(null)
+  const stats = resultado?.ownerId === ownerId ? resultado.stats : null
+  const pieza = usePiezaDiscord(marcoPerfil ?? '')
+  const enmarcado = pieza?.tipo === 'marcoPerfil' && pieza.disponible !== false
   useEffect(() => {
     if (!ownerId || sinEscucha) return
     let vivo = true
     fetchStats(ownerId)
-      .then((e) => vivo && setStats(e))
+      .then(stats => { if (vivo) setResultado({ ownerId, stats }) })
       .catch(() => undefined)
-    return () => {
-      vivo = false
-    }
+    return () => { vivo = false }
   }, [ownerId, sinEscucha])
 
-  return (
-    <View className="gap-7">
-      {/*
-       * Los minutos van primero: es el número que más dice de alguien en una
-       * app de música. Recién debajo lo que tiene guardado.
-       *
-       * Mientras no haya nada escuchado se muestra igual, en cero — y eso es
-       * honesto: cero minutos es un dato, no un dato faltante. La raya queda
-       * para cuando de verdad no sabemos.
-       */}
-      {sinEscucha ? null : (
-        <>
+  return <View testID="estadisticas-perfil" style={{ width: '100%', maxWidth: 360, alignSelf: 'center', paddingBottom: enmarcado ? 16 : 0 }}>
+    <MarcoContenidoDiscord id={marcoPerfil} animado={animado}>
+      <View style={{ gap: 24, ...(enmarcado ? { padding: 22, borderRadius: 16, backgroundColor: 'rgba(20,20,24,0.92)', minHeight: 380 } : {}) }}>
+        <Text accessibilityRole="header" style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>Estadísticas</Text>
+        {sinEscucha ? null : <>
           <Dato rotulo="Minutos escuchados" valor={stats?.minutos ?? null} destacado />
-          {stats?.artistaTop ? (
-            <Dato
-              rotulo="Más escuchado"
-              valor={stats.artistaTop}
-              detalle={`${stats.minutosArtistaTop} min`}
-            />
-          ) : null}
-        </>
-      )}
-      <Dato rotulo="Listas" valor={listas} />
-      <Dato rotulo="Canciones guardadas" valor={canciones} />
-      <Dato rotulo="Vitrinas" valor={vitrinas} />
-      <Dato rotulo="Acá desde" valor={desde ? mesYAno(desde) : null} />
-    </View>
-  )
+          {stats?.artistaTop ? <Dato rotulo="Más escuchado" valor={stats.artistaTop} detalle={`${stats.minutosArtistaTop} min`} /> : null}
+        </>}
+        {listas !== undefined ? <Dato rotulo="Listas" valor={listas} /> : null}
+        {canciones !== undefined ? <Dato rotulo="Canciones guardadas" valor={canciones} /> : null}
+        <Dato rotulo="Vitrinas" valor={vitrinas} />
+        <Dato rotulo="Acá desde" valor={desde ? mesYAno(desde) : null} />
+      </View>
+    </MarcoContenidoDiscord>
+  </View>
 }
 
-/**
- * Un número del resumen: el rótulo arriba, el valor grande abajo.
- *
- * **Sin tarjeta.** Estos datos se apoyan directamente sobre el fondo del perfil,
- * que es lo que hace Steam en su columna derecha: encerrarlos en un rectángulo
- * gris los volvía un bloque compacto pegado contra la imagen, y la imagen dejaba
- * de tener algo encima para pasar por detrás. Lo que los separa es el aire entre
- * uno y otro, no un borde — la misma regla de docs/DESIGN.md.
- *
- * De ahí sale la sombra del texto: sin caja detrás, la legibilidad depende de la
- * imagen que haya puesto cada uno, y una foto clara se come un texto blanco. La
- * sombra no se ve como sombra; se ve como que el texto siempre se lee.
- */
+/** Una cifra con su rótulo, legible también sobre el fondo sin marco. */
 export function Dato({
   rotulo,
   valor,
@@ -596,7 +565,9 @@ export function Vitrinas({
   onArrastre,
   reaccionable = false,
   onAbrirSubspace,
+  borrador,
 }: {
+  borrador?: MosaicoPerfil
   ownerId: string
   /**
    * Qué mosaico: el principal del perfil (`null`) o el de adentro de un
@@ -636,7 +607,11 @@ export function Vitrinas({
   /** Tocar un sub-space, mirando: abrir su mosaico. Lo pasan los dos perfiles. */
   onAbrirSubspace?: (showcase: Showcase) => void
 }) {
-  const [vitrinas, setVitrinas] = useState<Showcase[] | null>(null)
+  const [lectura, setLectura] = useState<Showcase[] | null>(null)
+  const vitrinas = borrador ? borrador.vitrinas : lectura
+  const setVitrinas = borrador ? borrador.editar : setLectura
+  const tieneBorrador = !!borrador
+  const puedeEditar = editando && !!borrador && !borrador.guardando
   const [listas, setListas] = useState<Playlist[] | null>(null)
   /*
    * La que está por sacarse, esperando el «¿seguro?», y cuántas piezas tiene
@@ -648,13 +623,14 @@ export function Vitrinas({
 
   useEffect(() => {
     let vivo = true
+    if (tieneBorrador) return
     listShowcases(ownerId, parentId)
-      .then((v) => vivo && setVitrinas(v))
-      .catch(() => vivo && setVitrinas([]))
+      .then((v) => vivo && setLectura(v))
+      .catch(() => vivo && setLectura([]))
     return () => {
       vivo = false
     }
-  }, [ownerId, parentId, recarga])
+  }, [ownerId, parentId, recarga, tieneBorrador])
 
   /*
    * Lo que le dejaron a cada pieza, en un solo viaje para el mosaico entero,
@@ -728,7 +704,6 @@ export function Vitrinas({
   const pendiente = useSharedValue(false)
   /** El estirado: qué celda, y el rectángulo de la banda que sigue al dedo. */
   const estirando = useSharedValue(-1)
-  const banda = useSharedValue<{ w: number; h: number } | null>(null)
   const anchoMosaico = useSharedValue(0)
   const refs = useRef(new Map<number, MedibleRef>())
   const rectsRef = useRef<Rect[]>([])
@@ -755,8 +730,8 @@ export function Vitrinas({
    *
    * Durante el arrastre esto corre cada vez que la pieza cruza a otra celda:
    * el orden cambia, las demás se corren (con su animación de layout) y el
-   * hueco aparece donde va a caer. Al servidor no se le dice nada hasta
-   * soltar. Las medidas quedan marcadas como viejas hasta que las celdas
+   * hueco aparece donde va a caer. El servidor recibe los cambios al pulsar
+   * Guardar. Las medidas quedan marcadas como viejas hasta que las celdas
    * vuelvan a medirse: decidir el próximo destino con las de antes hacía que
    * la pieza fuera y volviera entre dos huecos.
    */
@@ -775,7 +750,7 @@ export function Vitrinas({
         pendiente.value = false
       }, 90)
     },
-    [pendiente],
+    [pendiente, setVitrinas],
   )
 
   const empezar = useCallback(
@@ -786,22 +761,11 @@ export function Vitrinas({
     [onArrastre],
   )
 
-  /** Soltar: el orden que se ve es el que queda; recién ahora se guarda. */
+  /** Soltar conserva el borrador; sólo Guardar cambios persiste. */
   const soltar = useCallback(() => {
-    const inicial = ordenInicial.current
     ordenInicial.current = null
-    const actual = vitrinasRef.current
     onArrastre?.(false)
-    if (!inicial || !actual) return
-    const cambio = inicial.some((v, i) => v.id !== actual[i]?.id)
-    if (!cambio) return
-    reorderShowcases(actual.map((v) => v.id)).catch((e: unknown) => {
-      /* Se vuelve a leer para que la pantalla no quede mostrando un orden que
-         el servidor no aceptó. */
-      onCambio()
-      avisar(mensajeError(e), true)
-    })
-  }, [onArrastre, onCambio])
+  }, [onArrastre])
 
   /** El gesto se cortó: vuelve el orden de antes de agarrar. */
   const cancelar = useCallback(() => {
@@ -809,7 +773,7 @@ export function Vitrinas({
     ordenInicial.current = null
     if (inicial) setVitrinas(inicial)
     onArrastre?.(false)
-  }, [onArrastre])
+  }, [onArrastre, setVitrinas])
 
   /**
    * Cambiar cuánto ocupa una: en pantalla al toque, en el servidor después.
@@ -817,20 +781,13 @@ export function Vitrinas({
    * Igual que reordenar, y por lo mismo: esperar la respuesta para que la
    * tarjeta cambie de tamaño hace que el botón se sienta roto.
    */
-  function cambiarAncho(id: string, ancho: ShowcaseAncho) {
-    if (!vitrinas) return
-    setVitrinas(vitrinas.map((v) => (v.id === id ? { ...v, ancho } : v)))
-    setShowcaseAncho(id, ancho).catch((e: unknown) => {
-      onCambio()
-      avisar(mensajeError(e), true)
-    })
-  }
+  const cambiarAncho = useCallback((id: string, ancho: ShowcaseAncho) => {
+    setVitrinas(actual => actual?.map(v => v.id === id ? { ...v, ancho } : v) ?? null)
+  }, [setVitrinas])
 
   /*
-   * El estirado, en vivo: mientras arrastrás el asa, una banda sigue al dedo
-   * con el tamaño crudo y la pieza **salta al tamaño que ese rectángulo
-   * implica** —media fila, la fila, el doble—, como el placeholder de
-   * react-grid-layout. Al soltar se guarda lo que quedó.
+   * El estirado elige entre los tamaños admitidos. Pieza y contorno cambian
+   * juntos; al soltar queda en el borrador y al cancelar vuelve al inicio.
    */
   const empezarEstirar = useCallback(
     (i: number) => {
@@ -841,37 +798,29 @@ export function Vitrinas({
     [onArrastre],
   )
   const estirarA = useCallback((i: number, cols: number, filas: number) => {
-    const actual = vitrinasRef.current
-    const v = actual?.[i]
-    if (!actual || !v) return
-    const anchos = anchosDe(v.kind)
-    const deseado: ShowcaseAncho =
-      cols >= 2 && filas >= 2 && anchos.includes('grande')
-        ? 'grande'
-        : cols >= 2
-          ? 'entero'
-          : 'mitad'
-    if (v.ancho === deseado) return
-    setVitrinas(actual.map((x) => (x.id === v.id ? { ...x, ancho: deseado } : x)))
-  }, [])
+    setVitrinas(actual => {
+      const v = actual?.[i]
+      if (!actual || !v) return actual
+      const deseado: ShowcaseAncho = cols >= 2 && filas >= 2 && anchosDe(v.kind).includes('grande')
+        ? 'grande' : cols >= 2 ? 'entero' : 'mitad'
+      return v.ancho === deseado ? actual : actual.map(x => x.id === v.id ? { ...x, ancho: deseado } : x)
+    })
+  }, [setVitrinas])
   const soltarEstirar = useCallback(() => {
-    const inicial = tamanoInicial.current
     tamanoInicial.current = null
     onArrastre?.(false)
-    if (!inicial) return
-    const v = vitrinasRef.current?.find((x) => x.id === inicial.id)
-    if (!v || v.ancho === inicial.ancho) return
-    setShowcaseAncho(v.id, v.ancho).catch((e: unknown) => {
-      onCambio()
-      avisar(mensajeError(e), true)
-    })
-  }, [onArrastre, onCambio])
+  }, [onArrastre])
+  const cancelarEstirar = useCallback(() => {
+    const inicial = tamanoInicial.current
+    tamanoInicial.current = null
+    if (inicial) setVitrinas(actual => actual?.map(v => v.id === inicial.id ? { ...v, ancho: inicial.ancho } : v) ?? null)
+    onArrastre?.(false)
+  }, [onArrastre, setVitrinas])
   /** Tocar el asa sin arrastrar: el tamaño siguiente. Es la puerta del teclado y del toque corto. */
   const tocarAsa = useCallback((i: number) => {
     const v = vitrinasRef.current?.[i]
     if (v) cambiarAncho(v.id, siguienteAncho(v.ancho, v.kind))
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- lee del ref, no de `vitrinas`
-  }, [])
+  }, [cambiarAncho])
 
   const agarre: Agarre = {
     activa,
@@ -881,7 +830,6 @@ export function Vitrinas({
     rects,
     pendiente,
     estirando,
-    banda,
     anchoMosaico,
     refs,
     onLayoutCelda,
@@ -892,6 +840,7 @@ export function Vitrinas({
     empezarEstirar,
     estirarA,
     soltarEstirar,
+    cancelarEstirar,
     tocarAsa,
   }
 
@@ -900,9 +849,7 @@ export function Vitrinas({
 
   function sacar(v: Showcase) {
     setPorSacar(null)
-    removeShowcase(v.id)
-      .then(onCambio)
-      .catch((e: unknown) => avisar(mensajeError(e), true))
+    setVitrinas(actual => actual?.filter(pieza => pieza.id !== v.id) ?? null)
   }
 
   /** El «−»: se pregunta antes, y en un sub-space se cuenta qué se lleva. */
@@ -921,9 +868,11 @@ export function Vitrinas({
   const mensajeDeSacar =
     porSacar && porSacar.hijas
       ? porSacar.hijas === 1
-        ? 'Esta pieza se va del mosaico, y la pieza que tiene adentro se va con ella. No se deshace.'
-        : `Esta pieza se va del mosaico, y las ${porSacar.hijas} piezas que tiene adentro se van con ella. No se deshace.`
-      : 'Esta pieza se va del mosaico. Se puede volver a agregar, pero no se deshace.'
+        ? 'Esta pieza se va del mosaico, y la pieza que tiene adentro se va con ella. Se eliminará al guardar; hasta entonces podés restablecer.'
+        : `Esta pieza se va del mosaico, y las ${porSacar.hijas} piezas que tiene adentro se van con ella. Se eliminará al guardar; hasta entonces podés restablecer.`
+      : porSacar?.v.kind === 'subspace'
+        ? 'Este sub-space y todo su contenido se eliminarán al guardar; hasta entonces podés restablecer.'
+        : 'Esta pieza se va del mosaico. Se eliminará al guardar; hasta entonces podés restablecer.'
 
   /*
    * Reaccionar: en pantalla al toque, en el servidor después.
@@ -1003,7 +952,7 @@ export function Vitrinas({
           mitad={v.ancho === 'mitad'}
           filas={v.ancho === 'grande' ? 2 : 1}
           agarre={agarre}
-          editando={editando}
+          editando={puedeEditar}
           onApreton={apretonDe(v, i)}
         >
           <Vitrina
@@ -1030,11 +979,11 @@ export function Vitrinas({
               player.seek(id, song, fraccion).catch((e: unknown) => avisar(mensajeError(e), true))
             }}
             onOpenPlaylist={() => undefined}
-            onAbrirSubspace={editando ? undefined : onAbrirSubspace}
+            onAbrirSubspace={puedeEditar || borrador?.guardando ? undefined : onAbrirSubspace}
             recarga={recarga}
-            editando={editando}
-            onRemove={editando ? () => pedirSacar(v) : undefined}
-            onEditar={editando ? onEditar : undefined}
+            editando={puedeEditar}
+            onRemove={puedeEditar ? () => pedirSacar(v) : undefined}
+            onEditar={puedeEditar ? onEditar : undefined}
           />
         </CeldaDeMosaico>
       ))}
@@ -1168,7 +1117,6 @@ type Agarre = {
   rects: SharedValue<Rect[]>
   pendiente: SharedValue<boolean>
   estirando: SharedValue<number>
-  banda: SharedValue<{ w: number; h: number } | null>
   anchoMosaico: SharedValue<number>
   refs: MutableRefObject<Map<number, MedibleRef>>
   onLayoutCelda: (i: number, r: Rect) => void
@@ -1179,13 +1127,9 @@ type Agarre = {
   empezarEstirar: (i: number) => void
   estirarA: (i: number, cols: number, filas: number) => void
   soltarEstirar: () => void
+  cancelarEstirar: () => void
   tocarAsa: (i: number) => void
 }
-
-/** El aire alrededor de cada pieza: la mitad del hueco entre dos. */
-const AIRE_CELDA = 6
-/** Cuánto hay que pasar de la mitad de una columna o una fila para que la pieza cambie de tamaño. */
-const UMBRAL = 0.5
 
 /**
  * Una celda del mosaico que sabe seguir al dedo, **y decir dónde va a caer**.
@@ -1209,10 +1153,9 @@ const UMBRAL = 0.5
  * deja quieta debajo del dedo. Las demás sí animan, que es lo que se ve
  * acomodarse.
  *
- * **Estirar** es el asa de abajo a la derecha: una banda punteada sigue al
- * dedo con el tamaño crudo y la pieza salta al tamaño que ese rectángulo
- * implica —media fila, la fila entera, el doble de alto—; tocarla sin
- * arrastrar pasa al tamaño siguiente.
+ * **Estirar** es el asa de abajo a la derecha: el contorno marca la medida
+ * real elegida entre media fila, fila entera y grande. El contenido se
+ * redistribuye dentro de esa misma caja; tocar el asa pasa al siguiente.
  *
  * Armando, **la tarjeta entera es la manija**. Mirando, la misma celda escucha
  * el apretón largo: en el perfil propio entra a armar, en el ajeno abre la fila
@@ -1247,7 +1190,6 @@ function CeldaDeMosaico({
     rects,
     pendiente,
     estirando,
-    banda,
     anchoMosaico,
     empezar,
     moverA,
@@ -1256,6 +1198,7 @@ function CeldaDeMosaico({
     empezarEstirar,
     estirarA,
     soltarEstirar,
+    cancelarEstirar,
     tocarAsa,
   } = agarre
   /* eslint-disable react-hooks/immutability -- escribir `.value` es la API
@@ -1285,12 +1228,11 @@ function CeldaDeMosaico({
   const hueco = useAnimatedStyle(() => ({
     opacity: withTiming(activa.value === indice ? 1 : 0, { duration: 120 }),
   }))
-  /* La banda del estirado: el tamaño crudo que sigue al dedo. */
-  const bandaEstilo = useAnimatedStyle(() => {
-    const b = banda.value
-    if (estirando.value !== indice || !b) return { opacity: 0, width: 0, height: 0 }
-    return { opacity: 1, width: b.w, height: b.h }
-  })
+  // El contorno usa los bordes reales del contenido, no un rectángulo libre
+  // que promete una medida distinta de las tres que admite el mosaico.
+  const bandaEstilo = useAnimatedStyle(() => ({ opacity: estirando.value === indice ? 1 : 0 }))
+  const inicioResize = useSharedValue({ w: 0, h: 0, mosaico: 0, filas: 1 })
+  const ultimoDestino = useSharedValue({ cols: 0, filas: 0 })
 
   /*
    * El arrastre, solo armando. En web agarra apenas se mueve el cursor (con
@@ -1359,46 +1301,35 @@ function CeldaDeMosaico({
       }
     })
 
-  /*
-   * El asa: arrastrarla estira. La banda sigue al dedo con el tamaño crudo; el
-   * tamaño de la pieza sale de ese rectángulo contra la mitad de una columna y
-   * la mitad de una fila (`UMBRAL`): cruzar la mitad de la columna de al lado
-   * es querer la fila entera, y bajar más de media fila es querer el doble de
-   * alto. Se avisa solo cuando cambia, no por cuadro.
-   */
+  /* Sólo se cruza a JS al cambiar de tamaño discreto. El gesto conserva su
+   * base aunque la tarjeta cambie de ancho, altura o posición en el mosaico. */
   const asa = Gesture.Pan()
     .enabled(editando)
     .minDistance(4)
     .onStart(() => {
       const r = rects.value[indice]
+      if (!r) return
+      inicioResize.value = { w: r.w, h: r.h, mosaico: anchoMosaico.value, filas }
+      ultimoDestino.value = { cols: mitad ? 1 : 2, filas }
       estirando.value = indice
-      banda.value = r ? { w: r.w - AIRE_CELDA * 2, h: r.h - AIRE_CELDA * 2 } : null
       runOnJS(empezarEstirar)(indice)
     })
     .onUpdate((e) => {
-      const r = rects.value[indice]
-      if (!r) return
-      const w = Math.max(72, r.w - AIRE_CELDA * 2 + e.translationX)
-      const h = Math.max(48, r.h - AIRE_CELDA * 2 + e.translationY)
-      banda.value = { w, h }
-      const columna = anchoMosaico.value / 2
-      /* La fila base es lo que mide la pieza hoy con una fila; en «grande» se
-         estima como la mitad de lo que mide ahora. */
-      const filaBase = filas === 2 ? r.h / 2 : r.h
-      const cols = w > columna * (1 + UMBRAL) ? 2 : 1
-      const nuevasFilas = h > filaBase * (1 + UMBRAL) ? 2 : 1
-      runOnJS(estirarA)(indice, cols, nuevasFilas)
+      if (estirando.value !== indice) return
+      const destino = objetivoResizeMosaico(inicioResize.value, e.translationX, e.translationY)
+      if (destino.cols !== ultimoDestino.value.cols || destino.filas !== ultimoDestino.value.filas) {
+        ultimoDestino.value = destino
+        runOnJS(estirarA)(indice, destino.cols, destino.filas)
+      }
     })
     .onEnd(() => {
       estirando.value = -1
-      banda.value = null
       runOnJS(soltarEstirar)()
     })
     .onFinalize((e) => {
       if (e.state !== State.END) {
         estirando.value = -1
-        banda.value = null
-        runOnJS(soltarEstirar)()
+        runOnJS(cancelarEstirar)()
       }
     })
   /* eslint-enable react-hooks/immutability */
@@ -1421,7 +1352,7 @@ function CeldaDeMosaico({
    */
   const [agarrada, setAgarrada] = useState(false)
   useAnimatedReaction(
-    () => activa.value === indice,
+    () => activa.value === indice || estirando.value === indice,
     (ahora, antes) => {
       if (ahora !== antes) runOnJS(setAgarrada)(ahora)
     },
@@ -1434,7 +1365,8 @@ function CeldaDeMosaico({
          `layout` de una transición a ninguna rehace la vista en web y el
          gesto que la estaba arrastrando se pierde en el acto. */
       layout={LinearTransition.duration(agarrada ? 1 : 180).reduceMotion(ReduceMotion.System)}
-      style={{ width: mitad ? '50%' : '100%', padding: AIRE_CELDA }}
+      testID="celda-mosaico"
+      style={{ width: mitad ? '50%' : '100%', minWidth: 0, padding: AIRE_CELDA }}
       onLayout={(e) => {
         const { x, y, width, height } = e.nativeEvent.layout
         agarre.onLayoutCelda(indice, { x, y, w: width, h: height })
@@ -1469,6 +1401,7 @@ function CeldaDeMosaico({
       <GestureDetector gesture={Gesture.Race(arrastre, apreton)}>
         <Animated.View
           style={[
+            { width: '100%', minWidth: 0 },
             estilo,
             /* Armando, el texto de la pieza no se selecciona: arrastrar con el
                mouse sobre una palabra elegía el texto en vez de mover la pieza. */
@@ -1479,15 +1412,17 @@ function CeldaDeMosaico({
           {children}
           {editando ? (
             <>
-              {/* La banda del estirado, desde la esquina de arriba a la
-                  izquierda de la pieza hasta el dedo. */}
+              {/* El contorno comparte exactamente la caja de la pieza. */}
               <Animated.View
+                testID="contorno-resize-mosaico"
                 pointerEvents="none"
                 style={[
                   {
                     position: 'absolute',
                     left: 0,
+                    right: 0,
                     top: 0,
+                    bottom: 0,
                     borderRadius: 16,
                     borderWidth: 1.5,
                     borderStyle: 'dashed',

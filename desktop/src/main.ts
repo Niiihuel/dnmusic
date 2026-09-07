@@ -64,6 +64,7 @@ function esNuestra(url: string): boolean {
 
 function crearVentana(): BrowserWindow {
   const ventana = new BrowserWindow({
+    icon: join(raizWeb(), 'icons', 'icon-512.png'),
     width: 1180,
     height: 780,
     /*

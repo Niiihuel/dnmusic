@@ -24,6 +24,7 @@ const WEB_ORIGEN = join(RAIZ, 'dist')
 const WEB_DESTINO = resolve(AQUI, '..', 'web')
 const ICONO_ORIGEN = join(RAIZ, 'assets', 'icon.png')
 const ICONO_DESTINO = resolve(AQUI, '..', 'build', 'icon.png')
+const ICO_ORIGEN = join(RAIZ, 'assets', 'icon.ico')
 
 if (!existsSync(join(WEB_ORIGEN, 'index.html'))) {
   console.error(
@@ -33,7 +34,7 @@ if (!existsSync(join(WEB_ORIGEN, 'index.html'))) {
   process.exit(1)
 }
 
-if (!existsSync(ICONO_ORIGEN)) {
+if (!existsSync(ICONO_ORIGEN) || !existsSync(ICO_ORIGEN)) {
   console.error(`✗ Falta ${ICONO_ORIGEN}, que es de donde salen los íconos de Windows y Linux.`)
   process.exit(1)
 }
@@ -45,6 +46,7 @@ cpSync(WEB_ORIGEN, WEB_DESTINO, { recursive: true })
 
 mkdirSync(dirname(ICONO_DESTINO), { recursive: true })
 cpSync(ICONO_ORIGEN, ICONO_DESTINO)
+cpSync(ICO_ORIGEN, resolve(AQUI, '..', 'build', 'icon.ico'))
 
 console.log(`✓ web → ${WEB_DESTINO}`)
 console.log(`✓ ícono → ${ICONO_DESTINO}`)

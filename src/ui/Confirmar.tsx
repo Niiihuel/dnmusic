@@ -1,11 +1,13 @@
+import { estadoControlWeb } from './estadoControl'
+import type { ConfirmarProps } from './Confirmar.types'
 import { Modal, Pressable, Text, View } from 'react-native'
 import { BORDE_REFERENTE, Glass } from './Glass'
 
 /**
  * Un diálogo de «¿seguro?», para lo que no se deshace.
  *
- * Es el alert de dos botones de iOS, dibujado por nosotros para que sea el
- * mismo en el teléfono, en Android y en la web: el del sistema en web no
+ * Es el alert de dos botones de iOS, dibujado por nosotros para Android y web. En iOS se usa el alert del sistema
+ * (`Confirmar.ios.tsx`): el del sistema en web no
  * existe (`window.confirm` es una caja del navegador que ignora el tema) y en
  * Android viene con el color de marca de Material.
  *
@@ -26,15 +28,7 @@ export function Confirmar({
   rotulo,
   onCancelar,
   onConfirmar,
-}: {
-  visible: boolean
-  titulo: string
-  mensaje: string
-  /** Lo que dice el botón que confirma. Que diga qué hace: «Sacar», no «Sí». */
-  rotulo: string
-  onCancelar: () => void
-  onConfirmar: () => void
-}) {
+}: ConfirmarProps) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancelar}>
       <View className="flex-1 items-center justify-center px-8">
@@ -43,7 +37,8 @@ export function Confirmar({
             un botón dentro de otro. */}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Cancelar"
+          {...estadoControlWeb('none')}
+            accessibilityLabel="Cancelar"
           onPress={onCancelar}
           className="absolute inset-0"
           style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}

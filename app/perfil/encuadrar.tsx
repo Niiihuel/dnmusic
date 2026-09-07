@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Pressable,
   ScrollView,
@@ -19,14 +19,16 @@ import Animated, {
 } from 'react-native-reanimated'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { volver } from '../../src/lib/volver'
-import { avatarUrl, saveMyProfile, type Encuadre } from '../../src/services/profile'
+import { avatarUrl, type Encuadre } from '../../src/services/profile'
 import { ilustracionUrl, uploadIlustracionConProgreso } from '../../src/services/showcases'
 import { avisar } from '../../src/state/aviso'
 import { fondoPendiente, soltarFondoPendiente } from '../../src/state/fondoPendiente'
 import { usePiso } from '../../src/state/shell'
-import { setMyProfile, useMyProfile, useUser } from '../../src/state/session'
+import { useUser } from '../../src/state/session'
 import { actualizarBorrador, useBorrador } from '../../src/state/vitrinaBorrador'
-import { BotonConfirmar, BotonHoja, EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
+import { BotonHoja, EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
+import { actualizarPerfilEdicion, useIniciarPerfilEdicion } from '../../src/state/perfilEdicion'
+import { useSalidaConCambios } from '../../src/ui/useSalidaConCambios'
 import { escalaQueCubre } from '../../src/ui/Encuadre'
 import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
 import { BarraDeProgreso, porciento } from '../../src/ui/Progreso'
@@ -76,12 +78,11 @@ type Que = 'foto' | 'fondo' | 'fondo-nuevo' | 'vitrina' | 'vitrina-imagen'
  * y un dial fino—, pero sigue la regla de acá: es un número más del encuadre,
  * no un archivo nuevo.
  *
- * Es una hoja de las de siempre: la cruz cancela, el tilde guarda
- * (`EncabezadoHoja`), y abajo queda solo «Centrar».
+ * La cruz protege la salida; la barra compartida restablece o guarda.
+ * Centrar modifica sólo la vista previa hasta confirmar.
  */
 export default function Encuadrar() {
   const router = useRouter()
-  const perfil = useMyProfile()
   const user = useUser()
   const borrador = useBorrador()
   const { width, height } = useWindowDimensions()
@@ -96,12 +97,17 @@ export default function Encuadrar() {
       ? queCrudo
       : 'foto'
   const esVitrina = que === 'vitrina' || que === 'vitrina-imagen'
+  const perfil = useIniciarPerfilEdicion(!esVitrina)
   const esFondo = que === 'fondo' || que === 'fondo-nuevo'
   const redondo = que === 'foto'
   /* A dónde se vuelve: la pieza a su editor, lo del perfil a «Editar perfil». */
   const destino = esVitrina ? '/profile/vitrina' : '/profile/editar'
 
   const [guardando, setGuardando] = useState(false)
+  const enVuelo = useRef(false)
+  const [error, setError] = useState<string | null>(null)
+  const [modificado, setModificado] = useState(false)
+  const [salir, setSalir] = useState(false)
   /** Cuánto subió el fondo nuevo, de 0 a 1; `null` mientras no se sube. */
   const [progreso, setProgreso] = useState<number | null>(null)
 
@@ -124,11 +130,11 @@ export default function Encuadrar() {
           ? ilustracionUrl(perfil.bannerPath)
           : null
         : avatarUrl(perfil?.avatarPath)
-  const inicial: Encuadre | null = esVitrina
+  const [inicial] = useState<Encuadre | null>(() => esVitrina
     ? (imagenDeVitrina?.encuadre ?? null)
     : que === 'fondo-nuevo'
       ? null
-      : ((que === 'fondo' ? perfil?.bannerEncuadre : perfil?.avatarEncuadre) ?? null)
+      : ((que === 'fondo' ? perfil?.bannerEncuadre : perfil?.avatarEncuadre) ?? null))
 
   /*
    * El recuadro de trabajo: cuadrado para la foto —así se ve en todos lados—,
@@ -149,10 +155,16 @@ export default function Encuadrar() {
   /* El lado largo sobre el corto: lo que la rotación obliga a acercar. */
   const razon = Math.max(lado / alto, alto / lado)
 
+  const cambiado = modificado || (que === 'fondo-nuevo' && !!pendiente)
+  const dialogoSalida = useSalidaConCambios(cambiado && !salir, guardando && !salir,
+    () => { if (que === 'fondo-nuevo') soltarFondoPendiente() })
+  useEffect(() => { if (salir) { if (esVitrina) volver(router, destino); else router.dismissTo('/profile/editar') } }, [salir, router, destino, esVitrina])
+
   /*
    * El gesto vive en shared values y no en estado de React: mover una foto con
    * el dedo dispara decenas de eventos por segundo, y con `setState` cada uno
-   * sería un render del árbol entero. Se pasa a JS una sola vez, al guardar.
+   * sería un render del árbol entero. A JS sólo cruza el estado de cambios
+   * al cambiar, además de los números al guardar.
    *
    * La rotación son dos valores: los pasos de 90° (`giro`) y el dial (`fino`),
    * que se suman. Separados porque los botones no tienen que mover el dial:
@@ -174,6 +186,19 @@ export default function Encuadrar() {
   const escalaIni = useSharedValue(1)
   const finoIni = useSharedValue(0)
 
+  // El estado sucio cruza de UI a JS sólo al cambiar el booleano, no por
+  // cada pixel del gesto. La comparación usa la misma precisión del guardado.
+  const inicioX = redondear(inicial?.x ?? 0)
+  const inicioY = redondear(inicial?.y ?? 0)
+  const inicioGiro = Math.round(inicial?.rotacion ?? 0)
+  const inicioEscala = redondear(escalaEfectiva(inicial?.escala ?? 1, inicial?.rotacion ?? 0, razon, redondo))
+  useAnimatedReaction(
+    () => redondear(x.value) !== inicioX || redondear(y.value) !== inicioY ||
+      Math.round(giro.value + fino.value) !== inicioGiro ||
+      redondear(escalaEfectiva(escalaPedida.value, giro.value + fino.value, razon, redondo)) !== inicioEscala,
+    (actual, anterior) => { if (actual !== anterior) runOnJS(setModificado)(actual) },
+  )
+
   /* Lo que se ve en el rótulo del dial. Solo cambia por grado entero, así
      cruzar a JS pasa pocas veces y no en cada milímetro del gesto. */
   const [grados, setGrados] = useState(Math.round(partes.giro + partes.fino))
@@ -185,9 +210,10 @@ export default function Encuadrar() {
   )
 
   const arrastrar = Gesture.Pan()
+    .enabled(!guardando)
     .onBegin(() => {
-      xIni.value = x.value
-      yIni.value = y.value
+      xIni.set(x.value)
+      yIni.set(y.value)
     })
     .onUpdate((e) => {
       /* En fracciones del lado, que es como se guarda: así el encuadre elegido
@@ -203,16 +229,17 @@ export default function Encuadrar() {
         alto,
         redondo,
       )
-      x.value = dentro.x
-      y.value = dentro.y
+      x.set(dentro.x)
+      y.set(dentro.y)
     })
 
   const pellizcar = Gesture.Pinch()
+    .enabled(!guardando)
     .onBegin(() => {
-      escalaIni.value = escalaPedida.value
+      escalaIni.set(escalaPedida.value)
     })
     .onUpdate((e) => {
-      escalaPedida.value = Math.min(ESCALA_MAX, Math.max(1, escalaIni.value * e.scale))
+      escalaPedida.set(Math.min(ESCALA_MAX, Math.max(1, escalaIni.value * e.scale)))
       /* Al alejar, lo que antes era un corrimiento válido puede dejar un borde
          al descubierto: se vuelve a meter adentro en el mismo gesto. */
       const rot = giro.value + fino.value
@@ -225,8 +252,8 @@ export default function Encuadrar() {
         alto,
         redondo,
       )
-      x.value = dentro.x
-      y.value = dentro.y
+      x.set(dentro.x)
+      y.set(dentro.y)
     })
 
   const gesto = Gesture.Simultaneous(arrastrar, pellizcar)
@@ -238,12 +265,13 @@ export default function Encuadrar() {
    * imanta: una inclinación de un grado nunca es a propósito.
    */
   const girarFino = Gesture.Pan()
+    .enabled(!guardando)
     .activeOffsetX([-4, 4])
     .onBegin(() => {
-      finoIni.value = fino.value
+      finoIni.set(fino.value)
     })
     .onUpdate((e) => {
-      fino.value = Math.min(FINO_MAX, Math.max(-FINO_MAX, finoIni.value - e.translationX / PX_POR_GRADO))
+      fino.set(Math.min(FINO_MAX, Math.max(-FINO_MAX, finoIni.value - e.translationX / PX_POR_GRADO)))
       const rot = giro.value + fino.value
       const dentro = limitar(
         x.value,
@@ -254,12 +282,12 @@ export default function Encuadrar() {
         alto,
         redondo,
       )
-      x.value = dentro.x
-      y.value = dentro.y
+      x.set(dentro.x)
+      y.set(dentro.y)
     })
     .onEnd(() => {
       if (Math.abs(fino.value) < IMAN) {
-        fino.value = 0
+        fino.set(0)
         const rot = giro.value
         const dentro = limitar(
           x.value,
@@ -270,8 +298,8 @@ export default function Encuadrar() {
           alto,
           redondo,
         )
-        x.value = dentro.x
-        y.value = dentro.y
+        x.set(dentro.x)
+        y.set(dentro.y)
       }
     })
 
@@ -287,7 +315,9 @@ export default function Encuadrar() {
    * pasa una vez y no compite con nada.
    */
   function acercar(paso: number) {
-    escalaPedida.value = Math.min(ESCALA_MAX, Math.max(1, escalaPedida.value + paso))
+    if (enVuelo.current) return
+    setError(null)
+    escalaPedida.set(Math.min(ESCALA_MAX, Math.max(1, escalaPedida.value + paso)))
     acomodar(giro.value + fino.value)
   }
 
@@ -297,8 +327,10 @@ export default function Encuadrar() {
    * una esquina un instante, pero donde cae está bien.
    */
   function girar(paso: number) {
+    if (enVuelo.current) return
+    setError(null)
     const destinoGiro = normalizarGiro(giro.value + paso)
-    giro.value = withTiming(destinoGiro, { duration: 220 })
+    giro.set(withTiming(destinoGiro, { duration: 220 }))
     acomodar(destinoGiro + fino.value)
   }
 
@@ -313,8 +345,8 @@ export default function Encuadrar() {
       alto,
       redondo,
     )
-    x.value = dentro.x
-    y.value = dentro.y
+    x.set(dentro.x)
+    y.set(dentro.y)
   }
 
   /*
@@ -342,7 +374,7 @@ export default function Encuadrar() {
   }))
 
   /** Lo que hay en pantalla, como los números que se guardan. */
-  function armarEncuadre(): Encuadre {
+  function armarEncuadre(): Encuadre | null {
     const rot = giro.value + fino.value
     const encuadre: Encuadre = {
       /* Se redondea a tres decimales: la precisión de un dedo no llega ni
@@ -353,7 +385,7 @@ export default function Encuadrar() {
     }
     /* Sin girar no se escribe: un encuadre sin rotación es el de siempre. */
     if (Math.round(rot) !== 0) encuadre.rotacion = Math.round(rot)
-    return encuadre
+    return encuadre.x === 0 && encuadre.y === 0 && encuadre.escala === 1 && !encuadre.rotacion ? null : encuadre
   }
 
   /** En el borrador de la pieza, en vez de en el perfil. */
@@ -374,18 +406,19 @@ export default function Encuadrar() {
   /** La cruz: nada se guarda, y el fondo que esperaba deja de esperar. */
   function cancelar() {
     if (guardando) return
-    if (que === 'fondo-nuevo') soltarFondoPendiente()
     volver(router, destino)
   }
 
   async function guardar() {
-    if (guardando || !uri) return
+    if (enVuelo.current || !uri || !cambiado) return
     if (esVitrina) {
       escribirEnBorrador(armarEncuadre())
       avisar('Imagen encuadrada')
-      volver(router, destino)
+      setSalir(true)
       return
     }
+    enVuelo.current = true
+    setError(null)
     setGuardando(true)
     try {
       const encuadre = armarEncuadre()
@@ -401,63 +434,35 @@ export default function Encuadrar() {
           pendiente.mime,
           setProgreso,
         )
-        setMyProfile(await saveMyProfile({ bannerPath: ruta, bannerEncuadre: encuadre }))
+        actualizarPerfilEdicion({ bannerPath: ruta, bannerEncuadre: encuadre })
         soltarFondoPendiente()
-        avisar('Fondo puesto')
+        avisar('Fondo agregado al borrador')
       } else {
-        setMyProfile(
-          await saveMyProfile(que === 'fondo' ? { bannerEncuadre: encuadre } : { avatarEncuadre: encuadre }),
-        )
-        avisar(que === 'fondo' ? 'Fondo encuadrado' : 'Foto encuadrada')
+        actualizarPerfilEdicion(que === 'fondo' ? { bannerEncuadre: encuadre } : { avatarEncuadre: encuadre })
+
       }
-      volver(router, destino)
+      setSalir(true)
     } catch (e) {
-      avisar(mensajeError(e), true)
-      setGuardando(false)
+      setError(mensajeError(e))
       setProgreso(null)
+    } finally {
+      enVuelo.current = false
+      setGuardando(false)
     }
   }
 
-  /**
-   * Volver al centro. Para lo que ya está guardado, borra el encuadre en su
-   * lugar y sale; para lo que todavía no subió no hay nada guardado que
-   * borrar: se reponen los valores en pantalla y se sigue encuadrando.
-   */
-  async function centrar() {
-    if (guardando) return
-    if (que === 'fondo-nuevo') {
-      /* Los shared values se escriben a mano, como en `acercar`. */
-      // eslint-disable-next-line react-hooks/immutability
-      x.value = 0
-      // eslint-disable-next-line react-hooks/immutability
-      y.value = 0
-      // eslint-disable-next-line react-hooks/immutability
-      escalaPedida.value = 1
-      // eslint-disable-next-line react-hooks/immutability
-      giro.value = withTiming(0, { duration: 220 })
-      // eslint-disable-next-line react-hooks/immutability
-      fino.value = 0
-      return
-    }
-    if (esVitrina) {
-      escribirEnBorrador(null)
-      avisar('Volvió al centro')
-      volver(router, destino)
-      return
-    }
-    setGuardando(true)
-    try {
-      const guardado = await saveMyProfile(
-        que === 'fondo' ? { bannerEncuadre: null } : { avatarEncuadre: null },
-      )
-      setMyProfile(guardado)
-      avisar('Volvió al centro')
-      volver(router, destino)
-    } catch (e) {
-      avisar(mensajeError(e), true)
-      setGuardando(false)
-    }
+  /** Centrar y restablecer sólo cambian el borrador; nunca escriben en la base. */
+  function ponerEncuadre(encuadre: Encuadre | null) {
+    if (enVuelo.current) return
+    const rotacion = partirRotacion(encuadre?.rotacion ?? 0)
+    x.set(encuadre?.x ?? 0)
+    y.set(encuadre?.y ?? 0)
+    escalaPedida.set(encuadre?.escala ?? 1)
+    giro.set(rotacion.giro)
+    fino.set(rotacion.fino)
+    setError(null)
   }
+  function centrar() { ponerEncuadre(null) }
 
   const titulo =
     que === 'vitrina'
@@ -473,20 +478,14 @@ export default function Encuadrar() {
       titulo={titulo}
       sobre="Encuadrar"
       izquierda={<BotonHoja tipo="cerrar" onPress={cancelar} />}
-      derecha={
-        <BotonConfirmar
-          label="Guardar"
-          activo={!!uri && !guardando}
-          ocupado={guardando}
-          onPress={() => void guardar()}
-        />
-      }
+      derecha={<Pressable accessibilityRole="button" accessibilityLabel="Usar encuadre" disabled={guardando || !uri || !cambiado} onPress={() => void guardar()} className="min-h-11 justify-center px-3"><Text className={guardando || !cambiado ? "text-muted-foreground" : "text-foreground"}>Listo</Text></Pressable>}
     />
   )
 
   if (!uri) {
     return (
       <Hoja>
+        {dialogoSalida}
         <View className="flex-1 bg-background">
           {encabezado}
           <View className="flex-1 items-center justify-center gap-4 px-8" style={{ minHeight: 240 }}>
@@ -507,18 +506,16 @@ export default function Encuadrar() {
 
   return (
     <Hoja>
+      {dialogoSalida}
+      <View className="flex-1 bg-background">
       {/*
-       * El scroll es la raíz de la hoja y la cabecera va **adentro, pegada
-       * arriba** (`stickyHeaderIndices`): así la hoja nace con el alto del
-       * sistema y el contenido nunca se dibuja debajo de la cabecera — que
-       * es lo que pasaba en iOS con la cabecera y el scroll apilados en una
-       * vista sin alto propio. Lo que sobra de alto reparte el contenido al
-       * medio, no lo deja colgando arriba.
+       * La cabecera queda pegada dentro del scroll. La raíz ocupa el alto
+       * de la hoja y la barra flota sobre el espacio reservado al final.
        */}
       <ScrollView
         className="flex-1 bg-background"
         stickyHeaderIndices={[0]}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: modal ? 24 : piso }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: (modal ? 24 : piso) }}
       >
         {encabezado}
         <View
@@ -639,8 +636,7 @@ export default function Encuadrar() {
             </Pressable>
           </View>
 
-          {/* Centrar es la única acción que queda abajo: guardar vive en el
-              tilde de arriba, como en cualquier hoja. */}
+          {/* Centrar se prueba en pantalla; sólo Guardar cambios lo confirma. */}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Volver al centro"
@@ -652,6 +648,8 @@ export default function Encuadrar() {
           </Pressable>
         </View>
       </ScrollView>
+      {error ? <Text accessibilityRole="alert" className="text-destructive px-5 py-3">{error}</Text> : null}
+      </View>
     </Hoja>
   )
 }
@@ -782,5 +780,6 @@ function normalizarGiro(giro: number): number {
 }
 
 function redondear(n: number): number {
+  'worklet'
   return Math.round(n * 1000) / 1000
 }

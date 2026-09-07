@@ -10,6 +10,8 @@ import {
 } from '../services/decoraciones'
 import { ilustracionUrl } from '../services/showcases'
 import { EfectoDibujado, esEfectoDibujado } from './EfectosDibujados'
+import { esDiscord } from '../services/discordCatalogo'
+import { DiscordEfecto } from './DiscordCosmeticos'
 
 /**
  * Un marco que es una imagen, apoyado sobre la foto.
@@ -108,6 +110,7 @@ export function EfectoPerfil({
   alto?: number
   animado?: boolean
 }) {
+  if (esDiscord(id)) return <DiscordEfecto id={id} alto={alto} animado={animado} />
   if (esEfectoDibujado(id)) return <EfectoDibujado id={id} alto={alto} animado={animado} />
   return <EfectoImagen id={id} alto={alto} animado={animado} />
 }

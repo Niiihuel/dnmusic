@@ -1,3 +1,4 @@
+import { estadoControlWeb } from './estadoControl'
 import type { PropsWithChildren, ReactNode } from 'react'
 import { Platform, Pressable, View, type ViewStyle } from 'react-native'
 import Animated from 'react-native-reanimated'
@@ -249,6 +250,7 @@ export function BotonVidrio({
         {...tip.gestos}
         accessibilityRole="button"
         accessibilityLabel={label}
+        {...(tint ? estadoControlWeb('inverse') : {})}
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={onPress}

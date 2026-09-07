@@ -15,8 +15,9 @@ const MAX_RAPIDAS = 4
  * el menú nativo con el mismo reparto, así los dos menús ofrecen lo mismo en el
  * mismo lugar.
  */
-export function repartirMenu(items: MenuItem[]): { rapidas: MenuItem[]; lista: MenuItem[] } {
-  const usable = items.filter((item) => !item.disabled)
+/** iOS conserva filas deshabilitadas; el respaldo mantiene su omisión actual. */
+export function repartirMenu(items: MenuItem[], incluirDeshabilitadas = false): { rapidas: MenuItem[]; lista: MenuItem[] } {
+  const usable = items.filter((item) => incluirDeshabilitadas || !item.disabled)
   const candidatas = usable.filter((item) => item.rapida && !item.items?.length)
   const rapidas = candidatas.slice(0, MAX_RAPIDAS)
   const enFila = new Set(rapidas)

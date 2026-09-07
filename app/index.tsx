@@ -1,4 +1,5 @@
-import { InvitacionJam } from '../src/ui/InvitacionJam'
+import { MessageDetailBody as Detail } from '../src/ui/MessageDetailBody'
+import { invitacionEnTexto } from '../src/lib/invitacionJam'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import {
@@ -8,7 +9,6 @@ import {
   Image,
   Platform,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   useWindowDimensions,
@@ -24,20 +24,18 @@ import Animated, {
   useSharedValue,
   withSpring,
   withTiming,
-  type SharedValue,
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
-import { contactInitial, formatMessageDate } from '../src/ui/MessageCard'
+import { formatMessageDate } from '../src/ui/MessageCard'
 import { ChatBubble } from '../src/ui/ChatBubble'
-import { Onda, usePicos } from '../src/ui/Onda'
 import { SkeletonList } from '../src/ui/Skeleton'
 import { ResizableRegion } from '../src/ui/ResizableRegion'
-import { AnimatedSidebarTitle, CollapsedSidebar } from '../src/ui/SidebarMotion'
-import { Lyrics } from '../src/ui/Lyrics'
+import { CollapsedSidebar } from '../src/ui/SidebarMotion'
 import { Panel } from '../src/ui/Panel'
+import { CabeceraLateral, BotonLateral } from '../src/ui/CabeceraLateral'
 import { Avatar } from '../src/ui/Avatar'
 import { isSentBy, type Message } from '../src/models/message'
 import {
@@ -126,6 +124,7 @@ import {
 } from '../src/state/playback'
 import { hayJam } from '../src/state/jam'
 import { SearchDropdown } from '../src/ui/SearchDropdown'
+import { ScrollArea } from '../src/ui/ScrollArea'
 import { SearchRecents } from '../src/ui/SearchRecents'
 import { useColapso } from '../src/ui/useColapso'
 import { BotonVidrio, Glass, HAY_VIDRIO } from '../src/ui/Glass'
@@ -161,7 +160,6 @@ import {
   IconCheck,
   IconForward,
   IconCollapseLeft,
-  IconCollapseRight,
   IconClose,
   IconGlobe,
   IconImage,
@@ -172,9 +170,7 @@ import {
   IconHome,
   IconLogOut,
   IconMusic,
-  IconPause,
-  IconPlay,
-  IconPencil,
+  IconNewConversation,
   IconPlus,
   IconQueue,
   IconSearch,
@@ -565,12 +561,12 @@ export default function Home() {
    * dos casos el techo vale 0.
    */
   const arriba = useSafeAreaInsets()
-  const sinHeader = suelto && !music && chatAbierto
+  const sinHeader = !suelto || (!music && chatAbierto)
   const headerFlota = suelto && !sinHeader
   const techo = useTecho()
   useEffect(() => {
-    if (!headerFlota) setTechoH(0)
-  }, [headerFlota])
+    if (!headerFlota) setTechoH(suelto ? 0 : TECLADO_FISICO ? 48 : 60)
+  }, [headerFlota, suelto])
 
   /*
    * Con una conversación abierta, la cáscara se pliega.
@@ -730,6 +726,15 @@ export default function Home() {
    * del toque—, el pairId queda anotado y el efecto de abajo lo abre cuando
    * las conversaciones llegan.
    */
+  const changeConversation = useCallback((pairId: string) => {
+    /* Abrir una conversación es viajar al chat, y ahí la letra deja de ser lo
+       que estabas mirando: el medio vuelve a ser el hilo. */
+    dejarCara()
+    resetDraft()
+    setComposerError(null)
+    selectConversation(pairId)
+  }, [dejarCara])
+
   const chatPorAbrir = useRef<string | null>(null)
   useEffect(() => {
     registerAbrirChat((pairId) => {
@@ -767,7 +772,7 @@ export default function Home() {
     chatPorAbrir.current = null
     changeConversation(pendiente)
     setChatAbierto(true)
-  }, [conversations])
+  }, [conversations, changeConversation])
 
   /*
    * El buscador de arriba busca lo que corresponde al modo.
@@ -1764,14 +1769,6 @@ export default function Home() {
     router.push('/compose')
   }
 
-  function changeConversation(pairId: string) {
-    /* Abrir una conversación es viajar al chat, y ahí la letra deja de ser lo
-       que estabas mirando: el medio vuelve a ser el hilo. */
-    dejarCara()
-    resetDraft()
-    setComposerError(null)
-    selectConversation(pairId)
-  }
 
   async function responderSolicitud(solicitud: ContactRequest, aceptar: boolean) {
     try {
@@ -1912,6 +1909,16 @@ export default function Home() {
       chooseRecipient: false,
     })
     router.push('/compose')
+  }
+
+  function cambiarModo() {
+    dejarCara()
+    setMusic(on => !on)
+    if (music) {
+      setStack([{ kind: 'home', section: null }])
+      setAt(0)
+    }
+    changeGlobalSearch('')
   }
 
   /*
@@ -2207,21 +2214,7 @@ export default function Home() {
               <View>
               <BotonVidrio
                 label={music ? 'Volver a las conversaciones' : 'Tus listas'}
-                onPress={() => {
-                  // Cambiar de modo es navegar: la letra no puede quedar
-                  // tapando el panel del modo al que acabás de entrar.
-                  dejarCara()
-                  setMusic((on) => !on)
-                  // Salir de música deja el historial en la portada: al volver,
-                  // se entra por donde se entra siempre y no en media navegación.
-                  if (music) {
-                    setStack([{ kind: 'home', section: null }])
-                    setAt(0)
-                  }
-                  // Lo escrito buscaba otra cosa; dejarlo mostraría resultados
-                  // del modo anterior bajo un campo que ya dice otra cosa.
-                  changeGlobalSearch('')
-                }}
+                onPress={cambiarModo}
                 radius={22}
                 style={{ width: 44, height: 44 }}
               >
@@ -2342,6 +2335,8 @@ export default function Home() {
                       cargando={cargandoConversaciones}
                       onRespond={(solicitud, aceptar) => void responderSolicitud(solicitud, aceptar)}
                       filtered={conversationQuery.trim().length > 0}
+                      consulta={conversationQuery}
+                      errorBusqueda={searchError}
                       activePairId={activePairId}
                       hovered={vivo && hovered}
                       onCollapse={vivo ? () => setLeftCollapsed(true) : () => undefined}
@@ -2358,6 +2353,7 @@ export default function Home() {
                       buscandoCuentas={searchingContacts}
                       solicitando={solicitando}
                       onAbrirCuenta={vivo ? chooseGlobalResult : undefined}
+                      onVerPerfilCuenta={vivo ? cuenta => router.push({ pathname: '/perfil/[usuario]', params: { usuario: cuenta.username } }) : undefined}
                       onSolicitar={(cuenta) => void solicitarContacto(cuenta)}
                       onAceptarCuenta={(cuenta) => void aceptarDeBusqueda(cuenta)}
                     />
@@ -2396,6 +2392,19 @@ export default function Home() {
            * el contenido corrido a la izquierda.
            */}
           <Animated.View style={[{ flex: 1, minHeight: 0 }, estiloArrastre]}>
+          {!suelto ? (
+            <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 40 }}>
+              <LinearGradient pointerEvents="none" colors={['rgba(18,18,18,0.94)', 'rgba(18,18,18,0.65)', 'rgba(18,18,18,0)']}
+                locations={[0, 0.5, 1]} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 76 }} />
+              <View pointerEvents="box-none" className="flex-row items-center gap-1 px-3 py-2">
+                <BotonLateral label="Atrás" disabled={music && !canGoBack}
+                  onPress={music ? goBack : cambiarModo}
+                  icono={<IconBack size={18} color={ICON_COLOR.foreground} />} />
+                {music ? <BotonLateral label="Adelante" disabled={!canGoForward} onPress={goForward}
+                  icono={<IconForward size={18} color={ICON_COLOR.foreground} />} /> : null}
+              </View>
+            </View>
+          ) : null}
           {caraCentro && pistaSonando ? (
             /*
              * La letra o el disco **toman el panel del medio**, como en
@@ -2559,7 +2568,7 @@ export default function Home() {
             />
           ) : music && collection ? (
             <Panel className="flex-1">
-              <ScrollView
+              <ScrollArea
                 className="min-h-0 flex-1"
                 /* El techo, como el piso: el contenido corre hasta los bordes
                    y el hueco para el encabezado se reserva adentro. */
@@ -2582,11 +2591,11 @@ export default function Home() {
                   }}
                   pendingId={addingTrack}
                 />
-              </ScrollView>
+              </ScrollArea>
             </Panel>
           ) : music && view.kind === 'artist' ? (
             <Panel className="flex-1">
-              <ScrollView
+              <ScrollArea
                 className="min-h-0 flex-1"
                 /* Mismo techo que el álbum: la cabecera del artista arranca
                    debajo del encabezado flotante y pasa por detrás al subir. */
@@ -2611,7 +2620,7 @@ export default function Home() {
                   menuForSong={menuForTrack}
                   pendingId={addingTrack}
                 />
-              </ScrollView>
+              </ScrollArea>
             </Panel>
           ) : music ? (
             /* Sin lista abierta, el medio es la portada: novedades y lo que
@@ -2665,6 +2674,8 @@ export default function Home() {
                 cargando={cargandoConversaciones}
                 onRespond={(solicitud, aceptar) => void responderSolicitud(solicitud, aceptar)}
                 filtered={conversationQuery.trim().length > 0}
+                consulta={conversationQuery}
+                errorBusqueda={searchError}
                 activePairId={activePairId}
                 hovered={false}
                 onCollapse={() => undefined}
@@ -2679,6 +2690,7 @@ export default function Home() {
                 buscandoCuentas={searchingContacts}
                 solicitando={solicitando}
                 onAbrirCuenta={chooseGlobalResult}
+                onVerPerfilCuenta={cuenta => router.push({ pathname: '/perfil/[usuario]', params: { usuario: cuenta.username } })}
                 onSolicitar={(cuenta) => void solicitarContacto(cuenta)}
                 onAceptarCuenta={(cuenta) => void aceptarDeBusqueda(cuenta)}
               />
@@ -2687,8 +2699,8 @@ export default function Home() {
             <Panel className="flex-1">
               {contact ? (
                 <View className="relative min-h-0 flex-1">
-                  <View className="absolute left-0 right-0 top-0 z-20 flex-row items-center justify-between px-5 py-4">
-                    <View className="min-w-0 flex-row items-center gap-3">
+                  <View className="flex-row items-center justify-between bg-background px-5 py-3" style={!suelto ? { paddingTop: TECLADO_FISICO ? 56 : 68 } : undefined}>
+                    <View className="min-w-0 flex-1 flex-row items-center gap-3">
                       {/* Solo en el teléfono: en escritorio la lista está a la
                           izquierda, siempre a la vista, y no hay a dónde volver. */}
                       {suelto ? (
@@ -2696,7 +2708,7 @@ export default function Home() {
                           accessibilityRole="button"
                           accessibilityLabel="Volver a las conversaciones"
                           onPress={() => setChatAbierto(false)}
-                          className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
+                          className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
                         >
                           <IconBack size={19} color={ICON_COLOR.foreground} />
                         </Pressable>
@@ -2713,10 +2725,10 @@ export default function Home() {
                         accessibilityRole="button"
                         accessibilityLabel={`Ver el perfil de ${contactName}`}
                         onPress={() => router.push(`/perfil/${contact.username}`)}
-                        className="min-w-0 flex-row items-center gap-3 active:opacity-70"
+                        className="min-h-11 min-w-0 flex-1 flex-row items-center gap-3 active:opacity-70"
                       >
                         <Avatar name={contactName} path={contact.avatarPath} size={40} />
-                        <View className="min-w-0 gap-0.5">
+                        <View className="min-w-0 flex-1 gap-0.5">
                           <Text
                             className="text-foreground text-[15px] font-semibold"
                             numberOfLines={1}
@@ -2729,7 +2741,6 @@ export default function Home() {
                         </View>
                       </Pressable>
                     </View>
-                    <Text className="text-muted-foreground text-[11px]">En línea</Text>
                   </View>
 
                   {error ? (
@@ -2757,7 +2768,7 @@ export default function Home() {
                       contentContainerStyle={{
                         flexGrow: 1,
                         justifyContent: 'flex-end',
-                        paddingTop: 104,
+                        paddingTop: 16,
                         /* Lo que ocupa el reproductor —o el teclado— más el
                            campo y un respiro. Sin el respiro, el último mensaje
                            queda pegado al campo y parece cortado; con más, se
@@ -3130,13 +3141,24 @@ function CentroSonando({
   return (
     <Panel className="min-h-0 flex-1">
       {cara === 'lyrics' ? (
-        /* Topada a un ancho de lectura y centrada, como la letra de Spotify:
-           una línea de lado a lado en 1440px no se puede seguir con la vista. */
+        /*
+         * La misma letra que en el teléfono, `xl`: acá la letra **es** el
+         * panel, igual que allá es la pantalla, así que es la misma pieza y no
+         * una variante de escritorio. De eso sale el karaoke, el desenfoque de
+         * las líneas lejanas y la línea que suena arriba del medio.
+         *
+         * La columna sigue topada a un ancho de lectura y centrada dentro del
+         * panel —una línea de lado a lado en 1440px no se puede seguir con la
+         * vista—, pero el texto adentro va a la izquierda: es la forma que
+         * toma Apple Music en la Mac y en el iPad.
+         */
         <View
           className="min-h-0 w-full max-w-3xl flex-1 self-center px-8"
           style={{ paddingTop: techo, paddingBottom: piso }}
         >
-          <LyricsView track={pista} translatable />
+          {/* #121212 es `background`, el fondo del panel: es contra eso que
+              se apagan los bordes de la letra. */}
+          <LyricsView track={pista} translatable size="xl" fondo="18,18,18" />
         </View>
       ) : (
         <View
@@ -3196,8 +3218,9 @@ function ConversationSidebar({
   requests,
   cargando = false,
   filtered,
+  consulta = '',
+  errorBusqueda = null,
   activePairId,
-  hovered,
   onCollapse,
   onSelect,
   onRespond,
@@ -3206,6 +3229,7 @@ function ConversationSidebar({
   buscandoCuentas = false,
   solicitando = null,
   onAbrirCuenta,
+  onVerPerfilCuenta,
   onSolicitar,
   onAceptarCuenta,
   onBuscar,
@@ -3219,6 +3243,8 @@ function ConversationSidebar({
   cargando?: boolean
   /** Hay una búsqueda escrita: cambia qué decir cuando la lista está vacía. */
   filtered: boolean
+  consulta?: string
+  errorBusqueda?: string | null
   activePairId: string | null
   hovered: boolean
   onCollapse: () => void
@@ -3228,15 +3254,14 @@ function ConversationSidebar({
   /**
    * Las cuentas que coinciden con la búsqueda, debajo de las conversaciones.
    *
-   * Solo el teléfono las manda: en escritorio los resultados cuelgan del campo
-   * del encabezado. Sin esto, buscar en «Chats» filtraba lo que ya tenías y la
-   * gente nueva no aparecía por ningún lado — el endpoint estaba, el visual no.
+   * En escritorio y teléfono comparten la lista con las conversaciones.
    */
   cuentas?: ContactResult[]
   buscandoCuentas?: boolean
   /** Cuenta cuya solicitud está saliendo, para la espera en su fila. */
   solicitando?: string | null
   onAbrirCuenta?: (cuenta: ContactResult) => void
+  onVerPerfilCuenta?: (cuenta: ContactResult) => void
   onSolicitar?: (cuenta: ContactResult) => void
   onAceptarCuenta?: (cuenta: ContactResult) => void
   /**
@@ -3253,46 +3278,42 @@ function ConversationSidebar({
      que ya tenía (`pt-4`). En escritorio el techo es 0 y queda igual. */
   const techo = useTecho(16)
   const colapso = useColapso()
+  const compacto = !!onBuscar && TECLADO_FISICO
+  const ladoAccion = compacto ? 32 : 44
+  const consultaNormalizada = consulta.trim().toLocaleLowerCase('es')
+  const solicitudesVisibles = filtered
+    ? requests.filter((r) => `${r.username} ${contactTitle(r)}`.toLocaleLowerCase('es').includes(consultaNormalizada))
+    : requests
+  const solicitudesIds = new Set(solicitudesVisibles.map((r) => r.id))
+  const cuentasVisibles = cuentas.filter((c) => !solicitudesIds.has(c.id))
+  const carga = (texto: string) => (
+    <View accessibilityRole="progressbar" accessibilityLabel={texto} className="flex-row items-center gap-2 px-2 py-5">
+      <ActivityIndicator size="small" color={ICON_COLOR.muted} />
+      <Text className="text-muted-foreground text-xs">{texto}</Text>
+    </View>
+  )
 
   return (
     <Panel tone="lateral" className="flex-1">
       {onBuscar ? (
-        /*
-         * En la compu, la cabecera de Mensajes en la Mac: el buscador y el
-         * botón de escribir, nada de título —la barra lateral ya dice qué es
-         * por lo que lista—. Contraer aparece bajo el cursor, a la izquierda.
-         */
-        <View className="flex-row items-center gap-2 px-2 pb-2 pt-2">
-          {hovered ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Colapsar conversaciones"
-              onPress={onCollapse}
-              className="h-9 w-9 items-center justify-center rounded-md active:bg-muted hover:bg-white/5"
-            >
-              <IconCollapseLeft size={15} color={ICON_COLOR.muted} />
-            </Pressable>
-          ) : null}
-          <View className="min-w-0 flex-1">
-            <CampoBusquedaLateral
-              onBuscar={onBuscar}
-              inputRef={inputRef}
-              placeholder="Buscar"
-              buscando={buscando}
-            />
+        <View className="gap-1 pb-2">
+          <CabeceraLateral titulo="Chats">
+            <BotonLateral label="Nueva conversación" onPress={onNew}
+              icono={<IconNewConversation size={16} color={ICON_COLOR.foreground} />} />
+            <BotonLateral label="Colapsar conversaciones" onPress={onCollapse}
+              icono={<IconCollapseLeft size={15} color={ICON_COLOR.muted} />} />
+          </CabeceraLateral>
+          <View className="px-2">
+          <CampoBusquedaLateral
+            onBuscar={onBuscar}
+            inputRef={inputRef}
+            placeholder="Buscar contactos"
+            buscando={buscando}
+          />
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Agregar un contacto"
-            onPress={onNew}
-            className="h-9 w-9 items-center justify-center rounded-md active:bg-muted hover:bg-white/5"
-          >
-            <IconPencil size={16} color={ICON_COLOR.foreground} />
-          </Pressable>
         </View>
       ) : (
-        /* En el teléfono, la cabecera de Mensajes en iOS: el título grande y
-           el lápiz de escribir a la derecha. El buscador lo pone la cáscara. */
+        /* El buscador del teléfono lo pone la cáscara. */
         <View className="flex-row items-end justify-between gap-4 px-4 pb-2" style={{ paddingTop: techo }}>
           <View className="gap-0.5">
             <Text className="text-foreground text-[34px] font-bold tracking-[-0.4px]" numberOfLines={1}>
@@ -3303,17 +3324,19 @@ function ConversationSidebar({
             </Text>
           </View>
           <BotonVidrio
-            label="Agregar un contacto"
+            label="Nueva conversación"
             onPress={onNew}
             radius={22}
             style={{ width: 44, height: 44 }}
           >
-            <IconPencil size={17} color={ICON_COLOR.foreground} />
+            <IconNewConversation size={17} color={ICON_COLOR.foreground} />
           </BotonVidrio>
         </View>
       )}
 
       <FlatList
+        renderScrollComponent={onBuscar ? (props) => <ScrollArea {...props} /> : undefined}
+        style={{ flex: 1, minHeight: 0 }}
         data={conversations}
         keyExtractor={(conversation) => conversation.pairId}
         contentContainerClassName="gap-1 p-2"
@@ -3323,17 +3346,17 @@ function ConversationSidebar({
            misma lista: son lo que pide atención primero, pero desplazan con
            el resto en vez de comerse el alto de la bandeja. */
         ListHeaderComponent={
-          requests.length ? (
+          solicitudesVisibles.length ? (
             <View className="gap-1 pb-2">
               <Text className="px-2.5 pt-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
                 Solicitudes
               </Text>
-              {requests.map((solicitud) => (
-                <View key={solicitud.id} className="flex-row items-center gap-3 rounded-lg p-2.5">
+              {solicitudesVisibles.map((solicitud) => (
+                <View key={solicitud.id} className="flex-row items-center gap-2 rounded-lg px-2 py-2">
                   <Avatar
                     name={contactLabel(solicitud)}
                     path={solicitud.avatarPath}
-                    size={44}
+                    size={compacto ? 36 : 44}
                   />
                   <View className="min-w-0 flex-1 gap-0.5">
                     <Text
@@ -3342,13 +3365,14 @@ function ConversationSidebar({
                     >
                       {contactTitle(solicitud)}
                     </Text>
-                    <Text className="text-muted-foreground text-xs">Quiere ser tu contacto</Text>
+                    <Text className="text-muted-foreground text-xs" numberOfLines={1}>Quiere ser tu contacto</Text>
                   </View>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Aceptar la solicitud de ${contactLabel(solicitud)}`}
                     onPress={() => onRespond(solicitud, true)}
-                    className="h-9 w-9 items-center justify-center rounded-full bg-primary active:opacity-80"
+                    style={{ width: ladoAccion, height: ladoAccion, flexShrink: 0 }}
+                    className="items-center justify-center rounded-full bg-primary active:opacity-80"
                   >
                     <IconCheck size={15} color={ICON_COLOR.onPrimary} />
                   </Pressable>
@@ -3356,7 +3380,8 @@ function ConversationSidebar({
                     accessibilityRole="button"
                     accessibilityLabel={`Rechazar la solicitud de ${contactLabel(solicitud)}`}
                     onPress={() => onRespond(solicitud, false)}
-                    className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-80"
+                    style={{ width: ladoAccion, height: ladoAccion, flexShrink: 0 }}
+                    className="items-center justify-center rounded-full bg-muted active:opacity-80"
                   >
                     <IconClose size={14} color={ICON_COLOR.muted} />
                   </Pressable>
@@ -3366,52 +3391,49 @@ function ConversationSidebar({
           ) : null
         }
         ListEmptyComponent={
-          /* Buscando, si abajo va a haber cuentas el cartel grande sobra: la
-             sección «Más gente» ya es la respuesta a lo que se escribió. */
-          /* Una cuenta recién creada no tiene conversaciones, y decirle que
-             "no coinciden" da a entender que filtró algo que no filtró. */
-          filtered && (cuentas.length || buscandoCuentas) ? null : cargando ? (
-            /* La bandeja todavía viene: un esqueleto y no «todavía no hay
-               conversaciones», que es una afirmación sobre algo que no sabemos
-               —y la primera que se leía al abrir la app con red lenta. */
-            <View className="pt-1">
-              <SkeletonList rows={5} />
-            </View>
+          filtered && (cuentasVisibles.length || buscandoCuentas || solicitudesVisibles.length) ? null : cargando ? (
+            carga('Cargando conversaciones…')
           ) : (
             <Vacio
-              icono={<IconInbox size={22} color={ICON_COLOR.muted} />}
-              titulo={filtered ? 'Sin resultados' : 'Todavía no hay conversaciones'}
-              detalle={
-                filtered
-                  ? 'Ninguna conversación coincide con lo que escribiste.'
-                  : 'Buscá una cuenta y mandale un mensaje o una canción.'
-              }
+              compacto={compacto}
+              icono={<IconInbox size={compacto ? 18 : 22} color={ICON_COLOR.muted} />}
+              titulo={filtered ? 'Buscar contactos' : 'Todavía no hay conversaciones'}
+              detalle={filtered
+                ? errorBusqueda ?? 'No hay conversaciones ni cuentas que coincidan.'
+                : 'Buscá una cuenta para empezar a conversar.'}
               accion={filtered ? undefined : { rotulo: 'Buscar contacto', onPress: onNew }}
             />
           )
         }
+
         /* Las cuentas que coinciden, después de tus conversaciones: dentro de
            la misma lista —como las solicitudes— para desplazar con el resto. */
         ListFooterComponent={
-          filtered && onAbrirCuenta && (cuentas.length || buscandoCuentas) ? (
+          filtered && onAbrirCuenta && (cuentasVisibles.length || buscandoCuentas || (errorBusqueda && conversations.length > 0)) ? (
             <View className="gap-1 pt-2">
               <Text className="px-2.5 pb-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-                Más gente
+                {cuentasVisibles.length ? 'Personas' : 'Búsqueda de contactos'}
               </Text>
-              {buscandoCuentas && !cuentas.length ? (
-                <SkeletonList rows={3} />
+              {buscandoCuentas ? (
+                carga('Buscando contactos…')
               ) : (
-                cuentas.map((cuenta) => (
+                cuentasVisibles.map((cuenta) => (
                   <FilaCuenta
                     key={cuenta.id}
                     cuenta={cuenta}
+                    density={compacto ? 'compact' : 'regular'}
                     busy={solicitando === cuenta.id}
                     onAbrir={() => onAbrirCuenta(cuenta)}
-                    onSolicitar={() => onSolicitar?.(cuenta)}
-                    onAceptar={() => onAceptarCuenta?.(cuenta)}
+                    onVerPerfil={onVerPerfilCuenta ? () => onVerPerfilCuenta(cuenta) : undefined}
+                    rotuloAbrir="Escribir"
+                    onSolicitar={onSolicitar ? () => onSolicitar(cuenta) : undefined}
+                    onAceptar={onAceptarCuenta ? () => onAceptarCuenta(cuenta) : undefined}
                   />
                 ))
               )}
+              {!buscandoCuentas && errorBusqueda && !cuentasVisibles.length ? (
+                <Text accessibilityLiveRegion="polite" className="px-2 py-3 text-muted-foreground text-xs">{errorBusqueda}</Text>
+              ) : null}
             </View>
           ) : null
         }
@@ -3420,32 +3442,33 @@ function ConversationSidebar({
             accessibilityRole="button"
             accessibilityState={{ selected: item.pairId === activePairId }}
             onPress={() => onSelect(item.pairId)}
-            className={`flex-row items-center gap-3 rounded-lg p-2.5 active:opacity-80 ${
+            className={`flex-row items-center gap-2 rounded-lg px-2 py-2 hover:bg-white/5 active:opacity-80 ${
               item.pairId === activePairId ? 'bg-muted' : ''
             }`}
           >
-            <Avatar name={contactLabel(item.contact)} path={item.contact.avatarPath} size={44} />
+            <Avatar name={contactLabel(item.contact)} path={item.contact.avatarPath} size={compacto ? 36 : 44} />
             <View className="min-w-0 flex-1 gap-0.5">
               <View className="flex-row items-center gap-2">
                 <Text
-                  className="min-w-0 flex-1 text-foreground text-[14px] font-semibold"
+                  className="min-w-0 flex-1 text-foreground font-semibold"
+                  style={{ fontSize: compacto ? 13 : 15 }}
                   numberOfLines={1}
                 >
                   {contactTitle(item.contact)}
                 </Text>
                 {item.lastMessageAt ? (
-                  <Text className="text-muted-foreground text-[10px]">
+                  <Text className="shrink-0 text-muted-foreground text-[11px]">
                     {formatMessageDate(item.lastMessageAt)}
                   </Text>
                 ) : null}
               </View>
               <View className="flex-row items-center gap-2">
-                <Text className="min-w-0 flex-1 text-muted-foreground text-xs" numberOfLines={1}>
-                  {item.lastMessageText.trim() || 'Canción compartida'}
+                <Text className="min-w-0 flex-1 text-muted-foreground text-[13px]" numberOfLines={1}>
+                  {filtered ? `@${item.contact.username} · Contacto` : invitacionEnTexto(item.lastMessageText) ? 'Invitación a Jam' : item.lastMessageText.trim() || 'Canción compartida'}
                 </Text>
                 {item.unreadCount > 0 ? (
                   <View className="min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5">
-                    <Text className="text-primary-foreground text-[10px] font-semibold">
+                    <Text className="text-primary-foreground text-[12px] font-semibold">
                       {Math.min(item.unreadCount, 99)}
                     </Text>
                   </View>
@@ -3456,187 +3479,6 @@ function ConversationSidebar({
         )}
       />
     </Panel>
-  )
-}
-
-function Detail({
-  message,
-  mine,
-  contactName,
-  playing,
-  sonando,
-  positionMs,
-  posicionSV,
-  showCollapse,
-  onCollapse,
-  onPlay,
-  onSeek,
-}: {
-  message: Message | null
-  mine: boolean
-  contactName: string
-  playing: boolean
-  /** Es el mensaje cargado en el reproductor, suene o esté en pausa. */
-  sonando: boolean
-  positionMs: number
-  posicionSV: SharedValue<number>
-  showCollapse: boolean
-  onCollapse: () => void
-  onPlay: () => void
-  onSeek: (fraccion: number) => void
-}) {
-  /* Lo que tapa el reproductor flotante, y la onda del tema. Van antes del
-     `if`: los hooks no pueden quedar detrás de un retorno temprano. */
-  const pisoDetalle = usePiso(32)
-  const picos = usePicos(
-    message?.song?.videoId,
-    message?.song
-      ? { desdeMs: message.song.startMs, durMs: message.song.durationMs }
-      : undefined,
-  )
-  if (!message) {
-    return (
-      <View className="flex-1">
-        <View className="flex-row items-center justify-between px-5 pt-4">
-          <AnimatedSidebarTitle
-            visible={showCollapse}
-            label="Colapsar detalle"
-            icon={<IconCollapseRight size={17} color={ICON_COLOR.muted} />}
-            onPress={onCollapse}
-          >
-            <Text className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.8px]">
-              Detalle
-            </Text>
-          </AnimatedSidebarTitle>
-        </View>
-        {/* Centrado en lo que se ve, descontando lo que tapa el reproductor:
-            a secas, el cartel cae justo detrás de la barra. */}
-        <View className="flex-1 justify-center" style={{ paddingBottom: pisoDetalle }}>
-          <Vacio
-            compacto
-            icono={<IconMusic size={20} color={ICON_COLOR.muted} />}
-            titulo="Detalle musical"
-            detalle="Elegí un mensaje para ver su contenido y escuchar su canción."
-          />
-        </View>
-      </View>
-    )
-  }
-
-  const song = message.song
-  const isSounding = playing && song !== null
-
-  return (
-    /* Igual que el panel de lo que suena: lo que tapa el reproductor se reserva
-       adentro del contenido, no se deja que lo corte. Ver `usePiso`. */
-    <ScrollView
-      contentContainerClassName="gap-5 p-5"
-      contentContainerStyle={{ paddingBottom: pisoDetalle }}
-    >
-      <View className="flex-row items-center justify-between">
-        <AnimatedSidebarTitle
-          visible={showCollapse}
-          label="Colapsar detalle"
-          icon={<IconCollapseRight size={17} color={ICON_COLOR.muted} />}
-          onPress={onCollapse}
-        >
-          <Text className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.8px]">
-            Detalle
-          </Text>
-        </AnimatedSidebarTitle>
-      </View>
-      <View className="flex-row items-center gap-3">
-        <View className="h-11 w-11 items-center justify-center rounded-full bg-muted">
-          <Text className="text-foreground text-sm font-semibold uppercase">
-            {contactInitial(contactName)}
-          </Text>
-        </View>
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Text className="text-foreground text-sm font-semibold" numberOfLines={1}>
-            {mine ? `Para @${contactName}` : `De @${contactName}`}
-          </Text>
-          {message.createdAt ? (
-            <Text className="text-muted-foreground text-xs">
-              {formatMessageDate(message.createdAt, true)}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-
-      {message.text.length ? (
-        <View className="rounded-xl bg-card p-4">
-          <InvitacionJam texto={message.text} />
-        </View>
-      ) : null}
-
-      {song ? (
-        <View className="gap-4">
-          {song.artworkUrl ? (
-            <Image
-              source={{
-                uri: artworkSource(song.artworkPath, song.artworkUrl, 640) ?? '',
-              }}
-              className="aspect-square w-full max-w-[320px] self-center rounded-xl bg-muted"
-            />
-          ) : (
-            <View className="aspect-square w-full max-w-[320px] self-center items-center justify-center rounded-xl bg-muted">
-              <IconMusic size={32} color={ICON_COLOR.muted} />
-            </View>
-          )}
-          <View className="flex-row items-center gap-3">
-            <View className="min-w-0 flex-1 gap-0.5">
-              <Text className="text-foreground text-lg font-semibold" numberOfLines={2}>
-                {song.title}
-              </Text>
-              <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
-                {song.artist} · {Math.round(song.durationMs / 1000)} s
-              </Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={playing ? 'Pausar' : 'Reproducir el fragmento'}
-              onPress={onPlay}
-              className="h-12 w-12 items-center justify-center rounded-full bg-primary active:opacity-80"
-            >
-              {playing ? (
-                <IconPause size={17} color={ICON_COLOR.onPrimary} />
-              ) : (
-                <IconPlay size={17} color={ICON_COLOR.onPrimary} />
-              )}
-            </Pressable>
-          </View>
-          {/* La onda, que acá además es la única forma de moverse dentro del
-              fragmento: el detalle no tenía barra de posición. */}
-          {picos ? (
-            <Onda
-              picos={picos}
-              posicionMs={posicionSV}
-              desdeMs={song.startMs}
-              duracionMs={song.durationMs}
-              activa={sonando}
-              onSeek={onSeek}
-              height={44}
-              etiqueta={song.title}
-            />
-          ) : null}
-
-          {song.lyrics?.length ? (
-            isSounding ? (
-              <Lyrics lines={song.lyrics} atMs={positionMs} visible={3} />
-            ) : (
-              <Text className="text-muted-foreground text-xs">
-                Dale play y la letra sigue al fragmento.
-              </Text>
-            )
-          ) : null}
-        </View>
-      ) : (
-        <View className="flex-row items-center gap-2 rounded-lg bg-card px-4 py-3">
-          <IconMusic size={16} color={ICON_COLOR.muted} />
-          <Text className="text-muted-foreground text-xs">Sin canción adjunta</Text>
-        </View>
-      )}
-    </ScrollView>
   )
 }
 

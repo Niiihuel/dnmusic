@@ -1,14 +1,15 @@
+import { BarraHerramientasMosaico } from '../../src/ui/BarraHerramientasMosaico'
+import { useMosaicoPerfil } from '../../src/ui/useMosaicoPerfil'
+import { CabeceraPerfil, SuperficiePerfil, FondoEstiloPerfil } from '../../src/ui/TarjetaPerfil'
 import { FuentePerfil, TextoPerfil as Text } from '../../src/ui/FuentePerfil'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, ScrollView, useWindowDimensions, View } from 'react-native'
-import { useFocusEffect, useRouter } from 'expo-router'
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { BotonVidrio, Glass } from '../../src/ui/Glass'
 import {
   alturaDeHeroe,
-  FondoPerfil,
-  Identidad,
   Resumen,
   useCuantasVitrinas,
   Vitrinas,
@@ -22,13 +23,10 @@ import {
 import {
   ICON_COLOR,
   IconBack,
-  IconPalette,
-  IconType,
   IconPencil,
-  IconPlus,
 } from '../../src/ui/icons'
 import { listPlaylists, type Playlist } from '../../src/services/playlists'
-import { useMyProfile } from '../../src/state/session'
+import { iniciarPerfilEdicion, useIniciarPerfilEdicion } from '../../src/state/perfilEdicion'
 import { useChromeH, usePiso } from '../../src/state/shell'
 import { editarBorrador, tomarArmado } from '../../src/state/vitrinaBorrador'
 import { useColapso } from '../../src/ui/useColapso'
@@ -86,24 +84,24 @@ const CAP_ANCHO = 1100
  */
 export default function ProfileScreen() {
   const router = useRouter()
-  const profile = useMyProfile()
+  const { editar } = useLocalSearchParams<{ editar?: string }>()
   const colapso = useColapso()
   /*
    * Armando: el mosaico con sus controles y la barra al pie.
    *
    * Es el «modo de edición» del Space de Airbuds, **en el mismo perfil**: se
    * entra manteniendo apretada una pieza, o desde «Editar perfil → Armar el
-   * mosaico», y se sale con «Hecho». La identidad se sigue editando en su
+   * mosaico», y se vuelve a «Editor» para confirmar. La identidad se sigue editando en su
    * pantalla; acá se arma lo que se muestra.
    */
-  const [armando, setArmando] = useState(false)
+  const [armando, setArmando] = useState(editar === '1')
+  const profile = useIniciarPerfilEdicion(armando)
   /*
    * La pestaña que se eligió con el dedo, en el teléfono. `null` es «ninguna
    * todavía» y entonces manda `pestanaInicial`: «Space» con piezas, «Reciente»
    * sin ellas. Ver `ui/PestanasPerfil`.
    *
-   * Armando manda «Space» siempre, y además se **deja elegida**: al tocar
-   * «Hecho» uno quiere ver el mosaico que acaba de armar, no que la pantalla
+   * Armando manda «Space» siempre, y además se **deja elegida**: al volver al editor uno quiere ver el mosaico que acaba de armar, no que la pantalla
    * vuelva sola a «Reciente» porque la cuenta de piezas dio cero un momento.
    */
   const [elegida, setElegida] = useState<PestanaPerfil | null>(null)
@@ -111,7 +109,7 @@ export default function ProfileScreen() {
      abajo del dedo se pelea con el gesto. */
   const [arrastrando, setArrastrando] = useState(false)
   const chrome = useChromeH()
-  const piso = usePiso(24) + (armando ? ALTO_BARRA : 0)
+  const pisoBase = usePiso(24)
   const { width, height: altoVentana } = useWindowDimensions()
   const ancho = width >= ANCHO_PX
   /* El margen del reloj, en el teléfono: la pantalla ya no reserva el área
@@ -120,6 +118,9 @@ export default function ProfileScreen() {
 
   /* Cambia al volver del editor, para releer lo que se haya tocado. */
   const [recarga, setRecarga] = useState(0)
+  const mosaico = useMosaicoPerfil(profile?.userId ?? null, null, recarga, () => setRecarga(n => n + 1))
+  const piso = pisoBase + (armando ? ALTO_BARRA : 0)
+
   const cuantasVitrinas = useCuantasVitrinas(profile?.userId ?? '', recarga)
 
   /*
@@ -153,9 +154,11 @@ export default function ProfileScreen() {
    */
   /** Entrar a armar: desde «Armar el mosaico» o manteniendo apretada una pieza. */
   const entrarEdicion = useCallback(() => {
+    if (!profile) return
+    iniciarPerfilEdicion(profile)
     setElegida('space')
     setArmando(true)
-  }, [])
+  }, [profile])
 
   const primerFoco = useRef(true)
   useFocusEffect(
@@ -252,43 +255,11 @@ export default function ProfileScreen() {
    * hacer mientras se arma.
    */
   const barraDeArmado = (
-    <Glass radius={999} style={{ height: 56, paddingHorizontal: 8, justifyContent: 'center' }}>
-      <View className="flex-row items-center gap-3">
-        <BotonVidrio
-          label="El tema de tu perfil"
-          onPress={() => router.push({ pathname: '/profile/tema', params: { para: 'perfil' } })}
-          radius={999}
-          style={{ width: 40, height: 40 }}
-        >
-          <IconPalette size={17} color={ICON_COLOR.foreground} />
-        </BotonVidrio>
-        <BotonVidrio
-          label="Tipografía de todo el perfil"
-          onPress={() => router.push('/profile/fuente')}
-          radius={999}
-          style={{ width: 40, height: 40 }}
-        >
-          <IconType size={17} color={ICON_COLOR.foreground} />
-        </BotonVidrio>
-        <BotonVidrio
-          label="Agregar una pieza"
-          onPress={() => router.push('/profile/agregar')}
-          radius={999}
-          tint={ICON_COLOR.foreground}
-          style={{ width: 48, height: 48 }}
-        >
-          <IconPlus size={22} color={ICON_COLOR.onPrimary} strokeWidth={2.4} />
-        </BotonVidrio>
-        <BotonVidrio
-          label="Terminar de armar"
-          onPress={() => setArmando(false)}
-          radius={999}
-          style={{ height: 40, paddingHorizontal: 16 }}
-        >
-          <Text className="text-foreground text-[13px] font-bold">Hecho</Text>
-        </BotonVidrio>
-      </View>
-    </Glass>
+    <BarraHerramientasMosaico ocupado={mosaico.guardando || arrastrando}
+      onTema={() => router.push({ pathname: '/profile/tema', params: { para: 'perfil' } })}
+      onFuente={() => router.push('/profile/fuente')}
+      onAgregar={() => router.push('/profile/agregar')}
+      onEditor={() => { setArmando(false); router.dismissTo('/profile/editar') }} />
   )
 
   /*
@@ -298,6 +269,7 @@ export default function ProfileScreen() {
   const vitrinas = profile ? (
     <Vitrinas
       ownerId={profile.userId}
+      borrador={mosaico}
       recarga={recarga}
       onCambio={() => setRecarga((n) => n + 1)}
       editando={armando}
@@ -321,9 +293,7 @@ export default function ProfileScreen() {
       propio
       recarga={recarga}
       onAbrirLista={(lista) => router.push(`/lista/${lista.id}`)}
-      /* En escritorio el `Resumen` entero va justo debajo, y abre con los
-         mismos dos números que el resumen corto. */
-      sinResumen={ancho}
+      sinResumen
     />
   ) : null
 
@@ -334,8 +304,7 @@ export default function ProfileScreen() {
       canciones={canciones}
       vitrinas={cuantasVitrinas}
       desde={profile?.createdAt ?? null}
-      /* En el teléfono «Reciente» ya abre con los minutos y el artista. */
-      sinEscucha={!ancho}
+      marcoPerfil={profile?.marcoPerfil}
     />
   )
 
@@ -355,11 +324,7 @@ export default function ProfileScreen() {
           <Panel className="flex-1">
             {/* El fondo va detrás de todo: además de ser lo de Steam, es la única
               pantalla donde el vidrio tiene una foto que difuminar. */}
-            <FondoPerfil
-              bannerPath={profile?.bannerPath ?? null}
-              encuadre={profile?.bannerEncuadre ?? null}
-              efecto={profile?.efecto ?? null}
-            />
+            <FondoEstiloPerfil perfil={profile} />
 
             {/*
              * La salida, en escritorio: un redondel de vidrio sobre la imagen.
@@ -397,11 +362,12 @@ export default function ProfileScreen() {
              * que el perfil tenía otro layout que el resto de la app.
              */}
             <ScrollView
-              contentContainerClassName="items-center px-4"
+              contentContainerClassName="items-center"
               /* En el teléfono el contenido arranca debajo del reloj —la
                pantalla ya no reserva esa franja— con el respiro que ya tenía
                (`pt-6`). El estilo pisa a la clase, así que va todo acá. */
               contentContainerStyle={{
+                paddingHorizontal: ancho ? 24 : 16,
                 /* En escritorio el contenido arranca **debajo del redondel de
                  volver**, que ahora flota sobre la imagen: con el respiro de
                  antes, el avatar quedaba justo abajo del botón en una ventana
@@ -430,20 +396,13 @@ export default function ProfileScreen() {
                 /* `propio` en falso en las vitrinas: acá se ven como las ve
                  cualquiera, sin cruces ni flechas. Los controles están en el
                  editor. */
-                <View className="w-full gap-8" style={{ maxWidth: ancho ? CAP_ANCHO : MAX_W }}>
+                <SuperficiePerfil perfil={profile} anchoContenido={ancho ? CAP_ANCHO : MAX_W} minHeight={ancho ? 520 : 420}>
                   {ancho ? (
                     <>
                       {/* La banda: identidad acostada de punta a punta, con el
                         botón contra el borde derecho. Va sobre `FondoPerfil`,
                         que sangra a todo el ancho del panel por detrás. */}
-                      <Identidad
-                        nombre={nombre}
-                        usuario={profile.username}
-                        avatarPath={profile.avatarPath}
-                        encuadre={profile.avatarEncuadre}
-                        marco={profile.marco}
-                        placa={profile.placa}
-                        bio={profile.bio ?? ''}
+                      <CabeceraPerfil perfil={profile}
                         banda
                         accion={armando ? barraDeArmado : botonEditar}
                       />
@@ -465,21 +424,14 @@ export default function ProfileScreen() {
                       <View className="flex-row items-start gap-6">
                         <View className="min-w-0 flex-1">{vitrinas}</View>
                         <View className="w-[320px] shrink-0 gap-8">
-                          {reciente}
                           {resumen}
+                          {reciente}
                         </View>
                       </View>
                     </>
                   ) : (
                     <>
-                      <Identidad
-                        nombre={nombre}
-                        usuario={profile.username}
-                        avatarPath={profile.avatarPath}
-                        encuadre={profile.avatarEncuadre}
-                        marco={profile.marco}
-                        placa={profile.placa}
-                        bio={profile.bio ?? ''}
+                      <CabeceraPerfil perfil={profile}
                         centrado
                       />
 
@@ -491,15 +443,13 @@ export default function ProfileScreen() {
                         vitrinas
                       ) : pestana === 'reciente' ? (
                         <View className="gap-8">
-                          {reciente}
-                          {/* Los números de tu biblioteca, al pie, como antes.
-                            Sin los minutos: «Reciente» ya abrió con ellos. */}
                           {resumen}
+                          {reciente}
                         </View>
                       ) : null}
                     </>
                   )}
-                </View>
+                </SuperficiePerfil>
               )}
             </ScrollView>
 

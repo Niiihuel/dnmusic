@@ -2,7 +2,7 @@
   "expo": {
     "name": "dnmusic",
     "slug": "flora",
-    "version": "1.0.0",
+    "version": "1.11.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "dnmusic",
@@ -19,7 +19,7 @@
           "audio"
         ],
         "ITSAppUsesNonExemptEncryption": false,
-        "NSPhotoLibraryUsageDescription": "Dany necesita tus fotos para poner tu foto de perfil y las ilustraciones que muestres en él."
+        "NSPhotoLibraryUsageDescription": "dnmusic necesita tus fotos para poner tu foto de perfil y las ilustraciones que muestres en él."
       }
     },
     "android": {
@@ -62,11 +62,17 @@
         }
       ],
       "expo-audio",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Dany necesita tus fotos para poner tu foto de perfil y las ilustraciones que muestres.",
+          "photosPermission": "dnmusic necesita tus fotos para poner tu foto de perfil y las ilustraciones que muestres.",
           "cameraPermission": false
         }
       ],

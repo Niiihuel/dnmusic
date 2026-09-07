@@ -6,6 +6,7 @@ import { useWantPlay } from '../state/playback'
 import { usePiso, useTecho } from '../state/shell'
 import { useColapso } from './useColapso'
 import { Panel } from './Panel'
+import { ScrollArea } from './ScrollArea'
 import { PlayingBars } from './PlayingBars'
 import { PlaylistCover } from './PlaylistCover'
 import { SkeletonList } from './Skeleton'
@@ -149,6 +150,7 @@ export function PlaylistLibrary({
         </View>
       ) : (
         <FlatList
+          renderScrollComponent={(props) => <ScrollArea {...props} />}
           data={playlists}
           keyExtractor={(p) => p.id}
           className="min-h-0 flex-1"

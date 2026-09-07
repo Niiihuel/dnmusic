@@ -1,14 +1,79 @@
 # Sistema de diseño
 
-Basado en el de Spotify, con **una desviación deliberada: es completamente
-acromático**. Ni verde, ni rosa, ni ningún color de marca — solo blanco, negro y
-escalas de gris.
+La referencia de interacción es **Apple HIG**, adaptada a DMusic en PC e iOS.
+La interfaz conserva una paleta acromática; portadas, fondos y cosméticos
+aportan color. El blanco destaca la acción principal.
 
-Esto no contradice a Spotify, lo lleva al extremo. Su propio principio dice *"la
-carátula aporta todo el color; la UI se mantiene acromática"*. Acá no hay
-carátulas dominando la pantalla, así que la UI se queda sola en su escala de
-grises y **el acento pasa a ser el blanco**: lo más brillante de la pantalla es
-la acción principal.
+## Estándar de interacción: Apple HIG
+
+La edición de perfil, la búsqueda y los flujos sociales siguen las Human
+Interface Guidelines de Apple, conservando la paleta acromática de DMusic.
+Estas convenciones rigen las pantallas nuevas y sus adaptaciones:
+
+- **Una anatomía social compartida.** `Social.tsx` aporta `CabeceraSocial`,
+  `AccionSocial` y `SeccionSocial` para chat, detalle, fragmentos y Jam. Títulos
+  de 17 px, cuerpo de 15 px, metadatos de 13 px y acciones en oración normal.
+  Las superficies agrupadas tienen radio de 16 px. Cada nivel de contenido
+  necesita una jerarquía clara; evitar envolver una tarjeta compartida en
+  varias tarjetas adicionales.
+- **PC y iOS comparten el flujo, no el ancho.** Los formularios breves se
+  presentan centrados en PC; la navegación extensa puede usar barras laterales.
+  En iOS se usan hojas y contenido apilado. Los controles táctiles tienen
+  al menos 44 px. El buscador lateral usa `SearchField density="compact"`:
+  34 px con mouse y 44 px con puntero táctil. El texto puede reducir su ancho;
+  limpiar y cargar conservan espacio propio.
+- **Acciones proporcionadas.** `AccionSocial` ocupa su contenido en PC. El
+  ancho completo se reserva a una acción móvil que lo necesite (`expandida`).
+  Una acción principal por paso; opciones secundarias en un menú visible de
+  Opciones, no en varias filas de botones. Los submenús agrupan duración y
+  presentación del fragmento. `MenuNativo` usa SwiftUI en iOS.
+- **Una convención de hoja.** `CabeceraSocial` delega en `EncabezadoHoja`:
+  cerrar a la izquierda, título de 17 px y resumen debajo, acción a la derecha.
+  Todos los controles tienen un área de 44 px. `Hoja` limita ancho y alto en
+  escritorio y usa `Modal` en web para foco, Escape y capas apiladas; en iOS
+  presenta el `formSheet` del sistema. La altura compacta depende del contenido.
+  No se simula un tirador de arrastre en web si no existe el gesto.
+  `Confirmar.ios` usa el alert nativo; el resto conserva el diálogo accesible.
+- **El scroll forma parte del contenido.** `ScrollArea` conserva el scroll
+  nativo en iOS. En web superpone un indicador semitransparente, arrastrable y
+  operable con teclado, sin reservar un carril ni cambiar el degradado. El
+  fondo vive detrás del viewport. `usePiso` reserva dentro de la lista el
+  espacio necesario para alcanzar sus últimos controles. Dentro de una hoja,
+  `usePisoHoja` reserva sólo el área segura: el reproductor queda detrás.
+- **El perfil es un fondo continuo.** El fondo y el efecto animado se
+  dibujan detrás del área visible, independientes de la altura del mosaico.
+  Avatar y placa conservan sus decoraciones. El marco de tarjeta de Discord
+  se aplica únicamente a Estadísticas, con su proporción original y espacio
+  reservado para los adornos. La vista previa Perfil usa esta composición;
+  Tarjeta conserva la composición compacta original.
+- **Un borrador para toda la edición del perfil.** Identidad, medios,
+  privacidad, cosméticos, tipografía, tema y mosaico comparten la sesión de
+  `perfilEdicion` y `mosaicoEdicion`. Las hojas eligen y vuelven; no guardan.
+  Sólo Editar perfil presenta `BarraCambiosPerfil` con Restablecer y Guardar
+  cambios. Su material usa `Glass`, con reserva de altura y área segura.
+  Al salir del editor completo se ofrece conservar o descartar el borrador.
+  El toolbar del mosaico agrupa herramientas y agregar piezas; no confirma.
+- **La navegación comparte una convención.** Inicio y Editar perfil usan
+  `CabeceraLateral` y filas con iconos sin cajas decorativas. Las columnas
+  se pueden plegar independientemente. Atrás y Adelante flotan sobre el
+  degradado del contenido; no hay una franja global separada. El probador
+  tiene previa plegable en escritorio y un paso separado en teléfono.
+- **Estados vivos, con datos.** Nunca mostrar «En línea» sin presencia real.
+  La escucha del contacto se relee cada tres segundos mientras el perfil
+  está enfocado; se suspende en segundo plano. El reproductor publica un
+  latido cada veinte segundos y una escucha sin actualizar durante 65 segundos
+  deja de presentarse como actual. Las reacciones muestran sus autores al
+  pasar el cursor o dar foco en PC, y al tocar en teléfono.
+- **Movimiento y foco.** Las piezas del catálogo se animan al pasar el cursor
+  o enfocarlas con teclado; las listas cargan progresivamente. Se respeta
+  Reducir movimiento y se detienen las animaciones al dejar de usarlas. El
+  foco de teclado es visible y acromático.
+
+Referencias: [Sheets](https://developer.apple.com/design/human-interface-guidelines/sheets),
+[Menus](https://developer.apple.com/design/human-interface-guidelines/menus),
+[Apple HIG](https://developer.apple.com/design/human-interface-guidelines/),
+[Search fields](https://developer.apple.com/design/human-interface-guidelines/search-fields),
+[Scroll views](https://developer.apple.com/design/human-interface-guidelines/scroll-views).
 
 ## Filosofía
 
@@ -226,7 +291,7 @@ hoja de elegir; en la compu, el submenú.
 ## Hojas
 
 Toda hoja arranca igual: **cerrar a la izquierda, el título en el medio, la
-acción a la derecha** (`EncabezadoHoja`), con una línea chica encima del título
+acción a la derecha** (`EncabezadoHoja`), con una línea chica debajo del título
 para el resumen vivo («3 canciones a “Mi lista”»). La marca de confirmar es un
 redondel que está gris hasta que hay algo que confirmar, y se vuelve el blanco
 del acento cuando lo hay; mientras guarda, la rueda ocupa su lugar sin mover
@@ -236,17 +301,103 @@ va llena. Cerrar con algo a medio hacer pregunta antes de tirarlo.
 ## Letra
 
 La pantalla de letra es la de Apple Music: **a la izquierda, en negrita
-pareja**, la línea que suena arriba del medio de la ventana y las demás
-retrocediendo — las que ya pasaron apagadas, las que vienen apagadas **y
-desenfocadas**, más cuanto más lejos, como si estuvieran a otra distancia. La
-que suena se enciende **palabra por palabra**: LRCLIB trae el tiempo de cada
-línea y no de cada palabra, así que el reparto se estima por letras entre el
-principio de la línea y el de la siguiente; sigue la canción lo suficiente
-para acompañar. Con la letra puesta, la pantalla es la letra: el encabezado se
-achica a una miniatura con el nombre, y los controles se dibujan encima, abajo,
-y se van solos a los cuatro segundos hasta que se toca la letra. Todo esto es
-`size="xl"` de `Lyrics`; los otros dos tamaños siguen centrados porque
-acompañan a otra cosa.
+pareja**, la línea que suena en el primer quinto de la ventana —no al medio:
+abajo tiene que entrar lo que **viene**, que es lo que uno lee— y las demás
+retrocediendo. Las que vienen apagadas **y desenfocadas**, más cuanto más
+lejos, como si estuvieran a otra distancia; las que ya pasaron, más apagadas
+todavía.
+
+Los grises están medidos de la pantalla de Apple Music y son **más bajos de lo
+que uno pondría a ojo**: la línea siguiente está en 0.24 y de ahí para abajo,
+contra el blanco pleno de la que suena. Ahí está el efecto: la línea que suena
+no se destaca por brillar más, sino porque todo lo demás se corrió al fondo de
+la pantalla. El 0.45 queda para la línea que la pantalla adelantó y todavía no
+se canta: se lee entera, pero apagada.
+
+**La unidad es el verso, no la palabra.** Hubo una versión que encendía la
+línea palabra por palabra —el karaoke de Apple— repartiendo el verso por
+sílabas, porque LRCLIB da el momento en que *empieza* cada línea y no el de
+cada palabra. Andaba, pero se notaba: adentro de un verso el encendido a veces
+iba rápido y a veces lento, según cómo hubiera cantado esa frase el que la
+cantó. **Una letra que va apenas fuera de tiempo es peor que una que va por
+verso y va bien**, así que se sacó, y con eso se fue toda la estimación: lo que
+se dibuja sale siempre de un dato del archivo. Para volver al karaoke hace falta
+el tiempo de cada palabra de verdad — el LRC «mejorado», que casi nadie publica,
+o medirlo contra el audio.
+
+**El salto es un resorte.** Medido cuadro a cuadro sobre la pantalla de Apple
+Music: la columna arranca suave, agarra velocidad y aterriza largo —los últimos
+píxeles tardan tanto como los primeros cincuenta—, unos cien píxeles en unos
+600ms. Eso es lo que hace ver el movimiento como algo con peso en vez de un
+corte. Va con un `dampingRatio` apenas por debajo de uno: pasa un poco de largo
+y vuelve. Poco a propósito — con un rebote grande la letra se lee como un
+juguete, y esto es texto para leer mientras suena.
+
+**Y el cruce va aparte del movimiento.** La línea que sale pasa de blanca a
+gris en unos 130ms —cuatro cuadros, medidos— mientras la columna sigue viajando
+medio segundo más. Por eso la opacidad de cada línea sale de un foco **con
+decimales** que viaja con su propio tiempo, y no del índice entero: atado al
+índice, el cambio pasaba entero en el primer cuadro, antes de que la letra se
+hubiera movido un píxel, y el resto del movimiento no acompañaba a nada.
+
+**En los instrumentales largos la pantalla se adelanta**: la letra sube y deja
+la próxima línea puesta, apagada, esperando su turno, en vez de mirar veinte
+segundos de instrumental una línea que ya pasó. La cuenta se hace **desde la
+línea que viene y no desde la que terminó** —cuándo dejó de cantarse un verso
+habría que estimarlo; cuándo empieza el que sigue está en el archivo—: se
+acomoda dos segundos y medio antes de que se cante, y solo si el hueco pasa de
+siete segundos. Con versos pegados no se mueve nunca antes de tiempo.
+
+Con la letra puesta, la pantalla es la letra: el encabezado se achica a una
+miniatura con el nombre, la letra se funde contra el borde de arriba y contra
+el de abajo, y los controles se dibujan encima, abajo, y se van solos a los
+cuatro segundos hasta que se toca la letra.
+
+**Es la misma pieza en el teléfono y en la compu.** `size="xl"` no es «la
+pantalla del teléfono»: es **la letra como contenido principal**, y eso pasa
+igual en el panel del medio del escritorio, donde la columna se topa a un ancho
+de lectura pero el texto adentro va a la izquierda —la forma que toma Apple
+Music en la Mac—. Los otros dos tamaños siguen centrados porque **acompañan a
+otra cosa**: la onda del editor de fragmentos, la tarjeta de un mensaje. Ahí el
+texto es un adorno, y por eso tampoco se adelantan: sin el apagado que
+distingue a la línea que espera, adelantarse sería marcar como actual una línea
+que todavía no cantó nadie.
+
+Dos cosas que solo se ven en una ventana grande, y que el teléfono tapaba:
+
+- **El desenfoque no vuelve a cero nunca.** Se cortaba a las ocho líneas
+  —«están fuera de la ventana igual»—, y en el panel entran quince: la novena
+  reaparecía nítida abajo de todo, como si volviera del fondo.
+- **El fundido de los bordes lo pinta el color de quien la hospeda**, que se
+  pasa por `fondo`. Con el negro puesto a mano, sobre el `background` del panel
+  el fundido se leía como una franja **más oscura que el panel** — una sombra
+  flotando en el medio de la nada. Es la regla de siempre: separar por
+  luminancia, y nunca una capa que no sea de la superficie que hay debajo.
+
+## Trampa: el reloj redibujando la lista entera
+
+`Lyrics` se redibuja **diez veces por segundo**, porque mira la posición de la
+canción. Las líneas son `memo`, así que en principio no debería importar — pero
+recibían `onLayout`, `onPress` y `onLongPress` creados en cada pasada, y con
+una prop nueva el `memo` no sirve de nada: se rehacían las cuarenta líneas, con
+sus medidas y sus filtros, diez veces por segundo.
+
+Medido en el navegador, eso trababa el hilo unos cien milisegundos cada vez y el
+salto de verso salía a quince cuadros por segundo: se veía como un corte, no
+como un movimiento. Lo que cambia va por `ref` y lo que se le pasa a la fila es
+una función que no cambia nunca.
+
+Vale para cualquier lista bajo un valor que corre: la barra, la onda, la cola.
+
+## Trampa: medir fluidez en un navegador headless
+
+El Chrome headless pinta **por software**, sin GPU, y una columna de cuarenta
+párrafos con desenfoque le cuesta decenas de milisegundos por cuadro. Ahí
+adentro cualquier animación se mide entrecortada, con o sin el efecto que uno
+esté culpando — pasó buscando esto: sacar el desenfoque no cambió nada, y el
+verdadero culpable eran los redibujados de arriba. Sirve para medir **qué
+cambia** entre dos versiones, no para decidir si algo va fluido en el aparato de
+alguien.
 
 ## Trampa: NativeWind y los componentes animados
 

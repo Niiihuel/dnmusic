@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
-import { fetchAlbum, type AlbumInfo, type AlbumTrack } from '../services/music'
+import { resolveSong, fetchAlbum, type AlbumInfo, type AlbumTrack } from '../services/music'
 import {
   togglePlayback,
   toggleShuffle,
@@ -19,6 +19,8 @@ import { Menu, type MenuItem } from './Menu'
 import { formatLength } from './SeekBar'
 import { Skeleton, SkeletonList } from './Skeleton'
 import { TrackColumnHeader, TrackRow } from './TrackRow'
+import { BotonMeGusta } from './BotonMeGusta'
+import { useMeGusta } from '../state/gustos'
 import {
   ICON_COLOR,
   IconClose,
@@ -275,6 +277,7 @@ export function AlbumPanel({
               artist={track.artist}
               artwork={tapa}
               durationMs={track.durationMs}
+              gusto={<GustoAlbum track={track} album={album} />}
               sounding={esta}
               playing={esta && soundingPlay}
               busy={pendingId === track.videoId}
@@ -330,4 +333,20 @@ export function AlbumPanel({
       </View>
     </View>
   )
+}
+
+
+/** Resuelve y guarda sin tocar la cola ni la intención de reproducción. */
+function GustoAlbum({ track, album }: { track: AlbumTrack; album: AlbumInfo }) {
+  const guardada = useMeGusta().find(t => t.videoId === track.videoId)
+  const base = {
+    ...track, id: `gusta:${track.videoId}`, artistId: null,
+    artworkUrl: album.artworkUrl, artworkPath: album.artworkPath,
+    audioPath: '', truePeak: undefined,
+  }
+  return <BotonMeGusta track={guardada ?? base} size={18} lado={44}
+    resolver={async () => {
+      const audio = await resolveSong({ ...track, artistId: null, album: album.title, albumId: null, artworkUrl: album.artworkUrl })
+      return { ...base, audioPath: audio.path, artworkPath: audio.artworkPath ?? album.artworkPath, durationMs: audio.durationMs || track.durationMs }
+    }} />
 }

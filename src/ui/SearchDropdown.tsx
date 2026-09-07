@@ -1,5 +1,6 @@
+import { ScrollArea } from './ScrollArea'
 import { useState } from 'react'
-import { Image, Platform, Pressable, ScrollView, Text, View } from 'react-native'
+import { Image, Platform, Pressable, Text, View } from 'react-native'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { useKeyboardH, usePiso } from '../state/shell'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
@@ -146,8 +147,8 @@ export function SearchDropdown({
           <Text className="text-muted-foreground text-center text-sm">{error}</Text>
         </View>
       ) : (
-        <ScrollView
-          style={embedded ? undefined : { maxHeight: MAX_H }}
+        <ScrollArea
+          style={embedded ? { flex: 1, minHeight: 0 } : { maxHeight: MAX_H }}
           contentContainerClassName="p-2"
           /* El hueco se reserva adentro del contenido, no descontándole alto al
              contenedor: así se llega a la última fila y las de arriba pasan por
@@ -185,7 +186,7 @@ export function SearchDropdown({
               menuFor={menuFor}
             />
           ))}
-        </ScrollView>
+        </ScrollArea>
       )}
     </View>
   )

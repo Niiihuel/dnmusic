@@ -1,3 +1,4 @@
+import { AutoresReaccion } from './AutoresReaccion'
 import { fotoDelArtista } from '../lib/fotoArtista'
 import { proxiedImage } from '../services/music'
 import { TextoPerfil as Text } from './FuentePerfil'
@@ -183,7 +184,7 @@ export function Vitrina({
      poder agarrarlo. */
   if (showcase.kind === 'espaciador') {
     return (
-      <View style={{ position: 'relative' }}>
+      <View style={{ position: 'relative', width: '100%', minWidth: 0 }}>
         <View
           className={editando ? 'items-center justify-center rounded-2xl' : ''}
           style={{
@@ -207,7 +208,7 @@ export function Vitrina({
   const esEncabezado = showcase.kind === 'encabezado'
 
   return (
-    <View style={{ position: 'relative' }}>
+    <View style={{ position: 'relative', width: '100%', minWidth: 0 }}>
       <Superficie
         colores={colores}
         fondo={fondoImagen}
@@ -287,7 +288,7 @@ export function Vitrina({
           onEditar={onEditar ? () => onEditar(showcase) : undefined}
         />
       ) : reacciones ? (
-        <ChipsDeReacciones reacciones={reacciones} c={colores} />
+        <ChipsDeReacciones showcaseId={showcase.id} reacciones={reacciones} c={colores} />
       ) : null}
     </View>
   )
@@ -307,10 +308,10 @@ export function Vitrina({
  * invierte** —blanco sobre oscura, negro sobre clara— que es la marca de
  * «activo» de `docs/DESIGN.md`: el contraste, nunca un color.
  *
- * No se toca: el gesto de reaccionar es mantener apretada la pieza entera, y
- * un chip que atrapara el toque se lo robaría a la celda.
+ * Hover, foco o toque abren los autores; el chip detiene el evento para no
+ * reproducir ni editar la pieza debajo.
  */
-function ChipsDeReacciones({ reacciones, c }: { reacciones: ReaccionesVitrina; c: ColoresVitrina }) {
+function ChipsDeReacciones({ showcaseId, reacciones, c }: { showcaseId: string; reacciones: ReaccionesVitrina; c: ColoresVitrina }) {
   /* Las más dejadas primero; a igual cuenta, el orden en que se ofrecen. */
   const filas = Object.entries(reacciones.conteo)
     .filter(([, n]) => n > 0)
@@ -321,7 +322,7 @@ function ChipsDeReacciones({ reacciones, c }: { reacciones: ReaccionesVitrina; c
 
   return (
     <View
-      pointerEvents="none"
+      pointerEvents="box-none"
       accessibilityLabel={`Reacciones: ${lectura}`}
       style={{ position: 'absolute', left: 10, bottom: -9, flexDirection: 'row', gap: 4, zIndex: 20 }}
     >
@@ -336,8 +337,8 @@ function ChipsDeReacciones({ reacciones, c }: { reacciones: ReaccionesVitrina; c
             : 'rgba(34,34,34,0.92)'
         const texto = mia ? (c.claro ? '#FFFFFF' : '#121212') : c.texto
         return (
-          <View
-            key={emoji}
+          <AutoresReaccion
+            key={emoji} showcaseId={showcaseId} emoji={emoji} cantidad={n}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -355,7 +356,7 @@ function ChipsDeReacciones({ reacciones, c }: { reacciones: ReaccionesVitrina; c
             >
               {n}
             </Text>
-          </View>
+          </AutoresReaccion>
         )
       })}
     </View>
@@ -384,9 +385,8 @@ export function Superficie({
   children: ReactNode
 }) {
   const [caja, setCaja] = useState<{ w: number; h: number } | null>(null)
-  /* Se mide solo si hace falta: la imagen encuadrada y la textura dibujada
-     necesitan el tamaño; un color liso o un degradado, no. */
-  const necesitaCaja = !!fondo || !!colores.patron
+  /* El observador queda montado incluso antes de elegir una imagen: RN web
+     puede omitir el primer evento si se agrega onLayout sin cambiar la caja. */
   const medir = (e: { nativeEvent: { layout: { width: number; height: number } } }) => {
     const { width, height } = e.nativeEvent.layout
     setCaja((antes) => (antes?.w === width && antes.h === height ? antes : { w: width, h: height }))
@@ -412,9 +412,10 @@ export function Superficie({
   if (colores.fondo || fondo) {
     return (
       <View
-        onLayout={necesitaCaja ? medir : undefined}
+        onLayout={medir}
         style={[
           {
+            width: '100%', minWidth: 0,
             borderRadius: radius,
             overflow: 'hidden',
             backgroundColor: colores.fondo ?? 'rgb(24,24,24)',
@@ -587,7 +588,7 @@ function VitrinaImagen({ imagen, grande = false }: { imagen: ShowcaseImagen; gra
   return (
     <View
       className="overflow-hidden rounded-xl bg-muted"
-      style={alto ? { height: alto } : { aspectRatio: 1 / razon }}
+      style={{ width: '100%', aspectRatio: 1 / razon }}
       onLayout={(e) => {
         const w = e.nativeEvent.layout.width
         setCaja((antes) => (Math.abs(antes - w) < 1 ? antes : w))

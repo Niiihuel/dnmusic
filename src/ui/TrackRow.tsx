@@ -46,6 +46,7 @@ export function TrackRow({
   onHover,
   onPlay,
   trailing,
+  gusto,
   menu,
 }: {
   index: number
@@ -86,6 +87,8 @@ export function TrackRow({
   onPlay: () => void
   /** El control del final. El hueco se reserva aunque no haya nada. */
   trailing?: ReactNode
+  /** Corazón en la columna de duración, independiente del botón de reproducción. */
+  gusto?: ReactNode
   /**
    * Las opciones de esta canción, para el gesto de mantener apretado.
    *
@@ -109,7 +112,8 @@ export function TrackRow({
   /* Propio salvo que lo manden de afuera; el de afuera manda porque quien lo
      pasa lo necesita para dibujar algo que no está acá adentro. */
   const [hoveredPropio, setHoveredPropio] = useState(false)
-  const hovered = hoveredExterno ?? hoveredPropio
+  const [focused, setFocused] = useState(false)
+  const hovered = (hoveredExterno ?? hoveredPropio) || focused
 
   const marcarHover = (on: boolean) => {
     setHoveredPropio(on)
@@ -122,6 +126,12 @@ export function TrackRow({
 
   const fila = (
     <View
+      onFocus={() => setFocused(true)}
+      onBlur={(event) => {
+        const current = event.currentTarget as unknown as { contains?: (target: unknown) => boolean }
+        const related = (event as unknown as { relatedTarget?: unknown }).relatedTarget
+        if (!related || !current.contains?.(related)) setFocused(false)
+      }}
       onPointerEnter={() => marcarHover(true)}
       onPointerLeave={() => marcarHover(false)}
       {...clic.gestos}
@@ -241,14 +251,19 @@ export function TrackRow({
           </Text>
         </View>
 
-        {/* El top de un artista no trae duración: YouTube no la manda en ese
-            estante. Antes que un `0:00` que miente, el hueco vacío. */}
-        {suelto ? null : (
-          <Text className="w-12 text-right text-muted-foreground text-[12px] tabular-nums">
+
+      </Pressable>
+
+      {suelto ? null : (
+        <View className="w-12 items-end justify-center" style={{ minHeight: 44 }}>
+          <Text pointerEvents="none" className="text-right text-muted-foreground text-[12px] tabular-nums"
+            style={{ opacity: gusto && hovered ? 0 : 1 }}>
             {durationMs > 0 ? formatClock(durationMs) : ''}
           </Text>
-        )}
-      </Pressable>
+          {gusto ? <View style={{ position: 'absolute', right: 0, opacity: hovered ? 1 : 0 }}
+            pointerEvents={hovered ? 'auto' : 'none'}>{gusto}</View> : null}
+        </View>
+      )}
 
       {/*
        * Los tres puntos: **siempre en el teléfono**, bajo el cursor en

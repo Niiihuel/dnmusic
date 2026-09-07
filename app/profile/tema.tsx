@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { mensajeError } from '../../src/lib/mensajeError'
@@ -18,10 +18,13 @@ import {
 import { volver } from '../../src/lib/volver'
 import { saveMyProfile } from '../../src/services/profile'
 import { avisar } from '../../src/state/aviso'
-import { setMyProfile, useMyProfile } from '../../src/state/session'
-import { usePiso } from '../../src/state/shell'
+import { setMyProfile } from '../../src/state/session'
+import { actualizarPerfilEdicion, useIniciarPerfilEdicion, usePerfilEdicion } from '../../src/state/perfilEdicion'
 import { actualizarBorrador, useBorrador } from '../../src/state/vitrinaBorrador'
-import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
+import { ANCHO_HOJA, Hoja, useHojaModal, usePisoHoja } from '../../src/ui/Hoja'
+import { BotonHoja, EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
+import { BarraCambiosPerfil } from '../../src/ui/BarraCambiosPerfil'
+import { useSalidaConCambios } from '../../src/ui/useSalidaConCambios'
 import { Superficie } from '../../src/ui/Vitrina'
 import { ICON_COLOR, IconBan, IconCheck, IconPalette } from '../../src/ui/icons'
 
@@ -57,18 +60,27 @@ const ACABADOS: { id: 'liso' | 'degradado' | Patron; nombre: string }[] = [
  */
 export default function ElegirTema() {
   const router = useRouter()
-  const piso = usePiso(24)
+  const piso = usePisoHoja(24)
   const modal = useHojaModal()
   const { para } = useLocalSearchParams<{ para?: string }>()
   const delPerfil = para === 'perfil'
 
-  const perfil = useMyProfile()
+  const perfil = useIniciarPerfilEdicion(delPerfil)
+  const edicion = usePerfilEdicion()
+  const global = delPerfil && !!perfil && edicion.ownerId === perfil.userId
   const borrador = useBorrador()
 
   /* El tema con el que se entró, para poder cancelar. */
   const [inicial] = useState<Tema | null>(delPerfil ? (perfil?.tema ?? null) : (borrador?.estilo.tema ?? null))
   const [elegido, setElegido] = useState<Tema | null>(inicial)
   const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [salir, setSalir] = useState(false)
+  const [altoBarra, setAltoBarra] = useState(130)
+  const enVuelo = useRef(false)
+  const cambiado = !mismoTema(elegido, inicial)
+  const dialogoSalida = useSalidaConCambios(delPerfil && !global && cambiado && !salir, delPerfil && !global && guardando && !salir)
+  useEffect(() => { if (salir) volver(router, '/profile') }, [salir, router])
   /* «Personalizar», abierto o no. Arranca abierto si el tema que había era
      uno a mano: es lo que hay que mostrar para poder cambiarlo. */
   const aMano = inicial?.id === 'color' || inicial?.id === 'degradado'
@@ -82,7 +94,10 @@ export default function ElegirTema() {
   )
 
   function elegir(tema: Tema | null) {
+    if (enVuelo.current || edicion.ocupado) return
+    setError(null)
     setElegido(tema)
+    if (global) actualizarPerfilEdicion({ tema })
     /* Al toque en el borrador: la vista previa del editor está detrás. */
     if (!delPerfil) actualizarBorrador((b) => ({ estilo: { ...b.estilo, tema } }))
   }
@@ -92,39 +107,56 @@ export default function ElegirTema() {
     elegir(temaAMano(hex, con))
   }
 
+  function restablecer() {
+    if (enVuelo.current || edicion.ocupado) return
+    elegir(inicial)
+    setPaleta(aMano)
+    setAcabado(inicial?.id === 'degradado' ? 'degradado' : (inicial?.patron ?? 'liso'))
+    setColorAMano(inicial?.id === 'color' ? (inicial.color ?? null) : (inicial?.paradas?.[0] ?? null))
+    setError(null)
+  }
+
   function cancelar() {
+    if (global) { router.dismissTo('/profile/editar'); return }
     if (!delPerfil) actualizarBorrador((b) => ({ estilo: { ...b.estilo, tema: inicial } }))
     volver(router, '/profile')
   }
 
   async function guardar() {
-    if (guardando) return
+    if (enVuelo.current || (delPerfil && (!perfil || !cambiado))) return
     if (!delPerfil) {
       volver(router, '/profile/vitrina')
       return
     }
+    if (global) { router.dismissTo('/profile/editar'); return }
+    enVuelo.current = true
     setGuardando(true)
+    setError(null)
     try {
       setMyProfile(await saveMyProfile({ tema: elegido }))
       avisar(elegido ? 'Tema puesto' : 'Sin tema')
-      volver(router, '/profile')
+      setSalir(true)
     } catch (e) {
-      avisar(mensajeError(e), true)
+      setError(mensajeError(e))
+    } finally {
+      enVuelo.current = false
       setGuardando(false)
     }
   }
 
-  const cambiado = !mismoTema(elegido, inicial)
   const personalizado = elegido?.id === 'color' || elegido?.id === 'degradado'
 
   return (
-    <Hoja medida="contenido">
+    <Hoja medida="contenido" onCerrar={cancelar}>
+      {dialogoSalida}
+      <View style={{ flexShrink: 1 }}>
+      {delPerfil ? <EncabezadoHoja titulo="Tema del perfil" izquierda={<BotonHoja tipo="cerrar" label="Cerrar editor de tema" onPress={cancelar} />} derecha={global ? <Pressable accessibilityRole="button" onPress={cancelar} disabled={edicion.ocupado}><Text className="text-foreground text-[15px] font-semibold">Listo</Text></Pressable> : undefined} /> : null}
       <ScrollView
         className="bg-background"
         style={{ flexGrow: 1 }}
         contentContainerClassName="gap-5 pt-6"
         contentContainerStyle={{
-          paddingBottom: modal ? 24 : piso,
+          paddingBottom: (modal ? 24 : piso) + (delPerfil && !global && (cambiado || guardando || error) ? altoBarra + 16 : 0),
           maxWidth: ANCHO_HOJA,
           width: '100%',
           alignSelf: 'center',
@@ -140,6 +172,22 @@ export default function ElegirTema() {
               : 'Sin tema, hereda el del perfil.'}
           </Text>
         </View>
+
+        {delPerfil ? (
+          <View className="gap-2 px-6" pointerEvents="none">
+            <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">Vista previa</Text>
+            <Superficie colores={coloresDe(elegido, TAPA_DE_MUESTRA)} fondo={null} radius={18}>
+              <View className="gap-2 p-5">
+                <Text style={{ color: coloresDe(elegido, TAPA_DE_MUESTRA).texto, fontSize: 17, fontWeight: '700' }}>
+                  {perfil?.displayName || perfil?.username || 'Tu perfil'}
+                </Text>
+                <Text style={{ color: coloresDe(elegido, TAPA_DE_MUESTRA).secundario, fontSize: 13 }}>
+                  Así se verán las piezas que heredan el tema de tu perfil.
+                </Text>
+              </View>
+            </Superficie>
+          </View>
+        ) : null}
 
         {FAMILIAS.map((fila, i) => (
           <View key={fila.titulo} className="gap-2">
@@ -248,7 +296,7 @@ export default function ElegirTema() {
           </View>
         ) : null}
 
-        <View className="flex-row items-center justify-between gap-3 px-6">
+        {!delPerfil ? <View className="flex-row items-center justify-between gap-3 px-6">
           <Pressable
             accessibilityRole="button"
             onPress={cancelar}
@@ -276,8 +324,12 @@ export default function ElegirTema() {
               </Text>
             )}
           </Pressable>
-        </View>
+        </View> : null}
       </ScrollView>
+      {delPerfil && !global ? <BarraCambiosPerfil visible={cambiado} ocupado={guardando} error={error}
+        puedeGuardar={!!perfil} onRestablecer={restablecer} onGuardar={() => void guardar()}
+        abajo={modal ? 12 : piso} onAltura={setAltoBarra} /> : null}
+      </View>
     </Hoja>
   )
 }

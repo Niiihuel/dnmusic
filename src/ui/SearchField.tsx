@@ -1,5 +1,6 @@
 import { useState, type RefObject } from 'react'
 import { ActivityIndicator, Pressable, TextInput, View } from 'react-native'
+import { TECLADO_FISICO } from '../lib/teclado'
 import { ES_WEB, Glass, HAY_VIDRIO } from './Glass'
 import { ICON_COLOR, IconClose, IconSearch } from './icons'
 
@@ -23,6 +24,9 @@ type Props = {
   value: string
   onChangeText: (v: string) => void
   placeholder?: string
+  /** Compacto para barras laterales con mouse; conserva 44px si el puntero es táctil. */
+  density?: 'regular' | 'compact'
+  accessibilityLabel?: string
   onSubmit?: () => void
   autoFocus?: boolean
   loading?: boolean
@@ -46,8 +50,12 @@ export function SearchField({
   loading = false,
   inputRef,
   onFocusChange,
+  density = 'regular',
+  accessibilityLabel,
 }: Props) {
   const [focused, setFocused] = useState(false)
+  const compacto = density === 'compact' && TECLADO_FISICO
+  const altura = density === 'compact' ? (compacto ? 34 : 44) : 48
 
   const dentro = (
     <View
@@ -67,7 +75,8 @@ export function SearchField({
        * cursor titilando hace el resto. Solo sin vidrio (Android) queda el
        * anillo, porque ahí sigue siendo la única señal.
        */
-      className={`h-12 flex-row items-center gap-3 rounded-full px-4 ${
+      style={{ height: altura, minWidth: 0, width: '100%', paddingLeft: compacto ? 10 : 14, paddingRight: compacto ? 3 : 4, gap: compacto ? 7 : 10 }}
+      className={`flex-row items-center rounded-full ${
         HAY_VIDRIO && !ES_WEB
           ? ''
           : ES_WEB
@@ -77,12 +86,13 @@ export function SearchField({
             : `bg-muted ${focused ? 'border border-foreground' : 'border border-transparent'}`
       }`}
     >
-      <IconSearch size={18} color={ICON_COLOR.muted} />
+      <View style={{ flexShrink: 0 }}><IconSearch size={compacto ? 15 : 18} color={ICON_COLOR.muted} /></View>
       <TextInput
         ref={inputRef}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
+        accessibilityLabel={accessibilityLabel ?? placeholder ?? 'Buscar'}
         placeholderTextColor="#B3B3B3"
         autoCapitalize="none"
         autoCorrect={false}
@@ -97,18 +107,21 @@ export function SearchField({
           setFocused(false)
           onFocusChange?.(false)
         }}
-        className="flex-1 text-foreground text-[15px]"
+        style={{ flex: 1, minWidth: 0, width: 0, height: '100%', padding: 0, fontSize: compacto ? 13 : 15 }}
+        className="text-foreground"
       />
       {loading ? (
-        <ActivityIndicator size="small" color="#B3B3B3" />
+        <View style={{ width: compacto ? 28 : 44, height: altura, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="small" color="#B3B3B3" /></View>
       ) : value.length > 0 ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Limpiar la búsqueda"
           onPress={() => onChangeText('')}
-          hitSlop={10}
+          style={{ width: compacto ? 28 : 44, height: altura, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: altura / 2 }}
+          className="hover:bg-white/10 focus:bg-white/10 active:bg-white/15"
+          hitSlop={compacto ? 0 : 4}
         >
-          <IconClose size={16} color={ICON_COLOR.muted} />
+          <IconClose size={compacto ? 14 : 16} color={ICON_COLOR.muted} />
         </Pressable>
       ) : null}
     </View>
@@ -117,5 +130,5 @@ export function SearchField({
   /* Sin vidrio se devuelve la píldora tal cual: envolverla igual agregaría un
      contenedor gris redundante detrás del que ya tiene fondo propio. */
   if (!HAY_VIDRIO) return dentro
-  return <Glass radius={24}>{dentro}</Glass>
+  return <Glass radius={altura / 2} style={{ minWidth: 0, width: '100%' }}>{dentro}</Glass>
 }

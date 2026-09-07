@@ -1,3 +1,4 @@
+import { estadoControlWeb } from './estadoControl'
 import { useRef, useState } from 'react'
 import {
   Modal,
@@ -129,6 +130,7 @@ export function Popover<T extends string | number>({
         <View className="flex-1">
           <Pressable
             accessibilityRole="button"
+            {...estadoControlWeb('none')}
             accessibilityLabel="Cerrar el menú"
             onPress={() => setOpen(false)}
             className="absolute inset-0"

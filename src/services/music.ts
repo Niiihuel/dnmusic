@@ -1,4 +1,5 @@
 import { getSupabase } from '../lib/supabase'
+import { parseLrc, type LyricLine } from './letra'
 import { hayResolutorABordo, resolverYAportar } from './motor/resolutorABordo'
 import { iniciarResolucion, progresoResolucion, terminarResolucion } from '../state/resolucion'
 
@@ -991,11 +992,13 @@ export function picosDeCancion(
 
 // ── Letra sincronizada ─────────────────────────────────────────────────────
 
-export type LyricLine = {
-  /** Momento de la línea, en ms desde el inicio de la canción. */
-  atMs: number
-  text: string
-}
+/*
+ * El tipo de la línea, el intérprete del LRC y qué línea le toca a cada momento
+ * viven en `letra.ts`: son la misma cosa —el tiempo de la letra— y así se
+ * pueden probar sin arrastrar Supabase. Se re-exportan porque media app las
+ * importa desde acá.
+ */
+export { activeLyricIndex, enfoque, parseLrc, type LyricLine } from './letra'
 
 const LRCLIB_SEARCH = 'https://lrclib.net/api/search'
 
@@ -1033,24 +1036,6 @@ export async function fetchLyrics(
 
   const lines = parseLrc(best.syncedLyrics as string)
   return lines.length ? lines : null
-}
-
-/** `[mm:ss.xx] texto` → { atMs, text }. Ignora metadatos y líneas vacías. */
-export function parseLrc(lrc: string): LyricLine[] {
-  const LINE = /^\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]\s?(.*)$/
-  const lines: LyricLine[] = []
-
-  for (const raw of lrc.split('\n')) {
-    const m = LINE.exec(raw.trim())
-    if (!m) continue
-    const [, mm, ss, frac, text] = m
-    if (!text.trim()) continue
-    // La fracción puede venir en centésimas (.85) o milésimas (.850).
-    const fracMs = frac ? Number(frac.padEnd(3, '0')) : 0
-    lines.push({ atMs: Number(mm) * 60_000 + Number(ss) * 1000 + fracMs, text: text.trim() })
-  }
-
-  return lines.sort((a, b) => a.atMs - b.atMs)
 }
 
 // ── Traducción de la letra ─────────────────────────────────────────────────
@@ -1098,21 +1083,4 @@ export async function translateLyrics(
   if (texts.length !== lines.length) throw new Error('La traducción volvió incompleta.')
 
   return lines.map((l, i) => ({ atMs: l.atMs, text: texts[i] }))
-}
-
-/** Índice de la línea que corresponde a `atMs`, o -1 si todavía no arrancó. */
-export function activeLyricIndex(lines: LyricLine[], atMs: number): number {
-  let lo = 0
-  let hi = lines.length - 1
-  let found = -1
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1
-    if (lines[mid].atMs <= atMs) {
-      found = mid
-      lo = mid + 1
-    } else {
-      hi = mid - 1
-    }
-  }
-  return found
 }

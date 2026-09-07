@@ -9,7 +9,7 @@ import { requireOptionalNativeModule } from 'expo'
  * módulo existiera. Con `requireNativeModule` la app reventaría al arrancar en
  * los dos.
  */
-type RemoteCommands = {
+type RemoteCommandsModule = {
   /** Registra los comandos y empieza a avisar. */
   start: () => void
   /** Los suelta. El centro de comandos es de todo el proceso. */
@@ -20,7 +20,7 @@ type RemoteCommands = {
   ) => { remove: () => void }
 }
 
-export const RemoteCommands = requireOptionalNativeModule<RemoteCommands>('RemoteCommands')
+export const RemoteCommands = requireOptionalNativeModule<RemoteCommandsModule>('RemoteCommands')
 
 /** Si el binario trae el módulo. Sin esto, los botones no existen. */
 export const hayComandosRemotos = RemoteCommands !== null

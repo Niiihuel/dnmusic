@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Text, View } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import {
   fetchLyrics,
   translateLyrics,
@@ -10,7 +11,7 @@ import {
 import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { avisar } from '../state/aviso'
-import { posicionSV, usePlaybackState } from '../state/playback'
+import { usePlaybackState } from '../state/playback'
 import { Lyrics, type LyricsSize } from './Lyrics'
 import { Popover } from './Popover'
 import { ICON_COLOR, IconLanguages, IconMusic } from './icons'
@@ -35,17 +36,30 @@ export function LyricsView({
   track,
   translatable = false,
   size = 'lg',
+  fondo = '0,0,0',
   onTap,
 }: {
   track: { title: string; artist: string; durationMs: number }
   /** Muestra el botón de traducir. En el panel angosto no entra. */
   translatable?: boolean
   /**
-   * `xl` es la pantalla entera de «Sonando»: la letra a la izquierda con el
-   * karaoke, y el traductor flotando arriba a la derecha en vez de al pie —
-   * ahí abajo están los controles.
+   * `xl` es la letra como contenido principal —la pantalla de «Sonando», el
+   * panel del medio en la compu—: a la izquierda, con el traductor flotando
+   * arriba a la derecha en vez de al pie.
    */
   size?: Extract<LyricsSize, 'lg' | 'xl'>
+  /**
+   * El color del fondo sobre el que se apoya la letra, en `r,g,b`, para los
+   * fundidos de los bordes.
+   *
+   * Lo pone quien la usa porque es lo único que este componente **no puede
+   * saber**: en «Sonando» atrás hay negro, en el panel de la compu hay
+   * `background` (#121212). Con el negro puesto a mano, el fundido de arriba
+   * se leía en el panel como una **franja más oscura que el panel** —una
+   * sombra flotando en el medio de la nada— en vez de como un borde que se
+   * apaga. Igual que en `ArtistPage`: LinearGradient no lee variables CSS.
+   */
+  fondo?: string
   /** Un toque sobre la letra. Lo usa «Sonando» para pedir los controles. */
   onTap?: () => void
 }) {
@@ -178,7 +192,6 @@ export function LyricsView({
     <Lyrics
       lines={lines}
       atMs={positionMs}
-      posicion={size === 'xl' ? posicionSV : undefined}
       size={size}
       onTap={onTap}
       /* Sostener fija **la línea original**, no la traducción: se busca por
@@ -201,6 +214,31 @@ export function LyricsView({
     return (
       <View className="min-h-0 flex-1 px-6">
         {letra}
+        {/* El fundido de arriba, hermano del que hay contra el pie: las líneas
+            que ya pasaron se apagan **antes** de llegar al encabezado, en vez
+            de cruzarse con el nombre de la canción y con el botón de traducir.
+            Es el mismo borde difuso con el que Apple Music mete la letra
+            debajo de su cabecera. */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={[`rgba(${fondo},0.85)`, `rgba(${fondo},0.45)`, `rgba(${fondo},0)`]}
+          locations={[0, 0.5, 1]}
+          style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 96 }}
+        />
+        {/*
+         * Y el de abajo, que es **de la letra y no de los controles**.
+         *
+         * En «Sonando» hay además el degradado del pie, pero ese se va con los
+         * controles a los cuatro segundos y la letra quedaba cortada a filo
+         * contra el borde. Y en el panel de la compu no hay controles encima:
+         * sin esto, las líneas que vienen aparecen de golpe. Va más suave que
+         * el otro, que sigue dibujándose encima cuando está.
+         */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={[`rgba(${fondo},0)`, `rgba(${fondo},0.65)`]}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 88 }}
+        />
         {traductor ? <View className="absolute right-6 top-0">{traductor}</View> : null}
       </View>
     )

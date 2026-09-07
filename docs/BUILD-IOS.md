@@ -47,6 +47,7 @@ y después no lo vuelve a pedir. No hay repo de `match` que mantener.
 ```bash
 npm run ios:dev           # development client
 npm run ios:preview       # release instalable
+npm run ios:build         # producción, solo compilación EAS
 npm run ios:release       # producción + subida a TestFlight
 ```
 

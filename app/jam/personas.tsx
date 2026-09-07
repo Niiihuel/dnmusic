@@ -1,42 +1,20 @@
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { ScrollArea as ScrollView } from '../../src/ui/ScrollArea'
+import { useState } from 'react'
+import { KeyboardAvoidingView, Platform, Pressable, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import QRCode from 'react-native-qrcode-svg'
 import { invitarAlJam, linkDeJam } from '../../src/lib/invitarJam'
 import { copiarAlPortapapeles } from '../../src/lib/portapapeles'
 import { avisar } from '../../src/state/aviso'
 import { volver } from '../../src/lib/volver'
-import {
-  expulsarMiembro,
-  useJam,
-  useMiembrosJam,
-  useMiIdJam,
-  usePresentesJam,
-  useSoyHostJam,
-} from '../../src/state/jam'
+import { expulsarMiembro, useJam, useMiembrosJam, useMiIdJam, usePresentesJam, useSoyHostJam } from '../../src/state/jam'
 import { Avatar } from '../../src/ui/Avatar'
 import { ES_WEB } from '../../src/ui/Glass'
-import { Hoja } from '../../src/ui/Hoja'
-import { ICON_COLOR, IconClose, IconShare } from '../../src/ui/icons'
+import { Hoja, useHojaModal, usePisoHoja } from '../../src/ui/Hoja'
+import { AccionSocial, CabeceraSocial, SeccionSocial } from '../../src/ui/Social'
+import { ICON_COLOR, IconClose } from '../../src/ui/icons'
 import { MandarJamAmigo } from '../../src/ui/MandarJamAmigo'
 
-/**
- * Invitar y ver quiénes están: la segunda hoja de la pila del Jam.
- *
- * Se apila sobre el sheet principal como drawer nativo (ver `app/_layout.tsx`)
- * y junta las dos mitades de «la gente»: los caminos para que entren y la
- * lista de los que ya están.
- *
- * Tres caminos de entrada, del más liviano al más presencial: **compartir el
- * link** (la hoja del sistema o el portapapeles — `lib/invitarJam`), **dictar
- * el código** (seis letras sin confusas, pensadas para decirse en voz alta), y
- * **mostrar el QR** para que lo escaneen con la cámara — el único camino que
- * no pide tipear nada y por eso el que gana con gente en la misma sala, que
- * es la escena para la que existe un Jam.
- *
- * El QR va sobre una tarjeta blanca aunque el sistema entero sea oscuro: los
- * lectores esperan módulos oscuros sobre claro, y la zona muda alrededor es
- * parte del formato, no un margen decorativo.
- */
 export default function PersonasJam() {
   const router = useRouter()
   const jam = useJam()
@@ -44,139 +22,40 @@ export default function PersonasJam() {
   const presentes = usePresentesJam()
   const soyHost = useSoyHostJam()
   const miId = useMiIdJam()
-
-  if (!jam) {
-    return (
-      <Hoja>
-      <View className="flex-1 items-center justify-center gap-4 bg-background">
-        <Text className="text-muted-foreground text-[13px]">El Jam terminó.</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => volver(router, '/')}
-          className="rounded-full bg-muted px-5 py-2.5 active:opacity-80"
-        >
-          <Text className="text-foreground text-[13px] font-semibold">Volver</Text>
-        </Pressable>
-      </View>
-      </Hoja>
-    )
-  }
-
+  const piso = usePisoHoja(24)
+  const modal = useHojaModal()
+  const [qr, setQr] = useState(false)
   const enVivo = new Set(presentes)
+  const cerrar = () => volver(router, '/jam')
 
-  return (
-    /* En web, `Hoja` hace de formSheet: la hoja se apila sobre la del Jam con
-       su propio velo, un escalón más oscuro por nivel — como los de UIKit. */
-    <Hoja>
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerClassName="gap-6 px-5 pb-10 pt-6"
-    >
-      <View className="items-center gap-1">
-        <Text className="text-foreground text-lg font-bold">Invitá a tus amigos</Text>
-        <Text className="text-muted-foreground text-center text-[12px] leading-4">
-          Cualquiera con el link, el código o el QR entra a la misma cola.
-        </Text>
-      </View>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Compartir el link"
-        onPress={() => void invitarAlJam(jam.code)}
-        className="flex-row items-center justify-center gap-2 self-center rounded-full bg-primary px-6 py-3 active:opacity-80"
-      >
-        <IconShare size={16} color={ICON_COLOR.onPrimary} />
-        <Text className="text-primary-foreground text-[14px] font-semibold">
-          {ES_WEB ? 'Copiar el link' : 'Compartir el link'}
-        </Text>
-      </Pressable>
-
-      {/* O, sin salir de la app, elegir a un amigo y mandarle el link al chat. */}
-      <MandarJamAmigo code={jam.code} />
-
-      <View className="items-center gap-2">
-        <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-          O dictales el código
-        </Text>
-        {/* El código en su placa, y tocarla lo copia: dictarlo es un camino,
-            pero cuando quien lo recibe está del otro lado de un chat, copiarlo
-            suelto es más corto que copiar el link entero. */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Copiar el código ${jam.code}`}
-          onPress={() =>
-            void copiarAlPortapapeles(jam.code).then((ok) =>
-              avisar(ok ? 'Código copiado.' : `El código es ${jam.code}`),
-            )
-          }
-          className="rounded-2xl bg-card px-6 py-3 active:bg-muted"
-        >
-          <Text className="text-foreground text-[28px] font-extrabold tracking-[6px]">
-            {jam.code}
-          </Text>
+  return <Hoja anchoMaximo={560}><KeyboardAvoidingView className="flex-1 bg-background" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <CabeceraSocial titulo="Personas e invitación" detalle={jam ? `${miembros.length} participantes` : 'El Jam terminó'} onCerrar={cerrar} />
+    {!jam ? <View className="flex-1 items-center justify-center px-6"><Text className="text-muted-foreground text-[15px]">Volvé a Jam para iniciar una nueva sesión.</Text></View> : <ScrollView keyboardShouldPersistTaps="handled"
+      contentContainerStyle={{ padding: 20, paddingBottom: modal ? 24 : piso, gap: 24 }}>
+      <View className="gap-3">
+        <Text className="text-muted-foreground text-[15px] leading-6">Compartí la invitación para sumar a tus amigos a la misma cola.</Text>
+        <AccionSocial label={ES_WEB ? 'Copiar enlace de invitación' : 'Compartir invitación'} onPress={() => void invitarAlJam(jam.code)} />
+        <Pressable accessibilityRole="button" accessibilityLabel={`Copiar código ${jam.code}`} onPress={() => void copiarAlPortapapeles(jam.code).then(ok => avisar(ok ? 'Código copiado' : `Código: ${jam.code}`))}
+          className="min-h-11 flex-row items-center justify-between rounded-2xl bg-card px-4 py-3">
+          <View className="gap-1"><Text className="text-muted-foreground text-[12px]">Código del Jam</Text><Text className="text-foreground text-[19px] font-semibold tracking-[3px]">{jam.code}</Text></View>
+          <Text className="text-foreground text-[14px] font-semibold">Copiar</Text>
         </Pressable>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: qr }} onPress={() => setQr(!qr)} className="min-h-11 items-center justify-center">
+          <Text className="text-foreground text-[14px]">{qr ? 'Ocultar código QR' : 'Mostrar código QR'}</Text>
+        </Pressable>
+        {qr ? <View className="items-center gap-3"><View className="rounded-2xl bg-white p-5"><QRCode value={linkDeJam(jam.code)} size={164} backgroundColor="#fff" color="#121212" /></View><Text className="text-muted-foreground text-[13px]">Escanealo con la cámara para abrir la invitación.</Text></View> : null}
       </View>
-
-      <View className="items-center gap-2">
-        {/* Blanco de verdad, no un token: el QR es un formato impreso, no una
-            superficie del sistema. #121212 es el fondo de la app — los módulos
-            del código hacen juego sin perder contraste de lectura. */}
-        <View className="items-center rounded-2xl bg-white p-5">
-          <QRCode value={linkDeJam(jam.code)} size={164} backgroundColor="#FFFFFF" color="#121212" />
-        </View>
-        <Text className="text-muted-foreground text-[11px]">
-          Que lo escaneen con la cámara y ya están adentro.
-        </Text>
-      </View>
-
-      <View className="gap-2">
-        <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-          En el Jam · {miembros.length}
-        </Text>
-        <View className="rounded-2xl bg-card">
-          {miembros.map((m, i) => (
-            <View
-              key={m.userId}
-              className={`flex-row items-center gap-3 px-4 py-3 ${
-                i > 0 ? 'border-t border-background' : ''
-              }`}
-            >
-              <View>
-                <Avatar name={m.displayName ?? m.username} path={m.avatarPath} size={36} />
-                <View
-                  className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card ${
-                    enVivo.has(m.userId) ? 'bg-foreground' : 'bg-muted'
-                  }`}
-                />
-              </View>
-              <View className="min-w-0 flex-1">
-                <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
-                  {m.displayName?.trim() || `@${m.username}`}
-                  {m.userId === miId ? ' (vos)' : ''}
-                </Text>
-                <Text className="text-muted-foreground text-[11px]">
-                  {m.rol === 'host'
-                    ? 'Anfitrión'
-                    : m.salida === 'host'
-                      ? 'Escucha en el dispositivo del host'
-                      : 'Escucha en su dispositivo'}
-                </Text>
-              </View>
-              {soyHost && m.userId !== miId ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Sacar a ${m.username}`}
-                  onPress={() => expulsarMiembro(m.userId)}
-                  className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
-                >
-                  <IconClose size={15} color={ICON_COLOR.muted} />
-                </Pressable>
-              ) : null}
-            </View>
-          ))}
-        </View>
-      </View>
-    </ScrollView>
-    </Hoja>
-  )
+      <MandarJamAmigo code={jam.code} />
+      <SeccionSocial titulo="En este Jam">
+        {miembros.map(m => <View key={m.userId} className="flex-row items-center gap-3 px-4 py-3">
+          <Avatar name={m.displayName || m.username} path={m.avatarPath} size={40} />
+          <View className="min-w-0 flex-1 gap-1">
+            <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>{m.displayName?.trim() || `@${m.username}`}{m.userId === miId ? ' (vos)' : ''}</Text>
+            <Text className="text-muted-foreground text-[13px]">{m.rol === 'host' ? 'Anfitrión' : 'Invitado'} · {enVivo.has(m.userId) ? 'En línea' : 'Sin conexión'}</Text>
+          </View>
+          {soyHost && m.userId !== miId ? <Pressable accessibilityRole="button" accessibilityLabel={`Sacar a ${m.username}`} onPress={() => expulsarMiembro(m.userId)} className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"><IconClose size={17} color={ICON_COLOR.muted} /></Pressable> : null}
+        </View>)}
+      </SeccionSocial>
+    </ScrollView>}
+  </KeyboardAvoidingView></Hoja>
 }

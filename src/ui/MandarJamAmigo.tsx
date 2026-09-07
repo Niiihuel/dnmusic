@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import { avisar } from '../state/aviso'
 import { mensajeError } from '../lib/mensajeError'
 import { useUser } from '../state/session'
@@ -7,7 +7,8 @@ import { ensureConversation, searchContacts, type ContactResult } from '../servi
 import { sendMessage } from '../services/messages'
 import { linkDeJam } from '../lib/invitarJam'
 import { Avatar } from './Avatar'
-import { ICON_COLOR, IconCheck, IconSearch } from './icons'
+import { SearchField } from './SearchField'
+import { ICON_COLOR, IconCheck } from './icons'
 
 /**
  * Mandar la invitación al Jam **por chat**, eligiendo un amigo.
@@ -22,7 +23,8 @@ import { ICON_COLOR, IconCheck, IconSearch } from './icons'
 export function MandarJamAmigo({ code }: { code: string }) {
   const user = useUser()
   const [busqueda, setBusqueda] = useState('')
-  const [encontrados, setEncontrados] = useState<ContactResult[]>([])
+  const [hallado, setHallado] = useState<{ texto: string; contactos: ContactResult[] } | null>(null)
+  const enviando = useRef(false)
   const [buscando, setBuscando] = useState(false)
   const [enviados, setEnviados] = useState<Set<string>>(new Set())
   const [mandando, setMandando] = useState<string | null>(null)
@@ -37,12 +39,12 @@ export function MandarJamAmigo({ code }: { code: string }) {
     const t = setTimeout(() => {
       setBuscando(true)
       searchContacts(texto, corte.signal)
-        .then((r) => setEncontrados(r))
+        .then((r) => { if (!corte.signal.aborted) setHallado({ texto, contactos: r }) })
         .catch(() => {
           /* Abortada o sin red: la lista anterior sigue siendo lo mejor que
              tenemos, así que no se vacía. */
         })
-        .finally(() => setBuscando(false))
+        .finally(() => { if (!corte.signal.aborted) setBuscando(false) })
     }, 250)
     return () => {
       corte.abort()
@@ -50,10 +52,11 @@ export function MandarJamAmigo({ code }: { code: string }) {
     }
   }, [busqueda])
 
-  const resultados = busqueda.trim().length >= 2 ? encontrados : []
+  const resultados = busqueda.trim().length >= 2 && hallado?.texto === busqueda.trim() ? hallado.contactos : []
 
   async function mandar(c: ContactResult) {
-    if (!user || mandando || enviados.has(c.id)) return
+    if (!user || enviando.current || enviados.has(c.id)) return
+    enviando.current = true
     setMandando(c.id)
     try {
       const pairId = c.pairId ?? (await ensureConversation(c.id))
@@ -65,29 +68,16 @@ export function MandarJamAmigo({ code }: { code: string }) {
     } catch (e) {
       avisar(mensajeError(e), true)
     } finally {
+      enviando.current = false
       setMandando(null)
     }
   }
 
   return (
     <View className="gap-2">
-      <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-        Mandáselo a un amigo
-      </Text>
-      <View className="flex-row items-center gap-2 rounded-full bg-muted px-4">
-        <IconSearch size={15} color={ICON_COLOR.muted} />
-        <TextInput
-          value={busqueda}
-          onChangeText={setBusqueda}
-          placeholder="Buscá a alguien"
-          placeholderTextColor="#6A6A6A"
-          autoCapitalize="none"
-          autoCorrect={false}
-          accessibilityLabel="Buscar a un amigo para mandarle el Jam"
-          className="text-foreground h-11 flex-1 text-[14px]"
-        />
-        {buscando ? <ActivityIndicator size="small" color={ICON_COLOR.muted} /> : null}
-      </View>
+      <Text accessibilityRole="header" className="text-foreground text-[15px] font-semibold">Invitar por chat</Text>
+      <SearchField value={busqueda} onChangeText={setBusqueda} placeholder="Buscar una persona" accessibilityLabel="Buscar a un amigo para mandarle el Jam" loading={busqueda.trim().length >= 2 && buscando} />
+      {hallado?.texto === busqueda.trim() && !buscando && !resultados.length ? <Text className="text-muted-foreground text-[13px]">No encontramos personas con ese nombre.</Text> : null}
       {resultados.map((c) => {
         const ya = enviados.has(c.id)
         return (
@@ -95,16 +85,16 @@ export function MandarJamAmigo({ code }: { code: string }) {
             key={c.id}
             accessibilityRole="button"
             accessibilityLabel={ya ? `Ya le mandaste a ${c.username}` : `Mandarle a ${c.username}`}
-            disabled={ya || mandando === c.id}
+            disabled={ya || mandando !== null}
             onPress={() => void mandar(c)}
-            className="flex-row items-center gap-3 rounded-2xl px-2 py-2 active:bg-muted"
+            className="min-h-11 flex-row items-center gap-3 rounded-2xl px-3 py-3 active:bg-muted"
           >
-            <Avatar name={c.displayName || c.username} path={c.avatarPath} size={34} />
+            <Avatar name={c.displayName || c.username} path={c.avatarPath} size={40} />
             <View className="min-w-0 flex-1">
-              <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
+              <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
                 {c.displayName?.trim() || `@${c.username}`}
               </Text>
-              <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+              <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
                 @{c.username}
               </Text>
             </View>
@@ -113,7 +103,7 @@ export function MandarJamAmigo({ code }: { code: string }) {
             ) : ya ? (
               <IconCheck size={16} color={ICON_COLOR.muted} />
             ) : (
-              <Text className="text-foreground text-[12px] font-semibold">Mandar</Text>
+              <Text className="text-foreground text-[14px] font-semibold">Invitar</Text>
             )}
           </Pressable>
         )

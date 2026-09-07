@@ -48,8 +48,9 @@ export function ChatBubble({
 
   return (
     <View className={`w-full ${mine ? 'items-end' : 'items-start'}`}>
-      <View style={{ maxWidth: '88%', minWidth: 140 }}>
+      <View style={{ maxWidth: '92%', minWidth: 140, ...(song ? { width: 360 } : {}) }}>
         <View
+          style={selected ? { backgroundColor: '#303030' } : undefined}
           className={`gap-2 rounded-2xl px-3.5 py-2.5 active:opacity-80 ${
             mine ? 'rounded-br-sm bg-muted' : 'rounded-bl-sm bg-card'
           }`}
@@ -60,8 +61,9 @@ export function ChatBubble({
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ selected }}
+              accessibilityLabel={`Abrir mensaje: ${message.text}`}
               onPress={onPress}
-              className="active:opacity-80"
+              className="min-h-11 justify-center active:opacity-80"
             >
               <Text className="text-foreground text-[15px] leading-5">{message.text}</Text>
             </Pressable>
@@ -81,7 +83,7 @@ export function ChatBubble({
              * sube y el desenfoque afloja, así que la que está sonando sigue
              * siendo la más viva de la lista.
              */
-            <View className="relative min-w-[240px] gap-2 overflow-hidden rounded-xl bg-background/70 p-2">
+            <View className="relative min-w-0 gap-2 overflow-hidden rounded-2xl bg-background/70 p-3">
               {art ? (
                 <Image
                   source={{ uri: art }}
@@ -103,6 +105,7 @@ export function ChatBubble({
               <View className="flex-row items-center gap-2.5">
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel={`Abrir fragmento: ${song.title}, ${song.artist}`}
                   onPress={onPress}
                   className="min-w-0 flex-1 flex-row items-center gap-2.5 active:opacity-80"
                 >
@@ -117,13 +120,13 @@ export function ChatBubble({
                     </View>
                   )}
                   <View className="min-w-0 flex-1 gap-0.5">
-                    <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
+                    <Text className="text-foreground text-[15px] font-semibold" numberOfLines={2}>
                       {song.title}
                     </Text>
                     {/* Solo el artista: la duración pasó a estar al final de la
                         barra, y repetirla acá la decía dos veces en dos
                         formatos distintos ("15 s" y "0:15"). */}
-                    <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+                    <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
                       {song.artist}
                     </Text>
                   </View>
@@ -132,12 +135,12 @@ export function ChatBubble({
                   accessibilityRole="button"
                   accessibilityLabel={playing ? 'Pausar' : 'Reproducir canción'}
                   onPress={onPlay}
-                  className="h-9 w-9 items-center justify-center rounded-full bg-primary"
+                  className="h-11 w-11 items-center justify-center rounded-full bg-primary"
                 >
                   {playing ? (
-                    <IconPause size={14} color={ICON_COLOR.onPrimary} />
+                    <IconPause size={18} color={ICON_COLOR.onPrimary} />
                   ) : (
-                    <IconPlay size={14} color={ICON_COLOR.onPrimary} />
+                    <IconPlay size={18} color={ICON_COLOR.onPrimary} />
                   )}
                 </Pressable>
               </View>
@@ -149,7 +152,7 @@ export function ChatBubble({
               */}
               {picos ? (
                 <View className="flex-row items-center gap-2">
-                  <Text className="text-muted-foreground w-8 text-[10px] tabular-nums">
+                  <Text className="text-muted-foreground w-8 text-[12px] tabular-nums">
                     {formatClock(progress * song.durationMs)}
                   </Text>
                   <View className="flex-1">
@@ -160,11 +163,11 @@ export function ChatBubble({
                       duracionMs={song.durationMs}
                       activa={!!sonando}
                       onSeek={onSeek}
-                      height={30}
+                      height={44}
                       etiqueta={song.title}
                     />
                   </View>
-                  <Text className="text-muted-foreground w-8 text-right text-[10px] tabular-nums">
+                  <Text className="text-muted-foreground w-8 text-right text-[12px] tabular-nums">
                     {formatClock(song.durationMs)}
                   </Text>
                 </View>
@@ -182,11 +185,11 @@ export function ChatBubble({
 
           <View className="flex-row items-center justify-end gap-1.5">
             {message.createdAt ? (
-              <Text className="text-muted-foreground text-[10px] tabular-nums">
+              <Text className="text-muted-foreground text-[12px] tabular-nums">
                 {formatMessageDate(message.createdAt)}
               </Text>
             ) : null}
-            {mine ? <Text className="text-muted-foreground text-[10px]">{delivery}</Text> : null}
+            {mine ? <Text accessibilityLabel={message.readAt ? 'Leído' : message.openedAt ? 'Abierto' : 'Enviado'} className="text-muted-foreground text-[12px]">{delivery}</Text> : null}
           </View>
         </View>
       </View>

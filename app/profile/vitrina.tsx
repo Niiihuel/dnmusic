@@ -1,5 +1,5 @@
 import { FuentePerfil } from '../../src/ui/FuentePerfil'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Image,
   KeyboardAvoidingView,
@@ -28,15 +28,18 @@ import {
   type Showcase,
 } from '../../src/services/showcases'
 import { avisar } from '../../src/state/aviso'
-import { useMyProfile, useUser } from '../../src/state/session'
-import { usePiso } from '../../src/state/shell'
+import { useUser } from '../../src/state/session'
+import { usePerfilBorrador, usePerfilEdicion } from '../../src/state/perfilEdicion'
+import { borradorVitrinaCompleto, idVitrinaTemporal, ponerVitrinaEdicion } from '../../src/state/mosaicoEdicion'
 import { actualizarBorrador, limpiarBorrador, useBorrador } from '../../src/state/vitrinaBorrador'
 import { FilaAjuste, GrupoAjustes, IconoAjuste } from '../../src/ui/Ajustes'
-import { BotonConfirmar, BotonHoja, EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
+import { BotonHoja, EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
+import { BarraCambiosPerfil } from '../../src/ui/BarraCambiosPerfil'
+import { useSalidaConCambios } from '../../src/ui/useSalidaConCambios'
 import { Segmentado } from '../../src/ui/Segmentado'
 import { PLACEHOLDER_COLOR } from '../../src/ui/Field'
 import { Menu } from '../../src/ui/Menu'
-import { Hoja, useHojaModal } from '../../src/ui/Hoja'
+import { Hoja, useHojaModal, usePisoHoja } from '../../src/ui/Hoja'
 import { Panel } from '../../src/ui/Panel'
 import { GrillaDeMiniaturas, rotuloDePiezas, Superficie, useMiniaturas, Vitrina } from '../../src/ui/Vitrina'
 import {
@@ -68,14 +71,57 @@ const MAX_W = 520
 export default function EditarVitrina() {
   const router = useRouter()
   const user = useUser()
-  const perfil = useMyProfile()
-  const piso = usePiso(24)
+  const perfil = usePerfilBorrador()
+  const edicion = usePerfilEdicion()
+  const global = !!user && edicion.ownerId === user.id
+  const piso = usePisoHoja(24)
   /* En escritorio esto es una ventana centrada y no una pantalla a lo ancho:
      un editor de 520px estirado a 1400 se lee como un teléfono gigante. */
   const modal = useHojaModal()
   const borrador = useBorrador()
   const [guardando, setGuardando] = useState(false)
   const [subiendo, setSubiendo] = useState(false)
+  const [inicial] = useState(borrador)
+  const [temporal] = useState(idVitrinaTemporal)
+  const [error, setError] = useState<string | null>(null)
+  const [altoBarra, setAltoBarra] = useState(130)
+  const [salida, setSalida] = useState<{ creado: string | null; subspace: boolean } | null>(null)
+  const enVuelo = useRef(false)
+  const cambiado = !!borrador && (borrador.id === null || JSON.stringify(borrador) !== JSON.stringify(inicial))
+  const dialogoSalida = useSalidaConCambios(!global && cambiado && !salida, (!global && guardando || subiendo) && !salida, limpiarBorrador)
+  useEffect(() => {
+    if (!salida) return
+    limpiarBorrador()
+    if (salida.creado && salida.subspace && user) {
+      router.replace({ pathname: '/profile/subspace', params: { owner: user.id, id: salida.creado, armar: '1' } })
+    } else volver(router, '/profile')
+  }, [salida, router, user])
+
+  // Los cambios de tema, fuente y encuadre llegan por el mismo borrador incluso
+  // mientras esta hoja está detrás de otra; se conservan en la sesión global.
+  useEffect(() => {
+    if (global && user && borrador && !edicion.ocupado) {
+      ponerVitrinaEdicion(user.id, borrador, temporal, inicial, borradorVitrinaCompleto(borrador))
+    }
+  }, [global, user, borrador, temporal, inicial, edicion.ocupado])
+
+  function listo() {
+    if (subiendo || edicion.ocupado) return
+    if (global && user && borrador) {
+      const id = ponerVitrinaEdicion(user.id, borrador, temporal, inicial, borradorVitrinaCompleto(borrador))
+      if (borrador.kind === 'subspace' && !borrador.id && borradorVitrinaCompleto(borrador)) {
+        router.replace({ pathname: '/profile/subspace', params: { owner: user.id, id, armar: '1' } })
+        return
+      }
+    }
+    volver(router, '/profile')
+  }
+
+  function restablecer() {
+    if (enVuelo.current || subiendo || !inicial) return
+    actualizarBorrador(inicial)
+    setError(null)
+  }
 
   if (!borrador) {
     /* Se entró sin nada armado —una recarga en la web—: no hay qué editar. */
@@ -142,7 +188,10 @@ export default function EditarVitrina() {
     (kind !== 'letra' || (contenido.kind === 'letra' && !!(contenido.letra.title || contenido.letra.artist)))
 
   async function guardar() {
-    if (!user || !borrador || !contenido || !completa || guardando) return
+    if (global) { listo(); return }
+    if (!user || !borrador || !contenido || !completa || !cambiado || enVuelo.current || subiendo) return
+    enVuelo.current = true
+    setError(null)
     setGuardando(true)
     try {
       const payload = payloadDe(contenido)
@@ -152,7 +201,6 @@ export default function EditarVitrina() {
       } else {
         creado = await addShowcase(user.id, kind, payload, borrador.ancho, estilo, borrador.parentId)
       }
-      limpiarBorrador()
       avisar(nueva ? 'Agregada al mosaico' : 'Guardada')
       /*
        * Un sub-space recién creado se abre **adentro y armando**: lo que
@@ -160,13 +208,11 @@ export default function EditarVitrina() {
        * para tocar la pieza y después el lápiz eran dos pasos que preguntaban
        * «¿y ahora qué?». La pieza vacía no dice nada por sí sola.
        */
-      if (creado && kind === 'subspace') {
-        router.replace({ pathname: '/profile/subspace', params: { owner: user.id, id: creado, armar: '1' } })
-        return
-      }
-      volver(router, '/profile')
+      setSalida({ creado, subspace: kind === 'subspace' })
     } catch (e) {
-      avisar(mensajeError(e), true)
+      setError(mensajeError(e))
+    } finally {
+      enVuelo.current = false
       setGuardando(false)
     }
   }
@@ -194,7 +240,7 @@ export default function EditarVitrina() {
    * cubriendo y centrada, que es como venía.
    */
   async function ponerImagen(desdeCamara: boolean) {
-    if (!user || subiendo) return
+    if (!user || subiendo || enVuelo.current) return
     setSubiendo(true)
     try {
       const elegida = await pickImage({ desdeCamara })
@@ -220,35 +266,14 @@ export default function EditarVitrina() {
 
   return (
     <FuentePerfil fuente={perfil?.fuente}>
-      <Hoja>
+      <Hoja onCerrar={global ? listo : undefined}>
+        {dialogoSalida}
         <SafeAreaView className="flex-1 bg-background" edges={['top']}>
           <View className="flex-1">
-            {/*
-             * La cabecera de hoja de toda la app: cerrar a la izquierda, el
-             * título en el medio y **guardar a la derecha**, como la marca de
-             * «Agregar a la lista». Antes el guardar era un botón grande al
-             * pie del formulario, debajo del teclado la mitad de las veces.
-             */}
             <EncabezadoHoja
               titulo={titulo}
-              izquierda={
-                <BotonHoja
-                  tipo="cerrar"
-                  label="Cerrar sin guardar"
-                  onPress={() => {
-                    limpiarBorrador()
-                    volver(router, '/profile')
-                  }}
-                />
-              }
-              derecha={
-                <BotonConfirmar
-                  label={nueva ? 'Agregar al mosaico' : 'Guardar'}
-                  activo={completa}
-                  ocupado={guardando}
-                  onPress={() => void guardar()}
-                />
-              }
+              izquierda={<BotonHoja tipo="cerrar" label="Cerrar editor" onPress={global ? listo : () => volver(router, '/profile')} />}
+              derecha={global ? <Pressable accessibilityRole="button" onPress={listo} disabled={subiendo || edicion.ocupado}><Text className="text-foreground text-[15px] font-semibold">Listo</Text></Pressable> : undefined}
             />
 
             <Panel className="flex-1">
@@ -258,10 +283,10 @@ export default function EditarVitrina() {
               >
                 <ScrollView
                   contentContainerClassName="items-center px-4 pt-4"
-                  contentContainerStyle={{ paddingBottom: modal ? 24 : piso }}
+                  contentContainerStyle={{ paddingBottom: (modal ? 24 : piso) + (!global && (cambiado || guardando || subiendo || error) ? altoBarra + 16 : 0) }}
                   keyboardShouldPersistTaps="handled"
                 >
-                  <View className="w-full gap-7" style={{ maxWidth: MAX_W }}>
+                  <View pointerEvents={guardando || subiendo || edicion.ocupado ? 'none' : 'auto'} className="w-full gap-7" style={{ maxWidth: MAX_W }}>
                     {/*
                      * La vista previa, con el tamaño que va a tener: a media fila
                      * ocupa la mitad del ancho, centrada, así se ve lo que entra.
@@ -431,6 +456,9 @@ export default function EditarVitrina() {
 
                   </View>
                 </ScrollView>
+                {!global ? <BarraCambiosPerfil visible={cambiado} ocupado={guardando || subiendo} error={error}
+                  puedeGuardar={completa && !!user} onRestablecer={restablecer} onGuardar={() => void guardar()}
+                  abajo={modal ? 12 : piso} onAltura={setAltoBarra} /> : null}
               </KeyboardAvoidingView>
             </Panel>
           </View>
@@ -465,7 +493,7 @@ function PrevioDeTexto({
   const c = borrador.estilo.fondo
     ? { ...colores, texto: '#FFFFFF', secundario: 'rgba(255,255,255,0.75)' }
     : colores
-  const fuentePerfil = useMyProfile()?.fuente
+  const fuentePerfil = usePerfilBorrador()?.fuente
   const encabezado = borrador.kind === 'encabezado'
   const letra = borrador.kind === 'letra'
   const subspace = borrador.kind === 'subspace'

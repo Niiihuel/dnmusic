@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.11.0",
+    "fecha": "6 de septiembre de 2026",
+    "titulo": "Tu perfil, tu música y una nueva imagen.",
+    "cambios": [
+      "Nuevo icono de dnmusic en la app, la pantalla de inicio y los accesos de escritorio y teléfono.",
+      "Personalización del perfil con catálogo de Discord, búsqueda, carga progresiva y vista previa plegable. Los cambios de distintas secciones se guardan juntos desde una única barra.",
+      "El fondo y los efectos acompañan todo el perfil; los marcos decoran Estadísticas. El mosaico mejora el ajuste de tamaño y sus herramientas de edición.",
+      "Navegación más simple, sidebars plegables y controles visuales consistentes en perfil, Configuración, chats, Jam, fragmentos e inicio de sesión.",
+      "El reproductor compacto mantiene su tamaño al ajustar el volumen. Podés abrir al artista desde su nombre y dar me gusta desde la duración de una canción en listas y álbumes.",
+      "Barras de desplazamiento más cómodas y sin flechas en escritorio. La cuenta abre sus opciones con clic o clic derecho y el reproductor ya no bloquea ese acceso.",
+      "La escucha del perfil se actualiza mientras lo mirás y deja de mostrar como actual una reproducción vencida. Las reacciones permiten consultar quién reaccionó.",
+      "Mejoras en las letras y en la selección y vista previa de fragmentos musicales."
+    ]
+  },
+  {
     "version": "1.10.3",
     "fecha": "6 de septiembre de 2026",
     "titulo": "La tienda, como la de Discord.",

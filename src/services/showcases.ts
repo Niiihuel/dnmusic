@@ -482,20 +482,17 @@ export async function addShowcase(
   /* Dentro de qué sub-space; `null` es el mosaico principal. La posición se
      cuenta dentro del mismo padre: cada mosaico tiene su propio orden. */
   parentId: string | null = null,
+  /** ID reservado por el borrador: reintentar una respuesta perdida no crea otra pieza. */
+  id?: string,
 ): Promise<string> {
   const position = await countShowcases(ownerId, parentId)
 
-  const { data, error } = await getSupabase()
-    .from('profile_showcases')
-    .insert({
-      owner_id: ownerId,
-      kind,
-      position,
-      payload,
-      ancho,
-      estilo: estiloParaLaBase(estilo),
-      parent_id: parentId,
-    })
+  const fila = {
+    ...(id ? { id } : {}), owner_id: ownerId, kind, position, payload,
+    ancho, estilo: estiloParaLaBase(estilo), parent_id: parentId,
+  }
+  const tabla = getSupabase().from('profile_showcases')
+  const { data, error } = await (id ? tabla.upsert(fila, { onConflict: 'id' }) : tabla.insert(fila))
     .select('id')
     .single()
   if (error) throw error
@@ -548,11 +545,16 @@ export async function removeShowcase(id: string): Promise<void> {
  */
 export async function reorderShowcases(ids: string[]): Promise<void> {
   const supabase = getSupabase()
-  await Promise.all(
+  const resultados = await Promise.allSettled(
     ids.map((id, position) =>
       supabase.from('profile_showcases').update({ position }).eq('id', id),
     ),
   )
+  // Esperar todas antes de releer un fallo parcial; Supabase resuelve con { error }.
+  for (const resultado of resultados) {
+    if (resultado.status === 'rejected') throw resultado.reason
+    if (resultado.value.error) throw resultado.value.error
+  }
 }
 
 const TIPOS_VITRINA = [

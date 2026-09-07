@@ -91,9 +91,9 @@ export function empezarBorrador(kind: ShowcaseKind, parentId: string | null = nu
 }
 
 /** Empieza a editar una vitrina que ya existe, sobre una copia. */
-export function editarBorrador(v: Showcase) {
+export function editarBorrador(v: Showcase, parentId: string | null = null) {
   const { id, ancho, estilo, ...contenido } = v
-  store.set({ borrador: { id, kind: v.kind, ancho, contenido, estilo, parentId: null } })
+  store.set({ borrador: { id, kind: v.kind, ancho, contenido, estilo, parentId } })
 }
 
 /** Cambia una parte del borrador. Sin borrador abierto no hace nada. */

@@ -63,6 +63,8 @@ export type Profile = {
   efecto?: string | null
   /** La placa detrás del nombre, como las «nameplates» de Discord. Ver `ui/Placas`. */
   placa?: string | null
+  /** El marco exterior de la tarjeta de perfil; independiente del marco del avatar. */
+  marcoPerfil?: string | null
 }
 
 /**
@@ -99,6 +101,7 @@ type ProfileRow = {
   tema?: unknown
   efecto?: unknown
   placa?: unknown
+  marco_perfil?: unknown
 }
 
 /** Un encuadre del jsonb, o null. Un número raro lo descarta entero: medio
@@ -134,6 +137,7 @@ function profileFromRow(row: ProfileRow | null | undefined): Profile | null {
     fuente: typeof row.fuente === 'string' ? (fuenteDe(row.fuente)?.id ?? null) : null,
     efecto: typeof row.efecto === 'string' && row.efecto ? row.efecto : null,
     placa: typeof row.placa === 'string' && row.placa ? row.placa : null,
+    marcoPerfil: typeof row.marco_perfil === 'string' && row.marco_perfil ? row.marco_perfil : null,
   }
 }
 
@@ -171,6 +175,8 @@ export async function saveMyProfile(changes: {
   /** La cadena vacía lo saca, como el marco. */
   efecto?: string
   placa?: string
+  /** La cadena vacía quita el marco de tarjeta; omitirlo conserva el actual. */
+  marcoPerfil?: string
 }): Promise<Profile> {
   const { data, error } = await getSupabase().rpc('update_my_profile', {
     p_username: changes.username ?? null,
@@ -191,6 +197,7 @@ export async function saveMyProfile(changes: {
     ...(changes.fuente !== undefined ? { p_fuente: changes.fuente ?? '' } : {}),
     ...(changes.efecto !== undefined ? { p_efecto: changes.efecto } : {}),
     ...(changes.placa !== undefined ? { p_placa: changes.placa } : {}),
+    ...(changes.marcoPerfil !== undefined ? { p_marco_perfil: changes.marcoPerfil } : {}),
     p_tema: changes.tema === undefined ? null : changes.tema === null ? 'BORRAR' : changes.tema,
   })
   if (error) throw error

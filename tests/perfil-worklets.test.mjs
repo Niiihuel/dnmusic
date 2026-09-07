@@ -19,8 +19,8 @@ test('el compilador nativo del mosaico no transfiere refs ni vistas al runtime d
       const capturas = right.properties?.map((prop) => prop.key.name) ?? []
       assert.ok(!capturas.includes('agarre'), 'el objeto contiene el Map de vistas nativas')
       assert.ok(!capturas.includes('children'), 'no transferir el árbol de React')
-      if (capturas.includes('indice') && capturas.includes('withTiming')) {
-        assert.deepEqual(capturas.sort(), ['activa', 'dx', 'dy', 'indice', 'withTiming'])
+      if (capturas.includes('indice') && capturas.includes('withTiming') && capturas.includes('dx')) {
+        assert.deepEqual(capturas.sort(), ['activa', 'dx', 'dy', 'estirando', 'indice', 'origen', 'rects', 'withTiming'])
         comprobados++
       }
     },

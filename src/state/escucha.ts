@@ -1,3 +1,4 @@
+import { LATIDO_ESCUCHA_MS } from '../services/lecturaViva'
 import { AppState } from 'react-native'
 import { getSupabase } from '../lib/supabase'
 import { idDispositivo, nombreDispositivo } from '../lib/dispositivo'
@@ -94,6 +95,7 @@ const PUBLICAR_MS = 300
 const SEEK_UMBRAL_MS = 3000
 
 let desuscribir: Unsubscribe | null = null
+let inicio: Promise<void> | null = null
 /** Enviar el «tomá vos» a un aparato: lo arma el canal en `iniciarEscucha`. */
 let mandarAImpl: ((destino: string) => void) | null = null
 let soltarPlayback: (() => void) | null = null
@@ -363,8 +365,18 @@ async function refrescar() {
  * Arranca la escucha compartida. Lo llama el layout con la sesión puesta;
  * idempotente, como `startSession`.
  */
-export async function iniciarEscucha(): Promise<void> {
-  if (desuscribir) return
+export function iniciarEscucha(): Promise<void> {
+  if (inicio) return inicio
+  if (desuscribir) return Promise.resolve()
+  const v = ++version
+  const tarea = conectarEscucha(v)
+    .catch(() => { if (v === version) desconectarEscucha() })
+    .finally(() => { if (inicio === tarea) inicio = null })
+  inicio = tarea
+  return tarea
+}
+
+async function conectarEscucha(v: number): Promise<void> {
   let userId: string | null = null
   try {
     const { data } = await getSupabase().auth.getSession()
@@ -372,12 +384,13 @@ export async function iniciarEscucha(): Promise<void> {
   } catch {
     return
   }
-  if (!userId || desuscribir) return
+  if (!userId || v !== version) return
 
   const deviceId = await idDispositivo()
-  const v = ++version
+  if (v !== version) return
   uid = userId
   store.set({ deviceId })
+  if (v !== version) return
   const sub = suscribirEscucha(userId, deviceId, {
     onFila: (fila) => {
       if (v === version) aplicarFila(fila)
@@ -399,6 +412,8 @@ export async function iniciarEscucha(): Promise<void> {
   })
   desuscribir = sub.desuscribir
   mandarAImpl = sub.mandarA
+  await sub.listo
+  if (v !== version) return
   soltarPlayback = subscribePlayback(alCambiarPlayback)
   await refrescar()
 }
@@ -406,6 +421,7 @@ export async function iniciarEscucha(): Promise<void> {
 /** Cierre local, para el logout: la sesión ya no puede firmar nada. */
 export function desconectarEscucha() {
   version++
+  inicio = null
   uid = null
   desuscribir?.()
   desuscribir = null
@@ -430,8 +446,16 @@ export function desconectarEscucha() {
 }
 
 /* La app vuelve al frente: lo que haya pasado mientras tanto, de una vez. */
-AppState.addEventListener('change', (estado) => {
+const appStateSubscription = AppState.addEventListener('change', (estado) => {
   if (estado === 'active' && uid && store.get().escucha) programarRefetch()
+})
+
+// Metro ejecuta dispose antes de reevaluar el módulo: no quedan listeners del
+// store viejo publicando ni una suscripción activa durante Fast Refresh.
+const hot = (module as unknown as { hot?: { dispose: (callback: () => void) => void } }).hot
+hot?.dispose(() => {
+  desconectarEscucha()
+  appStateSubscription.remove()
 })
 
 /* ── Publicar: este aparato cuenta lo que hace ────────────────────────────── */
@@ -492,6 +516,7 @@ function alCambiarPlayback() {
     !publicado ||
     publicado.trackId !== actual.id ||
     publicado.suena !== p.wantPlay ||
+    (p.wantPlay && Date.now() - publicado.enviadoEn >= LATIDO_ESCUCHA_MS) ||
     publicado.colaSig !== sig ||
     Math.abs(p.positionMs - posicionEsperada()) > SEEK_UMBRAL_MS
   if (!cambio) return

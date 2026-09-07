@@ -1,10 +1,11 @@
+import { estadoControlWeb } from './estadoControl'
 import type { ReactNode } from 'react'
 import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { ICON_COLOR, IconCheck, IconChevronLeft, IconClose } from './icons'
 
 /** Lo que mide la cabecera, para quien la pega arriba y necesita reservarlo. */
-export const ALTO_ENCABEZADO = 64
+export const ALTO_ENCABEZADO = 68
 /** Lo que cuelga el velo por debajo de la cabecera. */
 const VELO = 28
 
@@ -28,6 +29,7 @@ export function EncabezadoHoja({
   sobre,
   izquierda,
   derecha,
+  velo = true,
 }: {
   titulo: string
   sobre?: string
@@ -35,6 +37,8 @@ export function EncabezadoHoja({
   izquierda?: ReactNode
   /** El de la derecha: casi siempre `BotonConfirmar`. */
   derecha?: ReactNode
+  /** Sólo para cabeceras pegadas dentro del scroll; fuera taparía el primer control. */
+  velo?: boolean
 }) {
   return (
     /*
@@ -45,26 +49,22 @@ export function EncabezadoHoja({
      * flotante de `docs/DESIGN.md`, y lo que hace cualquier hoja de Apple.
      * `zIndex` para que el velo quede sobre el contenido y no debajo.
      */
-    <View className="bg-background" style={{ zIndex: 10, height: ALTO_ENCABEZADO }}>
-      <View className="h-16 flex-row items-center px-3">
-        <View className="w-11 items-start">{izquierda}</View>
+    <View className="bg-background" style={{ zIndex: 10, minHeight: ALTO_ENCABEZADO }}>
+      <View className="flex-row items-center gap-3 px-4 py-3" style={{ minHeight: ALTO_ENCABEZADO }}>
+        <View className="min-w-11 items-start">{izquierda}</View>
         <View className="min-w-0 flex-1 items-center gap-0.5">
-          {sobre ? (
-            <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-              {sobre}
-            </Text>
-          ) : null}
-          <Text className="text-foreground text-[16px] font-semibold" numberOfLines={1}>
+          <Text accessibilityRole="header" className="text-foreground text-center text-[17px] font-semibold" numberOfLines={2}>
             {titulo}
           </Text>
+          {sobre ? <Text className="text-muted-foreground text-center text-[13px]" numberOfLines={2}>{sobre}</Text> : null}
         </View>
-        <View className="w-11 items-end">{derecha}</View>
+        <View className="min-w-11 items-end">{derecha}</View>
       </View>
-      <LinearGradient
+      {velo ? <LinearGradient
         pointerEvents="none"
         colors={['rgb(18,18,18)', 'rgba(18,18,18,0)']}
-        style={{ position: 'absolute', left: 0, right: 0, top: ALTO_ENCABEZADO, height: VELO }}
-      />
+        style={{ position: 'absolute', left: 0, right: 0, top: '100%', height: VELO }}
+      /> : null}
     </View>
   )
 }
@@ -81,19 +81,24 @@ export function BotonHoja({
   label,
   onPress,
   children,
+  disabled = false,
 }: {
   tipo?: 'cerrar' | 'volver'
   label?: string
   onPress: () => void
   children?: ReactNode
+  disabled?: boolean
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label ?? (tipo === 'volver' ? 'Volver' : 'Cerrar')}
       onPress={onPress}
+      disabled={disabled}
+      accessibilityState={{ disabled }}
       hitSlop={6}
-      className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
+      className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-70"
+      style={disabled ? { opacity: 0.4 } : undefined}
     >
       {children ??
         (tipo === 'volver' ? (
@@ -129,11 +134,12 @@ export function BotonConfirmar({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled: !puede }}
+      {...estadoControlWeb('inverse')}
+      accessibilityState={{ disabled: !puede, busy: ocupado }}
       disabled={!puede}
       onPress={onPress}
       hitSlop={6}
-      className={`h-9 w-9 items-center justify-center rounded-full ${
+      className={`h-11 w-11 items-center justify-center rounded-full ${
         puede ? 'bg-primary active:opacity-80' : 'bg-muted'
       }`}
     >

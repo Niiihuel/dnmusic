@@ -12,6 +12,7 @@ import { useJam } from '../state/jam'
 import { usePiso } from '../state/shell'
 import { ArtistCard } from './ArtistCard'
 import { BotonMeGusta } from './BotonMeGusta'
+import { EnlaceArtista } from './EnlaceArtista'
 import { ColaBody } from './ColaBody'
 import { JamBody } from './JamPanel'
 import { Panel } from './Panel'
@@ -161,9 +162,7 @@ export function NowPlayingPanel({
               <Text className="text-foreground text-xl font-bold" numberOfLines={2}>
                 {track.title}
               </Text>
-              <Text className="text-muted-foreground text-[14px]" numberOfLines={1}>
-                {track.artist}
-              </Text>
+              <EnlaceArtista id={track.artistId} nombre={track.artist} />
             </View>
             <BotonMeGusta track={track} />
           </View>

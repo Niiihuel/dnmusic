@@ -22,6 +22,8 @@ import {
 import { MARCOS_ANIMADOS, PIEZAS_ANIMADAS } from './MarcosAnimados'
 import { MARCOS_TEMATICOS, PIEZAS_TEMATICAS } from './MarcosTematicos'
 import { MarcoImagenPorId } from './DecoracionImagen'
+import { esDiscord } from '../services/discordCatalogo'
+import { DiscordAvatar } from './DiscordCosmeticos'
 
 export { aireDelMarco, DESBORDE } from './marcoBase'
 
@@ -167,6 +169,7 @@ export function Marco({
   animado?: boolean
 }) {
   if (!marco) return null
+  if (esDiscord(marco)) return <DiscordAvatar id={marco} size={size} animado={animado} />
   if (!MARCOS.some((m) => m.id === marco)) {
     /* No es un marco dibujado: puede ser uno del catálogo en imagen
        (`services/decoraciones`). Si tampoco está ahí, nada, sin romper. */

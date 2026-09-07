@@ -1,6 +1,6 @@
 {
   "name": "dnmusic",
-  "version": "1.0.0",
+  "version": "1.11.0",
   "main": "expo-router/entry",
   "private": true,
   "scripts": {
@@ -16,7 +16,8 @@
     "ios:dev": "eas build --profile development --platform ios",
     "ios:preview": "eas build --profile preview --platform ios",
     "ios:release": "eas build --profile production --platform ios --auto-submit",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "ios:build": "eas build --profile production --platform ios"
   },
   "dependencies": {
     "@expo-google-fonts/bebas-neue": "^0.4.1",

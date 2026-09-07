@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
+import { Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
@@ -11,7 +11,9 @@ import {
 } from '../../src/ui/Ajustes'
 import { FilaSostener } from '../../src/ui/Mantener'
 import { Avatar } from '../../src/ui/Avatar'
-import { BotonVidrio } from '../../src/ui/Glass'
+import { CabeceraLateral, BotonLateral } from '../../src/ui/CabeceraLateral'
+import { CollapsedSidebar } from '../../src/ui/SidebarMotion'
+import { ScrollArea as ScrollView } from '../../src/ui/ScrollArea'
 import { Panel, Shell } from '../../src/ui/Panel'
 import { SearchField } from '../../src/ui/SearchField'
 import { Vacio } from '../../src/ui/Vacio'
@@ -20,6 +22,8 @@ import {
   IconBack,
   IconBan,
   IconClock,
+  IconCollapseLeft,
+  IconSliders,
   IconDisc,
   IconDisk,
   IconDownload,
@@ -58,7 +62,7 @@ import { TECLADO_FISICO } from '../../src/lib/teclado'
 /** Desde acá la pantalla es la de macOS: barra lateral con las categorías y el detalle al lado. */
 const ESCRITORIO_PX = 780
 /** Ancho de la barra lateral, el de Ajustes del Sistema. */
-const LATERAL_W = 280
+const LATERAL_W = 240
 /** Tope del detalle: una lista agrupada más ancha se lee como una tabla. */
 const MAX_W = 640
 /** Los minutos que ofrece el temporizador. */
@@ -481,21 +485,25 @@ function Escritorio({
   onVolver: () => void
 }) {
   const [elegida, setElegida] = useState(categorias[0]?.id ?? '')
+  const [plegada, setPlegada] = useState(false)
+  const [hover, setHover] = useState(false)
   const actual = categorias.find((c) => c.id === elegida) ?? categorias[0]
   const mostradas = buscando ? coinciden : actual ? [actual] : []
 
   return (
     <Shell>
       <SafeAreaView className="flex-1 flex-row" edges={['top', 'bottom']}>
-        <Panel tone="lateral" style={{ width: LATERAL_W }}>
-          <View className="flex-row items-center gap-3 px-3 pb-2 pt-3">
-            <BotonVidrio onPress={onVolver} label="Volver" radius={18} style={{ width: 36, height: 36 }}>
-              <IconBack size={17} color={ICON_COLOR.foreground} />
-            </BotonVidrio>
-            <Text className="text-foreground text-[17px] font-bold">Configuración</Text>
-          </View>
+        <View testID="ajustes-lateral" style={{ width: plegada ? 64 : LATERAL_W, flexShrink: 0 }}
+          onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}>
+        {plegada ? <CollapsedSidebar side="left" hovered={hover} label="Mostrar categorías de configuración"
+          resting={<View className="items-center"><IconSliders size={20} color={ICON_COLOR.muted} /></View>}
+          onExpand={() => setPlegada(false)} /> : <Panel tone="lateral" className="flex-1">
+          <CabeceraLateral titulo="Configuración">
+            <BotonLateral label="Contraer categorías de configuración" onPress={() => setPlegada(true)}
+              icono={<IconCollapseLeft size={17} color={ICON_COLOR.muted} />} />
+          </CabeceraLateral>
           <View className="px-3 pb-3">
-            <SearchField value={busqueda} onChangeText={onBusqueda} placeholder="Buscar" />
+            <SearchField value={busqueda} onChangeText={onBusqueda} placeholder="Buscar" density="compact" />
           </View>
           {cuenta}
           <ScrollView className="flex-1" contentContainerClassName="gap-0.5 px-2 pt-3">
@@ -506,35 +514,38 @@ function Escritorio({
                 <Pressable
                   key={c.id}
                   accessibilityRole="button"
+                  accessibilityLabel={c.titulo}
                   accessibilityState={{ selected: activa }}
                   onPress={() => {
                     onBusqueda('')
                     setElegida(c.id)
                   }}
-                  className={`flex-row items-center gap-3 rounded-lg px-2 py-1.5 ${
+                  className={`h-[30px] flex-row items-center gap-2.5 rounded-md px-2 ${
                     activa ? 'bg-muted' : 'hover:bg-white/5 active:bg-muted'
                   }`}
                 >
-                  <View className="h-7 w-7 items-center justify-center rounded-[7px] bg-muted">
-                    <Icono size={15} color={ICON_COLOR.foreground} />
-                  </View>
-                  <Text className="text-foreground text-[14px]">{c.titulo}</Text>
+                  <Icono size={16} color={activa ? ICON_COLOR.foreground : ICON_COLOR.muted} />
+                  <Text className={`min-w-0 flex-1 text-[13px] ${activa ? 'text-foreground font-medium' : 'text-foreground'}`} numberOfLines={1}>{c.titulo}</Text>
                 </Pressable>
               )
             })}
           </ScrollView>
-        </Panel>
+        </Panel>}
+        </View>
 
-        <Panel className="flex-1">
+        <Panel className="min-w-0 flex-1">
+          <View className="flex-row items-center gap-1 px-2 py-1">
+            <BotonLateral label="Volver" onPress={onVolver} icono={<IconBack size={17} color={ICON_COLOR.foreground} />} />
+            <Text className="min-w-0 flex-1 text-foreground text-[15px] font-semibold" numberOfLines={1}>
+              {buscando ? `Resultados de «${busqueda.trim()}»` : actual?.titulo}
+            </Text>
+          </View>
           <ScrollView
             className="flex-1"
             keyboardShouldPersistTaps="handled"
             contentContainerClassName="items-center px-8 pb-10 pt-6"
           >
             <View className="w-full gap-6" style={{ maxWidth: MAX_W }}>
-              <Text className="text-foreground text-[24px] font-bold">
-                {buscando ? `Resultados de «${busqueda.trim()}»` : actual?.titulo}
-              </Text>
               {mostradas.map((c) => (
                 <View key={c.id} className="gap-6">
                   {buscando ? (

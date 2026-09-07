@@ -1,48 +1,26 @@
-import { useEffect, useState } from 'react'
-import {
-  ActivityIndicator,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { LinearGradient } from 'expo-linear-gradient'
 import { isUsernameAvailable, signUp } from '../src/services/auth'
 import { marcarOnboardingPendiente } from '../src/services/semillas'
 import { isSupabaseConfigured } from '../src/lib/supabase'
-import { Field, PasswordField } from '../src/ui/Field'
-import { FormError, PrimaryButton } from '../src/ui/Button'
-import { ICON_COLOR, IconAt, IconCheck, IconClose, IconLock } from '../src/ui/icons'
-import {
-  normalizeUsername,
-  passwordProblem,
-  usernameProblem,
-  PASSWORD_MIN,
-} from '../src/models/username'
+import { CampoAcceso, PantallaAcceso } from '../src/ui/Acceso'
+import { FormError } from '../src/ui/Button'
+import { AccionSocial } from '../src/ui/Social'
+import { ICON_COLOR, IconCheck, IconClose } from '../src/ui/icons'
+import { normalizeUsername, passwordProblem, usernameProblem, PASSWORD_MIN } from '../src/models/username'
 
 /** Espera tras la última tecla antes de preguntar si el usuario está libre. */
 const CHECK_DEBOUNCE_MS = 400
 
 type Availability = 'idle' | 'checking' | 'free' | 'taken' | 'unknown'
 
-/**
- * Alta de cuenta.
- *
- * Es el gemelo del login y comparte con él el ancho, el ritmo y la decisión de
- * **no tener tarjeta**: el formulario es todo el contenido de la pantalla, así
- * que los campos se apoyan directo sobre el fondo y la profundidad la pone la
- * luz de arriba — ver el comentario largo en `sign-in`. La diferencia está en
- * que acá el usuario se verifica mientras se escribe: si el nombre está
- * tomado, enterarse recién al apretar "Crear cuenta" —después de haber elegido
- * contraseña dos veces— es la peor forma de descubrirlo.
- */
+/** Registro con disponibilidad del usuario y validación antes de crear la cuenta. */
 export default function SignUp() {
   const router = useRouter()
+  const passwordRef = useRef<TextInput>(null)
+  const confirmRef = useRef<TextInput>(null)
+  const submitting = useRef(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -95,6 +73,7 @@ export default function SignUp() {
   }, [username, userProblem, checked, checkFailed])
 
   const canSubmit =
+    isSupabaseConfigured &&
     !userProblem &&
     !passProblem &&
     confirm === password &&
@@ -103,7 +82,8 @@ export default function SignUp() {
     !busy
 
   async function submit() {
-    if (!canSubmit) return
+    if (!canSubmit || submitting.current) return
+    submitting.current = true
     setTouched({ username: true, password: true, confirm: true })
     setBusy(true)
     setError(null)
@@ -116,138 +96,47 @@ export default function SignUp() {
       await marcarOnboardingPendiente()
       // La sesión queda iniciada; el guardia lleva a elegir géneros.
     } catch (e) {
+      submitting.current = false
       setError(mapSignUpError(e))
       setBusy(false)
     }
   }
 
+
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
-      {/* La misma luz de arriba que el login: profundidad por luminancia, sin
-          una caja ni un borde. */}
-      <LinearGradient
-        pointerEvents="none"
-        colors={['#222222', '#121212']}
-        locations={[0, 1]}
-        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 480 }}
-      />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        className="flex-1"
-      >
-        {/* Con teclado abierto en pantalla chica el formulario no entra, así
-            que va dentro de un scroll que se centra mientras sobra lugar. */}
-        <ScrollView contentContainerClassName="grow items-center justify-center px-6 py-8">
-          <View className="w-full max-w-[380px] gap-9">
-            {/* El mismo ícono que el login; ver el comentario de allá. */}
-            <View className="items-center gap-4">
-              <Image
-                source={require('../assets/icon.png')}
-                /* Por `style`, no por clase; ver el comentario del login. */
-                style={{ width: 64, height: 64, borderRadius: 14 }}
-                accessibilityLabel="dnmusic"
-              />
-              <View className="items-center gap-2">
-                <Text className="text-center text-foreground text-2xl font-bold">
-                  Creá tu cuenta
-                </Text>
-                <Text className="max-w-xs text-center text-muted-foreground text-sm leading-5">
-                  Elegí un usuario. Es con lo que te van a encontrar para escuchar juntos.
-                </Text>
-              </View>
-            </View>
-
-            <View className="gap-1">
-              {!isSupabaseConfigured ? (
-                <View className="mb-3 rounded-lg bg-muted p-3">
-                  <Text className="text-muted-foreground text-xs leading-5">
-                    Falta configurar Supabase. Copiá `.env.example` a `.env.local` y completá las
-                    variables EXPO_PUBLIC_SUPABASE_*.
-                  </Text>
-                </View>
-              ) : null}
-
-              <Field
-                label="Usuario"
-                icon={<IconAt size={18} color={ICON_COLOR.muted} />}
-                value={username}
-                onChangeText={(text) => setUsername(normalizeUsername(text))}
-                onBlur={() => setTouched((t) => ({ ...t, username: true }))}
-                placeholder="tu_usuario"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="username"
-                textContentType="username"
-                returnKeyType="next"
-                hint={hintFor(availability, username)}
-                /* "ya está en uso" impide seguir, así que se muestra como error
-                   y no como ayuda: en gris se lee como un dato más y el botón
-                   apagado queda sin explicación. */
-                error={
-                  availability === 'taken'
-                    ? `@${username} ya está en uso.`
-                    : touched.username
-                      ? userProblem
-                      : null
-                }
-                accessory={<AvailabilityMark state={userProblem ? 'idle' : availability} />}
-              />
-
-              <PasswordField
-                label="Contraseña"
-                icon={<IconLock size={18} color={ICON_COLOR.muted} />}
-                value={password}
-                onChangeText={setPassword}
-                onBlur={() => setTouched((t) => ({ ...t, password: true }))}
-                placeholder="Mínimo 6 caracteres"
-                autoComplete="new-password"
-                textContentType="newPassword"
-                returnKeyType="next"
-                visible={showPassword}
-                onToggleVisible={() => setShowPassword((v) => !v)}
-                hint={`Al menos ${PASSWORD_MIN} caracteres.`}
-                error={touched.password ? passProblem : null}
-              />
-
-              <PasswordField
-                label="Repetir contraseña"
-                icon={<IconLock size={18} color={ICON_COLOR.muted} />}
-                value={confirm}
-                onChangeText={setConfirm}
-                onBlur={() => setTouched((t) => ({ ...t, confirm: true }))}
-                placeholder="La misma de arriba"
-                autoComplete="new-password"
-                textContentType="newPassword"
-                onSubmitEditing={submit}
-                returnKeyType="go"
-                visible={showPassword}
-                onToggleVisible={() => setShowPassword((v) => !v)}
-                error={touched.confirm ? confirmProblem : null}
-              />
-            </View>
-
-            <View className="gap-5">
-              <FormError message={error} />
-
-              <PrimaryButton label="Crear cuenta" onPress={submit} disabled={!canSubmit} busy={busy} />
-
-              <View className="flex-row items-center justify-center gap-1.5">
-                <Text className="text-muted-foreground text-[13px]">¿Ya tenés cuenta?</Text>
-                <Pressable
-                  accessibilityRole="link"
-                  onPress={() => router.replace('/sign-in')}
-                  className="active:opacity-70"
-                >
-                  <Text className="text-foreground text-[13px] font-semibold underline">
-                    Iniciá sesión
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    <PantallaAcceso titulo="Crear cuenta" detalle="Elegí cómo te van a encontrar para escuchar juntos.">
+      {!isSupabaseConfigured ? <FormError message="El registro no está disponible por ahora." /> : null}
+      <View className="gap-4">
+        <CampoAcceso label="Usuario" value={username} onChangeText={text => setUsername(normalizeUsername(text))}
+          onBlur={() => setTouched(t => ({ ...t, username: true }))} placeholder="tu_usuario" editable={!busy}
+          autoComplete="username" textContentType="username" returnKeyType="next" submitBehavior="submit"
+          onSubmitEditing={() => passwordRef.current?.focus()} hint={hintFor(availability, username)}
+          error={availability === 'taken' ? `@${username} ya está en uso.` : touched.username ? userProblem : null}
+          accessory={<AvailabilityMark state={userProblem ? 'idle' : availability} />} />
+        <CampoAcceso ref={passwordRef} label="Contraseña" password visible={showPassword}
+          onToggleVisible={() => setShowPassword(v => !v)} value={password} onChangeText={setPassword}
+          onBlur={() => setTouched(t => ({ ...t, password: true }))} editable={!busy}
+          placeholder={`Mínimo ${PASSWORD_MIN} caracteres`} autoComplete="new-password" textContentType="newPassword"
+          returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => confirmRef.current?.focus()}
+          hint={`Al menos ${PASSWORD_MIN} caracteres.`} error={touched.password ? passProblem : null} />
+        <CampoAcceso ref={confirmRef} label="Repetir contraseña" password visible={showPassword}
+          onToggleVisible={() => setShowPassword(v => !v)} value={confirm} onChangeText={setConfirm}
+          onBlur={() => setTouched(t => ({ ...t, confirm: true }))} editable={!busy} placeholder="Repetí tu contraseña"
+          autoComplete="new-password" textContentType="newPassword" onSubmitEditing={submit} returnKeyType="go"
+          error={touched.confirm ? confirmProblem : null} />
+      </View>
+      <View className="gap-3">
+        <FormError message={error} />
+        <AccionSocial label="Crear cuenta" onPress={submit} disabled={!canSubmit || !isSupabaseConfigured} busy={busy} style={{ alignSelf: 'flex-end' }} />
+        <View className="flex-row flex-wrap items-center justify-center gap-x-1">
+          <Text className="text-muted-foreground text-[15px]">¿Ya tenés cuenta?</Text>
+          <Pressable accessibilityRole="link" disabled={busy} accessibilityState={{ disabled: busy }}
+            onPress={() => router.replace('/sign-in')} className="min-h-11 items-center justify-center px-2 active:opacity-70">
+            <Text className="text-foreground text-[15px] font-medium">Iniciar sesión</Text>
+          </Pressable>
+        </View>
+      </View>
+    </PantallaAcceso>
   )
 }
 

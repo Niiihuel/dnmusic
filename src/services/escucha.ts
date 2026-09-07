@@ -232,6 +232,11 @@ export type DispositivoPresente = { deviceId: string; nombre: string }
  */
 export type Handoff = { destino: string }
 
+// Vive en el cliente (no en el módulo): Fast Refresh puede reiniciar este
+// archivo mientras Supabase todavía conserva sus canales por nombre.
+const CLAVE_CANALES = Symbol.for('dmusic.escucha.canales')
+type ConexionEscucha = { cerrar: () => Promise<void> }
+
 export function suscribirEscucha(
   userId: string,
   deviceId: string,
@@ -243,8 +248,16 @@ export function suscribirEscucha(
     /** El canal quedó suscripto: repedir el estado completo. */
     onListo: () => void
   },
-): { desuscribir: Unsubscribe; mandarA: (destino: string) => void } {
+): { desuscribir: Unsubscribe; mandarA: (destino: string) => void; listo: Promise<void> } {
   const supabase = getSupabase()
+  const cliente = supabase as typeof supabase & { [CLAVE_CANALES]?: Map<string, ConexionEscucha> }
+  const conexiones = cliente[CLAVE_CANALES] ??= new Map()
+  const topic = `escucha:${userId}`
+  const anterior = conexiones.get(topic)
+  const cierreAnterior = anterior?.cerrar()
+  let vivo = true
+  let channel: RealtimeChannel | null = null
+  let cierre: Promise<void> | null = null
 
   /* La presencia de cada key trae la metadata que se publicó con `track`; de
      ahí sale el nombre. Se toma el primer registro de cada key —un aparato es
@@ -255,37 +268,61 @@ export function suscribirEscucha(
       nombre: metas[0]?.nombre || 'otro dispositivo',
     }))
 
-  let channel: RealtimeChannel | null = supabase
-    .channel(`escucha:${userId}`, { config: { presence: { key: deviceId } } })
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'escuchas', filter: `user_id=eq.${userId}` },
-      (payload) => {
-        const escucha = escuchaFromRow(payload.new)
-        if (escucha) hooks.onFila(escucha)
-      },
-    )
-    .on('presence', { event: 'sync' }, () => {
-      if (channel) hooks.onPresentes(leerPresentes(channel))
-    })
-    .on('broadcast', { event: 'tomar' }, ({ payload }) => {
-      // Solo actúa el aparato nombrado: el mismo mensaje lo reciben todos.
-      if ((payload as Handoff)?.destino === deviceId) hooks.onTomar()
-    })
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        // El nombre viaja en la presencia: es lo que ve el selector del otro lado.
-        void channel?.track({ en: Date.now(), nombre: nombreDispositivo() })
-        hooks.onListo()
-      }
-    })
+  const listo = Promise.resolve().then(async () => {
+    await cierreAnterior
+    if (!vivo) return
+    // Recupera también un canal creado antes de cargar esta versión del módulo.
+    // Nunca se añaden callbacks a una instancia que ya está suscripta.
+    for (const viejo of supabase.getChannels().filter((c) => c.topic === `realtime:${topic}`)) {
+      await supabase.removeChannel(viejo)
+    }
+    if (!vivo) return
+    if (supabase.getChannels().some((c) => c.topic === `realtime:${topic}`)) {
+      throw new Error('No se pudo cerrar el canal anterior de escucha.')
+    }
+    channel = supabase.channel(topic, { config: { presence: { key: deviceId } } })
+    channel
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'escuchas', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (!vivo) return
+          const escucha = escuchaFromRow(payload.new)
+          if (escucha) hooks.onFila(escucha)
+        },
+      )
+      .on('presence', { event: 'sync' }, () => {
+        if (vivo && channel) hooks.onPresentes(leerPresentes(channel))
+      })
+      .on('broadcast', { event: 'tomar' }, ({ payload }) => {
+        if (vivo && (payload as Handoff)?.destino === deviceId) hooks.onTomar()
+      })
+      .subscribe((status) => {
+        if (vivo && status === 'SUBSCRIBED') {
+          void channel?.track({ en: Date.now(), nombre: nombreDispositivo() })
+          hooks.onListo()
+        }
+      })
+  })
+  const conexion: ConexionEscucha = {
+    cerrar: () => {
+      vivo = false // Ignorar eventos tardíos antes de esperar el leave de la red.
+      cierre ??= listo.catch(() => {}).then(async () => {
+        const viejo = channel
+        channel = null
+        if (viejo) await supabase.removeChannel(viejo)
+        if (conexiones.get(topic) === conexion) conexiones.delete(topic)
+      })
+      return cierre
+    },
+  }
+  conexiones.set(topic, conexion)
 
   return {
-    desuscribir: () => {
-      if (channel) void supabase.removeChannel(channel)
-      channel = null
-    },
+    listo,
+    desuscribir: () => { void conexion.cerrar().catch(() => {}) },
     mandarA: (destino: string) => {
+      if (!vivo) return
       void channel?.send({ type: 'broadcast', event: 'tomar', payload: { destino } })
     },
   }

@@ -1,140 +1,104 @@
 import { useState } from 'react'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { estiloDeFuente, FUENTES } from '../../src/lib/fuentes'
-import { volver } from '../../src/lib/volver'
-import { usePiso } from '../../src/state/shell'
-import { useMyProfile, setMyProfile } from '../../src/state/session'
-import { saveMyProfile } from '../../src/services/profile'
-import { avisar } from '../../src/state/aviso'
-import { mensajeError } from '../../src/lib/mensajeError'
-import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
+import { Hoja, useHojaModal, usePisoHoja } from '../../src/ui/Hoja'
 import { ICON_COLOR, IconCheck } from '../../src/ui/icons'
+import { CabeceraEdicionPerfil } from '../../src/ui/EditorDeCampo'
+import { TarjetaPerfil } from '../../src/ui/TarjetaPerfil'
 
-/** Vista previa local; se publica en todo el perfil al aplicar. */
+import { actualizarPerfilEdicion, useIniciarPerfilEdicion, usePerfilEdicion } from '../../src/state/perfilEdicion'
+
+/** La elección vive en un borrador hasta guardar; la tarjeta muestra el resultado real. */
 export default function ElegirFuente() {
   const router = useRouter()
-  const piso = usePiso(24)
+  const piso = usePisoHoja(24)
   const modal = useHojaModal()
-  const perfil = useMyProfile()
-  const [elegida, setElegida] = useState<string | null>(perfil?.fuente ?? null)
-  const [guardando, setGuardando] = useState(false)
+  const { height } = useWindowDimensions()
+  const perfil = useIniciarPerfilEdicion()
+  const { ocupado: guardando } = usePerfilEdicion()
+  const elegida = perfil?.fuente ?? null
+  const [ancho, setAncho] = useState(0)
+  const cerrar = () => router.dismissTo('/profile/editar')
+  const setBorrador = (fuente: string | null) => actualizarPerfilEdicion({ fuente })
   const muestra = perfil?.displayName || perfil?.username || 'Tu música, tu espacio'
-  const elegir = setElegida
-  function cancelar() {
-    if (!guardando) volver(router, '/profile')
-  }
-  async function guardar() {
-    if (guardando) return
-    setGuardando(true)
-    try {
-      setMyProfile(await saveMyProfile({ fuente: elegida }))
-      avisar('Tipografía aplicada a todo tu perfil')
-      volver(router, '/profile')
-    } catch (e) {
-      avisar(mensajeError(e), true)
-    } finally {
-      setGuardando(false)
-    }
-  }
+  const perfilVistaPrevia = perfil ? { ...perfil, fuente: elegida } : null
+  const columnas = ancho >= 740
 
   return (
-    <Hoja medida="contenido">
-      <ScrollView
+    <Hoja medida="llena" anchoMaximo={940} onCerrar={cerrar}>
+      <View
         className="bg-background"
-        style={{ flexGrow: 1 }}
-        contentContainerClassName="gap-4 px-5 pt-6"
-        contentContainerStyle={{
-          paddingBottom: modal ? 24 : piso,
-          maxWidth: ANCHO_HOJA,
-          width: '100%',
-          alignSelf: 'center',
-        }}
+        // La ruta nativa usa fitToContents: necesita alto explícito para alojar el scroll.
+        style={Platform.OS === 'web' ? { flex: 1 } : { height: Math.min(720, Math.round(height * 0.82)) }}
+        onLayout={(e) => setAncho(e.nativeEvent.layout.width)}
       >
-        <View className="items-center gap-1">
-          <Text className="text-foreground text-[17px] font-bold">La tipografía de tu perfil</Text>
-          <Text className="text-muted-foreground text-center text-[12px] leading-4">
-            Una misma fuente para tu nombre, biografía, canciones y mosaico.
-          </Text>
-        </View>
-
-        <View className="overflow-hidden rounded-2xl bg-card">
-          <Opcion
-            nombre="Del sistema"
-            detalle="La de toda la app"
-            muestra={muestra || 'Del sistema'}
-            estilo={null}
-            elegida={elegida === null}
-            onPress={() => elegir(null)}
-          />
-          {FUENTES.map((f) => (
-            <Opcion
-              key={f.id}
-              nombre={f.nombre}
-              detalle={f.detalle}
-              muestra={muestra || f.nombre}
-              estilo={estiloDeFuente(f.id, 20)}
-              elegida={elegida === f.id}
-              onPress={() => elegir(f.id)}
-            />
-          ))}
-        </View>
-
-        <View className="flex-row items-center justify-between gap-3">
-          <Pressable
-            accessibilityRole="button"
-            onPress={cancelar}
-            className="h-11 items-center justify-center rounded-full bg-muted px-5 active:opacity-80"
-          >
-            <Text className="text-foreground text-[14px] font-semibold">Cancelar</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            disabled={guardando}
-            onPress={() => void guardar()}
-            className="h-11 min-w-[120px] items-center justify-center rounded-full bg-primary px-6 active:opacity-80"
-          >
-            <Text className="text-primary-foreground text-[14px] font-bold">
-              {guardando ? 'Guardando…' : 'Aplicar al perfil'}
-            </Text>
-          </Pressable>
-        </View>
-      </ScrollView>
+        <CabeceraEdicionPerfil
+          titulo="Tipografía"
+          ocupado={guardando}
+          onCancelar={cerrar}
+          rotuloVolver="Listo"
+        />
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 20, paddingBottom: (modal ? 24 : piso) }}
+        >
+          <View style={{ flexDirection: columnas ? 'row' : 'column', gap: 28, alignItems: columnas ? 'flex-start' : 'stretch' }}>
+            <View style={{ width: columnas ? 340 : '100%', maxWidth: 380, alignSelf: columnas ? 'flex-start' : 'center', gap: 8 }}>
+              <Text className="text-foreground text-[17px] font-semibold">Vista previa</Text>
+              <View style={{ paddingHorizontal: 16, paddingVertical: 24 }}>
+                {perfilVistaPrevia ? <TarjetaPerfil perfil={perfilVistaPrevia} animado={false} /> : (
+                  <Text className="text-muted-foreground text-[15px]">Cargando tu perfil…</Text>
+                )}
+              </View>
+            </View>
+            <View style={{ flex: columnas ? 1 : undefined, minWidth: 0, gap: 16 }}>
+              <Text className="text-muted-foreground text-[15px] leading-5">
+                La fuente se aplica a tu nombre, biografía, canciones y mosaico.
+              </Text>
+              <View className="overflow-hidden rounded-2xl bg-card">
+                <Opcion
+                  nombre="Del sistema" detalle="La de toda la app" muestra={muestra}
+                  estilo={null} elegida={elegida === null} desactivada={guardando || !perfil}
+                  onPress={() => setBorrador(null)}
+                />
+                {FUENTES.map((f) => (
+                  <Opcion
+                    key={f.id} nombre={f.nombre} detalle={f.detalle} muestra={muestra}
+                    estilo={estiloDeFuente(f.id, 20)} elegida={elegida === f.id}
+                    desactivada={guardando || !perfil} onPress={() => setBorrador(f.id)}
+                  />
+                ))}
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      </View>
     </Hoja>
   )
 }
 
-/** Una fila: lo tuyo escrito en esa fuente, y el nombre chiquito abajo. */
-function Opcion({
-  nombre,
-  detalle,
-  muestra,
-  estilo,
-  elegida,
-  onPress,
-}: {
+function Opcion({ nombre, detalle, muestra, estilo, elegida, desactivada, onPress }: {
   nombre: string
   detalle: string
   muestra: string
   estilo: ReturnType<typeof estiloDeFuente>
   elegida: boolean
+  desactivada: boolean
   onPress: () => void
 }) {
   return (
     <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Fuente ${nombre}`}
-      accessibilityState={{ selected: elegida }}
+      accessibilityRole="radio"
+      accessibilityLabel={`Fuente ${nombre}. ${detalle}`}
+      accessibilityState={{ checked: elegida, disabled: desactivada }}
+      disabled={desactivada}
       onPress={onPress}
-      className={`flex-row items-center gap-3 px-4 py-3 ${elegida ? 'bg-muted' : 'active:bg-muted'}`}
+      className={`min-h-11 flex-row items-center gap-3 px-4 py-3 ${elegida ? 'bg-muted' : 'active:bg-muted'}`}
     >
       <View className="min-w-0 flex-1 gap-0.5">
-        <Text className="text-foreground text-[20px] font-bold" numberOfLines={1} style={estilo}>
-          {muestra}
-        </Text>
-        <Text className="text-muted-foreground text-[12px]">
-          {nombre} · {detalle}
-        </Text>
+        <Text className="text-foreground text-[20px] font-bold" numberOfLines={1} style={estilo}>{muestra}</Text>
+        <Text className="text-muted-foreground text-[13px]">{nombre} · {detalle}</Text>
       </View>
       {elegida ? <IconCheck size={16} color={ICON_COLOR.foreground} /> : null}
     </Pressable>

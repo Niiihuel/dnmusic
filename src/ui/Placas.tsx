@@ -4,6 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient'
 import Animated, { useAnimatedStyle } from 'react-native-reanimated'
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg'
 import { alfa, estrella, Movimiento, TONO, useCiclo } from './marcoBase'
+import { esDiscord } from '../services/discordCatalogo'
+import { DiscordPlaca } from './DiscordCosmeticos'
 
 /**
  * Las placas de nombre: la decoración **detrás del nombre**, como las
@@ -66,6 +68,7 @@ export function PlacaDeNombre({
 }) {
   const placa = placaDe(id)
   const [ancho, setAncho] = useState(0)
+  if (esDiscord(id)) return <DiscordPlaca id={id} animado={animado} radio={radio}>{children}</DiscordPlaca>
   if (!placa) return <>{children}</>
   const [a, b] = placa.tonos
   return (

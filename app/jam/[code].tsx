@@ -1,17 +1,20 @@
+import { ScrollArea as ScrollView } from '../../src/ui/ScrollArea'
 import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
-  ScrollView,
   Pressable,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { usePreventRemove } from 'expo-router/react-navigation'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { verJam, type VistaJam } from '../../src/services/jam'
 import { unirseAJam, useJam } from '../../src/state/jam'
 import { abrirVista } from '../../src/state/playback'
+import { CabeceraSocial, AccionSocial } from '../../src/ui/Social'
+import { usePiso } from '../../src/state/shell'
 import { Avatar } from '../../src/ui/Avatar'
 import { PANEL_PX } from '../../src/ui/NowPlayingBar'
 import { ICON_COLOR, IconCheck, IconUsers } from '../../src/ui/icons'
@@ -30,6 +33,7 @@ export default function EntrarAlJam() {
   const { code } = useLocalSearchParams<{ code: string }>()
   const jam = useJam()
   const { width } = useWindowDimensions()
+  const piso = usePiso(24)
 
   /**
    * A dónde va quien ya está adentro.
@@ -54,6 +58,7 @@ export default function EntrarAlJam() {
   const [vista, setVista] = useState<VistaJam | null | 'cargando'>(code ? 'cargando' : null)
   const [salida, setSalida] = useState<'propia' | 'host'>('propia')
   const [entrando, setEntrando] = useState(false)
+  usePreventRemove(entrando, () => {})
 
   useEffect(() => {
     let vivo = true
@@ -69,17 +74,16 @@ export default function EntrarAlJam() {
   /* Ya adentro de este Jam —o de otro—: la invitación no tiene nada que
      ofrecer, y quedarse acá sería una puerta que da a donde ya estás. */
   useEffect(() => {
-    if (jam && vista !== 'cargando' && vista?.id === jam.id) {
+    if (!entrando && jam && vista !== 'cargando' && vista?.id === jam.id) {
       alJam()
     }
-  }, [jam, vista, alJam])
+  }, [jam, vista, alJam, entrando])
 
   async function entrar() {
     if (!code || entrando) return
     setEntrando(true)
-    const ok = await unirseAJam(code, salida)
-    setEntrando(false)
-    if (ok) alJam()
+    try { await unirseAJam(code, salida) }
+    finally { setEntrando(false) }
   }
 
   if (vista === 'cargando') {
@@ -113,6 +117,7 @@ export default function EntrarAlJam() {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
+      <CabeceraSocial titulo="Invitación a un Jam" ocupado={entrando} onCerrar={() => router.replace('/')} />
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,
@@ -120,10 +125,10 @@ export default function EntrarAlJam() {
           justifyContent: 'center',
           gap: 24,
           padding: 24,
-          paddingBottom: 120,
+          paddingBottom: piso,
         }}
       >
-        <View className="items-center gap-3">
+        <View className="w-full max-w-[420px] items-center gap-3">
           <Avatar name={nombreHost} path={vista.hostAvatarPath} size={72} />
           <View className="items-center gap-1">
             <Text className="text-foreground text-center text-xl font-bold">
@@ -157,28 +162,8 @@ export default function EntrarAlJam() {
         </View>
 
         <View className="w-full max-w-[420px] gap-3">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Unirme al Jam"
-            onPress={() => void entrar()}
-            disabled={entrando}
-            className="items-center rounded-full bg-primary px-5 py-3.5 active:opacity-80"
-          >
-            {entrando ? (
-              <ActivityIndicator color="#121212" />
-            ) : (
-              <Text className="text-primary-foreground text-[15px] font-semibold">
-                Unirme al Jam
-              </Text>
-            )}
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.replace('/')}
-            className="items-center px-5 py-2 active:opacity-60"
-          >
-            <Text className="text-muted-foreground text-[13px]">Ahora no</Text>
-          </Pressable>
+          <AccionSocial label="Unirme al Jam" onPress={() => void entrar()} busy={entrando} />
+          <AccionSocial label="Ahora no" secundaria onPress={() => router.replace('/')} disabled={entrando} />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -207,8 +192,8 @@ function Opcion({
       }`}
     >
       <View className="min-w-0 flex-1 gap-0.5">
-        <Text className="text-foreground text-[14px] font-semibold">{titulo}</Text>
-        <Text className="text-muted-foreground text-[12px] leading-4">{detalle}</Text>
+        <Text className="text-foreground text-[15px] font-semibold">{titulo}</Text>
+        <Text className="text-muted-foreground text-[13px] leading-5">{detalle}</Text>
       </View>
       {activa ? <IconCheck size={17} color={ICON_COLOR.foreground} /> : null}
     </Pressable>

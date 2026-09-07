@@ -1,3 +1,6 @@
+import { BarraHerramientasMosaico } from '../../src/ui/BarraHerramientasMosaico'
+import { buscarVitrinaEdicion, esVitrinaTemporal } from '../../src/state/mosaicoEdicion'
+import { useMosaicoPerfil } from '../../src/ui/useMosaicoPerfil'
 import { FuentePerfil, TextoPerfil as Text } from '../../src/ui/FuentePerfil'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native'
@@ -7,14 +10,13 @@ import type { Tema } from '../../src/lib/tema'
 import { volver } from '../../src/lib/volver'
 import { fetchProfile } from '../../src/services/profile'
 import { fetchShowcase, type Showcase } from '../../src/services/showcases'
-import { useMyProfile } from '../../src/state/session'
+import { iniciarPerfilEdicion, usePerfilBorrador } from '../../src/state/perfilEdicion'
 import { useChromeH, usePiso } from '../../src/state/shell'
 import { editarBorrador } from '../../src/state/vitrinaBorrador'
-import { BotonVidrio, Glass } from '../../src/ui/Glass'
 import { Panel } from '../../src/ui/Panel'
 import { Vitrinas } from '../../src/ui/PerfilPublico'
 import { Vacio } from '../../src/ui/Vacio'
-import { ICON_COLOR, IconBack, IconGrilla, IconPencil, IconPlus } from '../../src/ui/icons'
+import { ICON_COLOR, IconBack, IconGrilla, IconPencil } from '../../src/ui/icons'
 
 const MAX_W = 520
 /** Alto de la barra de armado, más su respiro sobre lo que flota debajo. */
@@ -52,19 +54,28 @@ export default function SubspaceScreen() {
     armar?: string
   }>()
   const router = useRouter()
-  const yo = useMyProfile()
-  const propio = !!owner && !!yo && yo.userId === owner
   const chrome = useChromeH()
   /* Recién creado se entra armando (`?armar=1`): la pieza está vacía y lo
      único que hay para hacer es llenarla. */
   const [armando, setArmando] = useState(armar === '1')
+  const yo = usePerfilBorrador()
+  const propio = !!owner && !!yo && yo.userId === owner
+  useEffect(() => { if (armando && propio && yo) iniciarPerfilEdicion(yo) }, [armando, propio, yo])
+  const entrarEdicion = () => {
+    if (!propio || !yo) return
+    iniciarPerfilEdicion(yo)
+    setArmando(true)
+  }
   /* Mientras se arrastra una pieza el scroll se congela: un ScrollView vivo
      abajo del dedo se pelea con el gesto. */
   const [arrastrando, setArrastrando] = useState(false)
-  const piso = usePiso(24) + (armando ? ALTO_BARRA : 0)
+  const pisoBase = usePiso(24)
 
   /* Cambia al volver del editor, para releer lo que se haya tocado. */
   const [recarga, setRecarga] = useState(0)
+  const mosaico = useMosaicoPerfil(propio && id ? owner! : null, id ?? null, recarga, () => setRecarga(n => n + 1))
+  const piso = pisoBase + (armando ? ALTO_BARRA : 0)
+
 
   /*
    * La pieza en sí, para el título. `undefined` es «todavía no sé» y `null`
@@ -75,15 +86,16 @@ export default function SubspaceScreen() {
   useEffect(() => {
     if (!id) return
     let vivo = true
+    if (propio && owner && esVitrinaTemporal(id)) return
     fetchShowcase(id)
       .then((p) => vivo && setCargada(p?.kind === 'subspace' ? p : null))
       .catch(() => vivo && setCargada(null))
     return () => {
       vivo = false
     }
-  }, [id, recarga])
+  }, [id, recarga, propio, owner])
   /* Sin id en la ruta no hay nada que pedir: es «no hay» de entrada. */
-  const pieza = id ? cargada : null
+  const pieza = id ? (propio && owner && mosaico.enEdicionGlobal ? buscarVitrinaEdicion(owner, id) ?? cargada : cargada) : null
 
   /* El tema del dueño, si es otro. El propio sale de la sesión. */
   const [fuenteAjena, setFuenteAjena] = useState<string | null>(null)
@@ -120,7 +132,7 @@ export default function SubspaceScreen() {
 
   /** El lápiz de una pieza: se copia al borrador y se abre su editor. */
   function abrirEditor(v: Showcase) {
-    editarBorrador(v)
+    editarBorrador(v, id ?? null)
     router.push('/profile/vitrina')
   }
 
@@ -141,33 +153,15 @@ export default function SubspaceScreen() {
   )
 
   /*
-   * La barra de armado: el «+» y «Hecho». Es la del perfil sin el botón del
-   * tema —el tema es del perfil entero—, de vidrio porque por detrás pasan
-   * las piezas. El «+» es el único blanco pleno: es lo principal que hay para
-   * hacer mientras se arma.
+   * Herramientas compactas, agregar y volver al editor central.
+   * Todo lo armado sigue en el borrador hasta confirmar allí.
    */
   const barraDeArmado = (
-    <Glass radius={999} style={{ height: 56, paddingHorizontal: 8, justifyContent: 'center' }}>
-      <View className="flex-row items-center gap-3">
-        <BotonVidrio
-          label="Agregar una pieza"
-          onPress={() => id && router.push({ pathname: '/profile/agregar', params: { parent: id } })}
-          radius={999}
-          tint={ICON_COLOR.foreground}
-          style={{ width: 48, height: 48 }}
-        >
-          <IconPlus size={22} color={ICON_COLOR.onPrimary} strokeWidth={2.4} />
-        </BotonVidrio>
-        <BotonVidrio
-          label="Terminar de armar"
-          onPress={() => setArmando(false)}
-          radius={999}
-          style={{ height: 40, paddingHorizontal: 16 }}
-        >
-          <Text className="text-foreground text-[13px] font-bold">Hecho</Text>
-        </BotonVidrio>
-      </View>
-    </Glass>
+    <BarraHerramientasMosaico ocupado={mosaico.guardando || arrastrando}
+      onTema={() => router.push({ pathname: '/profile/tema', params: { para: 'perfil' } })}
+      onFuente={() => router.push('/profile/fuente')}
+      onAgregar={() => { if (id) router.push({ pathname: '/profile/agregar', params: { parent: id } }) }}
+      onEditor={() => { setArmando(false); router.dismissTo('/profile/editar') }} />
   )
 
   return (
@@ -202,7 +196,7 @@ export default function SubspaceScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Armar el sub-space"
-                  onPress={() => setArmando(true)}
+                  onPress={entrarEdicion}
                   className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
                 >
                   <IconPencil size={17} color={ICON_COLOR.foreground} />
@@ -232,13 +226,14 @@ export default function SubspaceScreen() {
                 <View className="w-full" style={{ maxWidth: MAX_W }}>
                   <Vitrinas
                     ownerId={owner}
+                    borrador={propio ? mosaico : undefined}
                     parentId={id}
                     recarga={recarga}
                     onCambio={() => setRecarga((n) => n + 1)}
                     editando={armando}
                     temaGlobal={temaGlobal}
                     onEditar={propio ? abrirEditor : undefined}
-                    onEntrarEdicion={propio ? () => setArmando(true) : undefined}
+                    onEntrarEdicion={propio ? entrarEdicion : undefined}
                     onArrastre={setArrastrando}
                     reaccionable={!propio}
                     vacio={vacio}

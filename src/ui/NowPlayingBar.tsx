@@ -1,10 +1,9 @@
 import { useRef, useState } from 'react'
 import { useRouter } from 'expo-router'
-import Animated, { useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated'
 import { ActivityIndicator, Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { artworkSource } from '../lib/artwork'
-import { useColapsada, useTabsVisible } from '../state/shell'
+import { useTabsVisible } from '../state/shell'
 import {
   canOpenPlaylist,
   posicionSV,
@@ -32,9 +31,13 @@ import { Menu, type MenuItem } from './Menu'
 import { SeekBar, formatClock } from './SeekBar'
 import { BotonAleatorio, BotonRepetir } from './Transport'
 import { BotonMeGusta } from './BotonMeGusta'
+import { EnlaceArtista } from './EnlaceArtista'
+import { BotonLateral } from './CabeceraLateral'
 import {
   ICON_COLOR,
   IconClose,
+  IconChevronUp,
+  IconChevronDown,
   IconMusic,
   IconNext,
   IconDispositivo,
@@ -99,10 +102,12 @@ function lineaEstado({
   espejoEn,
   error,
   artist,
+  artistId,
 }: {
   espejoEn: string | null
   error: string | null
   artist: string
+  artistId?: string | null
 }) {
   if (error) {
     return (
@@ -121,11 +126,7 @@ function lineaEstado({
       </View>
     )
   }
-  return (
-    <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
-      {artist}
-    </Text>
-  )
+  return <EnlaceArtista id={artistId} nombre={artist} size={11} />
 }
 
 export function NowPlayingBar({
@@ -166,20 +167,8 @@ export function NowPlayingBar({
    * «Sonando en tu computadora» es exactamente eso.
    */
   const espejoEn = useEscuchaEspejoNombre()
-  /*
-   * La píldora de escritorio se corre del camino cuando estás recorriendo.
-   *
-   * `colapsada` es el mismo estado que pliega la cáscara en el teléfono —lo
-   * escribe `useColapso` desde las listas, que son las mismas de los dos
-   * lados—: bajando se pliega, subiendo vuelve. Acá no había nadie
-   * escuchándolo, así que la barra tapaba el pie de los paneles laterales
-   * mientras se leía una lista larga.
-   *
-   * Con el puntero encima vuelve entera, sin esperar a que subas: acercarse a
-   * la barra **es** querer usarla. Por eso el estado local del hover.
-   */
-  const colapsada = useColapsada()
-  const [sobre, setSobre] = useState(false)
+  /** El tamaño cambia únicamente al elegirlo, nunca al recorrer o ajustar volumen. */
+  const [compacto, setCompacto] = useState(false)
   /* Click derecho sobre el reproductor: las mismas opciones que los tres
      puntos, que acá son el conjunto más rico de la app (Jam, la cola, en qué
      aparato suena). Es lo que hacen los reproductores de escritorio. */
@@ -509,7 +498,7 @@ export function NowPlayingBar({
           <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
             {current.title}
           </Text>
-          {lineaEstado({ espejoEn, error, artist: current.artist })}
+          {lineaEstado({ espejoEn, error, artist: current.artist, artistId: current.artistId })}
         </View>
         {/* El corazón, pegado a lo que suena: es un juicio sobre la canción,
             no un control de transporte — por eso va acá y no con el play. */}
@@ -631,25 +620,14 @@ export function NowPlayingBar({
    * volumen no es lastre y nunca se suelta: en escritorio es la única perilla
    * que hay. El play sigue siendo lo más brillante — el acento de siempre.
    */
-  /*
-   * Compacta: lo mínimo para saber qué suena, frenarlo y bajarle el volumen
-   * —tapa, título, transporte y la perilla—. Todo lo demás (posición, vistas,
-   * aleatorio, repetir) espera a que vuelvas. Es la misma idea del plegado de
-   * iOS llevada a la píldora: no desaparece, **ocupa menos**.
-   *
-   * Solo en web/escritorio: en nativo el vidrio se aplica una sola vez y
-   * cambiarle el tamaño lo apagaría para siempre (ver `ui/Cascara`). En web el
-   * material es `backdrop-filter`, que se redimensiona sin problema — lo único
-   * prohibido ahí es animar opacidad en un ancestro (ver `ui/Glass`), y acá no
-   * se toca ninguna.
-   */
-  const compacto = ES_WEB && colapsada && !sobre
+  /* El modo compacto conserva transporte y volumen; sólo el botón explícito
+     cambia de modo. El scroll y el hover no alteran su ancho ni sus controles. */
   const conSeek = width >= 980 && !compacto
   const conVistas = width >= 1200 && !compacto
 
   return (
-    <View className="items-center px-3" style={{ paddingBottom: 12 + insets.bottom }}>
-      <AnchoPildora compacto={compacto} onSobre={setSobre}>
+    <View pointerEvents="box-none" className="items-center px-3" style={{ paddingBottom: 12 + insets.bottom }}>
+      <AnchoPildora compacto={compacto}>
       <Glass
         radius={32}
         style={{
@@ -673,7 +651,7 @@ export function NowPlayingBar({
               <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
                 {current.title}
               </Text>
-              {lineaEstado({ espejoEn, error, artist: current.artist })}
+              {lineaEstado({ espejoEn, error, artist: current.artist, artistId: current.artistId })}
             </View>
             {/* El corazón, junto a lo que suena — misma regla que en la
                 franja sin vidrio. Compacta no entra: lo que queda es saber qué
@@ -779,6 +757,8 @@ export function NowPlayingBar({
                 ventana angosta —y a la píldora colapsada— sin ninguna forma de
                 bajar la música. Encogido, pero siempre a la vista. */}
             <Volume value={volume} onChange={setVolume} angosto={compacto || !conVistas} />
+            {ES_WEB ? <BotonLateral label={compacto ? 'Expandir reproductor' : 'Contraer reproductor'} onPress={() => setCompacto(v => !v)}
+              icono={compacto ? <IconChevronUp size={17} color={ICON_COLOR.muted} /> : <IconChevronDown size={17} color={ICON_COLOR.muted} />} /> : null}
             <Menu items={menu} label={`Opciones de ${current.title}`} size={17} />
           </View>
         </View>
@@ -788,32 +768,9 @@ export function NowPlayingBar({
   )
 }
 
-/** Lo ancha que está la píldora, animado, y el hover que la trae de vuelta. */
-const RESORTE_ANCHO = { damping: 26, stiffness: 190, mass: 0.9, overshootClamping: true }
-
-function AnchoPildora({
-  compacto,
-  onSobre,
-  children,
-}: {
-  compacto: boolean
-  onSobre: (sobre: boolean) => void
-  children: React.ReactNode
-}) {
-  /* El ancho va animado y no de un salto: la píldora se encoge hacia el centro
-     como una pieza que se acomoda. Sin rebote, como el resto del sistema. */
-  const p = useDerivedValue(() => withSpring(compacto ? 1 : 0, RESORTE_ANCHO), [compacto])
-  const ancho = useAnimatedStyle(() => ({ maxWidth: 1080 - p.value * (1080 - 520) }))
-
-  return (
-    <Animated.View
-      onPointerEnter={() => onSobre(true)}
-      onPointerLeave={() => onSobre(false)}
-      style={[{ width: '100%', alignSelf: 'center' }, ancho]}
-    >
-      {children}
-    </Animated.View>
-  )
+/** Ancho explícito: el volumen y el transporte no se mueven al recibir hover o foco. */
+function AnchoPildora({ compacto, children }: { compacto: boolean; children: React.ReactNode }) {
+  return <View style={{ width: '100%', maxWidth: compacto ? 640 : 1080, alignSelf: 'center' }}>{children}</View>
 }
 
 /** Botón que enciende y apaga una vista del panel derecho. */

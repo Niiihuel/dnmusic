@@ -1,159 +1,62 @@
-import { useState } from 'react'
-import { Image, KeyboardAvoidingView, Platform, Pressable, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { LinearGradient } from 'expo-linear-gradient'
+import { useRef, useState } from 'react'
+import { Pressable, Text, TextInput, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { signIn } from '../src/services/auth'
 import { isSupabaseConfigured } from '../src/lib/supabase'
-import { ICON_COLOR, IconAt } from '../src/ui/icons'
-import { Field, PasswordField } from '../src/ui/Field'
-import { FormError, PrimaryButton } from '../src/ui/Button'
+import { CampoAcceso, PantallaAcceso } from '../src/ui/Acceso'
+import { FormError } from '../src/ui/Button'
+import { AccionSocial } from '../src/ui/Social'
 
-/**
- * Login privado, compacto y completamente acromático.
- *
- * **Sin tarjeta, a propósito.** El formulario estaba adentro de un `bg-card`
- * con su propio título —«Iniciar sesión», debajo de otro título que ya decía a
- * qué viniste— y eso es la forma genérica de toda app con dashboard: una caja
- * porque la pantalla tiene varias cosas y hay que separarlas. Acá la pantalla
- * tiene UNA cosa. Cuando el formulario es todo el contenido, la caja es marco
- * sin cuadro: **la pantalla es la tarjeta.**
- *
- * La separación por luminancia no se pierde, se reparte: los campos (`muted`)
- * se apoyan directo sobre el fondo, que es exactamente el contraste que antes
- * quedaba diluido en el escalón intermedio de la caja. Y la integración con el
- * fondo la hace una luz de arriba — un degradado apenas más claro que el
- * negro, que le da profundidad a la mitad superior sin dibujar un solo borde.
- * Es el mismo recurso del visor de mensajes: la jerarquía por luz, nunca por
- * línea (docs/DESIGN.md).
- */
 export default function SignIn() {
   const router = useRouter()
+  const passwordRef = useRef<TextInput>(null)
+  const submitting = useRef(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const canSubmit = username.trim().length > 0 && password.length > 0 && !busy
+  const canSubmit = isSupabaseConfigured && username.trim().length > 0 && password.length > 0 && !busy
 
   async function submit() {
-    if (!canSubmit) return
+    if (!canSubmit || submitting.current) return
+    submitting.current = true
     setBusy(true)
     setError(null)
     try {
       await signIn(username, password)
     } catch (e) {
+      submitting.current = false
       setError(mapAuthError(e))
       setBusy(false)
     }
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
-      {/* La luz de arriba. Del gris de `muted` al fondo, sin llegar nunca al
-          blanco: el blanco es el acento y acá el acento es el botón. */}
-      <LinearGradient
-        pointerEvents="none"
-        colors={['#222222', '#121212']}
-        locations={[0, 1]}
-        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 480 }}
-      />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        className="flex-1"
-      >
-        <View className="flex-1 items-center justify-center px-6 py-8">
-          <View className="w-full max-w-[380px] gap-9">
-            {/*
-             * El ícono de la app, no una nota genérica en un redondel.
-             *
-             * Es el mismo `assets/icon.png` que se ve en la pantalla de inicio
-             * del teléfono, así que abrir la app y llegar acá es reconocer la
-             * misma cosa. Redondeado como un ícono de iOS —el sistema recorta
-             * el suyo igual— y sin fondo gris debajo: la marca ya trae el suyo.
-             */}
-            <View className="items-center gap-4">
-              <Image
-                source={require('../assets/icon.png')}
-                /* Por `style` y no por clase: en web, RNW escribe el tamaño
-                   intrínseco del asset (1024px) como estilo inline y pisa
-                   cualquier className (docs/DESIGN.md). */
-                style={{ width: 64, height: 64, borderRadius: 14 }}
-                accessibilityLabel="dnmusic"
-              />
-              {/* Solo el título, sin el subtítulo descriptivo que había debajo.
-                  El login tiene una sola cosa que hacer y el logo ya dice a
-                  dónde llegaste; una línea que explica la app es texto que nadie
-                  lee dos veces. */}
-              <Text className="text-center text-foreground text-2xl font-bold">
-                Volvé a tu música
-              </Text>
-            </View>
-
-            {/* gap-3 y no gap-1: sin la etiqueta ni el pie de cada campo, el
-                aire entre los dos lo tiene que poner el contenedor. */}
-            <View className="gap-3">
-              {!isSupabaseConfigured ? (
-                <View className="mb-3 rounded-lg bg-muted p-3">
-                  <Text className="text-muted-foreground text-xs leading-5">
-                    Falta configurar Supabase. Copiá `.env.example` a `.env.local` y completá
-                    las variables EXPO_PUBLIC_SUPABASE_*.
-                  </Text>
-                </View>
-              ) : null}
-
-              {/* Sin etiqueta arriba: el placeholder ya dice qué va en cada
-                  campo, y dos son suficientes para no necesitar rótulos. Es el
-                  modo mínimo de `Field`. */}
-              <Field
-                icon={<IconAt size={18} color={ICON_COLOR.muted} />}
-                value={username}
-                onChangeText={setUsername}
-                placeholder="Usuario"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="username"
-                textContentType="username"
-                returnKeyType="next"
-              />
-
-              <PasswordField
-                visible={showPassword}
-                onToggleVisible={() => setShowPassword((v) => !v)}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Contraseña"
-                autoComplete="current-password"
-                textContentType="password"
-                onSubmitEditing={submit}
-                returnKeyType="go"
-              />
-            </View>
-
-            <View className="gap-5">
-              <FormError message={error} />
-              {/* La misma píldora del registro: con vidrio en iOS 26, blanca
-                  sólida en el resto. Antes esta pantalla la dibujaba a mano. */}
-              <PrimaryButton label="Entrar" onPress={submit} disabled={!canSubmit} busy={busy} />
-
-              <View className="flex-row items-center justify-center gap-1.5">
-                <Text className="text-muted-foreground text-[13px]">¿No tenés cuenta?</Text>
-                <Pressable
-                  accessibilityRole="link"
-                  onPress={() => router.replace('/sign-up')}
-                  className="active:opacity-70"
-                >
-                  <Text className="text-foreground text-[13px] font-semibold underline">
-                    Creá una
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
+    <PantallaAcceso titulo="Iniciar sesión" detalle="Volvé a tu música.">
+      {!isSupabaseConfigured ? <FormError message="El acceso no está disponible por ahora." /> : null}
+      <View className="gap-4">
+        <CampoAcceso label="Usuario" value={username} onChangeText={setUsername} placeholder="Tu usuario"
+          editable={!busy} autoComplete="username" textContentType="username" returnKeyType="next"
+          submitBehavior="submit" onSubmitEditing={() => passwordRef.current?.focus()} />
+        <CampoAcceso ref={passwordRef} label="Contraseña" password visible={showPassword}
+          onToggleVisible={() => setShowPassword(v => !v)} value={password} onChangeText={setPassword}
+          editable={!busy} placeholder="Tu contraseña" autoComplete="current-password" textContentType="password"
+          onSubmitEditing={submit} returnKeyType="go" />
+      </View>
+      <View className="gap-3">
+        <FormError message={error} />
+        <AccionSocial label="Iniciar sesión" onPress={submit} disabled={!canSubmit || !isSupabaseConfigured} busy={busy} style={{ alignSelf: 'flex-end' }} />
+        <View className="flex-row flex-wrap items-center justify-center gap-x-1">
+          <Text className="text-muted-foreground text-[15px]">¿No tenés cuenta?</Text>
+          <Pressable accessibilityRole="link" disabled={busy} accessibilityState={{ disabled: busy }}
+            onPress={() => router.replace('/sign-up')} className="min-h-11 items-center justify-center px-2 active:opacity-70">
+            <Text className="text-foreground text-[15px] font-medium">Crear cuenta</Text>
+          </Pressable>
         </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </View>
+    </PantallaAcceso>
   )
 }
 

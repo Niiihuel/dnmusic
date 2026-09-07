@@ -81,13 +81,20 @@ html[data-theme='light'] {
  * sigue siendo cómodo para agarrarla con el mouse, pero se ve fino.
  */
 * {
-  scrollbar-width: thin;
+  scrollbar-width: auto;
   scrollbar-color: rgb(var(--color-border)) transparent;
 }
 
+/* Chromium ignora los pseudoelementos cuando scrollbar-color/width tienen
+   valores personalizados. Auto activa nuestro pulgar y elimina sus botones.
+   Las clases de RN web con scrollbar-width:none siguen ocultando el indicador. */
+@supports selector(::-webkit-scrollbar) {
+  * { scrollbar-color: auto; }
+}
+
 ::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 ::-webkit-scrollbar-track {
@@ -104,7 +111,12 @@ html[data-theme='light'] {
  * referente tampoco. Sin esto, el `display: none` no alcanza a heredarse: hay
  * que apagar los cuatro (arriba/abajo, y los dobles de cada punta).
  */
-::-webkit-scrollbar-button {
+::-webkit-scrollbar-button,
+::-webkit-scrollbar-button:single-button,
+::-webkit-scrollbar-button:double-button,
+::-webkit-scrollbar-button:start,
+::-webkit-scrollbar-button:end {
+  -webkit-appearance: none;
   display: none;
   width: 0;
   height: 0;
@@ -141,17 +153,27 @@ textarea:focus {
   outline: none;
 }
 
-/*
- * Y en el resto de los controles tampoco: el contorno de foco del navegador
- * —amarillo en Chrome, azul en Safari— es el único color que quedaba en la
- * pantalla, y aparecía al tocar Tab sobre una fila o un botón y se quedaba ahí.
- * La app marca lo activo por luminancia (`docs/DESIGN.md`), no con un anillo
- * del sistema. Es una decisión de producto tomada a sabiendas del costo para
- * quien navega solo con teclado.
- */
-*:focus,
-*:focus-visible {
-  outline: none !important;
+/* Controles habilitados: una señal de hover y foco común, sin seleccionar
+   SVG ni imágenes decorativas. Los botones vacíos son velos/hitboxes, no iconos.
+   El velo se compone sobre el color existente; no cambia medidas ni desplaza texto. */
+[data-dn-hover='inverse'] { --dn-hover-color: var(--color-primary-foreground); }
+@media (hover: hover) and (pointer: fine) {
+  :is(button, a[href], [role='link'], [role='button'], [role='menuitem'], [role='tab'], [role='radio'], [role='switch'], [role='checkbox']):not(:empty):not(input):not(textarea):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([data-dn-hover='none']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *):not(:has(:is(button, a[href], [role='link'], [role='button'], [role='menuitem']):hover)):hover {
+    background-image: linear-gradient(rgb(var(--dn-hover-color, var(--color-foreground)) / 0.08), rgb(var(--dn-hover-color, var(--color-foreground)) / 0.08));
+  }
+}
+/* El foco de teclado sigue visible en enlaces y controles; el mouse no deja
+   un anillo. Los TextInput conservan su indicador dentro del campo. */
+:is(button, a[href], [role='link'], [role='button'], [role='menuitem'], [role='tab'], [role='radio'], [role='switch'], [role='checkbox'], [role='scrollbar']):focus:not(:focus-visible) {
+  outline: none;
+}
+:is(button, a[href], [role='link'], [role='button'], [role='menuitem'], [role='tab'], [role='radio'], [role='switch'], [role='checkbox'], [role='scrollbar']):not(input):not(textarea):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([data-dn-hover='none']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *):focus-visible {
+  outline: 2px solid rgb(var(--color-ring) / 0.8) !important;
+  outline-offset: -2px;
+}
+/* El indicador toca el borde: el contorno va adentro para que no se recorte. */
+.dn-scrollbar:focus-visible {
+  outline-offset: -2px;
 }
 
 /*
@@ -166,4 +188,52 @@ textarea:focus {
 ::selection {
   background-color: rgb(var(--color-primary));
   color: rgb(var(--color-primary-foreground));
+}
+
+/* Indicador superpuesto opt-in: no cambia los scrolls de chat ni sus fondos. */
+.dn-scroll-viewport {
+  scrollbar-width: none !important;
+  scrollbar-gutter: auto;
+}
+.dn-scroll-viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.dn-scrollbar {
+  position: absolute;
+  inset: 0 1px 0 auto;
+  width: 14px;
+  z-index: 5;
+  background: transparent;
+  opacity: 0.45;
+  touch-action: none;
+  user-select: none;
+  transition: opacity 140ms ease;
+}
+.dn-scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  right: 3px;
+  width: 8px;
+  border-radius: 999px;
+  background: rgb(var(--color-muted-foreground) / 0.5);
+}
+.dn-scroll-area:hover > .dn-scrollbar,
+.dn-scroll-area:focus-within > .dn-scrollbar,
+.dn-scrollbar[data-dragging='true'] {
+  opacity: 1;
+}
+.dn-scrollbar:focus-visible .dn-scrollbar-thumb,
+.dn-scrollbar[data-dragging='true'] .dn-scrollbar-thumb {
+  background: rgb(var(--color-foreground) / 0.65);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dn-scrollbar { transition: none; }
+}
+
+/* La raíz enmascara los paneles sin convertirse en un scroll implícito al
+   enfocar un descendiente. Cada ScrollArea conserva su viewport propio. */
+#dn-app-viewport {
+  overflow: clip !important;
 }

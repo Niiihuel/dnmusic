@@ -13,6 +13,8 @@ module.exports = defineConfig([
     // caché de expo-router, lo que Supabase deja al levantar los contenedores y
     // lo que el escritorio copia y empaqueta.
     ignores: [
+      // Canvases generados por el editor, con un runtime externo al proyecto.
+      ".openide/canvases/**",
       "dist/*",
       "server/dist/*",
       ".expo/*",

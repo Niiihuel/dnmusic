@@ -1,12 +1,14 @@
 import { useState, type ReactNode, type RefObject } from 'react'
-import { Pressable, ScrollView, Text, View, type TextInput } from 'react-native'
+import { Pressable, Text, View, type TextInput } from 'react-native'
 import type { Playlist } from '../services/playlists'
 import { useTermino } from '../state/busqueda'
 import { useCuantosMeGusta } from '../state/gustos'
 import { useWantPlay } from '../state/playback'
 import { usePiso } from '../state/shell'
 import { SearchField } from './SearchField'
+import { ScrollArea } from './ScrollArea'
 import { Avatar } from './Avatar'
+import { CabeceraLateral, BotonLateral } from './CabeceraLateral'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
 import { PlayingBars } from './PlayingBars'
@@ -15,7 +17,8 @@ import { SkeletonList } from './Skeleton'
 import { useClicDerecho } from './useClicDerecho'
 import {
   ICON_COLOR,
-  IconCollapseRight,
+  IconCollapseLeft,
+  IconChevronUp,
   IconDownload,
   IconHeartFilled,
   IconHome,
@@ -57,7 +60,6 @@ export function BarraLateral({
   nombre,
   usuario,
   avatarPath,
-  showCollapse,
   onCollapse,
   onBuscar,
   inputRef,
@@ -119,6 +121,7 @@ export function BarraLateral({
   const cuantosGustos = useCuantosMeGusta()
   const suena = useWantPlay()
   const piso = usePiso(12)
+  const cuentaContexto = useClicDerecho()
 
   async function crear() {
     if (creando) return
@@ -132,20 +135,10 @@ export function BarraLateral({
 
   return (
     <Panel tone="lateral" className="flex-1">
-      {/* La barra de arriba: solo el botón de contraer, bajo el cursor. macOS
-          no le pone título a la barra lateral: las secciones ya dicen qué hay. */}
-      <View className="h-9 flex-row items-center justify-end px-2 pt-1">
-        {showCollapse ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Contraer la barra lateral"
-            onPress={onCollapse}
-            className="h-7 w-7 items-center justify-center rounded-md active:bg-muted hover:bg-white/5"
-          >
-            <IconCollapseRight size={15} color={ICON_COLOR.muted} />
-          </Pressable>
-        ) : null}
-      </View>
+      <CabeceraLateral titulo="Música">
+        <BotonLateral label="Contraer la barra lateral" onPress={onCollapse}
+          icono={<IconCollapseLeft size={15} color={ICON_COLOR.muted} />} />
+      </CabeceraLateral>
 
       <View className="px-2 pb-2">
         <CampoBusquedaLateral
@@ -156,7 +149,7 @@ export function BarraLateral({
         />
       </View>
 
-      <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-1 px-2" contentContainerStyle={{ paddingBottom: piso }}>
+      <ScrollArea className="min-h-0 flex-1" contentContainerClassName="gap-1 px-2" contentContainerStyle={{ paddingBottom: piso }}>
         <FilaLateral icono={IconHome} label="Inicio" activa={seccion === 'inicio'} onPress={onInicio} />
         <FilaLateral
           icono={IconInbox}
@@ -215,17 +208,20 @@ export function BarraLateral({
             ))
           )}
         </Seccion>
-      </ScrollView>
+      </ScrollArea>
 
       {/*
        * El pie: la configuración y la cuenta, como el pie de la barra de
        * Notas o de Mail. La cuenta es un menú —tu perfil, salir— porque lo
        * que se hace con ella se hace poco y no merece dos filas permanentes.
        */}
-      <View className="gap-1 px-2 pb-3 pt-1">
+      <View className="gap-1 px-2 pb-3 pt-1" {...cuentaContexto.gestos}>
         <FilaLateral icono={IconSliders} label="Configuración" activa={false} onPress={onConfiguracion} />
         <Menu
           label="Tu cuenta"
+          tooltip="Opciones de tu cuenta"
+          abiertoEn={cuentaContexto.punto}
+          onCerrarPunto={cuentaContexto.cerrar}
           triggerFullWidth
           items={[
             {
@@ -233,6 +229,12 @@ export function BarraLateral({
               onPress: onPerfil,
               icon: <IconUser size={15} color={ICON_COLOR.muted} />,
               sfSymbol: 'person',
+            },
+            {
+              label: 'Configuración',
+              onPress: onConfiguracion,
+              icon: <IconSliders size={15} color={ICON_COLOR.muted} />,
+              sfSymbol: 'slider.horizontal.3',
             },
             {
               label: 'Cerrar sesión',
@@ -253,6 +255,7 @@ export function BarraLateral({
                   @{usuario}
                 </Text>
               </View>
+              <IconChevronUp size={14} color={ICON_COLOR.muted} />
             </View>
           }
         />
@@ -286,7 +289,9 @@ export function CampoBusquedaLateral({
       inputRef={inputRef}
       value={value}
       onChangeText={onBuscar}
-      placeholder={placeholder}
+      placeholder="Buscar"
+      accessibilityLabel={placeholder}
+      density="compact"
       loading={buscando}
     />
   )

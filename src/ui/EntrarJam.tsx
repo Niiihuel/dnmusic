@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Pressable, Text, TextInput, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { codigoDeJam } from '../lib/invitarJam'
-import { ICON_COLOR, IconUsers } from './icons'
+import { AccionSocial } from './Social'
 
 /**
  * Entrar a un Jam de otro sin depender del link.
@@ -33,21 +33,11 @@ export function EntrarConCodigo() {
   }
 
   if (!abierto) {
-    return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Entrar a un Jam con un código"
-        onPress={() => setAbierto(true)}
-        className="flex-row items-center justify-center gap-2 rounded-full bg-muted px-5 py-2.5 active:opacity-80"
-      >
-        <IconUsers size={15} color={ICON_COLOR.foreground} />
-        <Text className="text-foreground text-[13px] font-semibold">Entrar con un código</Text>
-      </Pressable>
-    )
+    return <AccionSocial label="Entrar con un código" secundaria onPress={() => setAbierto(true)} />
   }
 
   return (
-    <View className="w-full max-w-[300px] gap-2.5">
+    <View className="w-full gap-2.5">
       {/*
        * El código se escribe en grande y separado: son seis caracteres que
        * alguien te dictó o te pasó por chat, y espaciados se leen de un vistazo
@@ -68,10 +58,10 @@ export function EntrarConCodigo() {
         placeholderTextColor="#6A6A6A"
         returnKeyType="go"
         accessibilityLabel="Código o link del Jam"
-        className="text-foreground rounded-2xl bg-card px-4 py-3.5 text-center text-[19px] font-semibold tracking-[6px]"
+        className="text-foreground rounded-2xl bg-card px-4 py-3.5 text-center text-[17px] font-semibold"
       />
       <Text
-        className={`text-center text-[11px] leading-4 ${
+        className={`text-center text-[13px] leading-5 ${
           error ? 'text-foreground' : 'text-muted-foreground'
         }`}
       >
@@ -87,21 +77,21 @@ export function EntrarConCodigo() {
             setValor('')
             setError(false)
           }}
-          className="rounded-full bg-muted px-4 py-2.5 active:opacity-80"
+          className="min-h-11 justify-center rounded-2xl bg-muted px-4 py-3 active:opacity-80"
         >
-          <Text className="text-foreground text-[13px] font-semibold">Cancelar</Text>
+          <Text className="text-foreground text-[15px] font-semibold">Cancelar</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Entrar al Jam"
           onPress={entrar}
           disabled={!valor.trim()}
-          className={`flex-1 rounded-full px-5 py-2.5 ${
+          className={`min-h-11 flex-1 justify-center rounded-2xl px-5 py-3 ${
             valor.trim() ? 'bg-primary active:opacity-80' : 'bg-muted'
           }`}
         >
           <Text
-            className={`text-center text-[13px] font-semibold ${
+            className={`text-center text-[15px] font-semibold ${
               valor.trim() ? 'text-primary-foreground' : 'text-muted-foreground'
             }`}
           >

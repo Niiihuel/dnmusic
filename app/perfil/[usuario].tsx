@@ -1,3 +1,4 @@
+import { CabeceraPerfil, SuperficiePerfil, FondoEstiloPerfil } from '../../src/ui/TarjetaPerfil'
 import { FuentePerfil, TextoPerfil as Text } from '../../src/ui/FuentePerfil'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
@@ -7,8 +8,7 @@ import { Panel } from '../../src/ui/Panel'
 import { BotonVidrio } from '../../src/ui/Glass'
 import {
   alturaDeHeroe,
-  FondoPerfil,
-  Identidad,
+  Resumen,
   useCuantasVitrinas,
   Vitrinas,
 } from '../../src/ui/PerfilPublico'
@@ -39,8 +39,8 @@ const CAP_ANCHO = 1100
  * El perfil de otra persona.
  *
  * Es la misma vista que la tuya menos lo que no le corresponde a quien mira: no
- * hay botón de editar, las vitrinas van sin controles y el resumen no está —esos
- * números son de la biblioteca de uno, que no se comparte—.
+ * hay botón de editar y las vitrinas van sin controles. Estadísticas usa los
+ * agregados públicos; omite los conteos de la biblioteca privada.
  *
  * Reusa `Identidad`, `FondoPerfil` y `Vitrinas` tal cual. Que sean los mismos
  * componentes no es prolijidad: es lo que garantiza que tu perfil se vea igual
@@ -178,6 +178,7 @@ export default function PerfilAjeno() {
       ownerId={perfil.userId}
       nombre={nombre}
       propio={soyYo}
+      sinResumen
       recarga={reaccion}
       onAbrirLista={(lista) => router.push(`/lista/${lista.id}`)}
       escucha={
@@ -191,6 +192,9 @@ export default function PerfilAjeno() {
       }
     />
   ) : null
+
+  const resumen = perfil ? <Resumen ownerId={perfil.userId} marcoPerfil={perfil.marcoPerfil}
+    vitrinas={cuantasVitrinas} desde={perfil.createdAt} /> : null
 
   /* Bloquear vive al fondo del perfil, fuera de las pestañas: es la pantalla
      de esa persona y es una decisión sobre esa persona, no sobre lo que armó
@@ -234,11 +238,7 @@ export default function PerfilAjeno() {
           )}
 
           <Panel className="flex-1">
-            <FondoPerfil
-              bannerPath={perfil?.bannerPath ?? null}
-              encuadre={perfil?.bannerEncuadre ?? null}
-              efecto={perfil?.efecto ?? null}
-            />
+            <FondoEstiloPerfil perfil={perfil} />
 
             {ancho ? (
               <View className="absolute left-4 top-4 z-10">
@@ -254,12 +254,13 @@ export default function PerfilAjeno() {
             ) : null}
 
             <ScrollView
-              contentContainerClassName="items-center px-4"
+              contentContainerClassName="items-center"
               /* Con fondo, la primera pantalla es de la imagen y el contenido
                arranca abajo, scrolleando por encima (`alturaDeHeroe`). Sin
                fondo, el arranque compacto de siempre: en escritorio debajo del
                redondel de volver, que flota sobre la imagen. */
               contentContainerStyle={{
+                paddingHorizontal: ancho ? 24 : 16,
                 paddingTop: alturaDeHeroe(alto, perfil?.bannerPath, ancho ? 72 : 24),
                 paddingBottom: piso,
               }}
@@ -282,18 +283,11 @@ export default function PerfilAjeno() {
                   accion={{ rotulo: 'Volver', onPress: () => volver(router, '/') }}
                 />
               ) : (
-                <View className="w-full gap-7" style={{ maxWidth: ancho ? CAP_ANCHO : MAX_W }}>
+                <SuperficiePerfil perfil={perfil} anchoContenido={ancho ? CAP_ANCHO : MAX_W} minHeight={ancho ? 520 : 420}>
                   {/* Misma banda que en el perfil propio: acostada en escritorio,
                     apilada y centrada en el teléfono. Que las dos pantallas se
                     vean igual es el punto de compartir `Identidad`. */}
-                  <Identidad
-                    nombre={nombre}
-                    usuario={perfil.username}
-                    avatarPath={perfil.avatarPath}
-                    encuadre={perfil.avatarEncuadre}
-                    marco={perfil.marco}
-                    placa={perfil.placa}
-                    bio={perfil.bio ?? ''}
+                  <CabeceraPerfil perfil={perfil}
                     centrado={!ancho}
                     banda={ancho}
                   />
@@ -305,6 +299,7 @@ export default function PerfilAjeno() {
                     <View className="flex-row items-start gap-6">
                       <View className="min-w-0 flex-1">{vitrinas}</View>
                       <View className="w-[320px] shrink-0 gap-7">
+                        {resumen}
                         {reciente}
                         {bloqueo}
                       </View>
@@ -317,12 +312,12 @@ export default function PerfilAjeno() {
 
                       {/* Mientras no se sabe con cuál abrir, nada: mejor un
                         instante en blanco que una pestaña que salta. */}
-                      {pestana === 'space' ? vitrinas : pestana === 'reciente' ? reciente : null}
+                      {pestana === 'space' ? vitrinas : pestana === 'reciente' ? <>{resumen}{reciente}</> : null}
 
                       {bloqueo}
                     </>
                   )}
-                </View>
+                </SuperficiePerfil>
               )}
             </ScrollView>
           </Panel>

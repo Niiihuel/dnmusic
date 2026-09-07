@@ -84,6 +84,13 @@ const HOJA_WEB = {
   animation: 'none',
   contentStyle: { backgroundColor: 'transparent' },
 } as const
+/** Formularios sociales breves: diálogo web y hoja nativa con teclado. */
+const HOJA_SOCIAL = ES_WEB ? HOJA_WEB : {
+  presentation: 'formSheet' as const,
+  sheetAllowedDetents: [1],
+  sheetGrabberVisible: true,
+  sheetCornerRadius: 28,
+}
 /** Cuánto sube el degradado por encima del reproductor. */
 const FADE_PX = 36
 /** Lo que tarda el panel en abrirse y cerrarse. */
@@ -571,6 +578,7 @@ function Chrome() {
         ]}
       >
       <Animated.View
+        nativeID="dn-app-viewport"
         style={[
           { flex: 1, minHeight: 0, overflow: 'hidden', backgroundColor: 'rgb(0,0,0)' },
           recorte,
@@ -965,7 +973,7 @@ function SessionGate() {
       {/* El onboarding: géneros y artistas con los que nace la radio de una
           cuenta nueva. Pantalla común, como las puertas de entrada. */}
       <Stack.Screen name="onboarding" />
-      <Stack.Screen name="compose" />
+      <Stack.Screen name="compose" options={HOJA_SOCIAL} />
       {/* El perfil es una carpeta: la vista y su editor son pantallas
           distintas, apiladas. Ver `app/profile/`. */}
       <Stack.Screen name="perfil/[usuario]" />
@@ -994,8 +1002,8 @@ function SessionGate() {
       {/* En web van como hoja (angosta) o ventana centrada (escritorio): una
           pantalla de 520px a todo el ancho de una PC se lee como un teléfono
           gigante. En nativo siguen siendo pantallas apiladas. */}
-      <Stack.Screen name="profile/vitrina" options={ES_WEB ? HOJA_WEB : undefined} />
-      <Stack.Screen name="profile/elegir" options={ES_WEB ? HOJA_WEB : undefined} />
+      <Stack.Screen name="profile/vitrina" options={HOJA_SOCIAL} />
+      <Stack.Screen name="profile/elegir" options={HOJA_SOCIAL} />
       {/* El mosaico de adentro de un sub-space: una pantalla apilada sobre el
           perfil, con el mismo modo de edición. Ver `app/profile/subspace`. */}
       <Stack.Screen name="profile/subspace" />
@@ -1038,9 +1046,8 @@ function SessionGate() {
               }
         }
       />
-      {/* Ya no es un diálogo: es una pantalla de la app, con su propio
-          sidebar colapsable como el panel principal. */}
-      <Stack.Screen name="song" />
+      {/* Elegir una canción y recortarla son pasos del mismo formulario. */}
+      <Stack.Screen name="song" options={HOJA_SOCIAL} />
       {/*
        * Lo que suena, a pantalla completa. **Sin animación del sistema.**
        *

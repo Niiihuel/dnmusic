@@ -1,3 +1,4 @@
+import { escuchaVigente } from './lecturaViva'
 import { getSupabase } from '../lib/supabase'
 import { cancionDeFila, type PlaylistTrack } from './escucha'
 
@@ -65,7 +66,8 @@ export async function escuchaDe(userId: string): Promise<EscuchaAjena | null> {
   if (!fila) return null
   const track = cancionDeFila(fila.track)
   if (!track) return null
-  return { track, suena: fila.suena === true, cuando: fecha(fila.updated_at) }
+  const cuando = fecha(fila.updated_at)
+  return { track, suena: escuchaVigente(fila.suena === true, cuando), cuando }
 }
 
 /** Dejarle un emoji a lo que está sonando. Devuelve el id de la reacción. */
@@ -154,4 +156,25 @@ export async function reaccionesDeVitrinas(ownerId: string): Promise<Map<string,
     mapa.set(fila.showcase_id, de)
   }
   return mapa
+}
+
+export type AutorReaccion = {
+  id: string
+  username: string
+  displayName: string | null
+  avatarPath: string | null
+}
+
+export async function autoresReaccionVitrina(showcaseId: string, emoji: string, offset = 0): Promise<AutorReaccion[]> {
+  const { data, error } = await getSupabase().rpc('autores_reaccion_vitrina', {
+    p_showcase: showcaseId, p_emoji: emoji, p_offset: offset,
+  })
+  if (error) throw error
+  return (data ?? []).flatMap((fila: Record<string, unknown>) =>
+    typeof fila.user_id === 'string' && typeof fila.username === 'string' ? [{
+      id: fila.user_id, username: fila.username,
+      displayName: typeof fila.display_name === 'string' ? fila.display_name : null,
+      avatarPath: typeof fila.avatar_path === 'string' ? fila.avatar_path : null,
+    }] : [],
+  )
 }

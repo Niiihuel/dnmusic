@@ -1,5 +1,8 @@
+import { usePerfilEdicion } from '../../src/state/perfilEdicion'
+import { idVitrinaTemporal, ponerVitrinaEdicion } from '../../src/state/mosaicoEdicion'
 import { useState } from 'react'
-import { ScrollView, Text, View } from 'react-native'
+import { ScrollView, Text } from 'react-native'
+import { CabeceraSocial } from '../../src/ui/Social'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { pickImage } from '../../src/lib/pickImage'
@@ -7,10 +10,9 @@ import { volver } from '../../src/lib/volver'
 import { addShowcase, SIN_ESTILO, uploadIlustracion, type ShowcaseKind } from '../../src/services/showcases'
 import { avisar } from '../../src/state/aviso'
 import { useUser } from '../../src/state/session'
-import { usePiso } from '../../src/state/shell'
 import { actualizarBorrador, empezarBorrador } from '../../src/state/vitrinaBorrador'
 import { FilaAjuste, GrupoAjustes } from '../../src/ui/Ajustes'
-import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
+import { ANCHO_HOJA, Hoja, useHojaModal, usePisoHoja } from '../../src/ui/Hoja'
 import {
   ICON_COLOR,
   IconAlbum,
@@ -46,7 +48,8 @@ export default function AgregarVitrina() {
   const { parent } = useLocalSearchParams<{ parent?: string }>()
   const parentId = parent || null
   const user = useUser()
-  const piso = usePiso(24)
+  const edicion = usePerfilEdicion()
+  const piso = usePisoHoja(24)
   const modal = useHojaModal()
   const [subiendo, setSubiendo] = useState(false)
 
@@ -56,10 +59,12 @@ export default function AgregarVitrina() {
    * una pantalla con un solo botón.
    */
   async function agregarEspacio() {
-    if (!user || subiendo) return
+    if (!user || subiendo || edicion.ocupado) return
     setSubiendo(true)
     try {
-      await addShowcase(user.id, 'espaciador', {}, 'entero', SIN_ESTILO, parentId)
+      if (edicion.ownerId === user.id) {
+        ponerVitrinaEdicion(user.id, { id: null, kind: 'espaciador', contenido: { kind: 'espaciador' }, ancho: 'entero', estilo: SIN_ESTILO, parentId }, idVitrinaTemporal(), null, true)
+      } else await addShowcase(user.id, 'espaciador', {}, 'entero', SIN_ESTILO, parentId)
       avisar('Espacio agregado')
       volver(router, '/profile')
     } catch (e) {
@@ -88,7 +93,7 @@ export default function AgregarVitrina() {
    * un solo botón.
    */
   async function elegirImagen() {
-    if (!user || subiendo) return
+    if (!user || subiendo || edicion.ocupado) return
     setSubiendo(true)
     try {
       const elegida = await pickImage()
@@ -105,11 +110,12 @@ export default function AgregarVitrina() {
   }
 
   return (
-    <Hoja medida="contenido">
+    <Hoja medida="contenido" titulo="Agregar al mosaico">
+      <CabeceraSocial titulo="Agregar al mosaico" detalle="Elegí una pieza para tu perfil" ocupado={subiendo} onCerrar={() => volver(router, '/profile')} />
       <ScrollView
         className="bg-background"
         style={{ flexGrow: 1 }}
-        contentContainerClassName="gap-6 px-5 pt-6"
+        contentContainerClassName="gap-6 px-5 pt-2"
         contentContainerStyle={{
           paddingBottom: modal ? 24 : piso,
           maxWidth: ANCHO_HOJA,
@@ -117,13 +123,6 @@ export default function AgregarVitrina() {
           alignSelf: 'center',
         }}
       >
-        <View className="items-center gap-1">
-          <Text className="text-foreground text-[17px] font-bold">Agregar al mosaico</Text>
-          <Text className="text-muted-foreground text-center text-[12px] leading-4">
-            Una pieza nueva, al final. Después la movés a donde quieras.
-          </Text>
-        </View>
-
         <GrupoAjustes titulo="Música">
           <FilaAjuste
             rotulo="Artista"

@@ -13,13 +13,15 @@ import {
   Text,
   Toggle,
 } from '@expo/ui/swift-ui'
-import { accessibilityLabel, buttonStyle } from '@expo/ui/swift-ui/modifiers'
+import { accessibilityLabel, buttonStyle, contentShape, disabled, frame, shapes } from '@expo/ui/swift-ui/modifiers'
 import type { MenuItem } from './Menu'
 import type { MenuNativoProps } from './MenuNativo.types'
 import { llevaCorte, repartirMenu } from './menuReparto'
 import { ICON_COLOR } from './icons'
 
 export const HAY_MENU_NATIVO = true
+
+const areaTactil = [frame({ minWidth: 44, minHeight: 44 }), contentShape(shapes.rectangle())]
 
 /**
  * Una fila del menú del sistema.
@@ -33,7 +35,11 @@ export const HAY_MENU_NATIVO = true
 function Fila({ item }: { item: MenuItem }) {
   if (item.subtitle) {
     return (
-      <Button role={item.destructive ? 'destructive' : 'default'} onPress={item.onPress}>
+      <Button
+        role={item.destructive ? 'destructive' : 'default'}
+        onPress={item.disabled ? undefined : item.onPress}
+        modifiers={[disabled(!!item.disabled)]}
+      >
         <Text>{item.label}</Text>
         <Text>{item.subtitle}</Text>
         {item.sfSymbol ? <Image systemName={item.sfSymbol} /> : <Text>{''}</Text>}
@@ -45,7 +51,8 @@ function Fila({ item }: { item: MenuItem }) {
       label={item.label}
       systemImage={item.sfSymbol}
       role={item.destructive ? 'destructive' : 'default'}
-      onPress={item.onPress}
+      onPress={item.disabled ? undefined : item.onPress}
+      modifiers={[disabled(!!item.disabled)]}
     />
   )
 }
@@ -59,8 +66,13 @@ function Fila({ item }: { item: MenuItem }) {
  * `Divider` donde el menú propio pone su corte. Así los dos menús ofrecen lo
  * mismo en el mismo lugar, y una fila que se mueve en uno se mueve en el otro.
  */
-function Opciones({ items }: { items: MenuItem[] }) {
-  const { rapidas, lista } = repartirMenu(items)
+function Opciones({ items, deshabilitado = false }: { items: MenuItem[]; deshabilitado?: boolean }) {
+  // iOS muestra las opciones indisponibles atenuadas. El menú de respaldo
+  // conserva su reparto actual, que las oculta.
+  const { rapidas, lista } = repartirMenu(
+    deshabilitado ? items.map((item) => ({ ...item, disabled: true })) : items,
+    true,
+  )
   return (
     <>
       {rapidas.length ? (
@@ -71,7 +83,8 @@ function Opciones({ items }: { items: MenuItem[] }) {
                 key={item.label}
                 label={item.label}
                 systemImage={item.sfSymbol}
-                onPress={item.onPress}
+                onPress={item.disabled ? undefined : item.onPress}
+                modifiers={[disabled(!!item.disabled)]}
               />
             ))}
           </ControlGroup>
@@ -82,15 +95,16 @@ function Opciones({ items }: { items: MenuItem[] }) {
         <Fragment key={item.label}>
           {llevaCorte(lista, index) ? <Divider /> : null}
           {item.items?.length ? (
-            <Menu label={item.label} systemImage={item.sfSymbol}>
-              <Opciones items={item.items} />
+            <Menu label={item.label} systemImage={item.sfSymbol} modifiers={[disabled(!!item.disabled)]}>
+              <Opciones items={item.items} deshabilitado={item.disabled} />
             </Menu>
           ) : item.selected !== undefined ? (
             <Toggle
               label={item.label}
               systemImage={item.sfSymbol}
               isOn={item.selected}
-              onIsOnChange={item.onPress}
+              onIsOnChange={item.disabled ? undefined : item.onPress}
+              modifiers={[disabled(!!item.disabled)]}
             />
           ) : (
             <Fila item={item} />
@@ -115,14 +129,14 @@ export function MenuNativo({
   const [width, setWidth] = useState(0)
   const trigger = children ? (
     <RNHostView matchContents>
-      <View collapsable={false} style={fullWidth ? { width } : undefined}>
+      <View collapsable={false} style={{ minWidth: 44, minHeight: 44, ...(fullWidth ? { width } : {}) }}>
         {children}
       </View>
     </RNHostView>
   ) : text ? (
-    <Label title={text} systemImage={symbol} color={ICON_COLOR.foreground} />
+    <Label title={text} systemImage={symbol} color={ICON_COLOR.foreground} modifiers={areaTactil} />
   ) : (
-    <Image systemName={symbol} size={size} color={ICON_COLOR.muted} />
+    <Image systemName={symbol} size={size} color={ICON_COLOR.muted} modifiers={areaTactil} />
   )
   const contenido = (
     <Host
@@ -132,7 +146,7 @@ export function MenuNativo({
         children ? (fullWidth ? { vertical: true } : true) : text ? { horizontal: true } : false
       }
       style={
-        children ? (fullWidth ? { width } : undefined) : { height: 36, minWidth: text ? 92 : 36 }
+        children ? (fullWidth ? { width } : undefined) : { height: 44, minWidth: text ? 92 : 44 }
       }
     >
       {longPress ? (

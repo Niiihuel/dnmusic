@@ -29,6 +29,7 @@ export function MessageCard({
   onPress,
 }: Props) {
   const song = message.song
+  const art = song ? artworkSource(song.artworkPath, song.artworkUrl, 96) : null
   const unread = !mine && message.readAt === null
   const status = mine
     ? message.readAt
@@ -41,10 +42,10 @@ export function MessageCard({
       : 'Visto'
 
   return (
-    <View className={`gap-3 rounded-xl p-4 ${selected ? 'bg-muted' : 'bg-card'}`}>
-      <Pressable accessibilityRole="button" onPress={onPress} className="gap-3 active:opacity-70">
+    <View className={`gap-3 rounded-2xl p-4 ${selected ? 'bg-muted' : 'bg-card'}`}>
+      <Pressable accessibilityRole={onPress ? "button" : undefined} accessibilityState={{ selected }} onPress={onPress} className="gap-3 active:opacity-70">
         <View className="flex-row items-center gap-3">
-          <View className={`h-10 w-10 items-center justify-center rounded-full ${selected ? 'bg-card' : 'bg-muted'}`}>
+          <View className={`h-11 w-11 items-center justify-center rounded-full ${selected ? 'bg-card' : 'bg-muted'}`}>
             <Text className="text-foreground text-sm font-semibold uppercase">
               {contactInitial(contactName)}
             </Text>
@@ -56,12 +57,12 @@ export function MessageCard({
             </Text>
             <View className="flex-row items-center gap-1.5">
               {unread ? <View className="h-1.5 w-1.5 rounded-full bg-primary" /> : null}
-              <Text className="text-muted-foreground text-[11px]">{status}</Text>
+              <Text className="text-muted-foreground text-[13px]">{status}</Text>
             </View>
           </View>
 
           {message.createdAt ? (
-            <Text className="text-muted-foreground text-[11px] tabular-nums">
+            <Text className="text-muted-foreground text-[13px] tabular-nums">
               {formatDate(message.createdAt)}
             </Text>
           ) : null}
@@ -76,13 +77,14 @@ export function MessageCard({
       {song ? (
         <View className={`flex-row items-center gap-3 rounded-lg p-2.5 ${selected ? 'bg-background' : 'bg-muted'}`}>
           <Pressable
-            accessibilityRole="button"
+            accessibilityRole={onPress ? "button" : undefined}
+            accessibilityLabel={`Abrir fragmento: ${song.title}, ${song.artist}`}
             onPress={onPress}
             className="min-w-0 flex-1 flex-row items-center gap-3 active:opacity-70"
           >
-            {song.artworkUrl ? (
+            {art ? (
               <Image
-                source={{ uri: artworkSource(song.artworkPath, song.artworkUrl, 96) ?? '' }}
+                source={{ uri: art }}
                 className="h-12 w-12 rounded bg-background"
               />
             ) : (
@@ -91,27 +93,27 @@ export function MessageCard({
               </View>
             )}
             <View className="min-w-0 flex-1 gap-0.5">
-              <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
+              <Text className="text-foreground text-[15px] font-semibold" numberOfLines={2}>
                 {song.title}
               </Text>
-              <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+              <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
                 {song.artist} · {Math.round(song.durationMs / 1000)} s
               </Text>
             </View>
           </Pressable>
 
-          <Pressable
+          {onPlay ? <Pressable
             accessibilityRole="button"
             accessibilityLabel={playing ? 'Pausar' : 'Reproducir el fragmento'}
             onPress={onPlay}
-            className="h-10 w-10 items-center justify-center rounded-full bg-primary active:opacity-80"
+            className="h-11 w-11 items-center justify-center rounded-full bg-primary active:opacity-80"
           >
             {playing ? (
               <IconPause size={15} color={ICON_COLOR.onPrimary} />
             ) : (
               <IconPlay size={15} color={ICON_COLOR.onPrimary} />
             )}
-          </Pressable>
+          </Pressable> : null}
         </View>
       ) : null}
     </View>

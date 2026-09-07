@@ -1,13 +1,16 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { ActivityIndicator, Text, TextInput, View } from 'react-native'
 import { Field } from './Field'
-import { FormError } from './Button'
+import { BotonConfirmar, BotonHoja, EncabezadoHoja } from './EncabezadoHoja'
+import { BarraCambiosPerfil } from './BarraCambiosPerfil'
+import { useSalidaConCambios } from './useSalidaConCambios'
 import { ICON_COLOR, IconAt, IconCheck, IconClose, IconMessage, IconUser } from './icons'
 import { IconoAjuste } from './Ajustes'
 import { isUsernameAvailable } from '../services/auth'
 import { saveMyProfile } from '../services/profile'
 import { setMyProfile, useMyProfile } from '../state/session'
 import { avisar } from '../state/aviso'
+import { actualizarPerfilEdicion, usePerfilEdicion } from '../state/perfilEdicion'
 import { normalizeUsername, usernameProblem } from '../models/username'
 
 const CHECK_DEBOUNCE_MS = 400
@@ -39,7 +42,7 @@ type Availability = 'idle' | 'checking' | 'free' | 'taken' | 'unknown'
  * **Guarda solo lo suyo.** `saveMyProfile` toma `undefined` como «no lo toques»,
  * así que entrar a cambiar el nombre no puede pisar el usuario por accidente.
  */
-export function useEditorDeCampo(cual: CampoPerfil, onGuardado?: () => void) {
+export function useEditorDeCampo(cual: CampoPerfil, onGuardado?: () => void, ocupado = false) {
   const profile = useMyProfile()
 
   const original =
@@ -49,15 +52,25 @@ export function useEditorDeCampo(cual: CampoPerfil, onGuardado?: () => void) {
         ? (profile?.bio ?? '')
         : (profile?.displayName ?? '')
 
-  const [texto, setTexto] = useState<string | null>(null)
+  const [textoLocal, setTextoLocal] = useState<string | null>(null)
+  const edicion = usePerfilEdicion()
+  const compartido = !!profile && edicion.ownerId === profile.userId
+  const clave = cual === 'usuario' ? 'username' : cual === 'linea' ? 'bio' : 'displayName'
+  const texto = compartido ? (edicion.cambios[clave] ?? null) : textoLocal
+  const setTexto = (valor: string | null) => {
+    if (compartido) actualizarPerfilEdicion({ [clave]: valor ?? original })
+    else setTextoLocal(valor)
+  }
   const valor = texto ?? original
-  const [busy, setBusy] = useState(false)
+  const [guardandoCampo, setBusy] = useState(false)
+  const busy = guardandoCampo || ocupado || (compartido && edicion.ocupado)
+  const guardando = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [checked, setChecked] = useState<{ username: string; free: boolean } | null>(null)
   const [checkFailed, setCheckFailed] = useState<string | null>(null)
 
   const esUsuario = cual === 'usuario'
-  const cambiado = valor !== original
+  const cambiado = valor.trim() !== original.trim()
   const problema = esUsuario ? usernameProblem(valor) : null
 
   /* Igual que en el alta: el estado sale de la respuesta guardada junto al texto
@@ -92,7 +105,9 @@ export function useEditorDeCampo(cual: CampoPerfil, onGuardado?: () => void) {
     cambiado && !problema && availability !== 'taken' && availability !== 'checking' && !busy
 
   async function guardar() {
-    if (!puedeGuardar) return
+    if (!puedeGuardar || guardando.current) return
+    if (compartido) { onGuardado?.(); return }
+    guardando.current = true
     setBusy(true)
     setError(null)
     try {
@@ -111,6 +126,7 @@ export function useEditorDeCampo(cual: CampoPerfil, onGuardado?: () => void) {
     } catch (e) {
       setError(mensajeDe(e))
     } finally {
+      guardando.current = false
       setBusy(false)
     }
   }
@@ -121,6 +137,7 @@ export function useEditorDeCampo(cual: CampoPerfil, onGuardado?: () => void) {
         label="Usuario"
         icon={<IconAt size={18} color={ICON_COLOR.muted} />}
         value={valor}
+        editable={!busy}
         onChangeText={(t) => setTexto(normalizeUsername(t))}
         autoCapitalize="none"
         autoCorrect={false}
@@ -133,29 +150,28 @@ export function useEditorDeCampo(cual: CampoPerfil, onGuardado?: () => void) {
               : null
         }
         accessory={<Marca estado={problema ? 'idle' : availability} />}
-        onSubmitEditing={() => void guardar()}
       />
     ) : cual === 'linea' ? (
       <Field
         label="Tu línea"
         icon={<IconMessage size={18} color={ICON_COLOR.muted} />}
         value={valor}
+        editable={!busy}
         onChangeText={setTexto}
         placeholder="Lo que estás escuchando últimamente"
         maxLength={180}
         hint="Una sola línea. Se ve en tu perfil, debajo del nombre."
-        onSubmitEditing={() => void guardar()}
       />
     ) : (
       <Field
         label="Nombre visible"
         icon={<IconUser size={18} color={ICON_COLOR.muted} />}
         value={valor}
+        editable={!busy}
         onChangeText={setTexto}
         placeholder={profile?.username ?? ''}
         maxLength={40}
         hint="Cómo querés que te vean. Vacío muestra tu usuario."
-        onSubmitEditing={() => void guardar()}
       />
     )
 
@@ -172,125 +188,102 @@ export function useEditorDeCampo(cual: CampoPerfil, onGuardado?: () => void) {
   const placeholder =
     cual === 'usuario' ? '@usuario' : cual === 'linea' ? 'Lo que estás escuchando' : (profile?.username ?? '')
 
-  return { campo, error, busy, puedeGuardar, cambiado, guardar, valor, cambiar, aviso, marca, placeholder }
+  const perfilVistaPrevia = profile ? {
+    ...profile,
+    ...(cual === 'usuario' ? { username: valor.trim() }
+      : cual === 'linea' ? { bio: valor.trim() || null }
+        : { displayName: valor.trim() || null }),
+  } : null
+
+  function restablecer() {
+    if (guardando.current || ocupado) return
+    setTexto(null)
+    setError(null)
+    setChecked(null)
+    setCheckFailed(null)
+  }
+
+  return { compartido, campo, error, busy, puedeGuardar, cambiado, guardar, restablecer, valor, cambiar, aviso, marca, placeholder, perfilVistaPrevia }
+
 }
 
-/**
- * El campo como **fila de Ajustes del Sistema**: el rótulo a la izquierda, el
- * texto editándose a la derecha, y «Guardar» solo cuando hay algo que
- * guardar. Es la fila «Nombre del equipo» de Compartir en macOS: nada de
- * etiquetas en mayúsculas ni cajas apiladas — una lista agrupada de tres
- * filas, con la explicación al pie del grupo.
- */
-export function FilaCampo({
-  cual,
-  icono,
-  ultima = false,
-  onGuardado,
-}: {
+export type EditorCampoPerfil = ReturnType<typeof useEditorDeCampo>
+
+/** Campo controlado por el borrador del editor principal; nunca persiste por fila. */
+export function FilaCampo({ cual, editor, icono, ultima = false, compacto = false }: {
   cual: CampoPerfil
+  editor: EditorCampoPerfil
   icono?: ReactNode
   ultima?: boolean
-  onGuardado?: () => void
+  /** En móvil, la etiqueta y el campo aprovechan cada uno el ancho completo. */
+  compacto?: boolean
 }) {
-  const editor = useEditorDeCampo(cual, onGuardado)
   const esUsuario = cual === 'usuario'
+  const esBio = cual === 'linea'
+  const apilado = compacto || esBio
+  const entrada = (
+    <TextInput
+      accessibilityLabel={TITULO_CAMPO[cual]}
+      value={editor.valor}
+      editable={!editor.busy}
+      onChangeText={editor.cambiar}
+      placeholder={editor.placeholder}
+      placeholderTextColor="rgba(179,179,179,0.6)"
+      autoCapitalize={esUsuario ? 'none' : 'sentences'}
+      autoCorrect={!esUsuario}
+      maxLength={esBio ? 180 : cual === 'nombre' ? 40 : undefined}
+      multiline={esBio}
+      scrollEnabled={!esBio}
+      submitBehavior={esBio ? 'newline' : 'blurAndSubmit'}
+      textAlignVertical={esBio ? 'top' : 'center'}
+      className={`text-foreground text-[17px] ${apilado ? 'text-left' : 'text-right'}`}
+      style={esBio
+        ? { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', paddingVertical: 6, paddingHorizontal: 0, lineHeight: 24 }
+        : { minHeight: 44, minWidth: apilado ? 0 : 120, flex: apilado ? undefined : 1, paddingVertical: 6, paddingHorizontal: 0 }}
+    />
+  )
   return (
-    <View className="flex-row items-center gap-3 pl-4">
-      {icono ? <IconoAjuste>{icono}</IconoAjuste> : null}
-      <View
-        className={`min-h-[52px] min-w-0 flex-1 gap-1 py-2 pr-4 ${ultima ? '' : 'border-b border-muted'}`}
-      >
-        <View className="min-h-[36px] flex-row items-center gap-3">
-          <Text className="shrink-0 text-foreground text-[17px]">{TITULO_CAMPO[cual]}</Text>
-          <TextInput
-            accessibilityLabel={TITULO_CAMPO[cual]}
-            value={editor.valor}
-            onChangeText={editor.cambiar}
-            placeholder={editor.placeholder}
-            placeholderTextColor="rgba(179,179,179,0.6)"
-            autoCapitalize={esUsuario ? 'none' : 'sentences'}
-            autoCorrect={!esUsuario}
-            maxLength={cual === 'linea' ? 180 : cual === 'nombre' ? 40 : undefined}
-            onSubmitEditing={() => void editor.guardar()}
-            className="min-w-0 flex-1 text-right text-foreground text-[17px]"
-            style={{ paddingVertical: 0 }}
-          />
+    <View className="px-4">
+      <View className={`min-h-[52px] gap-1 py-3 ${ultima ? '' : 'border-b border-muted'}`}>
+        <View className={apilado ? 'gap-1' : 'min-h-[44px] flex-row items-center gap-3'}>
+          <View className="flex-row items-center gap-2">
+            {icono ? <IconoAjuste>{icono}</IconoAjuste> : null}
+            <Text className={apilado ? 'text-muted-foreground text-[14px]' : 'text-foreground text-[17px]'}>{TITULO_CAMPO[cual]}</Text>
+          </View>
+          {esBio ? (
+            <View style={{ minHeight: 60 }}>
+              {/* Este texto mide el contenido también al borrar o cambiar el ancho.
+                  El input superpuesto conserva foco y crece sin scroll interno. */}
+              <Text
+                aria-hidden
+                accessible={false}
+                pointerEvents="none"
+                style={{ opacity: 0, fontSize: 17, lineHeight: 24, paddingVertical: 6 }}
+              >{`${editor.valor || editor.placeholder}\u200b`}</Text>
+              {entrada}
+            </View>
+          ) : entrada}
           {editor.marca}
-          {editor.cambiado ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Guardar ${TITULO_CAMPO[cual].toLowerCase()}`}
-              accessibilityState={{ disabled: !editor.puedeGuardar }}
-              disabled={!editor.puedeGuardar}
-              onPress={() => void editor.guardar()}
-              className={`h-8 flex-row items-center justify-center rounded-full px-3.5 ${
-                editor.puedeGuardar ? 'bg-primary active:opacity-80' : 'bg-muted'
-              }`}
-            >
-              {editor.busy ? (
-                <ActivityIndicator size="small" color={ICON_COLOR.onPrimary} />
-              ) : (
-                <Text
-                  className={`text-[13px] font-semibold ${
-                    editor.puedeGuardar ? 'text-primary-foreground' : 'text-muted-foreground'
-                  }`}
-                >
-                  Guardar
-                </Text>
-              )}
-            </Pressable>
-          ) : null}
         </View>
         {editor.aviso || editor.error ? (
-          <Text className="text-right text-muted-foreground text-[13px]">{editor.error ?? editor.aviso}</Text>
+          <Text accessibilityLiveRegion="polite" className={`${apilado ? 'text-left' : 'text-right'} text-muted-foreground text-[13px]`}>{editor.error ?? editor.aviso}</Text>
         ) : null}
       </View>
     </View>
   )
 }
 
-/**
- * El campo con su botón chico al lado, para el formulario de la compu.
- *
- * Es la fila de un formulario de Ajustes del Sistema: el campo, y a la
- * derecha «Guardar» solo cuando hay algo que guardar. Sin cambios no hay
- * botón — un formulario con tres «Guardar» permanentes se lee como tres
- * pendientes.
- */
+/** Editor independiente con la misma confirmación que el resto del perfil. */
 export function CampoEnLinea({ cual, onGuardado }: { cual: CampoPerfil; onGuardado?: () => void }) {
   const editor = useEditorDeCampo(cual, onGuardado)
+  const dialogo = useSalidaConCambios(editor.cambiado, editor.busy)
   return (
-    <View className="gap-2">
-      <View className="flex-row items-end gap-3">
-        <View className="min-w-0 flex-1">{editor.campo}</View>
-        {editor.cambiado ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Guardar ${TITULO_CAMPO[cual].toLowerCase()}`}
-            accessibilityState={{ disabled: !editor.puedeGuardar }}
-            disabled={!editor.puedeGuardar}
-            onPress={() => void editor.guardar()}
-            /* Alineado con el campo (56 de alto) y no con su pie. */
-            className={`mb-6 h-10 flex-row items-center justify-center rounded-full px-4 ${
-              editor.puedeGuardar ? 'bg-primary active:opacity-80' : 'bg-muted'
-            }`}
-          >
-            {editor.busy ? (
-              <ActivityIndicator size="small" color={ICON_COLOR.onPrimary} />
-            ) : (
-              <Text
-                className={`text-[13px] font-semibold ${
-                  editor.puedeGuardar ? 'text-primary-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                Guardar
-              </Text>
-            )}
-          </Pressable>
-        ) : null}
-      </View>
-      <FormError message={editor.error} />
+    <View className="gap-4">
+      {editor.campo}
+      <BarraCambiosPerfil visible={editor.cambiado} ocupado={editor.busy} error={editor.error}
+        puedeGuardar={editor.puedeGuardar} onRestablecer={editor.restablecer}
+        onGuardar={() => void editor.guardar()} flotante={false} />
+      {dialogo}
     </View>
   )
 }
@@ -308,4 +301,18 @@ function mensajeDe(e: unknown): string {
   if (texto.includes('usuario_invalido')) return 'Ese usuario no es válido.'
   if (texto.includes('duplicate') || texto.includes('unique')) return 'Ese usuario ya está en uso.'
   return texto || 'No se pudo guardar.'
+}
+
+/** Acciones explícitas y siempre visibles, con áreas táctiles de al menos 44 pt. */
+export function CabeceraEdicionPerfil({ titulo, ocupado, puedeGuardar, onCancelar, onGuardar, rotuloVolver = 'Cancelar' }: {
+  titulo: string
+  rotuloVolver?: string
+  ocupado: boolean
+  puedeGuardar?: boolean
+  onCancelar: () => void
+  onGuardar?: () => void
+}) {
+  return <EncabezadoHoja titulo={titulo} velo={false}
+    izquierda={<BotonHoja tipo="volver" label={rotuloVolver === 'Cancelar' ? 'Cancelar edición' : 'Volver a editar perfil'} disabled={ocupado} onPress={onCancelar} />}
+    derecha={onGuardar ? <BotonConfirmar label="Guardar" activo={!!puedeGuardar} ocupado={ocupado} onPress={onGuardar} /> : undefined} />
 }

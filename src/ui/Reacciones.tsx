@@ -1,5 +1,7 @@
+import { AutoresReaccion } from './AutoresReaccion'
+import { useLecturaViva } from './useLecturaViva'
 import { TextoPerfil as Text } from './FuentePerfil'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { ActivityIndicator, Image, Pressable, ScrollView, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import { mensajeError } from '../lib/mensajeError'
@@ -7,8 +9,6 @@ import {
   escuchaDe,
   reaccionar,
   reaccionesDe,
-  type EscuchaAjena,
-  type Reaccion,
 } from '../services/reacciones'
 import { avisar } from '../state/aviso'
 import { Avatar } from './Avatar'
@@ -67,38 +67,33 @@ export function EscuchaConReacciones({
   /** Se acaba de mandar una: el perfil recarga su lista. */
   onReaccion: () => void
 }) {
-  const [escucha, setEscucha] = useState<EscuchaAjena | null | undefined>(undefined)
+  const leer = useCallback(() => escuchaDe(ownerId), [ownerId])
+  const escucha = useLecturaViva(ownerId, leer)
+  const enviando = useRef(false)
   /* Cuál se está mandando: apaga la fila entera mientras viaja, así un toque
      nervioso no manda seis. */
   const [mandando, setMandando] = useState<string | null>(null)
   /* El último emoji que mandaste, para que el botón lo confirme sin recargar. */
   const [mandado, setMandado] = useState<string | null>(null)
 
-  useEffect(() => {
-    let vivo = true
-    escuchaDe(ownerId)
-      .then((e) => vivo && setEscucha(e))
-      .catch(() => vivo && setEscucha(null))
-    return () => {
-      vivo = false
-    }
-  }, [ownerId])
 
   const mandar = useCallback(
     async (emoji: string) => {
-      if (mandando) return
+      if (enviando.current || !escucha?.suena) return
+      enviando.current = true
       setMandando(emoji)
       try {
         await reaccionar(ownerId, emoji)
-        setMandado(emoji)
+        setMandado(`${escucha.track.videoId}:${emoji}`)
         onReaccion()
       } catch (e) {
         avisar(mensajeError(e), true)
       } finally {
+        enviando.current = false
         setMandando(null)
       }
     },
-    [mandando, onReaccion, ownerId],
+    [escucha, onReaccion, ownerId],
   )
 
   if (escucha === undefined || escucha === null) return null
@@ -127,10 +122,10 @@ export function EscuchaConReacciones({
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
+      {suena ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
         {EMOJIS.map((emoji) => {
           const esta = mandando === emoji
-          const listo = mandado === emoji
+          const listo = mandado === `${track.videoId}:${emoji}`
           return (
             <Pressable
               key={emoji}
@@ -151,7 +146,7 @@ export function EscuchaConReacciones({
             </Pressable>
           )
         })}
-      </ScrollView>
+      </ScrollView> : null}
     </View>
   )
 }
@@ -180,17 +175,8 @@ export function ParedDeReacciones({
   propio: boolean
   nombre: string
 }) {
-  const [reacciones, setReacciones] = useState<Reaccion[] | null>(null)
-
-  useEffect(() => {
-    let vivo = true
-    reaccionesDe(ownerId)
-      .then((r) => vivo && setReacciones(r))
-      .catch(() => vivo && setReacciones([]))
-    return () => {
-      vivo = false
-    }
-  }, [ownerId, recarga])
+  const leer = useCallback(() => reaccionesDe(ownerId), [ownerId])
+  const reacciones = useLecturaViva(`${ownerId}:${recarga}`, leer, 5000)
 
   /* Sin ninguna no se dibuja nada, ni en el perfil propio: un estante vacío
      que dice «todavía nadie te reaccionó» es peor que no estar. */
@@ -204,7 +190,7 @@ export function ParedDeReacciones({
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
         {reacciones.map((r) => (
           <View key={r.id} className="w-[176px] gap-2 rounded-2xl bg-card p-3">
-            <View className="flex-row items-center gap-2">
+            <AutoresReaccion emoji={r.emoji} cantidad={1} autores={[r.de]} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Text className="text-[20px]">{r.emoji}</Text>
               <Avatar
                 name={r.de.displayName || r.de.username}
@@ -214,7 +200,7 @@ export function ParedDeReacciones({
               <Text className="text-muted-foreground min-w-0 flex-1 text-[11px]" numberOfLines={1}>
                 @{r.de.username}
               </Text>
-            </View>
+            </AutoresReaccion>
             <View className="flex-row items-center gap-2">
               <Tapa uri={artworkSource(r.track.artworkPath, r.track.artworkUrl, 96)} size={32} />
               <View className="min-w-0 flex-1">

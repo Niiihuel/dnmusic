@@ -15,6 +15,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { volver } from '../../src/lib/volver'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
+import { CabeceraSocial, AccionSocial, SeccionSocial } from '../../src/ui/Social'
+import { SeekBar, formatClock } from '../../src/ui/SeekBar'
+import { Vacio } from '../../src/ui/Vacio'
 import { SongDisc } from '../../src/ui/SongDisc'
 import { Lyrics } from '../../src/ui/Lyrics'
 import { Onda, usePicos } from '../../src/ui/Onda'
@@ -22,6 +25,7 @@ import { Popover } from '../../src/ui/Popover'
 import { isSentBy } from '../../src/models/message'
 import { markOpened, markRead } from '../../src/services/messages'
 import { getSession, useContact, useMessages, useUser } from '../../src/state/session'
+import { usePiso } from '../../src/state/shell'
 import { useSnippetPlayer } from '../../src/state/player'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { avisar } from '../../src/state/aviso'
@@ -37,7 +41,6 @@ import { contactLabel } from '../../src/services/contacts'
 import { formatMessageDate } from '../../src/ui/MessageCard'
 import {
   ICON_COLOR,
-  IconClose,
   IconDisc,
   IconLanguages,
   IconLyrics,
@@ -103,6 +106,7 @@ export default function MessageStory() {
   const contact = useContact()
   const router = useRouter()
   const player = useSnippetPlayer()
+  const piso = usePiso(16)
   /*
    * Arranca en el estilo que eligió quien lo mandó.
    *
@@ -214,11 +218,12 @@ export default function MessageStory() {
 
   if (!message) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center gap-4 bg-canvas">
-        <Text className="text-muted-foreground text-sm">Ese mensaje ya no está.</Text>
-        <Pressable accessibilityRole="button" onPress={() => volver(router, '/')}>
-          <Text className="text-foreground font-medium underline">Volver</Text>
-        </Pressable>
+      <SafeAreaView className="flex-1 bg-background">
+        <CabeceraSocial titulo="Mensaje" onCerrar={() => volver(router, '/')} />
+        <View className="flex-1 items-center justify-center gap-4 p-5">
+          <Vacio icono={<IconMessage size={24} color={ICON_COLOR.muted} />} titulo="Mensaje no disponible" detalle="Volvé a la conversación para elegir otro mensaje." />
+          <AccionSocial label="Volver a la conversación" onPress={() => volver(router, '/')} secundaria />
+        </View>
       </SafeAreaView>
     )
   }
@@ -234,7 +239,7 @@ export default function MessageStory() {
   const playing = player.currentId === message.id && player.playing
 
   return (
-    <View className="flex-1 bg-canvas" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+    <View className="flex-1 bg-background" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {backdrop ? (
         <Image
           source={{ uri: backdrop }}
@@ -263,7 +268,7 @@ export default function MessageStory() {
 
       {/* El degradado es lo que hace legible el texto pase lo que pase con la
           imagen de atrás: sin él, una tapa clara se come la frase. */}
-      <LinearGradient
+      {backdrop ? <LinearGradient
         pointerEvents="none"
         // Con la letra el velo afloja en el medio para dejar respirar el color,
         // y aprieta arriba y abajo, que es donde va el texto de servicio.
@@ -273,43 +278,25 @@ export default function MessageStory() {
             : ['rgba(0,0,0,0.72)', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.92)']
         }
         style={StyleSheet.absoluteFill}
-      />
+      /> : null}
 
       <SafeAreaView className="flex-1" edges={['top', 'bottom']}>
-        <View className="flex-row items-center gap-3 px-4 py-3">
-          <View className="min-w-0 flex-1">
-            <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
-              {mine ? `Para ${who}` : `De ${who}`}
-            </Text>
-            {message.createdAt ? (
-              <Text className="text-muted-foreground text-[11px]">
-                {formatMessageDate(message.createdAt, true)}
-              </Text>
-            ) : null}
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Cerrar"
-            onPress={() => volver(router, '/')}
-            className="h-10 w-10 items-center justify-center rounded-full bg-background/70 active:opacity-80"
-          >
-            <IconClose size={18} color={ICON_COLOR.foreground} />
-          </Pressable>
-        </View>
+        <CabeceraSocial titulo={mine ? `Para ${who}` : `De ${who}`}
+          detalle={message.createdAt ? formatMessageDate(message.createdAt, true) : undefined}
+          onCerrar={() => volver(router, '/')} />
 
-        <View className="min-h-0 flex-1 items-center">
+        <ScrollView className="min-h-0 flex-1" contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 24, paddingBottom: song ? 24 : piso }}>
           <View
-            className="min-h-0 w-full flex-1 flex-row items-center justify-center gap-8 px-6"
+            className="w-full flex-row items-center justify-center gap-8 px-5"
             style={{ maxWidth: ANCHO_MAX }}
           >
             {/* En ancho, la frase al costado: no le saca una sola línea a la
               letra. Con su propio desplazamiento, así una frase larga no
               estira la columna. */}
-            {wide && verFrase && message.text ? (
-              <View className="max-h-[70%] w-[300px] rounded-2xl bg-card/80 p-4">
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  <InvitacionJam texto={message.text} />
-                </ScrollView>
+            {wide && song && verFrase && message.text ? (
+              <View style={{ width: Math.min(300, width * 0.34) }}>
+                {invitacionEnTexto(message.text) ? <InvitacionJam texto={message.text} /> :
+                  <SeccionSocial titulo="Mensaje"><Text selectable className="text-foreground p-4 text-[16px] leading-6">{message.text}</Text></SeccionSocial>}
               </View>
             ) : null}
 
@@ -324,7 +311,7 @@ export default function MessageStory() {
                 <View className="w-full max-w-xl items-center">
                   <Lyrics lines={lyrics} atMs={player.positionMs} size="lg" visible={5} />
                   {song?.lyricsLang ? (
-                    <Text className="text-muted-foreground pt-3 text-center text-[11px]">
+                    <Text className="text-muted-foreground pt-3 text-center text-[13px]">
                       Traducida al {LANG_NAMES[song.lyricsLang] ?? song.lyricsLang}
                     </Text>
                   ) : null}
@@ -336,7 +323,7 @@ export default function MessageStory() {
                     artworkPath={artPath}
                     title={song.title}
                     playing={playing}
-                    size={wide ? DISC_WIDE : DISC_NARROW}
+                    size={Math.min(wide ? DISC_WIDE : DISC_NARROW, Math.max(140, width - 80))}
                   />
                   <View className="items-center gap-1">
                     <Text className="text-foreground text-xl font-semibold" numberOfLines={1}>
@@ -352,8 +339,8 @@ export default function MessageStory() {
               {/* En el teléfono, una tarjeta de tres líneas debajo del contenido.
               Desplegada crece hasta un tope y se desplaza adentro: lo que no
               puede pasar es que empuje la letra fuera de la pantalla. */}
-              {!wide && verFrase && message.text ? (
-                <View className="w-full max-w-xl rounded-2xl bg-card/80 p-4">
+              {(!wide || !song) && verFrase && message.text ? (
+                <View className={`w-full max-w-xl ${invitacionEnTexto(message.text) ? '' : 'rounded-2xl bg-card/80 p-4'}`}>
                   {invitacionEnTexto(message.text) ? (
                     <InvitacionJam texto={message.text} />
                   ) : fraseAbierta ? (
@@ -369,9 +356,10 @@ export default function MessageStory() {
                     <Pressable
                       accessibilityRole="button"
                       onPress={() => setFraseAbierta((v) => !v)}
-                      className="self-end pt-2 active:opacity-60"
+                      accessibilityState={{ expanded: fraseAbierta }}
+                      className="min-h-11 self-end justify-center px-2 active:opacity-60"
                     >
-                      <Text className="text-muted-foreground text-[12px] font-semibold">
+                      <Text className="text-muted-foreground text-[15px] font-semibold">
                         {fraseAbierta ? 'Ver menos' : 'Ver más'}
                       </Text>
                     </Pressable>
@@ -380,23 +368,15 @@ export default function MessageStory() {
               ) : null}
             </View>
 
-            {/* El contrapeso de la frase: un hueco del mismo ancho del otro lado.
-              Sin esto, mostrar la frase corría el disco a la derecha y dejaba
-              de estar alineado con la onda y el play de abajo, que sí están
-              centrados en la ventana — la pieza se veía descuadrada justo al
-              hacer visible lo que se quiso compartir. */}
-            {wide && verFrase && message.text ? (
-              <View pointerEvents="none" className="w-[300px]" />
-            ) : null}
           </View>
-        </View>
+        </ScrollView>
 
         {song ? (
           /* El pie va en la misma columna topada que el cuerpo: suelto a lo
              ancho de la ventana, la onda y el segmentado quedaban a metros de
              lo que están controlando. Y con aire abajo: pegado al borde se
              cortaba contra el filo de la ventana. */
-          <View className="items-center px-6 pb-8">
+          <View className="items-center px-5 pt-3" style={{ paddingBottom: piso }}>
             <View className="w-full items-center gap-4" style={{ maxWidth: ANCHO_MAX }}>
               {/* La onda del fragmento, que además es la única forma de moverse
                 dentro de él: esta pantalla no tenía barra de posición. */}
@@ -416,8 +396,18 @@ export default function MessageStory() {
                     height={48}
                     etiqueta={song.title}
                   />
+                  <View className="flex-row justify-between">
+                    <Text className="text-muted-foreground text-[12px] tabular-nums">{formatClock(Math.max(0, Math.min(song.durationMs, player.positionMs - song.startMs)))}</Text>
+                    <Text className="text-muted-foreground text-[12px] tabular-nums">{formatClock(song.durationMs)}</Text>
+                  </View>
                 </View>
-              ) : null}
+              ) : <View className="w-full max-w-xl">
+                <SeekBar label={song.title}
+                  progress={Math.max(0, Math.min(1, (player.positionMs - song.startMs) / Math.max(1, song.durationMs)))}
+                  elapsedMs={Math.max(0, Math.min(song.durationMs, player.positionMs - song.startMs))}
+                  totalMs={song.durationMs}
+                  onSeek={(fraction) => { void player.seek(message.id, song, fraction).catch((e: unknown) => avisar(mensajeError(e), true)) }} />
+              </View>}
 
               <Pressable
                 accessibilityRole="button"
@@ -438,7 +428,7 @@ export default function MessageStory() {
 
               {/* Disco o letra, el mismo segmentado que el editor. Sin letra
                 guardada el botón no lleva a ningún lado y se apaga. */}
-              <View className="flex-row items-center gap-2">
+              <View className="flex-row flex-wrap items-center justify-center gap-2">
                 <View className="flex-row items-center rounded-full bg-background/70 p-1">
                   <Segment
                     active={chosen === 'disc'}
@@ -473,7 +463,7 @@ export default function MessageStory() {
                     accessibilityState={{ selected: verFrase }}
                     accessibilityLabel={verFrase ? 'Ocultar la frase' : 'Ver la frase'}
                     onPress={() => setVerFrase((v) => !v)}
-                    className={`flex-row items-center gap-2 rounded-full px-4 py-2.5 active:opacity-70 ${
+                    className={`min-h-11 flex-row items-center justify-center gap-2 rounded-full px-4 py-2.5 active:opacity-70 ${
                       verFrase ? 'bg-primary' : 'bg-background/70'
                     }`}
                   >
@@ -539,13 +529,13 @@ function Segment({
       accessibilityState={{ selected: active, disabled: !enabled }}
       disabled={!enabled}
       onPress={onPress}
-      className={`flex-row items-center gap-1.5 rounded-full px-3.5 py-2 ${
+      className={`min-h-11 flex-row items-center justify-center gap-1.5 rounded-full px-3.5 py-2 ${
         active ? 'bg-primary' : ''
       } ${enabled ? 'active:opacity-70' : 'opacity-40'}`}
     >
       {icon}
       <Text
-        className={`text-[12px] font-medium ${
+        className={`text-[15px] font-medium ${
           active ? 'text-primary-foreground' : 'text-muted-foreground'
         }`}
       >

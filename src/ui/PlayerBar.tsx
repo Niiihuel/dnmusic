@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useAppActiva } from '../lib/appActiva'
-import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
@@ -8,7 +8,8 @@ import Animated, {
   useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated'
-import { Popover, type PopoverOption } from './Popover'
+import type { PopoverOption } from './Popover'
+import { Menu, type MenuItem } from './Menu'
 import {
   ICON_COLOR,
   IconDisc,
@@ -48,6 +49,9 @@ type Props = {
   lang: LyricLang
   onChangeLang: (lang: LyricLang) => void
   translating: boolean
+  accion?: ReactNode
+  ocupado?: boolean
+  onCambiarCancion?: () => void
 }
 
 const TRACK_H = 4
@@ -55,21 +59,9 @@ const TRACK_H = 4
 const THUMB = 12
 /** Cada cuánto se refresca el tiempo transcurrido. */
 const CLOCK_MS = 200
-/** Debajo de este ancho el segmentado va sin texto y el play deja de centrarse. */
-const COMPACT_PX = 520
 
-/**
- * Barra de controles al pie, al modelo de Spotify.
- *
- * Todo lo que se toca mientras suena la canción vive acá abajo: el progreso del
- * recorte, el play, el largo del recorte y el cambio entre onda y letra. Antes
- * estaba en una fila en medio del contenido, y al pasar a la vista de letra —que
- * ocupa la pantalla entera— no había dónde ponerla.
- *
- * El play va centrado en términos absolutos y no por `justify-between`: con
- * flex, el botón se corría de lugar cuando el texto del recorte cambiaba de
- * "15 segundos" a "Canción completa".
- */
+/** Reproducción, opciones nativas y confirmación. La onda ya permite buscar;
+ * la barra de progreso adicional solo acompaña las vistas previas. */
 export function PlayerBar({
   view,
   onChangeView,
@@ -86,10 +78,12 @@ export function PlayerBar({
   lang,
   onChangeLang,
   translating,
+  accion,
+  ocupado = false,
+  onCambiarCancion,
 }: Props) {
   const [trackW, setTrackW] = useState(0)
   const [hover, setHover] = useState(false)
-  const compact = useWindowDimensions().width < COMPACT_PX
 
   /** Arrastre de la barra: si está en curso, y a qué milisegundo apunta. */
   const dragging = useSharedValue(false)
@@ -171,13 +165,27 @@ export function PlayerBar({
     }
   })
 
+  const vistas: MenuItem[] = [
+    { label: 'Onda', sfSymbol: 'waveform', icon: <IconWave size={18} color={ICON_COLOR.foreground} />, selected: view === 'wave', onPress: () => onChangeView('wave') },
+    { label: 'Disco', sfSymbol: 'opticaldisc', icon: <IconDisc size={18} color={ICON_COLOR.foreground} />, selected: view === 'disc', onPress: () => onChangeView('disc') },
+    { label: 'Letra', sfSymbol: 'text.quote', icon: <IconLyrics size={18} color={ICON_COLOR.foreground} />, disabled: !hasLyrics, selected: view === 'lyrics', onPress: () => onChangeView('lyrics') },
+  ]
+  const opciones: MenuItem[] = [
+    { label: 'Vista', subtitle: vistas.find(v => v.selected)?.label, sfSymbol: 'eye', items: vistas },
+    { label: 'Duración', subtitle: choices.find(c => c.value === choice)?.label, sfSymbol: 'clock', items: choices.map(c => ({ label: c.label, selected: choice === c.value, onPress: () => onChangeChoice(c.value) })) },
+    ...(hasLyrics ? [{ label: translating ? 'Traduciendo…' : 'Traducción', sfSymbol: 'globe' as const,
+      icon: <IconLanguages size={18} color={ICON_COLOR.foreground} />,
+      items: LYRIC_LANGS.map(l => ({ label: l.label, selected: l.value === lang, onPress: () => onChangeLang(l.value) })) }] : []),
+    ...(onCambiarCancion ? [{ label: 'Cambiar canción', sfSymbol: 'music.note' as const, onPress: onCambiarCancion, separadorAntes: true }] : []),
+  ]
+
   return (
-    <View className="gap-3">
-      <View className="flex-row items-center gap-3">
+    <View className="gap-2">
+      {view !== 'wave' ? <View className="flex-row items-center gap-3">
         <Elapsed positionMs={positionMs} startMs={startMs} snippetMs={snippetMs} />
         <GestureDetector gesture={gesture}>
           <View
-            className="flex-1 justify-center py-2"
+            className="min-h-11 flex-1 justify-center py-2"
             onPointerEnter={() => setHover(true)}
             onPointerLeave={() => setHover(false)}
           >
@@ -223,42 +231,21 @@ export function PlayerBar({
             />
           </View>
         </GestureDetector>
-        <Text className="text-muted-foreground w-10 text-right text-[11px] tabular-nums">
+        <Text className="text-muted-foreground w-10 text-right text-[12px] tabular-nums">
           {fmt(startMs + snippetMs)}
         </Text>
-      </View>
+      </View> : null}
 
-      <View className="h-12 flex-row items-center justify-between gap-2">
-        <View className="flex-row items-center gap-2">
-          <ViewToggle view={view} onChange={onChangeView} enabled={hasLyrics} compact={compact} />
-          {hasLyrics && (
-            <LangPicker
-              lang={lang}
-              onChange={onChangeLang}
-              translating={translating}
-              compact={compact}
-            />
-          )}
+      <View className="flex-row items-center gap-3">
+        <PlayButton playing={playing} onPress={onToggle} disabled={ocupado} />
+        <View pointerEvents={ocupado ? 'none' : 'auto'}>
+          <Menu label="Opciones del fragmento" tooltip="Vista, duración y traducción"
+            items={opciones} triggerSymbol="slider.horizontal.3" triggerText={fmt(snippetMs)}
+            trigger={<View className="min-h-11 flex-row items-center gap-2 rounded-full bg-muted px-3">
+              <IconWave size={17} color={ICON_COLOR.foreground} /><Text className="text-foreground text-[13px] tabular-nums">{fmt(snippetMs)}</Text>
+            </View>} />
         </View>
-
-        {/* En ancho, el play se centra en términos absolutos y no con flex: así
-            no se corre de lugar cuando el recorte pasa de "15 segundos" a
-            "Canción completa". En angosto no hay lugar para eso y los tres
-            controles se reparten la fila. */}
-        {compact ? (
-          <PlayButton playing={playing} onPress={onToggle} />
-        ) : (
-          <View pointerEvents="box-none" className="absolute inset-x-0 items-center">
-            <PlayButton playing={playing} onPress={onToggle} />
-          </View>
-        )}
-
-        <Popover
-          value={choice}
-          options={choices}
-          onChange={onChangeChoice}
-          label={compact ? undefined : 'Recorte'}
-        />
+        <View className="min-w-0 flex-1 items-end">{accion}</View>
       </View>
     </View>
   )
@@ -297,56 +284,18 @@ function Elapsed({
 
   const shown = Math.max(startMs, Math.min(startMs + snippetMs, Number.isFinite(ms) ? ms : startMs))
 
-  return <Text className="text-muted-foreground w-10 text-[11px] tabular-nums">{fmt(shown)}</Text>
+  return <Text className="text-muted-foreground w-10 text-[12px] tabular-nums">{fmt(shown)}</Text>
 }
 
-/**
- * Selector de idioma de la letra, al lado del botón de letra.
- *
- * En reposo dice "Traducir"; con una traducción puesta se achica al código del
- * idioma (ES, EN…) para no empujar al resto de la fila. Mientras traduce, el
- * ícono se reemplaza por el spinner: el pedido tarda lo suyo y sin señal parece
- * que el botón no hizo nada.
- */
-function LangPicker({
-  lang,
-  onChange,
-  translating,
-  compact,
-}: {
-  lang: LyricLang
-  onChange: (lang: LyricLang) => void
-  translating: boolean
-  compact: boolean
-}) {
-  const short = LYRIC_LANGS.find((l) => l.value === lang)?.short ?? ''
-  const display = short || (compact ? '' : 'Traducir')
-
-  return (
-    <Popover
-      value={lang}
-      options={LYRIC_LANGS.map((l) => ({ value: l.value, label: l.label }))}
-      onChange={onChange}
-      display={display}
-      accessibilityLabel="Traducir la letra"
-      icon={
-        translating ? (
-          <ActivityIndicator size="small" color={ICON_COLOR.muted} />
-        ) : (
-          <IconLanguages size={14} color={lang === 'off' ? ICON_COLOR.muted : ICON_COLOR.foreground} />
-        )
-      }
-    />
-  )
-}
-
-function PlayButton({ playing, onPress }: { playing: boolean; onPress: () => void }) {
+function PlayButton({ playing, onPress, disabled }: { playing: boolean; onPress: () => void; disabled?: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}
       onPress={onPress}
-      className="h-12 w-12 items-center justify-center rounded-full bg-primary active:opacity-80"
+      disabled={disabled}
+      accessibilityState={{ disabled }}
+      className="h-11 w-11 items-center justify-center rounded-full bg-primary active:opacity-80"
     >
       {playing ? (
         <IconPause size={18} color={ICON_COLOR.onPrimary} />
@@ -354,57 +303,6 @@ function PlayButton({ playing, onPress }: { playing: boolean; onPress: () => voi
         <IconPlay size={18} color={ICON_COLOR.onPrimary} />
       )}
     </Pressable>
-  )
-}
-
-/** Segmentado de dos posiciones: onda o letra. */
-function ViewToggle({
-  view,
-  onChange,
-  enabled,
-  compact,
-}: {
-  view: SnippetView
-  onChange: (view: SnippetView) => void
-  enabled: boolean
-  compact: boolean
-}) {
-  const segment = (value: SnippetView, label: string, Icon: typeof IconWave) => {
-    const active = view === value
-    // Sin letra sincronizada la pestaña de letra no lleva a ningún lado; las
-    // otras dos siempre andan.
-    const on = enabled || value !== 'lyrics'
-    return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ selected: active, disabled: !on }}
-        accessibilityLabel={label}
-        disabled={!on}
-        onPress={() => onChange(value)}
-        className={`flex-row items-center gap-1.5 rounded-full py-2 ${
-          compact ? 'px-3.5' : 'px-3'
-        } ${active ? 'bg-primary' : ''} ${on ? 'active:opacity-70' : 'opacity-40'}`}
-      >
-        <Icon size={14} color={active ? ICON_COLOR.onPrimary : ICON_COLOR.muted} />
-        {!compact && (
-          <Text
-            className={`text-[12px] font-medium ${
-              active ? 'text-primary-foreground' : 'text-muted-foreground'
-            }`}
-          >
-            {label}
-          </Text>
-        )}
-      </Pressable>
-    )
-  }
-
-  return (
-    <View className="flex-row items-center rounded-full bg-muted p-1">
-      {segment('wave', 'Onda', IconWave)}
-      {segment('disc', 'Disco', IconDisc)}
-      {segment('lyrics', 'Letra', IconLyrics)}
-    </View>
   )
 }
 

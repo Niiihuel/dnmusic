@@ -1,3 +1,4 @@
+import { estadoControlWeb } from './estadoControl'
 import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import { BotonVidrio, HAY_VIDRIO } from './Glass'
 import { ICON_COLOR } from './icons'
@@ -57,6 +58,7 @@ export function PrimaryButton({
   return (
     <Pressable
       accessibilityRole="button"
+      {...estadoControlWeb('inverse')}
       accessibilityState={{ disabled: !active, busy }}
       disabled={!active}
       onPress={onPress}

@@ -47,12 +47,14 @@ import { SearchField } from './SearchField'
 import { useConTooltip } from './Tooltip'
 import { Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
+import { ScrollArea } from './ScrollArea'
 import { Vacio } from './Vacio'
 import { PlaylistCover } from './PlaylistCover'
 import { ColaboradoresDeLista } from './ColaboradoresDeLista'
 import { formatLength } from './SeekBar'
 import { SkeletonList } from './Skeleton'
 import { TrackColumnHeader, TrackRow } from './TrackRow'
+import { BotonMeGusta } from './BotonMeGusta'
 import {
   ICON_COLOR,
   IconClose,
@@ -695,6 +697,7 @@ export function PlaylistView({
     <Panel className="flex-1">
       <View className="min-h-0 flex-1">
         <FlatList
+          renderScrollComponent={(props) => <ScrollArea {...props} />}
           data={visibles}
           keyExtractor={(t) => t.id}
           className="min-h-0 flex-1"
@@ -819,6 +822,7 @@ export function PlaylistView({
               artist={item.artist}
               artwork={artworkSource(item.artworkPath, item.artworkUrl, 96)}
               durationMs={item.durationMs}
+              gusto={<BotonMeGusta track={item} size={18} lado={44} />}
               sounding={isSounding(item, real)}
               playing={isSounding(item, real) && soundingPlay}
               onPlay={() => play(real)}

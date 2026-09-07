@@ -41,6 +41,7 @@ import {
   LockKeyhole,
   LogOut,
   MessageSquareText,
+  MessageCirclePlus,
   Scissors,
   MicVocal,
   Ellipsis,
@@ -140,6 +141,7 @@ export const IconHeart = make(Heart)
 export const IconHeartFilled = makeFilled(Heart)
 export const IconLyrics = make(MicVocal)
 export const IconMessage = make(MessageSquareText)
+export const IconNewConversation = make(MessageCirclePlus)
 /** Recortar un fragmento de una canción. */
 export const IconScissors = make(Scissors)
 export const IconLanguages = make(Languages)

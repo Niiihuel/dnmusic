@@ -1,0 +1,63 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import ts from 'typescript'
+import vm from 'node:vm'
+
+function nodes(n) {
+  if (!n || typeof n !== 'object') return []
+  if (Array.isArray(n)) return n.flatMap(nodes)
+  return [n, ...nodes(n.props?.children)]
+}
+function fixture() {
+  const source = ts.createSourceFile('ajustes.tsx', readFileSync('app/ajustes/index.tsx', 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const node = source.statements.find(n => ts.isFunctionDeclaration(n) && n.name.text === 'Escritorio')
+  const code = ts.transpileModule(`export ${node.getText(source)}`, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText
+  const state = [], exports = {}, jsx = (type, props) => ({ type, props })
+  let cursor = 0, consulta = '', vuelta = 0
+  vm.runInNewContext(code, {
+    exports, require: () => ({ jsx, jsxs: jsx }), LATERAL_W: 240, MAX_W: 640,
+    useState(initial) { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], v => { state[i] = typeof v === 'function' ? v(state[i]) : v }] },
+    ...Object.fromEntries(['Shell', 'SafeAreaView', 'View', 'Panel', 'Text', 'Pressable', 'ScrollView', 'CabeceraLateral', 'BotonLateral', 'CollapsedSidebar', 'SearchField', 'IconCollapseLeft', 'IconSliders', 'IconBack'].map(k => [k, k])),
+    ICON_COLOR: { foreground: 'white', muted: 'gray' },
+  })
+  const categorias = [{ id: 'music', titulo: 'Reproducción', icono: 'IconoMusic', bloques: { type: 'Music' } }, { id: 'app', titulo: 'La app', icono: 'IconoApp', bloques: { type: 'App' } }]
+  const render = () => { cursor = 0; return nodes(exports.Escritorio({ categorias, coinciden: consulta === 'inexistente' ? [] : categorias, buscando: !!consulta, busqueda: consulta, onBusqueda: v => { consulta = v }, cuenta: { type: 'Cuenta' }, novedades: { type: 'Novedades' }, sinResultados: { type: 'Vacio' }, onVolver: () => vuelta++ })) }
+  const label = (ui, text) => ui.find(n => n.props?.label === text || n.props?.accessibilityLabel === text)
+  return { render, label, search: v => { consulta = v }, vuelta: () => vuelta }
+}
+
+test('configuración pliega a 64px sin perder categoría y Volver sigue accesible', () => {
+  const f = fixture()
+  f.label(f.render(), 'La app').props.onPress()
+  f.label(f.render(), 'Contraer categorías de configuración').props.onPress()
+  let ui = f.render()
+  assert.equal(ui.find(n => n.props?.testID === 'ajustes-lateral').props.style.width, 64)
+  assert.ok(ui.some(n => n.type === 'App'))
+  assert.ok(ui.some(n => n.type === 'Novedades'))
+  f.label(ui, 'Volver').props.onPress(); assert.equal(f.vuelta(), 1)
+  f.label(ui, 'Mostrar categorías de configuración').props.onExpand()
+  ui = f.render()
+  assert.ok(f.label(ui, 'La app').props.accessibilityState.selected)
+  assert.equal(ui.find(n => n.props?.testID === 'ajustes-lateral').props.style.width, 240)
+  assert.equal(ui.filter(n => n.props?.label === 'Volver').length, 1)
+})
+
+test('buscar, plegar y volver conserva consulta; seleccionar categoría limpia búsqueda', () => {
+  const f = fixture(); f.search('inexistente')
+  f.label(f.render(), 'Contraer categorías de configuración').props.onPress()
+  assert.ok(f.render().some(n => n.type === 'Vacio'))
+  f.label(f.render(), 'Mostrar categorías de configuración').props.onExpand()
+  assert.equal(f.render().find(n => n.type === 'SearchField').props.value, 'inexistente')
+  f.label(f.render(), 'Reproducción').props.onPress()
+  assert.ok(f.render().some(n => n.type === 'Music'))
+  assert.ok(!f.render().some(n => n.type === 'Vacio'))
+})
+
+test('filas como Inicio: icono directo, 16px y sin placa individual', () => {
+  const f = fixture(), fila = f.label(f.render(), 'Reproducción')
+  assert.equal(fila.props.children[0].type, 'IconoMusic')
+  assert.equal(fila.props.children[0].props.size, 16)
+  assert.match(fila.props.className, /h-\[30px\].*gap-2\.5.*rounded-md/)
+  assert.equal(f.render().find(n => n.type === 'SearchField').props.density, 'compact')
+})
