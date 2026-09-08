@@ -280,7 +280,7 @@ export function suscribirEscucha(
     if (supabase.getChannels().some((c) => c.topic === `realtime:${topic}`)) {
       throw new Error('No se pudo cerrar el canal anterior de escucha.')
     }
-    channel = supabase.channel(topic, { config: { presence: { key: deviceId } } })
+    channel = supabase.channel(topic, { config: { private: true, presence: { key: deviceId } } })
     channel
       .on(
         'postgres_changes',

@@ -10,7 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 
-const LOGO = require('../../assets/splash-icon.png')
+const LOGO = require('../../assets/branding/splash-dnmusic.png')
 
 /**
  * El arranque de la app, dibujado por nosotros.

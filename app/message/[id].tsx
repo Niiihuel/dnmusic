@@ -393,7 +393,7 @@ export default function MessageStory() {
                         .seek(message.id, song, fraccion)
                         .catch((e: unknown) => avisar(mensajeError(e), true))
                     }
-                    height={48}
+                    height={40}
                     etiqueta={song.title}
                   />
                   <View className="flex-row justify-between">

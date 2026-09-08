@@ -163,7 +163,7 @@ export function ChatBubble({
                       duracionMs={song.durationMs}
                       activa={!!sonando}
                       onSeek={onSeek}
-                      height={44}
+                      height={36}
                       etiqueta={song.title}
                     />
                   </View>

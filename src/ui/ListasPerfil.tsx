@@ -63,7 +63,7 @@ export function ListasPerfil({
 
   return (
     <View className="gap-3" onLayout={(e) => setAncho(e.nativeEvent.layout.width)}>
-      <Text className="text-foreground text-[18px] font-bold">Listas</Text>
+      <Text className="text-foreground text-[18px] font-bold">Listas públicas</Text>
 
       {listas.length ? (
         <View className="flex-row flex-wrap" style={{ gap: HUECO }}>
@@ -73,8 +73,7 @@ export function ListasPerfil({
         </View>
       ) : (
         <Text className="text-muted-foreground text-[13px] leading-5">
-          Todavía no publicaste ninguna. En el menú de una lista, «Hacer pública» y aparece acá
-          con su link para compartir.
+          Todavía no publicaste listas. Podés hacerlas públicas desde su menú.
         </Text>
       )}
     </View>

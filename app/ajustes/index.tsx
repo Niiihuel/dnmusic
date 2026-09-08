@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react'
-import { Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { Platform, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
+  AjustesCompactos,
   FilaAjuste,
   FilaCuenta,
   FilaInterruptor,
@@ -12,6 +13,7 @@ import {
 import { FilaSostener } from '../../src/ui/Mantener'
 import { Avatar } from '../../src/ui/Avatar'
 import { CabeceraLateral, BotonLateral } from '../../src/ui/CabeceraLateral'
+import { BotonVolver } from '../../src/ui/BotonVolver'
 import { CollapsedSidebar } from '../../src/ui/SidebarMotion'
 import { ScrollArea as ScrollView } from '../../src/ui/ScrollArea'
 import { Panel, Shell } from '../../src/ui/Panel'
@@ -19,7 +21,6 @@ import { SearchField } from '../../src/ui/SearchField'
 import { Vacio } from '../../src/ui/Vacio'
 import {
   ICON_COLOR,
-  IconBack,
   IconBan,
   IconClock,
   IconCollapseLeft,
@@ -38,18 +39,16 @@ import {
   type IconProps,
 } from '../../src/ui/icons'
 import {
-  cuantasListas,
-  cuantasPendientes,
   espacioUsado,
   formatoBytes,
   HAY_DESCARGAS,
   useDescargas,
   reanudarDescargas,
 } from '../../src/state/descargas'
-import { setAutoplay, setPreferencia, setSoloWifi, useAjustes } from '../../src/state/ajustes'
-import { programarApagado, useDormirMin } from '../../src/state/playback'
+import { setPreferencia, setPrecargaAutomatica, setPrecargaDatos, setSoloWifi, useAjustes } from '../../src/state/ajustes'
+import { programarApagado, setModoReproduccion, useDormirMin, useModoReproduccion } from '../../src/state/playback'
 import { borrarHistorial } from '../../src/services/plays'
-import { endSession, useMyProfile } from '../../src/state/session'
+import { endSession, useIsAccessAdmin, useMyProfile } from '../../src/state/session'
 import { useNovedadesPendientes } from '../../src/state/novedadesVistas'
 import { avisar } from '../../src/state/aviso'
 import { mensajeError } from '../../src/lib/mensajeError'
@@ -57,6 +56,7 @@ import { useKeyboardH, usePiso } from '../../src/state/shell'
 import { volver } from '../../src/lib/volver'
 import { NOVEDADES } from '../../src/lib/novedades'
 import { HAY_ACTUALIZADOR } from '../../src/state/actualizacion'
+import { DETALLE_PRECARGA_SESION, DETALLE_RED_PC, inventarioDescargas } from '../../src/ui/descargasControl'
 import { TECLADO_FISICO } from '../../src/lib/teclado'
 
 /** Desde acá la pantalla es la de macOS: barra lateral con las categorías y el detalle al lado. */
@@ -64,7 +64,7 @@ const ESCRITORIO_PX = 780
 /** Ancho de la barra lateral, el de Ajustes del Sistema. */
 const LATERAL_W = 240
 /** Tope del detalle: una lista agrupada más ancha se lee como una tabla. */
-const MAX_W = 640
+const MAX_W = 540
 /** Los minutos que ofrece el temporizador. */
 const MINUTOS = [15, 30, 45, 60, 90]
 
@@ -108,10 +108,15 @@ type Categoria = {
 export default function Configuracion() {
   const router = useRouter()
   const ajustes = useAjustes()
+  const esAdmin = useIsAccessAdmin()
   const dormirMin = useDormirMin()
+  const modoReproduccion = useModoReproduccion()
   const perfil = useMyProfile()
   const nombre = perfil?.displayName?.trim() || perfil?.username || 'Tu cuenta'
   const { items } = useDescargas()
+  const inventario = inventarioDescargas(items)
+  const descargasManuales = inventario.filter(e => !e.descarga.temporal).length
+  const cacheTemporal = inventario.length - descargasManuales
   const pendientes = useNovedadesPendientes()
   const [busqueda, setBusqueda] = useState('')
   const { width } = useWindowDimensions()
@@ -134,16 +139,21 @@ export default function Configuracion() {
       titulo: 'Reproducción',
       icono: IconDisc,
       palabras:
-        'reproducción autoplay seguir escuchando al terminar lista recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música',
+        'reproducción modo orden aleatorio descubrimiento recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música',
       visible: true,
       bloques: (
         <>
-          <GrupoAjustes pie="Al terminar la lista, sigue con recomendaciones según lo que escuchás.">
-            <FilaInterruptor
-              rotulo="Seguir escuchando"
+          <GrupoAjustes pie="En orden respeta la colección. Aleatorio usa solo sus canciones. Descubrimiento intercala una sugerencia cada tres temas y continúa al final.">
+            <FilaOpciones
+              rotulo="Modo de reproducción"
               icono={<IconDisc size={17} color={ICON_COLOR.muted} />}
-              activo={ajustes.autoplay}
-              onCambiar={setAutoplay}
+              valor={modoReproduccion}
+              opciones={[
+                { value: 'orden', label: 'En orden', sfSymbol: 'list.number' as const },
+                { value: 'aleatorio', label: 'Aleatorio', sfSymbol: 'shuffle' as const },
+                { value: 'recomendado', label: 'Descubrimiento', sfSymbol: 'sparkles' as const },
+              ]}
+              onElegir={setModoReproduccion}
               ultima
             />
           </GrupoAjustes>
@@ -171,32 +181,35 @@ export default function Configuracion() {
     },
     {
       id: 'descargas',
-      titulo: 'Descargas',
+      titulo: HAY_DESCARGAS ? 'Descargas y caché' : 'Precarga',
       icono: IconDownload,
-      palabras: 'almacenamiento descargas espacio wifi datos conexión bajadas sin conexión',
-      visible: HAY_DESCARGAS,
+      palabras: 'almacenamiento descargas caché cache automática precarga espacio límite wifi datos conexión bajadas sin conexión',
+      visible: true,
       bloques: (
-        <GrupoAjustes pie="Con «Solo con Wi-Fi», las descargas esperan a tener una red sin consumo de datos.">
-          <FilaAjuste
-            rotulo="Descargas"
-            valor={
-              cuantasPendientes(items)
-                ? `${cuantasPendientes(items)} en camino`
-                : `${cuantasListas(items)} · ${formatoBytes(espacioUsado(items))}`
-            }
-            icono={<IconDisk size={17} color={ICON_COLOR.muted} />}
+        <GrupoAjustes pie={HAY_DESCARGAS ? 'Las descargas manuales se conservan; la caché se reutiliza automáticamente. Administrá el espacio y las canciones desde Descargas y caché.' : DETALLE_PRECARGA_SESION}>
+          {HAY_DESCARGAS ? <><FilaAjuste iconoPlano
+            rotulo="Descargas y caché"
+            valor={`${descargasManuales} descargas · ${cacheTemporal} en caché · ${formatoBytes(espacioUsado(items))}`}
+            icono={<IconDisk size={16} color={ICON_COLOR.muted} />}
             onPress={() => router.push('/ajustes/descargas')}
           />
-          <FilaInterruptor
-            rotulo="Solo con Wi-Fi"
-            icono={<IconWifi size={17} color={ICON_COLOR.muted} />}
+          <FilaInterruptor iconoPlano
+            rotulo="Descargas solo con Wi-Fi"
+            detalle={Platform.OS === 'web' ? DETALLE_RED_PC : undefined}
+            icono={<IconWifi size={16} color={ICON_COLOR.muted} />}
             activo={ajustes.soloWifi}
             onCambiar={(v) => {
               setSoloWifi(v)
               if (!v) reanudarDescargas()
             }}
-            ultima
           />
+          </> : null}
+          <FilaInterruptor iconoPlano rotulo="Precarga automática" activo={ajustes.precargaAutomatica}
+            icono={<IconDownload size={16} color={ICON_COLOR.muted} />}
+            onCambiar={v => { setPrecargaAutomatica(v); if (HAY_DESCARGAS) reanudarDescargas() }} />
+          <FilaInterruptor iconoPlano rotulo="Precargar con datos móviles" activo={ajustes.precargaDatos}
+            icono={<IconWifi size={16} color={ICON_COLOR.muted} />}
+            onCambiar={v => { setPrecargaDatos(v); if (HAY_DESCARGAS) reanudarDescargas() }} ultima />
         </GrupoAjustes>
       ),
     },
@@ -238,6 +251,19 @@ export default function Configuracion() {
               ultima
             />
           ) : null}
+        </GrupoAjustes>
+      ),
+    },
+    {
+      id: 'accesos',
+      titulo: 'Solicitudes de acceso',
+      icono: IconUser,
+      palabras: 'administración aprobar rechazar solicitudes acceso cuentas google',
+      visible: esAdmin,
+      bloques: (
+        <GrupoAjustes pie="Revisá quién puede entrar a DMusic.">
+          <FilaAjuste iconoPlano rotulo="Solicitudes de acceso" vacio="" icono={<IconUser size={16} color={ICON_COLOR.muted} />}
+            onPress={() => router.push('/ajustes/accesos')} ultima />
         </GrupoAjustes>
       ),
     },
@@ -418,14 +444,7 @@ function Telefono({
       {/* La barra chica: solo la flecha. Configuración es una pantalla apilada
           en esta app —no una pestaña— y necesita su vuelta. */}
       <View className="flex-row items-center px-3 py-1">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Volver"
-          onPress={onVolver}
-          className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-        >
-          <IconBack size={19} color={ICON_COLOR.foreground} />
-        </Pressable>
+        <BotonVolver label="Volver" onPress={onVolver} />
       </View>
       <ScrollView
         keyboardShouldPersistTaps="handled"
@@ -535,7 +554,7 @@ function Escritorio({
 
         <Panel className="min-w-0 flex-1">
           <View className="flex-row items-center gap-1 px-2 py-1">
-            <BotonLateral label="Volver" onPress={onVolver} icono={<IconBack size={17} color={ICON_COLOR.foreground} />} />
+            <BotonVolver label="Volver" onPress={onVolver} />
             <Text className="min-w-0 flex-1 text-foreground text-[15px] font-semibold" numberOfLines={1}>
               {buscando ? `Resultados de «${busqueda.trim()}»` : actual?.titulo}
             </Text>
@@ -545,19 +564,19 @@ function Escritorio({
             keyboardShouldPersistTaps="handled"
             contentContainerClassName="items-center px-8 pb-10 pt-6"
           >
-            <View className="w-full gap-6" style={{ maxWidth: MAX_W }}>
+            <View className="w-full gap-4" style={{ maxWidth: MAX_W }}>
               {mostradas.map((c) => (
-                <View key={c.id} className="gap-6">
+                <View key={c.id} className="gap-4">
                   {buscando ? (
                     <Text className="px-1 text-muted-foreground text-[13px] font-semibold uppercase tracking-[1.2px]">
                       {c.titulo}
                     </Text>
                   ) : null}
-                  {c.bloques}
+                  <AjustesCompactos>{c.bloques}</AjustesCompactos>
                 </View>
               ))}
               {buscando && mostradas.length === 0 ? sinResultados : null}
-              {!buscando && actual?.id === 'app' ? novedades : null}
+              {!buscando && actual?.id === 'app' ? <AjustesCompactos>{novedades}</AjustesCompactos> : null}
             </View>
           </ScrollView>
         </Panel>

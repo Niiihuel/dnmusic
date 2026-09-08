@@ -1,757 +1,439 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { Platform } from 'react-native'
-import type { Directory, File } from 'expo-file-system'
-import { excluirDeCopias } from '../../modules/backup-exclusion'
 import { artworkRemoto, registerArteLocal } from '../lib/artwork'
 import { mensajeError } from '../lib/mensajeError'
-import { signedUrl } from '../services/music'
+import {
+  audioV1, arteGuardado, escritorioAudio, escucharRedAudio, espacioLibreAudio, estadoRedAudio,
+  guardarArte, hayAlmacenAudio, limpiarParciales, listarAudio, quitarAudio, quitarPausa, RESERVA_AUDIO,
+  transferirAudio, type PausaAudio, type TransferenciaAudio,
+} from '../lib/almacenAudio'
+import { resolveSong, signedUrl } from '../services/music'
 import type { PlaylistTrack } from '../services/playlists'
 import { leerAjustes } from './ajustes'
-import { avisar } from './aviso'
 import { createStore, useStore } from './store'
 
-/**
- * Las canciones guardadas en el teléfono, para escuchar sin internet.
- *
- * Es el único lugar de la app donde vive un archivo. Todo lo demás —el audio, las
- * carátulas, las listas— está en Supabase y se pide cuando hace falta, que es lo
- * correcto mientras haya conexión y lo único que no sirve cuando no la hay: en el
- * subte, en un avión, o simplemente sin datos.
- *
- * **Se indexa por `audioPath`, no por canción.** Una misma canción puede estar en
- * dos listas y en la radio de recomendados, y en cada lado tiene un `id`
- * distinto —el de `playlist_tracks`, o el `radio:...` que arma el recomendador—.
- * Lo que no cambia nunca es el archivo en Storage, que es `{videoId}.m4a`. Con esa
- * clave, bajarla una vez la deja bajada **en todos lados**, y quitarla de una
- * lista no borra el archivo que otra sigue usando.
- *
- * **Solo en el teléfono, y solo con el binario al día.** En web
- * `expo-file-system` no hace nada —cada método imprime un aviso y devuelve
- * vacío— y en una app compilada antes de que esto existiera los módulos nativos
- * directamente no están. En los dos casos `HAY_DESCARGAS` es falso y las
- * pantallas no dibujan un control que no podrían cumplir; ver el bloque de abajo,
- * que es donde se decide.
- */
-
-/*
- * Los dos módulos nativos se cargan **a mano y sin reventar si no están**.
- *
- * `expo-file-system` y `expo-network` usan `requireNativeModule`, que **lanza
- * cuando se importa** si el binario no los trae. Y este archivo lo importa el
- * layout, así que un `import` normal arriba de todo convierte «esta versión no
- * tiene descargas» en «la app no abre»: pantalla roja al arrancar, sin nada que
- * se pueda hacer desde la app.
- *
- * Eso pasa siempre que se suma una dependencia nativa, y pasa en un caso que es
- * completamente normal: cualquier development client o TestFlight compilado
- * **antes** de que existiera esta función. Es el mismo motivo por el que
- * `modules/remote-commands` y `modules/audio-route` se resuelven de forma
- * opcional; acá el paquete no ofrece esa variante, así que el `try` lo escribe
- * este archivo.
- *
- * El `require` va con la ruta escrita literal y no en una variable: Metro
- * resuelve las dependencias leyendo el código, y con un nombre calculado no
- * empaquetaría el módulo.
- */
-type ModuloArchivos = typeof import('expo-file-system')
-type ModuloRed = typeof import('expo-network')
-
-let modArchivos: ModuloArchivos | null = null
-let modRed: ModuloRed | null = null
-
-if (Platform.OS !== 'web') {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    modArchivos = require('expo-file-system') as ModuloArchivos
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    modRed = require('expo-network') as ModuloRed
-  } catch {
-    /* Binario viejo. La app arranca igual y las descargas no existen: la
-       pantalla de Ajustes no dibuja su grupo y las listas no dibujan el botón. */
-    modArchivos = null
-    modRed = null
-  }
-}
-
-/**
- * Si esta plataforma **y este binario** pueden guardar archivos.
- *
- * Es lo que consultan las pantallas para no ofrecer un control que no podrían
- * cumplir. Ver arriba los dos motivos por los que puede ser falso.
- */
-export const HAY_DESCARGAS = modArchivos !== null && modRed !== null
-
-/* Los accesores no devuelven `null` para que las llamadas de abajo no arrastren
-   un `?.` cada una: todas corren detrás de `HAY_DESCARGAS`, así que si alguna
-   llegara acá sin módulo es un error nuestro y tiene que sonar como tal. */
-function fs(): ModuloArchivos {
-  if (!modArchivos) throw new Error('Esta versión de la app no puede descargar canciones.')
-  return modArchivos
-}
-
-function net(): ModuloRed {
-  if (!modRed) throw new Error('Esta versión de la app no puede descargar canciones.')
-  return modRed
-}
-
-/** Dónde viven los archivos, dentro de Documents. */
-const CARPETA = 'descargas'
-/** El índice de lo bajado. Los archivos son la verdad; esto es el catálogo. */
-const CLAVE = 'descargas:v1'
-/**
- * Espacio que se deja libre pase lo que pase.
- *
- * Llenar el disco de un teléfono no rompe solo a esta app: rompe la cámara, las
- * actualizaciones y el propio sistema. Trescientos megas es el colchón por debajo
- * del cual no se empieza ninguna descarga.
- */
-const MARGEN_LIBRE = 300 * 1024 * 1024
-/**
- * Cada cuánto se le avisa al store el progreso.
- *
- * `onProgress` llega muchísimas veces por segundo, y cada aviso es un `store.set`
- * que redibuja la lista entera. Es exactamente la forma del problema que nos hizo
- * matar la app por consumo de CPU en segundo plano —ver el comentario largo de
- * `MotorAudio`— así que acá se corta de entrada: cinco veces por segundo, y solo
- * si el porcentaje entero cambió.
- */
-const AVISO_CADA_MS = 200
-
-/**
- * En qué anda una canción.
- *
- * No hay estado `error`: una descarga que falla **se borra del índice** y vuelve
- * a ser una canción sin bajar. Dejarla marcada como fallada obligaría a quien
- * mira a limpiarla a mano antes de reintentar, y no hay nada que limpiar — el
- * archivo no llegó a existir.
- */
-export type EstadoDescarga = 'espera' | 'bajando' | 'lista'
-
+export const HAY_DESCARGAS = hayAlmacenAudio
+const CLAVE = 'descargas:v2'
+const MB = 1024 * 1024
+const ESTIMADO = 8 * MB
+const MAX_INTENTOS = 3
+export type EstadoDescarga = 'espera' | 'preparando' | 'bajando' | 'pausada' | 'error' | 'lista'
 export type Descarga = {
-  audioPath: string
-  artworkPath: string | null
-  videoId: string
-  title: string
-  artist: string
-  estado: EstadoDescarga
-  /** 0..1 mientras baja; 1 cuando está. */
-  progreso: number
-  /** Lo que ocupa en el teléfono. 0 hasta que termina. */
-  bytes: number
-  /**
-   * Si la carátula también quedó guardada.
-   *
-   * Se anota en vez de preguntarle al disco. `arteLocal` corre **al dibujar cada
-   * imagen** —cincuenta filas de una lista son cincuenta llamadas por render— y
-   * `File.exists` es una lectura de disco síncrona: preguntarlo ahí congelaba el
-   * hilo de JavaScript en cada cuadro de scroll. Bajar la carátula puede fallar
-   * sin que falle la canción, así que el dato no se puede deducir de `estado`.
-   */
-  arte: boolean
+  audioPath: string; artworkPath: string | null; videoId: string; title: string; artist: string
+  estado: EstadoDescarga; progreso: number; bytes: number; arte: boolean
+  temporal: boolean; ultimoUso: number; error: string | null; intentos: number
+  uri?: string; arteUri?: string; quitarAlLiberar?: boolean; pausa?: PausaAudio; proximoIntento?: number; track?: PlaylistTrack
 }
-
 type Estado = {
-  /** Por `audioPath`. Ver el comentario de arriba. */
-  items: Record<string, Descarga>
-  /** Si ya se leyó el índice del disco. Antes de eso no se sabe nada. */
-  cargado: boolean
-  /**
-   * La cola está frenada esperando Wi-Fi.
-   *
-   * Se muestra porque si no la app parecería colgada: canciones marcadas para
-   * bajar que no bajan nunca, sin ninguna explicación en pantalla. Con esto, la
-   * fila de Ajustes dice qué está pasando y qué hay que hacer.
-   */
-  esperandoWifi: boolean
+  items: Record<string, Descarga>; cola: string[]; cargado: boolean
+  esperandoWifi: boolean; esperandoRed: boolean; limiteCacheMB: number; error: string | null
 }
-
-const store = createStore<Estado>({ items: {}, cargado: false, esperandoWifi: false })
-
-/* ── Los archivos ────────────────────────────────────────────────────────── */
-
-/**
- * La carpeta, creada al primer uso.
- *
- * Es perezosa a propósito: `Paths.document` es una llamada al módulo nativo, y
- * en web eso escupe un aviso en la consola apenas se importa este archivo. Nadie
- * lo pide hasta que hay algo que bajar, y en web no lo pide nunca.
- */
-let carpetaCache: Directory | null = null
-
-function carpeta(): Directory {
-  if (carpetaCache) return carpetaCache
-  const dir = new (fs().Directory)(fs().Paths.document, CARPETA)
-  dir.create({ intermediates: true, idempotent: true })
-  /*
-   * Fuera de la copia de iCloud, una vez por sesión.
-   *
-   * Va acá y no por archivo porque en iOS el atributo se hereda: lo que se cree
-   * adentro después queda excluido igual. Ver `modules/backup-exclusion`.
-   */
-  excluirDeCopias(dir.uri)
-  carpetaCache = dir
-  return dir
-}
-
-/**
- * El nombre en disco, derivado de la ruta de Storage.
- *
- * Es determinista para que el índice no tenga que guardarlo: con la ruta alcanza
- * para volver a encontrar el archivo, y así un índice a medio escribir nunca
- * apunta a un nombre que no existe.
- *
- * Hoy las rutas son `{videoId}.m4a` y `{videoId}.jpg`, que ya son nombres
- * válidos. El reemplazo es por si algún día dejan de serlo — una barra en el
- * nombre crearía una carpeta, y una ruta con `..` escribiría fuera de la nuestra.
- */
-function nombreSeguro(path: string): string {
-  return path.replace(/[^A-Za-z0-9._-]/g, '_')
-}
-
-function archivoAudio(audioPath: string): File {
-  return new (fs().File)(carpeta(), nombreSeguro(audioPath))
-}
-
-/* La carátula lleva prefijo: si algún día audio y arte compartieran extensión,
-   uno pisaría al otro sin que nadie se entere. */
-function archivoArte(artworkPath: string): File {
-  return new (fs().File)(carpeta(), `arte-${nombreSeguro(artworkPath)}`)
-}
-
-/**
- * La URI de algo adentro de la carpeta, **sin tocar el sistema de archivos**.
- *
- * `new File(...)` construye un objeto nativo, y las consultas de arriba corren
- * al dibujar. Con la carpeta ya resuelta, armar la ruta es pegar dos strings.
- */
-function uriEn(nombre: string): string {
-  const base = carpeta().uri
-  return base.endsWith('/') ? `${base}${nombre}` : `${base}/${nombre}`
-}
-
-/** Borra sin quejarse si no estaba. Lo que se quería es que no exista. */
-function borrarSiEsta(archivo: File) {
-  try {
-    if (archivo.exists) archivo.delete()
-  } catch {
-    // Un archivo que no se puede borrar no puede frenar nada de lo que sigue.
-  }
-}
-
-/* ── Consultas ───────────────────────────────────────────────────────────── */
-
-/**
- * El archivo local de una canción, si está bajada. `null` si no.
- *
- * Es síncrono porque quien lo llama —el motor, al elegir de dónde suena— no
- * puede esperar: cualquier `await` acá sería un hueco entre canciones.
- */
-export function rutaLocal(audioPath: string): string | null {
-  if (!HAY_DESCARGAS) return null
-  const item = store.get().items[audioPath]
-  if (!item || item.estado !== 'lista') return null
-  try {
-    return uriEn(nombreSeguro(audioPath))
-  } catch {
-    return null
-  }
-}
-
-/**
- * Lo mismo para la carátula. Lo consulta `lib/artwork` por el puente.
- *
- * Se busca **por la canción a la que pertenece**, no por su propia ruta: el
- * índice está armado por `audioPath` y la carátula es un dato de la canción. El
- * recorrido corta al primer acierto y no toca el disco —eso es lo que dice el
- * campo `arte`—, así que es una comparación de strings sobre las canciones
- * bajadas y nada más.
- */
-function arteLocal(artworkPath: string): string | null {
-  if (!HAY_DESCARGAS) return null
-  for (const item of Object.values(store.get().items)) {
-    if (item.artworkPath !== artworkPath) continue
-    if (item.estado !== 'lista' || !item.arte) return null
-    try {
-      return uriEn(`arte-${nombreSeguro(artworkPath)}`)
-    } catch {
-      return null
-    }
-  }
-  return null
-}
-
-/** Lo que ocupan todas juntas, en bytes. */
-export function espacioUsado(items: Record<string, Descarga>): number {
-  return Object.values(items).reduce((suma, d) => suma + d.bytes, 0)
-}
-
-/** Cuántas hay guardadas del todo. Las que están bajando todavía no cuentan. */
-export function cuantasListas(items: Record<string, Descarga>): number {
-  return Object.values(items).filter((d) => d.estado === 'lista').length
-}
-
-/** Cuántas están en camino o esperando turno. */
-export function cuantasPendientes(items: Record<string, Descarga>): number {
-  return Object.values(items).filter((d) => d.estado !== 'lista').length
-}
-
-/**
- * Cómo está una lista entera. Lo usa el botón de la cabecera.
- *
- * `progreso` mezcla las que ya están con lo que va de la que baja, así la barra
- * avanza parejo en vez de saltar de canción en canción.
- */
-export function resumenLista(
-  tracks: PlaylistTrack[],
-  items: Record<string, Descarga>,
-): { total: number; listas: number; bajando: number; progreso: number } {
-  let listas = 0
-  let bajando = 0
-  let parcial = 0
-  for (const track of tracks) {
-    const item = items[track.audioPath]
-    if (!item) continue
-    if (item.estado === 'lista') {
-      listas += 1
-      parcial += 1
-    } else {
-      bajando += 1
-      parcial += item.progreso
-    }
-  }
-  const total = tracks.length
-  return { total, listas, bajando, progreso: total > 0 ? parcial / total : 0 }
-}
-
-/** «128 MB», para mostrarlo. */
-export function formatoBytes(bytes: number): string {
-  if (bytes <= 0) return '0 MB'
-  const mb = bytes / (1024 * 1024)
-  if (mb < 1) return `${Math.max(1, Math.round(bytes / 1024))} KB`
-  if (mb < 1024) return `${Math.round(mb)} MB`
-  return `${(mb / 1024).toFixed(1)} GB`
-}
-
-/* ── El índice guardado ──────────────────────────────────────────────────── */
-
-/** Solo las terminadas: una a medio bajar no sobrevive a cerrar la app. */
-function guardarIndice() {
-  const listas = Object.values(store.get().items).filter((d) => d.estado === 'lista')
-  void AsyncStorage.setItem(CLAVE, JSON.stringify(listas)).catch(() => {
-    // Sin índice se pierde el catálogo, no los archivos: la próxima carga los
-    // encuentra huérfanos y los limpia. Peor sería frenar la descarga por esto.
-  })
-}
-
-/**
- * Lee el índice y lo **contrasta contra el disco**. Lo llama el layout al arrancar.
- *
- * Los dos pueden no coincidir, y en las dos direcciones:
- *
- * - Una entrada sin archivo. Pasa si iOS liberó espacio, si alguien borró los
- *   datos de la app, o si el proceso murió entre bajar y guardar el índice. Se
- *   descarta: prometer que una canción está bajada cuando no está es peor que no
- *   ofrecerla.
- * - Un archivo sin entrada. Es basura de una descarga que quedó a mitad de camino
- *   —el proceso se cerró mientras bajaba— y ocuparía espacio para siempre sin que
- *   nadie sepa que está. Se borra.
- *
- * Además vuelve a leer el tamaño real de cada archivo en vez de confiar en lo
- * guardado, así el «espacio usado» que se muestra en Ajustes es el de verdad.
- */
-export async function cargarDescargas() {
-  if (!HAY_DESCARGAS) {
-    store.set({ cargado: true })
-    return
-  }
-
-  /* El puente para las carátulas se registra siempre, aunque no haya nada
-     guardado: puede haberlo dentro de un rato. Ver `lib/artwork`. */
-  registerArteLocal(arteLocal)
-
-  /*
-   * Volver a intentar cuando aparece el Wi-Fi.
-   *
-   * Sin esto, «solo con Wi-Fi» sería una trampa: las descargas quedarían
-   * esperando para siempre aunque el teléfono se conectara a una red buena dos
-   * minutos después, y la única forma de destrabarlas sería tocar el botón de
-   * nuevo. El aviso llega del sistema, no hay que preguntar cada tanto.
-   *
-   * No se da de baja: este módulo vive lo que vive la app.
-   */
-  net().addNetworkStateListener(({ type }) => {
-    if (type !== net().NetworkStateType.CELLULAR) void arrancar()
-  })
-
-  const items: Record<string, Descarga> = {}
-  try {
-    const crudo = await AsyncStorage.getItem(CLAVE)
-    const guardadas = crudo ? (JSON.parse(crudo) as Descarga[]) : []
-    for (const d of guardadas) {
-      if (!d?.audioPath) continue
-      const archivo = archivoAudio(d.audioPath)
-      if (!archivo.exists || archivo.size <= 0) continue
-      /* La carátula se comprueba **acá y solo acá**: es una lectura de disco, y
-         este es el único momento en que corre una vez por canción y no una vez
-         por dibujado. Ver el comentario del campo `arte`. */
-      const arte = d.artworkPath ? archivoArte(d.artworkPath).exists : false
-      items[d.audioPath] = { ...d, estado: 'lista', progreso: 1, bytes: archivo.size, arte }
-    }
-  } catch {
-    // El índice no se entiende: se arranca sin nada y la limpieza de abajo se
-    // lleva los archivos sueltos.
-  }
-
-  try {
-    const esperados = new Set<string>()
-    for (const d of Object.values(items)) {
-      esperados.add(nombreSeguro(d.audioPath))
-      if (d.arte && d.artworkPath) esperados.add(`arte-${nombreSeguro(d.artworkPath)}`)
-    }
-    for (const entrada of carpeta().list()) {
-      if (entrada instanceof fs().File && !esperados.has(entrada.name)) borrarSiEsta(entrada)
-    }
-  } catch {
-    // Sin limpieza, pero con el índice al día.
-  }
-
-  store.set({ items, cargado: true })
-  guardarIndice()
-}
-
-/* ── La cola ─────────────────────────────────────────────────────────────── */
-
-/*
- * Se baja **de a una**.
- *
- * No es por prudencia abstracta: bajar un disco entero en paralelo satura la
- * conexión, y esta app está reproduciendo música al mismo tiempo. El audio que
- * suena tiene prioridad sobre el que se guarda para después — si se cortara la
- * canción para bajar más rápido las siguientes, la función estaría trabajando en
- * contra de lo único que la app hace.
- */
-const cola: string[] = []
-let bajando: string | null = null
-let tarea: { cancel: () => void } | null = null
-/**
- * Si ya se avisó de una falla en esta tanda.
- *
- * Sin esto, quedarse sin señal con veinte canciones encoladas serían veinte
- * carteles seguidos diciendo lo mismo. Se vuelve a habilitar cuando la cola se
- * vacía, así la próxima tanda sí puede avisar.
- */
-let avisado = false
-/**
- * La que se canceló a mano, para no confundirla con una que falló.
- *
- * Cancelar hace que `downloadAsync()` **rechace**, igual que un corte de red. Sin
- * distinguirlas, quitar una descarga mientras bajaba te tiraba un cartel rojo
- * diciendo que no se pudo bajar la canción que vos mismo acababas de sacar.
- */
-let cancelado: string | null = null
-
-function actualizar(audioPath: string, cambios: Partial<Descarga>) {
-  const items = store.get().items
-  const actual = items[audioPath]
-  if (!actual) return
-  store.set({ items: { ...items, [audioPath]: { ...actual, ...cambios } } })
-}
-
-function sacar(audioPath: string) {
-  const items = { ...store.get().items }
-  delete items[audioPath]
-  store.set({ items })
-}
-
-/**
- * Pone una canción en la cola. Si ya está bajada o en camino, no hace nada.
- *
- * No devuelve promesa: quien la llama es un botón, y lo que le importa es que la
- * canción quede marcada al instante. Cómo va la bajada se ve en el store.
- */
-export function descargar(track: PlaylistTrack) {
-  if (!HAY_DESCARGAS || !track.audioPath) return
-  if (store.get().items[track.audioPath]) return
-
-  store.set({
-    items: {
-      ...store.get().items,
-      [track.audioPath]: {
-        audioPath: track.audioPath,
-        artworkPath: track.artworkPath,
-        videoId: track.videoId,
-        title: track.title,
-        artist: track.artist,
-        estado: 'espera',
-        progreso: 0,
-        bytes: 0,
-        arte: false,
-      },
-    },
-  })
-  cola.push(track.audioPath)
-  void arrancar()
-}
-
-/** Toda una lista de un saque. Las que ya estén se saltean solas. */
-export function descargarLista(tracks: PlaylistTrack[]) {
-  for (const track of tracks) descargar(track)
-}
-
-/**
- * Saca una canción del teléfono: borra los archivos y la marca.
- *
- * Si es la que está bajando en este momento, se cancela la tarea nativa. No pide
- * confirmación a propósito: volver a bajarla es un toque, así que esto no es una
- * pérdida sino un cambio de opinión.
- */
-export function quitarDescarga(audioPath: string) {
-  if (!HAY_DESCARGAS) return
-  const item = store.get().items[audioPath]
-  if (!item) return
-
-  const enCola = cola.indexOf(audioPath)
-  if (enCola >= 0) cola.splice(enCola, 1)
-  if (bajando === audioPath) {
-    cancelado = audioPath
-    tarea?.cancel()
-    tarea = null
-  }
-
-  try {
-    borrarSiEsta(archivoAudio(audioPath))
-    if (item.artworkPath) borrarSiEsta(archivoArte(item.artworkPath))
-  } catch {
-    // La entrada se va igual: lo que quede suelto lo limpia el próximo arranque.
-  }
-  sacar(audioPath)
-  /* Si era la última que esperaba, ya no hay nada esperando. */
-  if (!cola.length && store.get().esperandoWifi) store.set({ esperandoWifi: false })
-  guardarIndice()
-}
-
-export function quitarLista(tracks: PlaylistTrack[]) {
-  for (const track of tracks) quitarDescarga(track.audioPath)
-}
-
-/** Todo. Es lo que ofrece Ajustes para recuperar espacio de una. */
-export function borrarTodo() {
-  if (!HAY_DESCARGAS) return
-  cola.length = 0
-  cancelado = bajando
-  tarea?.cancel()
-  tarea = null
-  /* `bajando` no se toca: lo limpia el `finally` de `arrancar` cuando la tarea
-     nativa termine de rechazar. Ponerlo en null acá dejaría arrancar una segunda
-     descarga en paralelo con la que se está muriendo. */
-  try {
-    const dir = carpeta()
-    if (dir.exists) dir.delete()
-    carpetaCache = null
-  } catch {
-    // Si la carpeta no se pudo borrar, el índice vacío deja de ofrecer los
-    // archivos y el próximo arranque los limpia por huérfanos.
-  }
-  store.set({ items: {}, esperandoWifi: false })
-  guardarIndice()
-}
-
-/**
- * Si se puede bajar con la conexión que hay ahora.
- *
- * Frena **solo cuando el sistema dice que es celular**. `UNKNOWN` —lo que
- * devuelve cuando no puede clasificar la red— cuenta como permitida: dejar las
- * descargas colgadas para siempre por no poder confirmar el tipo de conexión
- * sería un problema peor que el que resuelve la preferencia. Lo mismo si la
- * consulta falla.
- */
-async function redPermitida(): Promise<boolean> {
-  if (!leerAjustes().soloWifi) return true
-  try {
-    const { type } = await net().getNetworkStateAsync()
-    return type !== net().NetworkStateType.CELLULAR
-  } catch {
-    return true
-  }
-}
-
-/**
- * Baja la cola entera, de a una, y se detiene sola cuando no queda nada.
- *
- * Es un bucle y no una recursión porque ahora la cola se puede **pausar**: con
- * «solo Wi-Fi» prendido y datos móviles, lo que corresponde no es fallar cada
- * canción sino dejarlas esperando. Sacando el elemento recién cuando se lo va a
- * bajar, la pausa no pierde nada — la cola queda tal cual y la retoma el aviso
- * de red, o apagar la preferencia.
- *
- * `corriendo` es lo que garantiza que hay un solo bucle: `descargar` llama a
- * esto sin esperar, y la primera pausa del bucle es un `await`, así que sin la
- * marca dos llamadas seguidas arrancarían dos descargas en paralelo.
- */
+const store = createStore<Estado>({ items: {}, cola: [], cargado: false, esperandoWifi: false, esperandoRed: false, limiteCacheMB: escritorioAudio ? 1024 : 250, error: null })
+const protecciones = new Map<string | symbol, Set<string>>()
+const protegidos = new Set<string>()
+let carga: Promise<void> | null = null
+let escritura = Promise.resolve()
+let mantenimiento = Promise.resolve()
 let corriendo = false
+let reproduccionOcupada = false
+let despertar: ReturnType<typeof setTimeout> | null = null
+let activo: Trabajo | null = null
+let limiteModificado = false
+const consumidores = new Map<string, number>()
+const cacheExplicita = new Set<string>()
 
+type Trabajo = { key: string; controller: AbortController; transferencia?: TransferenciaAudio; detener?: 'pausa' | 'cancelar' | 'prioridad' | 'red'; detenido?: Promise<void> }
+function escribir(items = store.get().items) {
+  const s = store.get()
+  const texto = JSON.stringify({ version: 2, items, cola: s.cola, limiteCacheMB: s.limiteCacheMB })
+  const resultado = escritura.catch(() => {}).then(() => AsyncStorage.setItem(CLAVE, texto))
+  escritura = resultado
+  return resultado
+}
+function persistir() { void escribir().catch(e => store.set({ error: `No se pudo guardar la cola: ${mensajeError(e)}` })) }
+function poner(key: string, cambios: Partial<Descarga>, guardar = true) {
+  const items = store.get().items
+  if (!items[key]) return
+  store.set({ items: { ...items, [key]: { ...items[key], ...cambios } } })
+  if (guardar) persistir()
+}
+function sacar(key: string) {
+  cacheExplicita.delete(key)
+  const items = { ...store.get().items }; delete items[key]
+  store.set({ items, cola: store.get().cola.filter(k => k !== key) }); persistir()
+}
+function buscar(key: string) {
+  const items = store.get().items
+  return items[key] ? key : Object.keys(items).find(k => items[k].audioPath === key || `video:${items[k].videoId}` === key)
+}
+export function claveDescarga(track: Pick<PlaylistTrack, 'audioPath' | 'videoId'>) { return track.audioPath || `video:${track.videoId}` }
+function protegida(d: Descarga) { return protegidos.has(d.audioPath) || protegidos.has(`video:${d.videoId}`) }
+function vigente(t: Trabajo) { return activo === t && !t.detener && Boolean(store.get().items[t.key]) }
+function programar(ms: number) {
+  if (despertar) clearTimeout(despertar)
+  despertar = setTimeout(() => { despertar = null; impulsar() }, Math.max(10, ms))
+}
+function impulsar() { void arrancar().catch(e => store.set({ error: mensajeError(e) })) }
+function luego(fn: () => void | Promise<void>) {
+  void cargarDescargas().then(() => { if (store.get().cargado) return fn() }).catch(e => store.set({ error: mensajeError(e) }))
+}
+
+/** Una sola inicialización; las acciones esperan su reconciliación antes de modificar el índice. */
+export function cargarDescargas(): Promise<void> {
+  if (carga) return carga
+  carga = inicializar().catch(() => { carga = null })
+  return carga
+}
+async function inicializar() {
+  if (!HAY_DESCARGAS) { store.set({ cargado: true }); return }
+  registerArteLocal(path => Object.values(store.get().items).find(d => d.estado === 'lista' && d.artworkPath === path && d.arteUri)?.arteUri ?? null)
+  try {
+    const raw = await AsyncStorage.getItem(CLAVE)
+    const legacy = raw ? null : await AsyncStorage.getItem('descargas:v1')
+    const data = raw ? JSON.parse(raw) : null
+    const anteriores: Record<string, Descarga> = data?.version === 2 && data.items && typeof data.items === 'object' ? data.items : {}
+    if (legacy) for (const d of JSON.parse(legacy)) if (d?.audioPath) anteriores[d.audioPath] = { ...d, temporal: false, ultimoUso: Date.now(), error: null, intentos: 0 }
+    const archivos = new Map((await listarAudio()).filter(f => f.bytes > 0).map(f => [f.key, f]))
+    const items: Record<string, Descarga> = {}
+    for (const [key, d] of Object.entries(anteriores)) {
+      if (!d || typeof d.audioPath !== 'string' || typeof d.videoId !== 'string') continue
+      const f = archivos.get(d.audioPath) ?? (d.audioPath ? audioV1(d.audioPath) : null)
+      const arteUri = d.artworkPath ? arteGuardado(d.artworkPath) : null
+      const estado: EstadoDescarga = f ? 'lista' : d.estado === 'pausada' || d.estado === 'error' ? d.estado : 'espera'
+      items[key] = { ...d, temporal: d.temporal === true, ultimoUso: Number(d.ultimoUso) || Date.now(), intentos: Number(d.intentos) || 0,
+        estado, progreso: f ? 1 : 0, bytes: f?.bytes ?? 0, uri: f?.uri, arte: Boolean(arteUri), arteUri: arteUri ?? undefined,
+        pausa: f ? undefined : d.pausa, error: f ? null : d.error ?? null }
+    }
+    const orden: string[] = Array.isArray(data?.cola) ? data.cola.filter((k: unknown): k is string => typeof k === 'string' && Boolean(items[k])) : []
+    const cola = [...new Set([...orden, ...Object.keys(items)])].filter(k => items[k].estado !== 'lista')
+    const limite = Number(data?.limiteCacheMB)
+    store.set({ items, cola, ...(!limiteModificado && Number.isFinite(limite) && limite >= 0 ? { limiteCacheMB: limite } : {}), cargado: true, error: null })
+    await limpiarParciales(Object.values(items).flatMap(d => d.pausa ? [d.pausa] : []))
+    await escribir()
+  } catch (e) {
+    // Una lectura fallida no autoriza a borrar archivos ni sobrescribir su catálogo.
+    store.set({ cargado: false, error: `No se pudo recuperar las descargas: ${mensajeError(e)}` })
+    carga = null
+    throw e
+  }
+  escucharRedAudio(() => {
+    void redPermitida(activo ? store.get().items[activo.key]?.temporal : false).then(ok => { if (!ok) detenerActivo('red'); else impulsar() }).catch(() => {})
+  })
+  impulsar()
+}
+
+export function rutaLocal(audioPath: string): string | null {
+  const key = buscar(audioPath)
+  const d = key ? store.get().items[key] : null
+  if (!d || d.estado !== 'lista' || !d.uri) return null
+  return d.uri
+}
+/** Sólo desde un efecto de reproducción; rutaLocal también se consulta durante render. */
+export function marcarAudioUsado(audioPath: string) {
+  const key = buscar(audioPath), d = key ? store.get().items[key] : null
+  if (key && d?.estado === 'lista' && Date.now() - d.ultimoUso > 30_000) poner(key, { ultimoUso: Date.now() })
+}
+export function espacioUsado(items: Record<string, Descarga>) { return Object.values(items).reduce((s, d) => s + d.bytes, 0) }
+export function cuantasListas(items: Record<string, Descarga>) { return Object.values(items).filter(d => d.estado === 'lista').length }
+export function cuantasPendientes(items: Record<string, Descarga>) { return Object.values(items).filter(d => d.estado !== 'lista').length }
+export function resumenLista(tracks: PlaylistTrack[], items: Record<string, Descarga>) {
+  let listas = 0, bajando = 0, parcial = 0
+  for (const t of tracks) {
+    const d = items[claveDescarga(t)] ?? Object.values(items).find(d => d.videoId === t.videoId)
+    if (!d || d.temporal) continue
+    if (d.estado === 'lista') { listas++; parcial++ } else { bajando++; parcial += d.progreso }
+  }
+  return { total: tracks.length, listas, bajando, progreso: tracks.length ? parcial / tracks.length : 0 }
+}
+export function formatoBytes(bytes: number) {
+  if (bytes <= 0) return '0 MB'
+  const mb = bytes / MB
+  return mb < 1 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : mb < 1024 ? `${Math.round(mb)} MB` : `${(mb / 1024).toFixed(1)} GB`
+}
+function encolar(track: PlaylistTrack, temporal: boolean): string {
+  const s = store.get()
+  const existente = buscar(claveDescarga(track)) ?? buscar(`video:${track.videoId}`)
+  if (existente) {
+    const d = s.items[existente]
+    poner(existente, { temporal: d.temporal && temporal, ultimoUso: Date.now(), quitarAlLiberar: temporal ? d.quitarAlLiberar : false })
+    return existente
+  }
+  const key = claveDescarga(track)
+  const d: Descarga = { audioPath: track.audioPath || '', videoId: track.videoId, title: track.title, artist: track.artist, artworkPath: track.artworkPath,
+    estado: 'espera', progreso: 0, bytes: 0, arte: false, temporal, ultimoUso: Date.now(), error: null, intentos: 0, track }
+  store.set({ items: { ...s.items, [key]: d }, cola: [...s.cola, key] }); persistir()
+  return key
+}
+export function descargar(track: PlaylistTrack) { if (HAY_DESCARGAS) luego(() => { encolar(track, false); impulsar() }) }
+export function descargarLista(tracks: PlaylistTrack[]) { if (HAY_DESCARGAS) luego(() => { for (const t of tracks) encolar(t, false); impulsar() }) }
+
+function detenerActivo(motivo: NonNullable<Trabajo['detener']>) {
+  const t = activo
+  if (!t || t.detener === 'cancelar') return
+  if (t.detener) { if (motivo === 'cancelar') { t.detener = motivo; t.controller.abort(); t.transferencia?.cancelar() }; return }
+  t.detener = motivo
+  t.controller.abort()
+  if (motivo === 'cancelar') { t.transferencia?.cancelar(); return }
+  t.detenido = (async () => {
+    try {
+      const pausa = await t.transferencia?.pausar()
+      if (store.get().items[t.key] && t.detener !== 'cancelar') poner(t.key, { pausa: pausa ?? undefined })
+    } catch { t.transferencia?.cancelar() }
+  })()
+}
+export function pausarDescarga(key: string) { luego(() => {
+  const k = buscar(key); if (!k || store.get().items[k].estado === 'lista') return
+  poner(k, { estado: 'pausada', error: null }); if (activo?.key === k) detenerActivo('pausa')
+}) }
+export function reanudarDescarga(key: string) { luego(() => {
+  const k = buscar(key); if (!k || store.get().items[k].estado === 'lista') return
+  cacheExplicita.add(k)
+  poner(k, { estado: 'espera', error: null, proximoIntento: 0 }); impulsar()
+}) }
+export function reintentarDescarga(key: string) { luego(() => {
+  const k = buscar(key); if (!k || store.get().items[k].estado === 'lista') return
+  cacheExplicita.add(k)
+  poner(k, { estado: 'espera', error: null, intentos: 0, proximoIntento: 0, pausa: undefined }); impulsar()
+}) }
+export function cancelarDescarga(key: string) { luego(() => {
+  const k = buscar(key); if (!k || store.get().items[k].estado === 'lista') return
+  const pausa = store.get().items[k].pausa
+  if (activo?.key === k) detenerActivo('cancelar')
+  sacar(k)
+  void quitarPausa(pausa).catch(() => {})
+}) }
+export function reanudarDescargas() { if (HAY_DESCARGAS) luego(() => { impulsar() }) }
+
+/** El mismo archivo se promueve a descarga fijada; no se duplica ni se vuelve a bajar. */
+export async function prepararCache(track: PlaylistTrack, signal?: AbortSignal): Promise<string | null> {
+  if (!HAY_DESCARGAS || signal?.aborted) return null
+  await cargarDescargas()
+  if (signal?.aborted || !store.get().cargado) return null
+  const local = track.audioPath ? rutaLocal(track.audioPath) : null
+  if (local) return local
+  if (store.get().limiteCacheMB <= 0) return null
+  const key = encolar(track, true)
+  const identidad = `video:${track.videoId}`
+  consumidores.set(identidad, (consumidores.get(identidad) ?? 0) + 1)
+  return new Promise(resolve => {
+    let off: () => void = () => {}
+    let terminado = false
+    const terminar = (uri: string | null) => {
+      if (terminado) return
+      terminado = true; off(); signal?.removeEventListener('abort', abortar)
+      const restantes = (consumidores.get(identidad) ?? 1) - 1
+      if (restantes) consumidores.set(identidad, restantes); else consumidores.delete(identidad)
+      resolve(uri)
+    }
+    const abortar = () => {
+      terminar(null)
+      const k = buscar(key) ?? buscar(identidad), d = k ? store.get().items[k] : null
+      if (k && d?.temporal && d.estado !== 'lista' && !consumidores.has(identidad) && !protegida(d)) cancelarDescarga(k)
+    }
+    const mirar = () => {
+      const k = buscar(key) ?? buscar(`video:${track.videoId}`)
+      const d = k ? store.get().items[k] : null
+      if (!d || d.estado === 'error' || d.estado === 'pausada') terminar(null)
+      else if (d.estado === 'lista') terminar(d.uri ?? null)
+    }
+    off = store.subscribe(mirar); signal?.addEventListener('abort', abortar, { once: true }); mirar(); impulsar()
+  })
+}
+/** Cada reproductor reemplaza sólo sus rutas; [] libera únicamente a ese propietario. */
+export function protegerDescargas(paths: string[], propietario: string | symbol = 'motor') {
+  const anteriores = new Set(protegidos)
+  if (paths.length) protecciones.set(propietario, new Set(paths))
+  else protecciones.delete(propietario)
+  protegidos.clear()
+  for (const rutas of protecciones.values()) for (const path of rutas) protegidos.add(path)
+  const liberadas = [...anteriores].some(p => !protegidos.has(p))
+  if (liberadas) luego(async () => {
+    await mantener(async () => {
+      for (const [k, d] of Object.entries(store.get().items)) {
+        if (!d.temporal || protegida(d)) continue
+        if (d.quitarAlLiberar || (d.estado !== 'lista' && !consumidores.has(`video:${d.videoId}`) && !cacheExplicita.has(k))) await eliminar(k, true)
+      }
+    })
+    await podarCache(0); impulsar()
+  })
+}
+export function priorizarReproduccion(ocupada: boolean) {
+  reproduccionOcupada = ocupada
+  if (ocupada) detenerActivo('prioridad'); else impulsar()
+}
+export const getDescargas = () => store.get()
+export const useDescargasCargadas = () => useStore(store, s => s.cargado)
+export const useDescargasError = () => useStore(store, s => s.error)
+export const getLimiteCacheMB = () => store.get().limiteCacheMB
+export const useLimiteCacheMB = () => useStore(store, s => s.limiteCacheMB)
+export function setLimiteCacheMB(mb: number) {
+  if (!Number.isFinite(mb) || mb < 0) return
+  limiteModificado = true; store.set({ limiteCacheMB: Math.round(mb) })
+  luego(async () => { persistir(); await podarCache(0); impulsar() })
+}
+
+/** Borrar y descargar se serializan para que un borrado viejo nunca elimine una descarga nueva. */
+function mantener(fn: () => Promise<void>) {
+  mantenimiento = mantenimiento.catch(() => {}).then(fn)
+  return mantenimiento
+}
+async function eliminar(key: string, soloTemporal: boolean) {
+  const d = store.get().items[key]
+  if (!d || (soloTemporal && !d.temporal)) return
+  if (protegida(d)) { poner(key, { quitarAlLiberar: true }); return }
+  if (activo?.key === key) { detenerActivo('cancelar'); sacar(key); return }
+  if (d.estado === 'lista') poner(key, { estado: 'espera', uri: undefined, bytes: 0, progreso: 0 })
+  try { await quitarAudio(d.audioPath || key); await quitarPausa(d.pausa) }
+  catch (e) {
+    if (store.get().items[key]) poner(key, { ...d, temporal: store.get().items[key].temporal })
+    throw e
+  }
+  // Puede haberse fijado mientras el adaptador eliminaba el archivo: conservar intención y volver a encolar.
+  const actual = store.get().items[key]
+  if (actual && soloTemporal && !actual.temporal) {
+    poner(key, { estado: 'espera', bytes: 0, progreso: 0, uri: undefined })
+    store.set({ cola: [...new Set([...store.get().cola, key])] }); persistir()
+  } else sacar(key)
+}
+export function quitarDescarga(key: string) { luego(() => mantener(async () => {
+  const k = buscar(key); if (!k) return
+  if (protegida(store.get().items[k])) poner(k, { temporal: true, ultimoUso: Date.now(), quitarAlLiberar: true })
+  else await eliminar(k, false)
+})) }
+export function quitarLista(tracks: PlaylistTrack[]) { for (const t of tracks) quitarDescarga(claveDescarga(t)) }
+export function borrarTodo() { luego(() => mantener(async () => {
+  for (const k of Object.keys(store.get().items)) {
+    if (protegida(store.get().items[k])) poner(k, { temporal: true, quitarAlLiberar: true }); else await eliminar(k, false)
+  }
+})) }
+export function limpiarCache() { luego(() => mantener(async () => {
+  for (const k of Object.keys(store.get().items)) await eliminar(k, true)
+})) }
+async function podarCache(reservar: number, excepto?: string) {
+  await mantener(async () => {
+    const candidatos = Object.entries(store.get().items).filter(([k, d]) => k !== excepto && d.temporal && d.estado === 'lista' && !protegida(d)).sort((a, b) => a[1].ultimoUso - b[1].ultimoUso)
+    for (const [k] of candidatos) {
+      const usados = Object.values(store.get().items).filter(d => d.temporal).reduce((s, d) => s + d.bytes, 0)
+      const libre = espacioLibreAudio()
+      if (usados + reservar <= store.get().limiteCacheMB * MB && (libre === null || libre >= RESERVA_AUDIO + reservar)) break
+      await eliminar(k, true)
+    }
+  })
+}
+async function redPermitida(temporal = false) {
+  const r = await estadoRedAudio()
+  const esperandoRed = !r.conectada
+  const esperandoWifi = !esperandoRed && !temporal && leerAjustes().soloWifi && !r.segura
+  store.set({ esperandoRed, esperandoWifi })
+  return !esperandoRed && !esperandoWifi
+}
 async function arrancar() {
-  if (corriendo) return
+  if (corriendo || !HAY_DESCARGAS || !store.get().cargado || reproduccionOcupada) return
   corriendo = true
   try {
-    for (;;) {
-      const audioPath = cola[0]
-      if (!audioPath) {
-        avisado = false
-        if (store.get().esperandoWifi) store.set({ esperandoWifi: false })
+    while (!reproduccionOcupada) {
+      await mantenimiento.catch(() => {})
+      const s = store.get(), ahora = Date.now()
+      const pendientes = s.cola.filter(k => s.items[k]?.estado === 'espera' &&
+        (!s.items[k].temporal || consumidores.has(`video:${s.items[k].videoId}`) || cacheExplicita.has(k)))
+      const elegibles = pendientes.filter(k => (s.items[k].proximoIntento ?? 0) <= ahora)
+      let key = elegibles[0]
+      if (!key) {
+        const fechas = pendientes.flatMap(k => s.items[k]?.estado === 'espera' && s.items[k].proximoIntento ? [s.items[k].proximoIntento!] : [])
+        if (fechas.length) programar(Math.min(...fechas) - ahora)
+        else store.set({ esperandoRed: false, esperandoWifi: false })
         break
       }
-
-      if (!(await redPermitida())) {
-        /* El cartel una sola vez: quedarse sin Wi-Fi con veinte encoladas no
-           puede ser veinte carteles diciendo lo mismo. */
-        if (!store.get().esperandoWifi) {
-          store.set({ esperandoWifi: true })
-          avisar('Las descargas siguen cuando haya Wi-Fi.')
-        }
-        break
+      if (!(await redPermitida(s.items[key].temporal))) {
+        const cache = elegibles.find(k => s.items[k].temporal)
+        if (cache && await redPermitida(true)) key = cache
+        else { programar(15_000); break }
       }
-      if (store.get().esperandoWifi) store.set({ esperandoWifi: false })
-
-      cola.shift()
-      /* Puede haber sido quitada mientras esperaba su turno. */
-      if (!store.get().items[audioPath]) continue
-
-      bajando = audioPath
-      actualizar(audioPath, { estado: 'bajando', progreso: 0 })
-
-      try {
-        await bajarUna(audioPath)
-      } catch (causa) {
-        /*
-         * La entrada se borra y la canción vuelve a estar «sin bajar». El archivo
-         * a medio escribir también: en iOS `downloadAsync` mueve al destino recién
-         * cuando termina, así que normalmente no hay nada, pero una cancelación en
-         * Android sí puede dejarlo.
-         */
-        const item = store.get().items[audioPath]
-        try {
-          borrarSiEsta(archivoAudio(audioPath))
-          if (item?.artworkPath) borrarSiEsta(archivoArte(item.artworkPath))
-        } catch {
-          // Ya se hizo lo que se podía.
-        }
-        sacar(audioPath)
-        /* Cancelada a mano no es un fallo: es exactamente lo que se pidió. */
-        if (!avisado && cancelado !== audioPath) {
-          avisado = true
-          avisar(
-            `No se pudo descargar «${item?.title ?? 'la canción'}»: ${mensajeError(causa)}`,
-            true,
-          )
+      if (reproduccionOcupada || store.get().items[key]?.estado !== 'espera') continue
+      const t: Trabajo = { key, controller: new AbortController() }; activo = t
+      try { await bajar(t) }
+      catch (e) {
+        if (vigente(t)) {
+          const d = store.get().items[t.key]
+          const permitida = await redPermitida(d.temporal)
+          if (!vigente(t)) continue
+          if (!permitida) poner(t.key, { estado: 'espera', pausa: undefined })
+          else {
+            const intentos = d.intentos + 1
+            poner(t.key, { estado: intentos >= MAX_INTENTOS ? 'error' : 'espera', error: mensajeError(e), intentos, pausa: undefined, proximoIntento: Date.now() + 1000 * 2 ** (intentos - 1) })
+          }
         }
       } finally {
-        if (cancelado === audioPath) cancelado = null
-        bajando = null
-        tarea = null
+        await t.detenido
+        if (t.detener === 'cancelar') {
+          try { await quitarAudio(store.get().items[t.key]?.audioPath || t.key) } catch { /* Se reconciliará al reiniciar. */ }
+        } else if (t.detener && store.get().items[t.key] && store.get().items[t.key].estado !== 'pausada' && store.get().items[t.key].estado !== 'lista') poner(t.key, { estado: 'espera' })
+        activo = null
       }
     }
-  } finally {
-    corriendo = false
-  }
+  } finally { corriendo = false }
 }
-
-/**
- * Vuelve a mirar la cola. La llama el aviso de red y el interruptor de Ajustes.
- *
- * Es la única forma de salir de la pausa por datos móviles: el bucle se cortó y
- * nadie lo va a despertar solo.
- */
-export function reanudarDescargas() {
-  if (!HAY_DESCARGAS) return
-  void arrancar()
-}
-
-async function bajarUna(audioPath: string) {
-  const item = store.get().items[audioPath]
-  if (!item) return
-
-  if (fs().Paths.availableDiskSpace < MARGEN_LIBRE) {
-    throw new Error('no queda espacio en el teléfono')
+async function bajar(t: Trabajo) {
+  let d = store.get().items[t.key]
+  poner(t.key, { estado: 'preparando', error: null })
+  await escribir()
+  if (!vigente(t)) return
+  if (!d.audioPath) {
+    if (!d.track) throw new Error('No se pudo recuperar la canción. Volvé a agregarla.')
+    const resolved = await resolveSong({ ...d.track, album: '', albumId: null }, t.controller.signal)
+    if (!vigente(t)) return
+    if (!resolved.path) throw new Error('La canción todavía no tiene audio disponible.')
+    const old = t.key, items = { ...store.get().items }, existente = items[resolved.path]
+    d = { ...items[old], audioPath: resolved.path, artworkPath: resolved.artworkPath, pausa: undefined }
+    delete items[old]
+    if (existente) {
+      items[resolved.path] = { ...existente, temporal: existente.temporal && d.temporal }
+      store.set({ items, cola: store.get().cola.filter(k => k !== old) }); persistir(); return
+    }
+    t.key = resolved.path; items[t.key] = d
+    store.set({ items, cola: store.get().cola.map(k => k === old ? t.key : k) }); persistir()
   }
-
-  /*
-   * La URL se firma **acá y no antes**: una firma vence, y con una cola larga la
-   * de la última se habría emitido veinte minutos antes de usarse.
-   */
-  const url = await signedUrl(audioPath)
-  const destino = archivoAudio(audioPath)
-  /* Un archivo previo haría fallar la descarga por destino ocupado. Si está, es
-     de un intento que no llegó a registrarse. */
-  borrarSiEsta(destino)
-
-  let ultimoAviso = 0
-  let ultimoPct = -1
-  const task = fs().File.createDownloadTask(url, destino, {
-    onProgress: ({ bytesWritten, totalBytes }) => {
-      /* `totalBytes` viene en -1 cuando el servidor no manda Content-Length: sin
-         total no hay porcentaje que mostrar, y la barra se queda indeterminada. */
-      if (totalBytes <= 0) return
-      const pct = Math.round((bytesWritten / totalBytes) * 100)
-      const ahora = Date.now()
-      if (pct === ultimoPct || ahora - ultimoAviso < AVISO_CADA_MS) return
-      ultimoPct = pct
-      ultimoAviso = ahora
-      actualizar(audioPath, { progreso: pct / 100 })
-    },
-  })
-  tarea = task
-
-  const archivo = await task.downloadAsync()
-  /* `null` es «la tarea quedó en pausa». Nadie la pausa acá, así que llegar a
-     esto significa que no terminó, y una canción a medias no se puede ofrecer. */
-  if (!archivo || !destino.exists || destino.size <= 0) {
-    throw new Error('la descarga quedó incompleta')
+  await podarCache(d.temporal ? ESTIMADO : 0, t.key)
+  if (!vigente(t)) return
+  d = store.get().items[t.key]
+  if (d.temporal && Object.values(store.get().items).filter(x => x.temporal && x.estado === 'lista').reduce((s, x) => s + x.bytes, 0) + ESTIMADO > store.get().limiteCacheMB * MB) throw new Error('La caché está ocupada por canciones en uso.')
+  const libre = espacioLibreAudio()
+  if (libre !== null && libre < RESERVA_AUDIO + ESTIMADO) throw new Error('No queda espacio libre suficiente.')
+  const url = await signedUrl(d.audioPath)
+  if (!vigente(t)) return
+  poner(t.key, { estado: 'bajando' })
+  let aviso = 0, bytesTotal = 0, sinEspacio = false
+  t.transferencia = transferirAudio(d.audioPath, url, ({ bytesWritten, totalBytes }) => {
+    if (!vigente(t)) return
+    bytesTotal = Math.max(bytesTotal, totalBytes)
+    const libres = espacioLibreAudio()
+    if (libres !== null && libres < RESERVA_AUDIO + Math.max(0, totalBytes - bytesWritten)) { sinEspacio = true; t.transferencia?.cancelar() }
+    if (Date.now() - aviso >= 200) { aviso = Date.now(); poner(t.key, { progreso: totalBytes > 0 ? Math.min(.99, bytesWritten / totalBytes) : 0 }, false) }
+  }, d.pausa)
+  const f = await t.transferencia.resultado
+  if (!vigente(t)) return
+  if (sinEspacio || !f || f.key !== d.audioPath || !f.uri || !Number.isFinite(f.bytes) || f.bytes <= 0 || (bytesTotal > 0 && f.bytes < bytesTotal)) {
+    if (f) await quitarAudio(d.audioPath)
+    throw new Error('La descarga quedó incompleta o no hay espacio suficiente.')
   }
-
-  /*
-   * La carátula, después y sin poder fallar la operación.
-   *
-   * Sin ella la canción suena igual; lo único que se ve es el cuadro vacío que
-   * ya se veía antes de que existieran las descargas. Frenar por una imagen de
-   * treinta kilobytes sería desproporcionado.
-   */
-  let conArte = false
-  if (item.artworkPath) {
-    try {
-      const remoto = artworkRemoto(item.artworkPath)
-      if (remoto) {
-        const arte = archivoArte(item.artworkPath)
-        borrarSiEsta(arte)
-        await fs().File.downloadFileAsync(remoto, arte, { idempotent: true })
-        conArte = arte.exists && arte.size > 0
-      }
-    } catch {
-      // Queda la del CDN, que es lo que había antes.
+  if (store.get().items[t.key].temporal) {
+    await podarCache(f.bytes, t.key)
+    if (!vigente(t)) return
+    const usados = Object.entries(store.get().items).filter(([k, x]) => k !== t.key && x.temporal).reduce((s, [, x]) => s + x.bytes, 0)
+    if (usados + f.bytes > store.get().limiteCacheMB * MB) { await quitarAudio(d.audioPath); throw new Error('La canción supera el espacio disponible de la caché.') }
+  }
+  const lista: Descarga = { ...store.get().items[t.key], estado: 'lista', uri: f.uri, bytes: f.bytes, progreso: 1, pausa: undefined, error: null, intentos: 0, ultimoUso: Date.now() }
+  // Commit del catálogo después del movimiento atómico y antes de ofrecer la URI al motor.
+  await escribir({ ...store.get().items, [t.key]: lista })
+  if (!vigente(t)) return
+  cacheExplicita.delete(t.key)
+  store.set({ items: { ...store.get().items, [t.key]: { ...lista, temporal: store.get().items[t.key].temporal } }, cola: store.get().cola.filter(k => k !== t.key), error: null }); persistir()
+  if (d.artworkPath && !reproduccionOcupada && !t.detener) {
+    const remoto = artworkRemoto(d.artworkPath)
+    if (remoto) {
+      const arteUri = await guardarArte(d.artworkPath, remoto)
+      if (vigente(t) && arteUri) poner(t.key, { arte: true, arteUri })
     }
   }
-
-  actualizar(audioPath, {
-    estado: 'lista',
-    progreso: 1,
-    bytes: destino.size,
-    arte: conArte,
-  })
-  guardarIndice()
 }
-
-/* ── Para las pantallas ──────────────────────────────────────────────────── */
-
-/**
- * El estado entero.
- *
- * Devuelve el objeto completo y no un pedazo calculado a propósito:
- * `useSyncExternalStore` compara por identidad, y un selector que arme un objeto
- * nuevo en cada llamada —«cuántas de esta lista están bajadas»— redibujaría para
- * siempre. Las cuentas las hace quien dibuja, con `resumenLista`.
- */
-export const useDescargas = () => useStore(store, (s) => s)
-
-/** Solo esta canción. Es lo que mira una fila para saber qué ícono poner. */
-export const useDescarga = (audioPath: string | undefined) =>
-  useStore(store, (s) => (audioPath ? (s.items[audioPath] ?? null) : null))
+export const useDescargas = () => useStore(store, s => s)
+export const useDescarga = (audioPath: string | undefined) => useStore(store, s => { const k = audioPath ? buscar(audioPath) : undefined; return k ? s.items[k] ?? null : null })

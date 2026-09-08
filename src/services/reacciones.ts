@@ -23,7 +23,7 @@ import { cancionDeFila, type PlaylistTrack } from './escucha'
 /** Lo que está sonando en la casa de otro, sin la mecánica del traspaso. */
 export type EscuchaAjena = {
   track: PlaylistTrack
-  /** Suena ahora, o quedó ahí en pausa. Cambia el verbo del rótulo. */
+  /** Solo se devuelve una canción mientras suena y su latido está vigente. */
   suena: boolean
   /** Cuándo se publicó por última vez; sirve para no mostrar algo de anteayer. */
   cuando: Date | null
@@ -53,7 +53,7 @@ function fecha(v: unknown): Date | null {
 /**
  * Qué está escuchando esta persona ahora.
  *
- * `null` cuando no hay nada sonando **y también** cuando no sos su contacto: la
+ * `null` sin escucha vigente, sin opt-in o sin acceso al perfil: la
  * base devuelve cero filas en los dos casos, a propósito. Que no se distingan
  * es lo que evita que esto sirva para averiguar quién tiene a quién agregado.
  */
@@ -67,7 +67,8 @@ export async function escuchaDe(userId: string): Promise<EscuchaAjena | null> {
   const track = cancionDeFila(fila.track)
   if (!track) return null
   const cuando = fecha(fila.updated_at)
-  return { track, suena: escuchaVigente(fila.suena === true, cuando), cuando }
+  if (!escuchaVigente(fila.suena === true, cuando)) return null
+  return { track, suena: true, cuando }
 }
 
 /** Dejarle un emoji a lo que está sonando. Devuelve el id de la reacción. */

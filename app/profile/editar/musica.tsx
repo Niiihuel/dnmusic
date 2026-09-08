@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../../src/ui/Panel'
+import { BotonVolver } from '../../../src/ui/BotonVolver'
 import { SearchDropdown } from '../../../src/ui/SearchDropdown'
 import { SearchField } from '../../../src/ui/SearchField'
-import { ICON_COLOR, IconBack, IconMusic } from '../../../src/ui/icons'
+import { ICON_COLOR, IconMusic } from '../../../src/ui/icons'
 import { searchMusic, type TrackResult } from '../../../src/services/music'
 import { useKeyboardH, usePiso } from '../../../src/state/shell'
 import {
@@ -125,14 +126,7 @@ export default function BuscarParaPerfil() {
     >
       <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
         <View className="flex-row items-center gap-3 px-3 py-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver"
-            onPress={() => volver(router, '/profile/editar')}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconBack size={19} color={ICON_COLOR.foreground} />
-          </Pressable>
+          <BotonVolver onPress={() => volver(router, '/profile/editar')} />
           <Text className="text-foreground text-[15px] font-semibold">
             Agregar música
           </Text>

@@ -3,15 +3,17 @@ import { createStore, useStore } from './store'
 
 /** Preferencias de este dispositivo; sobreviven al cierre de sesión. */
 type Ajustes = {
-  autoplay: boolean
   soloWifi: boolean
+  precargaAutomatica: boolean
+  precargaDatos: boolean
   ayudasCursor: boolean
   novedadesAlAbrir: boolean
   avisosActualizacion: boolean
 }
 const POR_DEFECTO: Ajustes = {
-  autoplay: true,
   soloWifi: true,
+  precargaAutomatica: true,
+  precargaDatos: false,
   ayudasCursor: true,
   novedadesAlAbrir: true,
   avisosActualizacion: true,
@@ -47,8 +49,9 @@ export function setPreferencia(clave: keyof Ajustes, valor: boolean) {
   // Mantener el orden aunque se cambien varios interruptores rápidamente.
   escritura = escritura.then(() => AsyncStorage.setItem(CLAVE, datos)).catch(() => {})
 }
-export const setAutoplay = (valor: boolean) => setPreferencia('autoplay', valor)
 export const setSoloWifi = (valor: boolean) => setPreferencia('soloWifi', valor)
+export const setPrecargaAutomatica = (valor: boolean) => setPreferencia('precargaAutomatica', valor)
+export const setPrecargaDatos = (valor: boolean) => setPreferencia('precargaDatos', valor)
 export const useAjustes = () => useStore(store, (s) => s)
 export const usePreferencia = (clave: keyof Ajustes) => useStore(store, (s) => s[clave])
 export const useAjustesCargados = () => useStore(carga, (s) => s.lista)

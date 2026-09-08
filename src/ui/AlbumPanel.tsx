@@ -4,9 +4,7 @@ import { artworkSource } from '../lib/artwork'
 import { resolveSong, fetchAlbum, type AlbumInfo, type AlbumTrack } from '../services/music'
 import {
   togglePlayback,
-  toggleShuffle,
   usePlaybackTrack,
-  useShuffle,
   useWantPlay,
 } from '../state/playback'
 import { CollectionHeader, CollectionTitle, useCoverSize } from './CollectionHeader'
@@ -20,6 +18,7 @@ import { formatLength } from './SeekBar'
 import { Skeleton, SkeletonList } from './Skeleton'
 import { TrackColumnHeader, TrackRow } from './TrackRow'
 import { BotonMeGusta } from './BotonMeGusta'
+import { BotonAleatorio } from './Transport'
 import { useMeGusta } from '../state/gustos'
 import {
   ICON_COLOR,
@@ -28,7 +27,6 @@ import {
   IconPause,
   IconPlay,
   IconPlus,
-  IconShuffle,
 } from './icons'
 
 /**
@@ -85,7 +83,6 @@ export function AlbumPanel({
   const soundingPlay = useWantPlay()
   /* El aleatorio es global —una sola cola suena a la vez—, como en una lista
      propia: se lee del store por su selector y no viaja como prop. */
-  const aleatorio = useShuffle()
   const techo = useTecho()
   /* El color de la cabecera sale de la tapa; se lee antes de los returns de
      carga para no romper el orden de hooks. Ver `useColorPortada`. */
@@ -237,25 +234,7 @@ export function AlbumPanel({
             {/* Lineal o aleatorio, al lado de reproducir: la misma decisión y
                 el mismo lenguaje que en una lista propia — encendido es el
                 blanco de acento, apagado el gris (docs/DESIGN.md). */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={aleatorio ? 'Reproducir en orden' : 'Reproducir al azar'}
-              accessibilityState={{ selected: aleatorio }}
-              onPress={toggleShuffle}
-              disabled={total === 0}
-              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-            >
-              <IconShuffle
-                size={19}
-                color={
-                  total === 0
-                    ? ICON_COLOR.muted
-                    : aleatorio
-                      ? ICON_COLOR.foreground
-                      : ICON_COLOR.muted
-                }
-              />
-            </Pressable>
+            <BotonAleatorio size={19} lado={44} disabled={total === 0} />
 
             {menu.length ? (
               <Menu items={menu} label={`Opciones de ${album.title}`} size={17} />

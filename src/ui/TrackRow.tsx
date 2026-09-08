@@ -6,6 +6,7 @@ import { useClicDerecho } from './useClicDerecho'
 import { PlayingBars } from './PlayingBars'
 import { usePlaybackCargada } from '../state/playback'
 import { formatClock } from './SeekBar'
+import { estadoControlWeb } from './estadoControl'
 import { ICON_COLOR, IconMusic, IconPause, IconPlay } from './icons'
 
 /** Debajo de esto la tabla deja de ser una tabla. Igual que en `Panel`. */
@@ -150,6 +151,7 @@ export function TrackRow({
        * anidar botones (en web eso es un <button> dentro de otro).
        */}
       <Pressable
+        {...estadoControlWeb('row')}
         accessibilityRole="button"
         accessibilityLabel={playing ? 'Pausar' : `Reproducir ${title}`}
         onPress={onPlay}
@@ -255,12 +257,12 @@ export function TrackRow({
       </Pressable>
 
       {suelto ? null : (
-        <View className="w-12 items-end justify-center" style={{ minHeight: 44 }}>
-          <Text pointerEvents="none" className="text-right text-muted-foreground text-[12px] tabular-nums"
+        <View style={{ width: 48, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+          <Text pointerEvents="none" className="text-center text-muted-foreground text-[12px] tabular-nums"
             style={{ opacity: gusto && hovered ? 0 : 1 }}>
             {durationMs > 0 ? formatClock(durationMs) : ''}
           </Text>
-          {gusto ? <View style={{ position: 'absolute', right: 0, opacity: hovered ? 1 : 0 }}
+          {gusto ? <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', opacity: hovered ? 1 : 0 }}
             pointerEvents={hovered ? 'auto' : 'none'}>{gusto}</View> : null}
         </View>
       )}
@@ -337,7 +339,7 @@ export function TrackColumnHeader({ trailing = 36 }: { trailing?: number }) {
       <Text className="flex-1 text-muted-foreground text-[11px] uppercase tracking-[1.2px]">
         Título
       </Text>
-      <Text className="w-12 text-right text-muted-foreground text-[11px]">Duración</Text>
+      <Text className="w-12 text-center text-muted-foreground text-[11px]">Duración</Text>
       <View style={{ width: trailing }} />
     </View>
   )

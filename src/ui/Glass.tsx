@@ -3,7 +3,7 @@ import type { PropsWithChildren, ReactNode } from 'react'
 import { Platform, Pressable, View, type ViewStyle } from 'react-native'
 import Animated from 'react-native-reanimated'
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect'
-import { useConTooltip } from './Tooltip'
+import { useConTooltip } from './useConTooltip'
 
 /**
  * En web el vidrio no lo dibuja el módulo nativo sino CSS: `backdrop-filter`
@@ -250,12 +250,13 @@ export function BotonVidrio({
         {...tip.gestos}
         accessibilityRole="button"
         accessibilityLabel={label}
-        {...(tint ? estadoControlWeb('inverse') : {})}
+        {...estadoControlWeb('glass')}
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={onPress}
-        /* El toque ocupa la pieza entera: el vidrio es la forma del botón, no
-           una decoración detrás de él. */
+        /* El vidrio ya aporta la superficie. El hover global no debe pintar
+           esta caja interior: el padding puede pertenecer al Glass. En web,
+           el foco se dibuja sobre el contorno completo del vidrio. */
         style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
       >
         {children}

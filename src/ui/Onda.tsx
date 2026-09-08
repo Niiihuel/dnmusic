@@ -17,10 +17,10 @@ import { picosDeCancion } from '../services/music'
  * juntas se leen como una forma continua, que es lo que uno quiere ver de una
  * canción; barras gruesas y separadas se leen como un ecualizador.
  */
-export const BARRA = 3
-export const HUECO = 2
+export const BARRA = 2
+export const HUECO = 3
 /** Ninguna barra desaparece: una parte muda sigue siendo parte de la canción. */
-export const MINIMA = 3
+export const MINIMA = 2
 
 /**
  * Los dos tonos de la onda: lo que ya sonó y lo que falta.
@@ -28,8 +28,8 @@ export const MINIMA = 3
  * Separados por luminancia y no por color, como pide docs/DESIGN.md. El blanco
  * puro queda para lo activo — acá, lo ya reproducido.
  */
-export const ONDA_PENDIENTE = 'rgba(255,255,255,0.30)'
-export const ONDA_SONADA = '#FFFFFF'
+export const ONDA_PENDIENTE = 'rgba(255,255,255,0.18)'
+export const ONDA_SONADA = 'rgba(255,255,255,0.90)'
 /**
  * Un tercer tono, solo para el editor de fragmento.
  *
@@ -37,7 +37,7 @@ export const ONDA_SONADA = '#FFFFFF'
  * todavía sin sonar, y lo ya reproducido. El de en medio tiene que verse
  * claramente más vivo que el de afuera sin llegar al blanco, que está reservado.
  */
-export const ONDA_ADELANTE = 'rgba(255,255,255,0.70)'
+export const ONDA_ADELANTE = 'rgba(255,255,255,0.52)'
 
 /**
  * Cuánto se levantan las partes flojas antes de dibujarlas.
@@ -48,7 +48,7 @@ export const ONDA_ADELANTE = 'rgba(255,255,255,0.70)'
  * curva: los pasajes flojos suben bastante, los fuertes casi nada, y la forma
  * vuelve a decir dónde entra la voz y dónde baja el tema.
  */
-const CURVA = 0.7
+const CURVA = 0.78
 
 /**
  * Reduce (o expande) la onda a `objetivo` barras promediando por tramo.
@@ -199,7 +199,7 @@ export function Onda({
   duracionMs,
   activa = true,
   onSeek,
-  height = 40,
+  height = 34,
   etiqueta,
 }: Props) {
   const [ancho, setAncho] = useState(0)

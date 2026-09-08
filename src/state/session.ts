@@ -1,6 +1,8 @@
 import { hayNotificaciones, notificar, prepararNotificaciones } from '../lib/notificarEscritorio'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { logOut, subscribeToAuth, type User } from '../services/auth'
+import { ensureApprovedSession, fetchAccessStatus, type AccessStatus } from '../services/acceso'
+import { accesoSinConexion, recordarAccesoLocal } from '../services/accesoOffline'
 import {
   contactLabel,
   ensureConversation,
@@ -27,6 +29,8 @@ type SessionState = {
   user: User | null | undefined
   /** Perfil propio: usuario, nombre visible y foto. Null hasta que carga. */
   profile: Profile | null
+  access: AccessStatus | null
+  accessError: string | null
   conversations: Conversation[]
   /** Solicitudes de contacto que llegaron y esperan respuesta. */
   requests: ContactRequest[]
@@ -41,6 +45,8 @@ type SessionState = {
 
 const store = createStore<SessionState>({
   user: undefined,
+  access: null,
+  accessError: null,
   profile: null,
   conversations: [],
   requests: [],
@@ -57,6 +63,9 @@ let unsubscribeInbox: (() => void) | null = null
 let unsubscribeAuth: (() => void) | null = null
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
 let accountVersion = 0
+let accessVersion = 0
+let activeAccountId: string | null = null
+let accessCheck: Promise<void> | null = null
 
 function stopMessageListener() {
   unsubscribeMessages?.()
@@ -85,6 +94,7 @@ function listenToConversation(pairId: string, contact: Contact) {
     isLoadingMessages: true,
     error: null,
   })
+  const version = accountVersion
   unsubscribeMessages = subscribeToMessages(
     pairId,
     /* `hidratado` es «ya llegó la carga completa», no «llegó algo»: el canal se
@@ -93,13 +103,16 @@ function listenToConversation(pairId: string, contact: Contact) {
        Y `error: null` porque unos mensajes frescos son la prueba de que lo que
        había fallado ya se arregló — si no, un corte de un segundo dejaba el
        hilo tapado por el error hasta cambiar de conversación. */
-    (messages, hidratado) =>
-      store.set({ messages, isLoadingMessages: !hidratado, error: null }),
-    (error) =>
+    (messages, hidratado) => {
+      if (version === accountVersion) store.set({ messages, isLoadingMessages: !hidratado, error: null })
+    },
+    (error) => {
+      if (version !== accountVersion) return
       store.set({
         error: `No se pudo conectar la conversación: ${error.message}`,
         isLoadingMessages: false,
-      }),
+      })
+    },
   )
 }
 
@@ -128,10 +141,12 @@ async function loadConversationList(): Promise<Conversation[]> {
   /* Las solicitudes viajan con la bandeja: mismo refresco, mismo canal de
      realtime. Que fallen no puede dejar sin conversaciones, así que su error
      se traga y a lo sumo la sección no aparece. */
+  const version = accountVersion
   const [conversations, requests] = await Promise.all([
     listConversations(),
     listContactRequests().catch(() => store.get().requests),
   ])
+  if (version !== accountVersion || store.get().access?.status !== 'approved') return []
   /*
    * El aviso de solicitud nueva, por los dos lados.
    *
@@ -215,6 +230,7 @@ function scheduleConversationRefresh() {
 }
 
 async function activateAccount(uid: string) {
+  activeAccountId = uid
   const version = ++accountVersion
   stopAccountListeners()
   // Cuenta nueva, memoria nueva: ni las solicitudes ni los sin leer de la
@@ -267,6 +283,7 @@ async function activateAccount(uid: string) {
       isLoadingConversations: false,
       error: `No se pudo abrir tu bandeja: ${(error as Error).message}`,
     })
+    activeAccountId = null
   }
 }
 
@@ -279,17 +296,21 @@ export function selectConversation(pairId: string) {
 
 /** Crea o recupera el hilo de un contacto, lo selecciona y devuelve su pairId. */
 export async function openContactConversation(contact: Contact): Promise<string> {
+  const version = accountVersion
+  if (store.get().access?.status !== 'approved') throw new Error('Acceso no aprobado.')
   const existing = store
     .get()
     .conversations.find((conversation) => conversation.contact.id === contact.id)
   const pairId = existing?.pairId ?? (await ensureConversation(contact.id))
 
+  if (version !== accountVersion) throw new Error('La sesión cambió.')
   let conversation = existing
   if (!conversation) {
     const conversations = await loadConversationList()
     conversation = conversations.find((candidate) => candidate.pairId === pairId)
   }
 
+  if (version !== accountVersion) throw new Error('La sesión cambió.')
   listenToConversation(pairId, conversation?.contact ?? contact)
   return pairId
 }
@@ -303,57 +324,102 @@ export async function refreshConversations() {
  * nueva queda seleccionada, lista para escribirle.
  */
 export async function respondToRequest(from: Contact, accept: boolean): Promise<string | null> {
+  const version = accountVersion
+  if (store.get().access?.status !== 'approved') throw new Error('Acceso no aprobado.')
   const pairId = await respondContactRequest(from.id, accept)
+  if (version !== accountVersion) throw new Error('La sesión cambió.')
   await loadConversationList()
+  if (version !== accountVersion) throw new Error('La sesión cambió.')
   if (pairId) listenToConversation(pairId, from)
   return pairId
+}
+
+/** Limpia los datos y servicios de una cuenta que perdió el acceso. */
+function deactivateAccount() {
+  accountVersion++
+  activeAccountId = null
+  stopAccountListeners()
+  desconectarJam()
+  desconectarEscucha()
+  stopPlayback()
+  limpiarMeGusta()
+  store.set({ profile: null, conversations: [], requests: [], pairId: null,
+    contact: null, messages: [], isLoadingConversations: false,
+    isLoadingMessages: false, error: null })
+}
+
+/** Deduplica consultas y descarta respuestas de sesiones anteriores. */
+export function refrescarAcceso(): Promise<void> {
+  if (accessCheck) return accessCheck
+  const uid = store.get().user?.id
+  if (!uid) return Promise.resolve()
+  const version = accessVersion
+  const work = (async () => {
+    try {
+      const access = await fetchAccessStatus()
+      if (version !== accessVersion || store.get().user?.id !== uid) return
+      if (access.status === 'approved') {
+        await ensureApprovedSession()
+        if (version !== accessVersion || store.get().user?.id !== uid) return
+      }
+      await recordarAccesoLocal(uid, access)
+      if (version !== accessVersion || store.get().user?.id !== uid) return
+      store.set({ access, accessError: null })
+      if (access.status === 'approved') {
+        if (activeAccountId !== uid) await activateAccount(uid)
+      } else {
+        deactivateAccount()
+      }
+    } catch (error) {
+      if (version !== accessVersion || store.get().user?.id !== uid) return
+      const offline = await accesoSinConexion(uid)
+      if (version !== accessVersion || store.get().user?.id !== uid) return
+      if (offline && !store.get().access) {
+        store.set({ access: offline, accessError: null })
+        return
+      }
+      // Un fallo no concede acceso. Durante una sesión ya aprobada una caída
+      // de red no destruye la cola; el servidor sigue comprobando cada pedido.
+      store.set({ accessError: 'No pudimos verificar tu acceso. Volvé a consultar.' })
+      throw error
+    }
+  })()
+  accessCheck = work
+  void work.finally(() => { if (accessCheck === work) accessCheck = null }).catch(() => {})
+  return work
 }
 
 /** Arranca el ciclo de auth. Idempotente: sobrevive al fast refresh. */
 export function startSession() {
   if (unsubscribeAuth) return
-
   if (!isSupabaseConfigured) {
     store.set({ user: null })
     return
   }
   unsubscribeAuth = subscribeToAuth((user) => {
     const antes = store.get().user
+    if (antes?.id !== user?.id) {
+      accessVersion++
+      accessCheck = null
+      deactivateAccount()
+      store.set({ access: null, accessError: null })
+    }
     store.set({ user })
     if (user) {
-      /*
-       * La misma cuenta que ya está activa **no se vuelve a activar**.
-       *
-       * `onAuthStateChange` no avisa solo cuando alguien entra: también emite
-       * `TOKEN_REFRESHED` —cada vez que supabase-js renueva el token, por reloj
-       * y al volver la app al frente— y `USER_UPDATED`. Cada uno de esos
-       * eventos rehacía la cuenta entera: cortaba el canal de mensajes, vaciaba
-       * la bandeja y el hilo, iba de nuevo a la red y terminaba abriendo la
-       * **primera** conversación en vez de la que estabas leyendo.
-       *
-       * Visto desde afuera era esto: volvés a la app después de un rato y el
-       * chat aparece vacío, o saltás solo a otra conversación. Y si esa ida a
-       * la red fallaba, quedaba vacío hasta reiniciar.
-       */
-      if (antes?.id === user.id && unsubscribeInbox) return
-      void activateAccount(user.id)
-    } else {
-      accountVersion++
-      stopAccountListeners()
-      store.set({
-        profile: null,
-        conversations: [],
-        requests: [],
-        pairId: null,
-        contact: null,
-        messages: [],
-        error: null,
-      })
+      // Fuera del callback de Auth: las RPC esperan el bloqueo interno del
+      // cliente; ejecutarlas dentro puede bloquear TOKEN_REFRESHED.
+      const version = accessVersion
+      setTimeout(() => {
+        if (version === accessVersion) void refrescarAcceso().catch(() => {})
+      }, 0)
     }
   })
 }
 
 export async function endSession() {
+  accessVersion++
+  accessCheck = null
+  activeAccountId = null
   accountVersion++
   stopAccountListeners()
   // El Jam se suelta antes que nada: su canal firma con la sesión que se va.
@@ -380,7 +446,14 @@ export function setMyProfile(profile: Profile) {
   store.set({ profile })
 }
 
-export const useUser = () => useStore(store, (state) => state.user)
+/** La app solo recibe usuarios aprobados; Auth conserva aparte la solicitud. */
+export const useUser = () => useStore(store, (state) =>
+  state.user === undefined ? undefined : state.access?.status === 'approved' ? state.user : null)
+export const useAuthUser = () => useStore(store, (state) => state.user)
+export const useAccessStatus = () => useStore(store, (state) => state.access)
+export const useAccessError = () => useStore(store, (state) => state.accessError)
+export const useIsAccessAdmin = () => useStore(store, (state) =>
+  state.access?.status === 'approved' && state.access.is_admin)
 export const useMyProfile = () => useStore(store, (state) => state.profile)
 export const useConversations = () => useStore(store, (state) => state.conversations)
 export const useContactRequests = () => useStore(store, (state) => state.requests)

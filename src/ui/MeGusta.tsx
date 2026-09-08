@@ -5,10 +5,8 @@ import { alternarMeGusta, useMeGusta, useMeGustaCargado } from '../state/gustos'
 import {
   playQueue,
   togglePlayback,
-  toggleShuffle,
   usePlaybackOriginId,
   usePlaybackTrack,
-  useShuffle,
   useWantPlay,
 } from '../state/playback'
 import { usePiso, useTecho } from '../state/shell'
@@ -19,6 +17,7 @@ import { SkeletonList } from './Skeleton'
 import { formatLength } from './SeekBar'
 import { TrackColumnHeader, TrackRow } from './TrackRow'
 import { Menu, type MenuItem } from './Menu'
+import { BotonAleatorio } from './Transport'
 import { Vacio } from './Vacio'
 import {
   ICON_COLOR,
@@ -26,7 +25,6 @@ import {
   IconHeartFilled,
   IconPause,
   IconPlay,
-  IconShuffle,
 } from './icons'
 
 /**
@@ -59,7 +57,6 @@ export function MeGustaView({
   const soundingTrack = usePlaybackTrack()
   const soundingPlay = useWantPlay()
   const originId = usePlaybackOriginId()
-  const aleatorio = useShuffle()
   const piso = usePiso(16)
   const techo = useTecho()
   const colapso = useColapso()
@@ -151,25 +148,7 @@ export function MeGustaView({
                     </Pressable>
                     {/* Lineal o aleatorio, como en cualquier colección: el
                         mismo botón y el mismo lenguaje que en una lista. */}
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={aleatorio ? 'Reproducir en orden' : 'Reproducir al azar'}
-                      accessibilityState={{ selected: aleatorio }}
-                      onPress={toggleShuffle}
-                      disabled={total === 0}
-                      className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-                    >
-                      <IconShuffle
-                        size={19}
-                        color={
-                          total === 0
-                            ? ICON_COLOR.muted
-                            : aleatorio
-                              ? ICON_COLOR.foreground
-                              : ICON_COLOR.muted
-                        }
-                      />
-                    </Pressable>
+                    <BotonAleatorio size={19} lado={44} disabled={total === 0} />
                   </>
                 }
               />

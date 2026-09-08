@@ -16,9 +16,13 @@
 begin;
 
 -- Dos personas de prueba. El trigger de auth les crea el perfil solo.
-insert into auth.users (id, email) values
-  ('00000000-0000-4000-8000-0000000000a1', 'anaprueba@flora.local'),
-  ('00000000-0000-4000-8000-0000000000b2', 'betoprueba@flora.local');
+insert into auth.users (id, email, raw_app_meta_data) values
+  ('00000000-0000-4000-8000-0000000000a1', 'anaprueba@flora.local', '{"provider":"google"}'),
+  ('00000000-0000-4000-8000-0000000000b2', 'betoprueba@flora.local', '{"provider":"google"}');
+-- Trusted SQL fixture setup: real Google signups remain pending until approved.
+update app_private.access_accounts set status='approved' where user_id in (
+ '00000000-0000-4000-8000-0000000000a1',
+ '00000000-0000-4000-8000-0000000000b2');
 
 -- Actuar como alguien: el mismo claim que pondría el JWT real.
 create function pg_temp.como(u uuid) returns void

@@ -1,3 +1,4 @@
+import { prepararInicioJam } from '../lib/inicioJam'
 import { crearSeleccionJam } from '../lib/seleccionJam'
 import { resolveSong } from '../services/music'
 import { AppState } from 'react-native'
@@ -41,7 +42,6 @@ import {
   registerJam,
   reportProgress,
 } from './playback'
-import { leerAjustes } from './ajustes'
 import { proximasRecomendadas, type ArtistaEscuchado } from '../services/recomendaciones'
 import { avisar } from './aviso'
 import { createStore, useStore } from './store'
@@ -359,8 +359,11 @@ AppState.addEventListener('change', (estado) => {
  * apuntando a la canción actual en el segundo en que va. Devuelve si quedó
  * creado, para que la pantalla sepa si navegar al sheet.
  */
+let creandoJam = false
+
 export async function crearJamActual(): Promise<boolean> {
   if (store.get().jam) return true
+  if (creandoJam) return false
   /* Un espejo no puede emitir: lo que se ve acá está sonando en otro aparato
      de la cuenta, y un Jam cuyo host no reproduce nada nace mudo. */
   if (enEscuchaEspejo()) {
@@ -373,30 +376,37 @@ export async function crearJamActual(): Promise<boolean> {
     avisar('Poné algo a sonar primero: el Jam arranca con tu cola.')
     return false
   }
-  // La cola como se va a escuchar: lo encolado a mano va después de lo actual.
-  // Las candidatas de radio sin resolver quedan afuera: el servidor exige el
-  // audio, y para el Jam el host va a rellenar con tandas resueltas igual.
-  const canciones = (
-    p.manual
-      ? [p.manual, ...p.upNext, ...p.tracks.slice(p.index + 1)]
-      : [...p.tracks.slice(0, p.index + 1), ...p.upNext, ...p.tracks.slice(p.index + 1)]
-  )
-    .filter((t) => t.audioPath)
-    .slice(0, 500)
-  const indice = p.manual ? 0 : Math.min(p.index, canciones.length - 1)
-
-  store.set({ conexion: 'conectando', miId: await miUid() })
+  creandoJam = true
+  const turno = version
+  store.set({ conexion: 'conectando' })
   try {
+    const uid = await miUid()
+    if (turno !== version) return false
+    if (!uid) throw new Error('Sesión requerida')
+    store.set({ miId: uid })
+    const inicio = await prepararInicioJam({
+      leer: getPlaybackState,
+      vigente: () => turno === version && !enEscuchaEspejo() && !store.get().jam,
+      preparar: async (track) => {
+        const audio = await resolveSong({ ...track, album: '', albumId: null })
+        return { ...track, audioPath: audio.path }
+      },
+    })
     const t0 = Date.now()
-    const estado = await crearJam(canciones, indice, p.wantPlay, p.positionMs)
+    const estado = await crearJam(inicio.canciones, inicio.indice, inicio.suena, inicio.posicionMs)
+    if (turno !== version) return false
     const t1 = Date.now()
     aplicarEstado(estado, { t0, t1 })
     await conectar(estado.jam.id)
     return true
   } catch (e) {
-    store.set({ conexion: 'nada' })
-    avisar(`No se pudo crear el Jam: ${mensajeError(e)}`, true)
+    if (turno === version) {
+      store.set({ conexion: 'nada' })
+      avisar(`No se pudo crear el Jam: ${mensajeError(e)}`, true)
+    }
     return false
+  } finally {
+    creandoJam = false
   }
 }
 
@@ -692,7 +702,7 @@ const JAM_RELLENO_UMBRAL = 2
 export async function rellenarJamSiFalta() {
   const s = store.get()
   if (!s.jam || !soyHost(s) || rellenandoJam) return
-  if (!leerAjustes().autoplay) return
+  if (getPlaybackState().modoReproduccion !== 'recomendado') return
   const idx = s.jam.itemActual ? s.cola.findIndex((i) => i.id === s.jam?.itemActual) : -1
   // Si por delante hay más que el colchón, no falta nada todavía.
   if (idx === -1 || s.cola.length - 1 - idx > JAM_RELLENO_UMBRAL) return

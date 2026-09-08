@@ -97,7 +97,7 @@ export function ColaBody({
 
   /*
    * La cola manual son dos cosas distintas y se muestran como tales: **lo que
-   * encolaste** vos y **las recomendadas** que trajo el autoplay (id
+   * encolaste** vos y **las recomendadas** que trajo Descubrimiento (id
    * `radio:`). Antes iban juntas bajo «lo que encolaste», y la pantalla te
    * atribuía canciones que puso la máquina. Los índices se conservan
    * absolutos: quitar y reordenar hablan con la cola real.

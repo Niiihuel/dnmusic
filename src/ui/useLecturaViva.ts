@@ -10,8 +10,11 @@ export function useLecturaViva<T>(clave: string, leer: () => Promise<T>, interva
   useFocusEffect(useCallback(() => {
     const lectura = observarLectura(leer, valor => setResultado({ clave, valor }), intervalo)
     lectura.activar(AppState.currentState !== 'background' && AppState.currentState !== 'inactive')
-    const sub = AppState.addEventListener('change', estado => lectura.activar(estado === 'active'))
-    return () => { lectura.cerrar(); sub.remove() }
+    const sub = AppState.addEventListener('change', estado => {
+      if (estado !== 'active') setResultado(null)
+      lectura.activar(estado === 'active')
+    })
+    return () => { lectura.cerrar(); sub.remove(); setResultado(null) }
   }, [clave, leer, intervalo]))
   return resultado?.clave === clave ? resultado.valor : null
 }

@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { makeMutable } from 'react-native-reanimated'
 import type { PlaylistTrack } from '../services/playlists'
 import { createStore, useStore } from './store'
-import { leerAjustes } from './ajustes'
 import { avisar } from './aviso'
 
 /**
@@ -23,6 +22,12 @@ import { avisar } from './aviso'
 
 /** De dónde salió la cola. Sirve para marcar la lista que está sonando. */
 export type PlaybackOrigin = { id: string; name: string }
+
+/**
+ * Cómo recorre la cola local. Coincide con los tres estados de Smart Shuffle:
+ * orden estricto, azar dentro de la colección y azar con descubrimiento.
+ */
+export type ModoReproduccion = 'orden' | 'aleatorio' | 'recomendado'
 
 type PlaybackState = {
   tracks: PlaylistTrack[]
@@ -59,6 +64,8 @@ type PlaybackState = {
    * primera para que prender el aleatorio no corte lo que estás escuchando.
    */
   shuffle: number[] | null
+  /** El modo visible; `shuffle` conserva la baraja concreta de los dos modos al azar. */
+  modoReproduccion: ModoReproduccion
   /**
    * Qué pasa al llegar al final.
    *
@@ -122,6 +129,7 @@ const EMPTY: PlaybackState = {
   volume: 1,
   cargada: false,
   shuffle: null,
+  modoReproduccion: 'orden',
   repetir: 'no',
   dormirA: null,
   dormirMin: null,
@@ -155,6 +163,8 @@ type Guardado = {
   index: number
   origin: PlaybackOrigin | null
   positionMs: number
+  modoReproduccion?: ModoReproduccion
+  shuffle?: number[] | null
 }
 
 function guardar(force = false) {
@@ -166,8 +176,8 @@ function guardar(force = false) {
   const now = Date.now()
   if (!force && now - ultimoGuardado < GUARDAR_CADA_MS) return
   ultimoGuardado = now
-  const { tracks, index, origin, positionMs } = store.get()
-  const payload: Guardado = { tracks, index, origin, positionMs }
+  const { tracks, index, origin, positionMs, modoReproduccion, shuffle } = store.get()
+  const payload: Guardado = { tracks, index, origin, positionMs, modoReproduccion, shuffle }
   void AsyncStorage.setItem(CLAVE, JSON.stringify(payload)).catch(() => {
     // Sin memoria de la cola, pero la app funciona igual.
   })
@@ -183,13 +193,29 @@ export async function restorePlayback() {
   try {
     const crudo = await AsyncStorage.getItem(CLAVE)
     if (!crudo) return
-    const { tracks, index, origin, positionMs } = JSON.parse(crudo) as Guardado
+    const { tracks, index, origin, positionMs, modoReproduccion, shuffle } = JSON.parse(crudo) as Guardado
+    const modo: ModoReproduccion =
+      modoReproduccion === 'aleatorio' || modoReproduccion === 'recomendado'
+        ? modoReproduccion
+        : 'orden'
     const track = tracks?.[index]
-    if (!track) return
+    /* El modo también es una preferencia sin cola: si la sesión anterior cerró
+       el reproductor, el próximo álbum conserva cómo se pidió escuchar. */
+    if (!track) {
+      store.set({ modoReproduccion: modo, shuffle: null })
+      return
+    }
     // Un Jam reconectado gana: lo guardado es de la sesión pasada y él es ahora.
     // Y un espejo también: la escucha en el servidor es más nueva que el disco.
     if (enJam() || enEspejo()) return
     if (store.get().index >= 0 || store.get().manual) return
+    const ordenGuardado = Array.isArray(shuffle)
+      ? shuffle.filter((i) => Number.isInteger(i) && i >= 0 && i < tracks.length)
+      : []
+    const orden =
+      modo === 'orden'
+        ? null
+        : [index, ...ordenGuardado.filter((i) => i !== index), ...barajar(tracks.length).filter((i) => i !== index && !ordenGuardado.includes(i))]
     store.set({
       tracks,
       index,
@@ -197,6 +223,8 @@ export async function restorePlayback() {
       positionMs,
       durationMs: track.durationMs,
       wantPlay: false,
+      modoReproduccion: modo,
+      shuffle: orden,
     })
   } catch {
     // Lo guardado no se entiende: se ignora y se arranca limpio.
@@ -358,13 +386,28 @@ export function videoIdsRecorridos(): string[] {
  */
 let generacionCola = 0
 
-/** Si ya hay una tanda en camino, para no pedir dos veces al mismo final. */
-let pidiendo = false
+/** Generación que ya tiene una tanda en camino; otra cola puede pedir la suya. */
+let pedidoGeneracion: number | null = null
+/**
+ * Recomendaciones ya obtenidas que todavía no se intercalaron.
+ *
+ * Descubrimiento pide una tanda completa para no volver a la red cada tres
+ * canciones, pero deja entrar una sola por intervalo. El resto espera acá y
+ * se consume sin latencia en los intervalos siguientes.
+ */
+let reservaRadio: PlaylistTrack[] = []
+
+/** Invalida pedidos y reserva cuando la cola deja de ser la misma. */
+function invalidarRelleno() {
+  generacionCola++
+  reservaRadio = []
+  avanzarAlLlegar = false
+}
 /**
  * La cola llegó al final **mientras la tanda venía en camino**: al llegar, hay
  * que avanzar. Sin esta marca había una carrera boba: si el pedido ya estaba en
  * vuelo cuando terminó la última canción, `advance` no podía volver a pedir
- * —`pidiendo` lo trababa— y caía al final de la función, que pausa. La tanda
+ * —el pedido de esa generación lo trababa— y caía al final de la función, que pausa. La tanda
  * llegaba dos segundos después y se quedaba muda en `upNext`.
  */
 let avanzarAlLlegar = false
@@ -378,30 +421,50 @@ let avanzarAlLlegar = false
  * parada en el final, avanza; si la última todavía suena, la tanda queda
  * esperando en `upNext` y el cambio de tema es el de siempre, sin hueco.
  */
-function pedirRelleno() {
-  if (!relleno || pidiendo) return
-  pidiendo = true
+function pedirRelleno(limite = Number.POSITIVE_INFINITY) {
+  if (!relleno) return
   const generacion = generacionCola
+  const tomar = (tanda: PlaylistTrack[]) => {
+    const cantidad = Number.isFinite(limite) ? Math.max(0, Math.floor(limite)) : tanda.length
+    const elegidas = tanda.slice(0, cantidad)
+    const sobrantes = tanda.slice(cantidad)
+    if (elegidas.length) {
+      const ahora = store.get()
+      store.set({ upNext: [...ahora.upNext, ...elegidas] })
+    }
+    return sobrantes
+  }
+  const avanzarSiEsperaba = () => {
+    if (!avanzarAlLlegar || generacion !== generacionCola) return
+    avanzarAlLlegar = false
+    advance()
+  }
+
+  /* Los intervalos siguientes consumen la tanda ya preparada, sin red. */
+  if (reservaRadio.length) {
+    reservaRadio = tomar(reservaRadio)
+    avanzarSiEsperaba()
+    return
+  }
+  if (pedidoGeneracion === generacion) return
+  pedidoGeneracion = generacion
   const alFinal = () => {
-    const s = store.get()
+    const estado = store.get()
     /* Si la canción va por la mitad, el pedido vino de apretar «siguiente» y
        no del final: sin recomendaciones no hay a dónde saltar, pero lo que
        sonaba sigue sonando — pausarlo sería castigar el botón. */
-    if (s.durationMs - s.positionMs > 1500) return
-    store.set({ manual: null, wantPlay: false, positionMs: s.durationMs })
+    if (estado.durationMs - estado.positionMs > 1500) return
+    store.set({ manual: null, wantPlay: false, positionMs: estado.durationMs })
   }
   void relleno()
     .then((tanda) => {
-      /* La cola ya es otra: esta tanda era para la anterior. Ver
-         `generacionCola` — apendearse acá metía radio ajena en el disco que
-         acaban de poner. */
-      if (generacion !== generacionCola) return
+      /* La cola ya es otra o se apagó Descubrimiento: esta tanda no pertenece
+         al estado actual y tampoco puede quedar en la reserva. */
+      if (generacion !== generacionCola || store.get().modoReproduccion !== 'recomendado') return
       if (tanda.length) {
-        const ahora = store.get()
-        store.set({ upNext: [...ahora.upNext, ...tanda] })
-        if (avanzarAlLlegar) advance()
+        reservaRadio = tomar(tanda)
+        avanzarSiEsperaba()
       } else if (avanzarAlLlegar) {
-        // Sin recomendaciones no hay con qué seguir: se para como siempre.
         alFinal()
       }
     })
@@ -409,47 +472,54 @@ function pedirRelleno() {
       if (avanzarAlLlegar && generacion === generacionCola) alFinal()
     })
     .finally(() => {
-      pidiendo = false
-      avanzarAlLlegar = false
+      if (pedidoGeneracion === generacion) pedidoGeneracion = null
+      if (generacion === generacionCola) avanzarAlLlegar = false
     })
 }
 
 /**
- * Cuántas pueden quedar esperando antes de pedir la próxima tanda.
+ * Prepara e intercala Descubrimiento.
  *
- * Con «pedir recién cuando no queda nada» —que era la regla anterior— saltear
- * rápido agotaba la tanda en segundos y los saltos siguientes caían al vacío
- * hasta que llegara la próxima: el botón parecía roto. Con dos de colchón, la
- * tanda nueva viaja mientras todavía hay con qué seguir salteando.
- */
-const RELLENO_UMBRAL = 2
-
-/**
- * Pide la próxima tanda **antes** de que haga falta.
- *
- * La llama el motor cuando la cola se acorta. Pedir recién al terminarse —que
- * era lo único que había— dejaba un silencio de varios segundos entre el final
- * y la primera recomendada, y en el teléfono ese silencio es fatal: sin audio
- * sonando, iOS puede suspender la app con la pantalla bloqueada y la música no
- * vuelve más. Con la tanda ya en `upNext` para cuando el tema termina, el
- * cambio es el encadenado normal de la cola.
- *
- * **Solo cuando la lista ya no tiene con qué seguir.** Lo que espera en
- * `upNext` suena ANTES que la lista (es el orden de `advance`), así que pedir
- * relleno con la lista a medias metería recomendadas adelante de las canciones
- * que faltan — justo el «me mezcla música que no pedí» que vinimos a matar.
+ * Durante la colección entra una sugerencia cada tres canciones. Al final se
+ * consume toda la reserva como radio continua. La tanda llega sin audio y el
+ * motor precarga cada candidata mientras suena la anterior, evitando el hueco
+ * que en iOS podía suspender la app con la pantalla bloqueada.
  */
 export function rellenarSiFalta() {
   const state = store.get()
   /* En un Jam la cola es de todos; rellenarla por tu cuenta la rompería. */
   if (enJam()) return
-  if (!leerAjustes().autoplay) return
+  if (state.modoReproduccion !== 'recomendado') return
   /* Con repetir prendido la lista no tiene final: no hay nada que rellenar. */
   if (state.repetir !== 'no') return
   if (!state.wantPlay) return
-  if (siguienteIndice(state) !== null) return
-  if (state.upNext.length > RELLENO_UMBRAL) return
-  pedirRelleno()
+
+  const siguiente = siguienteIndice(state)
+  const radioPendiente = state.upNext.some((track) => track.id.startsWith('radio:'))
+  const manualPendiente = state.upNext.some((track) => !track.id.startsWith('radio:'))
+  /* La cola elegida por la persona siempre gana; tampoco se duplica una
+     recomendación que ya está lista para sonar. */
+  if (manualPendiente || radioPendiente) return
+
+  if (state.manual) {
+    /* Una recomendación intercalada vuelve a la colección. Si era la radio que
+       siguió al final, prepara el resto de la reserva para que no haya corte. */
+    if (!state.manual.id.startsWith('radio:') || siguiente !== null) return
+    pedirRelleno()
+    return
+  }
+
+  if (siguiente === null) {
+    pedirRelleno()
+    return
+  }
+
+  /* Smart Shuffle: una sugerencia cada tres canciones de la colección. La
+     baraja se recorre una sola vez y la actual queda anclada al principio, así
+     que el intervalo es estable aunque se haya activado a mitad de un tema. */
+  const orden = state.shuffle?.filter((i) => i >= 0 && i < state.tracks.length)
+  const posicion = orden ? orden.indexOf(state.index) : state.index
+  if (posicion >= 0 && (posicion + 1) % 3 === 0) pedirRelleno(1)
 }
 
 /** El motor avisa si el audio de la canción actual ya está listo para sonar. */
@@ -605,7 +675,7 @@ export function playQueue(
   // Cola nueva, historia nueva: lo que sonó en la anterior ya no es «anterior».
   historial = []
   // Y tanda nueva: la que venga en camino era para la cola que se va.
-  generacionCola++
+  invalidarRelleno()
   /*
    * El aleatorio sobrevive como **preferencia**, pero la baraja no: era un
    * orden de índices de LA OTRA lista. Dejarla puesta hacía que la lista nueva
@@ -614,9 +684,10 @@ export function playQueue(
    * el medio de una playlist entera. Se rebaraja para esta cola, con la
    * canción tocada primera: tocaste esa, y el azar es para lo que sigue.
    */
-  const shuffle = store.get().shuffle
-    ? [index, ...barajar(tracks.length).filter((i) => i !== index)]
-    : null
+  const modoReproduccion = store.get().modoReproduccion
+  const shuffle = modoReproduccion === 'orden'
+    ? null
+    : [index, ...barajar(tracks.length).filter((i) => i !== index)]
   store.set({
     tracks,
     upNext: [],
@@ -624,6 +695,7 @@ export function playQueue(
     origin,
     index,
     shuffle,
+    modoReproduccion,
     wantPlay: true,
     positionMs: 0,
     durationMs: track.durationMs,
@@ -917,7 +989,7 @@ export function playNext() {
    * tanda y se avanza en cuanto llega; si ya había un pedido en vuelo, la
    * marca alcanza para que ese mismo avance.
    */
-  if (state.repetir === 'no' && leerAjustes().autoplay && relleno) {
+  if (state.repetir === 'no' && state.modoReproduccion === 'recomendado' && relleno) {
     avanzarAlLlegar = true
     pedirRelleno()
   }
@@ -1083,7 +1155,7 @@ export function toggleRepetir() {
   store.set({ repetir: actual === 'no' ? 'lista' : actual === 'lista' ? 'una' : 'no' })
 }
 
-export function toggleShuffle() {
+export function setModoReproduccion(modo: ModoReproduccion) {
   if (enJam()) {
     avisar('En un Jam el orden es de todos.')
     return
@@ -1093,12 +1165,40 @@ export function toggleShuffle() {
     return
   }
   const state = store.get()
-  if (state.shuffle) {
-    store.set({ shuffle: null })
-    return
-  }
-  const orden = barajar(state.tracks.length).filter((i) => i !== state.index)
-  store.set({ shuffle: state.index >= 0 ? [state.index, ...orden] : orden })
+  if (state.modoReproduccion === modo) return
+  const orden =
+    modo === 'orden'
+      ? null
+      : state.shuffle ?? [
+          ...(state.index >= 0 ? [state.index] : []),
+          ...barajar(state.tracks.length).filter((i) => i !== state.index),
+        ]
+  /* Las filas `radio:` son sugerencias todavía no reproducidas. Al volver a
+     orden o azar puro se retiran; las canciones agregadas por la persona se
+     conservan en su sitio. */
+  const upNext =
+    modo === 'recomendado'
+      ? state.upNext
+      : state.upNext.filter((track) => !track.id.startsWith('radio:'))
+  if (modo !== 'recomendado') invalidarRelleno()
+  store.set({ modoReproduccion: modo, shuffle: orden, upNext })
+  guardar(true)
+  avisar(
+    modo === 'orden'
+      ? 'Reproducción en orden'
+      : modo === 'aleatorio'
+        ? 'Aleatorio · solo esta colección'
+        : 'Descubrimiento · aleatorio y recomendaciones',
+  )
+  if (modo === 'recomendado') rellenarSiFalta()
+}
+
+/** Rota orden → aleatorio → descubrimiento, como Smart Shuffle. */
+export function toggleShuffle() {
+  const actual = store.get().modoReproduccion
+  setModoReproduccion(
+    actual === 'orden' ? 'aleatorio' : actual === 'aleatorio' ? 'recomendado' : 'orden',
+  )
 }
 
 /**
@@ -1213,7 +1313,7 @@ export function advance() {
    * vacío, se para como se paraba antes. La preferencia apagada es lo mismo: el
    * silencio al final de la lista es una opción legítima.
    */
-  if (leerAjustes().autoplay && relleno) {
+  if (state.modoReproduccion === 'recomendado' && relleno) {
     avanzarAlLlegar = true
     pedirRelleno()
     return
@@ -1284,10 +1384,10 @@ export function reportError(message: string) {
 export function stopPlayback() {
   // El volumen y la vista elegida sobreviven: son preferencias de quien
   // escucha, no estado de la canción que se cerró.
-  const { volume, view } = store.get()
+  const { volume, view, modoReproduccion } = store.get()
   historial = []
-  generacionCola++
-  store.set({ ...EMPTY, volume, view })
+  invalidarRelleno()
+  store.set({ ...EMPTY, volume, view, modoReproduccion })
 }
 
 /**
@@ -1382,7 +1482,7 @@ export function jamAplicar(a: {
   if (a.wantPlay && track) stopSnippets()
   // La cola pasó a ser la del Jam: la historia local ya no describe nada.
   historial = []
-  generacionCola++
+  invalidarRelleno()
   store.set({
     tracks: a.tracks,
     upNext: [],
@@ -1429,7 +1529,7 @@ export function escuchaAplicar(a: {
   if (a.wantPlay && track) stopSnippets()
   // La historia local describía otra cola: se vacía, como en el Jam.
   historial = []
-  generacionCola++
+  invalidarRelleno()
   store.set({
     tracks: a.tracks,
     upNext: a.upNext,
@@ -1555,7 +1655,8 @@ export const useVolume = () => useStore(store, (state) => state.volume)
 /* El aleatorio y la repetición los dibujan los controles del reproductor, que
    están al lado de la barra de posición: suscribirse al estado entero los haría
    redibujarse cinco veces por segundo para mostrar un ícono que no cambió. */
-export const useShuffle = () => useStore(store, (state) => state.shuffle !== null)
+export const useShuffle = () => useStore(store, (state) => state.modoReproduccion !== 'orden')
+export const useModoReproduccion = () => useStore(store, (state) => state.modoReproduccion)
 export const useRepetir = () => useStore(store, (state) => state.repetir)
 export const useDormirMin = () => useStore(store, (state) => state.dormirMin)
 export const useNowPlayingView = () => useStore(store, (state) => state.view)
@@ -1581,7 +1682,7 @@ export const useWantPlay = () => useStore(store, (state) => state.wantPlay)
  * la rueda de repetir y el relleno de recomendaciones. Antes los botones
  * calculaban `index >= tracks.length - 1` por su cuenta, y eso apagaba el
  * salto justo cuando las recomendadas estaban esperando en `upNext` — o cuando
- * el autoplay podía traerlas.
+ * el modo Descubrimiento podía traerlas.
  */
 export const useHaySiguiente = () =>
   useStore(
@@ -1590,5 +1691,5 @@ export const useHaySiguiente = () =>
       state.upNext.length > 0 ||
       siguienteIndice(state) !== null ||
       (state.repetir === 'lista' && state.tracks.length > 0) ||
-      (state.repetir === 'no' && leerAjustes().autoplay && relleno !== null),
+      (state.repetir === 'no' && state.modoReproduccion === 'recomendado' && relleno !== null),
   )

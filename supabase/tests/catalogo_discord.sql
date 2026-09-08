@@ -1,9 +1,15 @@
 -- Ejecutar con psql -v ON_ERROR_STOP=1 después de las migraciones, en una DB local.
 -- Las cuentas y todos los cambios se revierten al terminar.
 begin;
-insert into auth.users (id, email) values
- ('00000000-0000-4000-8000-0000000000d1', 'catalogo_prueba@example.test'),
- ('00000000-0000-4000-8000-0000000000d2', 'catalogo_visita@example.test');
+insert into auth.users (id, email, raw_app_meta_data) values
+ ('00000000-0000-4000-8000-0000000000d1', 'catalogo_prueba@example.test', '{"provider":"google"}'),
+ ('00000000-0000-4000-8000-0000000000d2', 'catalogo_visita@example.test', '{"provider":"google"}');
+-- Trusted SQL fixture setup: real Google signups remain pending until approved.
+update app_private.access_accounts set status='approved' where user_id in (
+ '00000000-0000-4000-8000-0000000000d1',
+ '00000000-0000-4000-8000-0000000000d2');
+
+update public.profiles set username='catalogo_visita' where user_id='00000000-0000-4000-8000-0000000000d2';
 
 -- Solo una firma de guardado, con todos los argumentos opcionales; RLS sigue activa.
 do $$
@@ -19,14 +25,14 @@ begin
  for f in select oid, proname, pronargs, pronargdefaults, prosecdef, proconfig
           from pg_proc where pronamespace = 'public'::regnamespace
           and proname in ('get_my_profile', 'get_profile', 'update_my_profile') loop
-   if not f.prosecdef or not ('search_path=public, pg_temp' = any(f.proconfig)) then
+   if not f.prosecdef or not ('search_path=pg_catalog' = any(f.proconfig)) then
      raise exception 'Cambió la seguridad de %', f.proname;
    end if;
    if has_function_privilege('anon', f.oid, 'EXECUTE')
       or not has_function_privilege('authenticated', f.oid, 'EXECUTE') then
      raise exception 'Grants incorrectos de %', f.proname;
    end if;
-   if f.proname = 'update_my_profile' and (f.pronargs <> 14 or f.pronargdefaults <> 14) then
+   if f.proname = 'update_my_profile' and (f.pronargs <> 15 or f.pronargdefaults <> 15) then
      raise exception 'El guardado perdió argumentos opcionales';
    end if;
  end loop;
@@ -212,12 +218,16 @@ end $$;
 -- Aun con el rol authenticated, guardar requiere un usuario en la sesión.
 select set_config('request.jwt.claims', '{}', true);
 do $$ begin
- if exists(select 1 from public.get_my_profile()) then raise exception 'Devolvió un perfil sin usuario'; end if;
+ begin
+   perform public.get_my_profile();
+   raise exception 'Devolvió un perfil sin usuario';
+ exception when insufficient_privilege then null;
+ end;
  begin
    perform public.update_my_profile(p_marco_perfil => 'discord:sin-sesion');
    raise exception 'Aceptó guardar sin sesión';
- exception when raise_exception then
-   if sqlerrm <> 'Sesión requerida' then raise; end if;
+ exception when insufficient_privilege then
+   if sqlerrm <> 'access_not_approved' then raise; end if;
  end;
 end $$;
 set local role anon;

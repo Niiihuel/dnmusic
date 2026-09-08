@@ -132,8 +132,8 @@ const native = {
   StyleSheet: { absoluteFill: { position: 'absolute', top: 0, left: 0, bottom: 0, right: 0 } },
   View: ({ pointerEvents, style, children }) => React.createElement('div', { style: flatten(style), 'data-pointer-events': pointerEvents }, children),
 }
-const imagen = React.forwardRef(({ source, style, pointerEvents }, _ref) =>
-  React.createElement('img', { src: source.uri, style: flatten(style), 'data-pointer-events': pointerEvents, alt: '' }))
+const imagen = React.forwardRef(({ source, style, pointerEvents, contentFit }, _ref) =>
+  React.createElement('img', { src: source.uri, style: flatten(style), 'data-pointer-events': pointerEvents, 'data-fit': contentFit, alt: '' }))
 imagen.displayName = 'ImagenPruebaDiscord'
 const dependencias = {
   react: React, 'react/jsx-runtime': await import('react/jsx-runtime'), 'react-native': native,
@@ -165,6 +165,17 @@ test('placa y marco preservan controles hijos; IDs ausentes no agregan envoltura
   assert.match(frame, /collectibles-shop\/1511834130294247555\/1515086606665646213\/static/)
   assert.equal(render(ui.DiscordMarcoPerfil, { id: 'unknown', children }), '<button type="button">Editar</button>')
   assert.equal(render(ui.DiscordAvatar, { id: 'unknown', size: 40 }), '')
+})
+
+test('la placa es una franja adaptable con aire para el texto, incluso con nombres cortos', () => {
+  for (const nombre of ['N', 'Nihuel', 'Un nombre de perfil bastante largo']) {
+    const html = render(ui.DiscordPlaca, { id: 'placa', children: nombre })
+    assert.match(html, /width:320px;max-width:100%;min-width:0;min-height:72px/)
+    assert.match(html, /padding-horizontal:14px/)
+    assert.match(html, /data-fit="cover"/, 'el fondo cubre ambas líneas sin deformarse')
+  }
+  const mini = render(ui.DiscordPlaca, { id: 'placa', compacta: true, children: 'N' })
+  assert.match(mini, /min-height:24px/, 'la galería no hereda la altura del perfil')
 })
 
 test('preferencias y AppState se comparten; background detiene movimiento y se limpian listeners', async () => {
@@ -213,10 +224,10 @@ test('la placa animada pausa en layout cleanup antes de liberar el player nativo
     'react-native': { ...native, Platform: { OS: 'android' } },
     'expo-video': {
       useVideoPlayer: (_uri, setup) => { setup(player); setupPlayer = player; return player },
-      VideoView: () => React.createElement('video', { 'data-decorative': 'true' }),
+      VideoView: ({ contentFit }) => React.createElement('video', { 'data-decorative': 'true', 'data-fit': contentFit }),
     },
   })
-  assert.match(render(modulo.DiscordPlaca, { id: 'placa', children: 'Nombre' }), /<video/)
+  assert.match(render(modulo.DiscordPlaca, { id: 'placa', children: 'Nombre' }), /<video[^>]*data-fit="cover"/, 'vídeo y PNG comparten encuadre')
   assert.equal(setupPlayer.muted, true)
   assert.equal(setupPlayer.audioMixingMode, 'mixWithOthers')
   assert.equal(setupPlayer.loop, true)

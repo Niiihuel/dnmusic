@@ -46,7 +46,7 @@ function Probador({ perfil }: { perfil: Profile }) {
     } catch (e) { setError(mensajeError(e)) }
     finally { setProgreso(null); mutex.current = false }
   }
-  return <View className="flex-1 bg-background">
+  return <View style={{ flex: 1, minHeight: 0, backgroundColor: '#121212', overflow: 'hidden' }}>
     <EncabezadoHoja titulo="Personalizar perfil" velo={false}
       izquierda={<BotonHoja tipo="volver" label="Volver a editar perfil" disabled={ocupado} onPress={() => router.dismissTo('/profile/editar')} />} />
     <View style={{ flex: 1, minHeight: 0, paddingBottom: (modal ? 0 : piso) }}>

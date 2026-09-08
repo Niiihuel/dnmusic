@@ -59,22 +59,24 @@ export function PlacaDeNombre({
   id,
   animado = true,
   radio = 14,
+  compacta = false,
   children,
 }: {
   id: string | null | undefined
   animado?: boolean
   radio?: number
+  compacta?: boolean
   children: ReactNode
 }) {
   const placa = placaDe(id)
   const [ancho, setAncho] = useState(0)
-  if (esDiscord(id)) return <DiscordPlaca id={id} animado={animado} radio={radio}>{children}</DiscordPlaca>
+  if (esDiscord(id)) return <DiscordPlaca id={id} animado={animado} radio={radio} compacta={compacta}>{children}</DiscordPlaca>
   if (!placa) return <>{children}</>
   const [a, b] = placa.tonos
   return (
     <View
       className="overflow-hidden"
-      style={{ borderRadius: radio, backgroundColor: 'rgba(24,24,24,0.55)' }}
+      style={{ width: 320, maxWidth: '100%', minWidth: 0, minHeight: compacta ? 24 : 72, justifyContent: 'center', borderRadius: radio, backgroundColor: 'rgba(24,24,24,0.55)' }}
       onLayout={(e) => setAncho(e.nativeEvent.layout.width)}
     >
       <LinearGradient
@@ -92,7 +94,7 @@ export function PlacaDeNombre({
           </Movimiento.Provider>
         </View>
       ) : null}
-      <View className="px-4 py-2">{children}</View>
+      <View style={{ paddingHorizontal: compacta ? 6 : 14, paddingVertical: compacta ? 3 : 8 }}>{children}</View>
     </View>
   )
 }

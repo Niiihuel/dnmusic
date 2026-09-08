@@ -57,7 +57,7 @@ export function subscribeToMessages(
   // entre el SELECT y el subscribe en la que un mensaje nuevo se pierde y el
   // jardín queda desactualizado hasta el próximo arranque.
   channel = supabase
-    .channel(`messages:${pairId}`)
+    .channel(`messages:${pairId}`, { config: { private: true } })
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'messages', filter: `pair_id=eq.${pairId}` },

@@ -1,11 +1,13 @@
 import { CabeceraPerfil, SuperficiePerfil, FondoEstiloPerfil } from '../../src/ui/TarjetaPerfil'
 import { FuentePerfil, TextoPerfil as Text } from '../../src/ui/FuentePerfil'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, useWindowDimensions, View } from 'react-native'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { LinearGradient } from 'expo-linear-gradient'
+import { ScrollArea } from '../../src/ui/ScrollArea'
 import { Panel } from '../../src/ui/Panel'
-import { BotonVidrio } from '../../src/ui/Glass'
+import { BotonVolver } from '../../src/ui/BotonVolver'
 import {
   alturaDeHeroe,
   Resumen,
@@ -21,7 +23,7 @@ import {
 import { EscuchaConReacciones } from '../../src/ui/Reacciones'
 import { FilaSostener } from '../../src/ui/Mantener'
 import { Vacio } from '../../src/ui/Vacio'
-import { ICON_COLOR, IconBack, IconBan, IconUser } from '../../src/ui/icons'
+import { ICON_COLOR, IconBan, IconUser } from '../../src/ui/icons'
 import { fetchProfile, type Profile } from '../../src/services/profile'
 import { blockUser } from '../../src/services/contacts'
 import { refreshConversations, useMyProfile } from '../../src/state/session'
@@ -53,6 +55,10 @@ export default function PerfilAjeno() {
   const piso = usePiso(24)
   const { width, height: alto } = useWindowDimensions()
   const ancho = width >= ANCHO_PX
+  const seguro = useSafeAreaInsets()
+  // La imagen llega al reloj; sólo el control y el contenido reservan su área.
+  const arribaBoton = seguro.top + (ancho ? 16 : 8)
+  const techo = arribaBoton + 44
 
   /*
    * El perfil se guarda **junto al usuario que se pidió**.
@@ -172,7 +178,7 @@ export default function PerfilAjeno() {
 
   /* Lo que está sonando en su casa, con los emojis al lado, arriba de todo lo
      reciente: es lo más vivo que tiene un perfil. Se dibuja solo si sos su
-     contacto y hay algo sonando, y nunca mirándote a vos mismo. */
+     contacto y hay algo sonando; en el propio se omiten las reacciones. */
   const reciente = perfil ? (
     <Reciente
       ownerId={perfil.userId}
@@ -182,13 +188,11 @@ export default function PerfilAjeno() {
       recarga={reaccion}
       onAbrirLista={(lista) => router.push(`/lista/${lista.id}`)}
       escucha={
-        soyYo ? null : (
-          <EscuchaConReacciones
-            ownerId={perfil.userId}
-            nombre={nombre}
-            onReaccion={() => setReaccion((n) => n + 1)}
-          />
-        )
+        <EscuchaConReacciones
+          ownerId={perfil.userId}
+          nombre={nombre}
+          onReaccion={soyYo ? undefined : () => setReaccion((n) => n + 1)}
+        />
       }
     />
   ) : null
@@ -215,54 +219,36 @@ export default function PerfilAjeno() {
 
   return (
     <FuentePerfil fuente={perfil?.fuente}>
-      <SafeAreaView className="flex-1 bg-background" edges={ancho ? ['top', 'bottom'] : ['top']}>
-        <View className={`flex-1 ${ancho ? 'gap-2 p-2' : ''}`}>
-          {/* En el teléfono la cabecera se queda: se llegó acá tocando a alguien
-            y hace falta la salida, y el @usuario dice de quién es el perfil que
-            estás mirando. En escritorio la franja negra cortaba la imagen a
-            sangre, así que la salida flota sobre ella. */}
-          {ancho ? null : (
-            <View className="flex-row items-center gap-3 px-3 py-1">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Volver"
-                onPress={() => volver(router, '/')}
-                className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-              >
-                <IconBack size={19} color={ICON_COLOR.foreground} />
-              </Pressable>
-              <Text className="text-foreground text-[15px] font-semibold">
-                {perfil ? `@${perfil.username}` : 'Perfil'}
-              </Text>
-            </View>
-          )}
-
+      <SafeAreaView className="flex-1 bg-background" edges={['left', 'right']}>
+        <View className="flex-1">
           <Panel className="flex-1">
             <FondoEstiloPerfil perfil={perfil} />
 
-            {ancho ? (
-              <View className="absolute left-4 top-4 z-10">
-                <BotonVidrio
-                  onPress={() => volver(router, '/')}
-                  label="Volver"
-                  radius={22}
-                  style={{ height: 44, width: 44 }}
-                >
-                  <IconBack size={19} color={ICON_COLOR.foreground} />
-                </BotonVidrio>
+            {/* Navegación sobre el fondo, fuera del scroll: el velo no recibe toques. */}
+            <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: techo + 32, zIndex: 20 }}>
+              <LinearGradient pointerEvents="none"
+                colors={['rgba(18,18,18,0.94)', 'rgba(18,18,18,0.55)', 'rgba(18,18,18,0)']}
+                locations={[0, 0.5, 1]}
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+              <View pointerEvents="box-none" style={{ position: 'absolute', left: 16, top: arribaBoton }}>
+                <BotonVolver label="Volver" onPress={() => volver(router, '/')} />
               </View>
-            ) : null}
+            </View>
 
-            <ScrollView
+            <ScrollArea
+              className="min-h-0 flex-1"
+              contentInsetAdjustmentBehavior="never"
+              automaticallyAdjustsScrollIndicatorInsets={false}
+              scrollIndicatorInsets={{ top: techo, bottom: seguro.bottom }}
               contentContainerClassName="items-center"
               /* Con fondo, la primera pantalla es de la imagen y el contenido
                arranca abajo, scrolleando por encima (`alturaDeHeroe`). Sin
-               fondo, el arranque compacto de siempre: en escritorio debajo del
-               redondel de volver, que flota sobre la imagen. */
+               fondo, empieza debajo del botón y del área segura, sin recortar
+               la superficie ni duplicar el inset automático de iOS. */
               contentContainerStyle={{
                 paddingHorizontal: ancho ? 24 : 16,
-                paddingTop: alturaDeHeroe(alto, perfil?.bannerPath, ancho ? 72 : 24),
-                paddingBottom: piso,
+                paddingTop: alturaDeHeroe(alto, perfil?.bannerPath, techo + 16),
+                paddingBottom: Math.max(piso, seguro.bottom + 24),
               }}
             >
               {perfil === undefined ? (
@@ -319,7 +305,7 @@ export default function PerfilAjeno() {
                   )}
                 </SuperficiePerfil>
               )}
-            </ScrollView>
+            </ScrollArea>
           </Panel>
         </View>
       </SafeAreaView>

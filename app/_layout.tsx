@@ -34,10 +34,11 @@ import { iniciarEscucha } from '../src/state/escucha'
 import { cargarMeGusta } from '../src/state/gustos'
 import { Traspaso } from '../src/ui/Traspaso'
 import { SelectorDispositivos } from '../src/ui/SelectorDispositivos'
-import { startSession, useMyProfile, useUser } from '../src/state/session'
+import { refrescarAcceso, startSession, useAccessStatus, useAuthUser, useMyProfile, useUser } from '../src/state/session'
 import { usePush } from '../src/state/push'
 import { emailToUsername } from '../src/services/auth'
 import { esOnboardingPendiente } from '../src/services/semillas'
+import { useAppActiva } from '../src/lib/appActiva'
 import { AppDrawer } from '../src/ui/AppDrawer'
 import {
   abrirLista,
@@ -843,7 +844,10 @@ function Chrome() {
  * cada vez que ella abre la app ya logueada.
  */
 function SessionGate() {
-  const user = useUser()
+  const user = useAuthUser()
+  const access = useAccessStatus()
+  const approved = !!user && access?.status === 'approved'
+  const activa = useAppActiva()
   const segments = useSegments()
   const pathname = usePathname()
   const router = useRouter()
@@ -863,10 +867,24 @@ function SessionGate() {
   }, [])
 
   useEffect(() => {
+    if (!user?.id || !activa) return
+    void refrescarAcceso().catch(() => {})
+    const timer = setInterval(() => { void refrescarAcceso().catch(() => {}) }, approved ? 60_000 : 15_000)
+    return () => clearInterval(timer)
+  }, [user?.id, activa, approved])
+
+  useEffect(() => {
     if (user === undefined) return
     // Login y registro son las dos puertas de entrada: sin sesión se puede
     // estar en cualquiera de las dos, y con sesión en ninguna.
+    const onCallback = segments[0] === 'auth'
+    if (onCallback) return
+    const onPending = segments[0] === 'acceso-pendiente'
     const onGate = segments[0] === 'sign-in' || segments[0] === 'sign-up'
+    if (user && !approved) {
+      if (!onPending) router.replace('/acceso-pendiente')
+      return
+    }
     if (!user && !onGate) {
       /*
        * Adónde querías ir, guardado antes de mandarte a entrar.
@@ -883,7 +901,7 @@ function SessionGate() {
       destino.current = pathname && pathname !== '/' ? pathname : null
       router.replace('/sign-in')
     }
-    if (user && onGate) {
+    if (approved && (onGate || onPending)) {
       /* Primero lo prometido en el registro: si la cuenta debe su paseo por
          las semillas, va ahí antes que a ningún destino guardado. */
       if (onboardingPendiente) {
@@ -898,7 +916,7 @@ function SessionGate() {
          `usePathname`, así que es una ruta de esta misma app. */
       router.replace((guardado ?? '/') as '/')
     }
-  }, [user, segments, pathname, router, onboardingPendiente])
+  }, [user, approved, segments, pathname, router, onboardingPendiente])
 
   /*
    * Todo lo que es «de quien escucha» espera a que haya alguien escuchando.
@@ -912,7 +930,7 @@ function SessionGate() {
    * no te saca y se vuelve a enganchar solo, como un chat retoma sus mensajes.
    */
   useEffect(() => {
-    if (!user) return
+    if (!approved) return
     void restorePlayback()
     void restaurarVolumen()
     /* Qué trajo la versión que se está abriendo. Acá adentro y no en el
@@ -927,7 +945,7 @@ function SessionGate() {
     /* Los corazones: el reproductor los dibuja al instante y las
        recomendaciones los pesan, así que se cargan una vez y viven acá. */
     void cargarMeGusta()
-  }, [user])
+  }, [user?.id, approved])
 
   if (user === undefined) {
     return (
@@ -967,9 +985,18 @@ function SessionGate() {
         contentStyle: { backgroundColor: '#121212' },
       }}
     >
+      <Stack.Protected guard={!user}>
+        <Stack.Screen name="sign-in" />
+        <Stack.Screen name="sign-up" />
+      </Stack.Protected>
+      <Stack.Protected guard={!!user && !approved}>
+        <Stack.Screen name="acceso-pendiente" />
+      </Stack.Protected>
+      <Stack.Protected guard={approved}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="sign-in" />
-      <Stack.Screen name="sign-up" />
+      <Stack.Screen name="importar" />
+      <Stack.Screen name="ajustes/novedades" />
+      <Stack.Screen name="ajustes/accesos" />
       {/* El onboarding: géneros y artistas con los que nace la radio de una
           cuenta nueva. Pantalla común, como las puertas de entrada. */}
       <Stack.Screen name="onboarding" />
@@ -1198,6 +1225,8 @@ function SessionGate() {
             ? HOJA_WEB
             : {
                 presentation: 'formSheet',
+                contentStyle: { backgroundColor: '#121212' },
+                sheetExpandsWhenScrolledToEdge: false,
                 sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
                 sheetCornerRadius: 24,
@@ -1251,6 +1280,8 @@ function SessionGate() {
       />
       {/* El mensaje a pantalla completa, al modo de una historia. */}
       <Stack.Screen name="message/[id]" options={{ presentation: 'modal' }} />
+      </Stack.Protected>
+      <Stack.Screen name="auth/callback" />
     </Stack>
   )
 }

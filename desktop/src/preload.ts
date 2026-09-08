@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { EstadoActualizacion } from './actualizador'
 import type { Aporte } from './resolutor'
 import type { ResultadoDescarga } from './descargas'
+import type { AudioOffline, ProgresoAudioOffline } from './audio-offline'
+import type { ResultadoGoogle } from './oauth-google'
 
 /**
  * Lo único que el bundle web puede ver del escritorio.
@@ -67,6 +69,30 @@ const puente = {
       ) => escuchar(avance)
       ipcRenderer.on('descarga:progreso', oyente)
       return () => ipcRenderer.removeListener('descarga:progreso', oyente)
+    },
+  },
+
+  oauthGoogle: {
+    preparar: (): Promise<{ id: string; redirectTo: string }> => ipcRenderer.invoke('oauthGoogle:preparar'),
+    abrir: (pedido: { id: string; url: string }): Promise<ResultadoGoogle> => ipcRenderer.invoke('oauthGoogle:abrir', pedido),
+    cancelar: (id: string): Promise<void> => ipcRenderer.invoke('oauthGoogle:cancelar', id),
+  },
+
+  authStorage: {
+    getItem: (clave: string): Promise<string | null> => ipcRenderer.invoke('authStorage:get', clave),
+    setItem: (clave: string, valor: string): Promise<void> => ipcRenderer.invoke('authStorage:set', clave, valor),
+    removeItem: (clave: string): Promise<void> => ipcRenderer.invoke('authStorage:remove', clave),
+  },
+
+  audioOffline: {
+    listar: (): Promise<AudioOffline[]> => ipcRenderer.invoke('audioOffline:listar'),
+    descargar: (pedido: { key: string; url: string }): Promise<AudioOffline> => ipcRenderer.invoke('audioOffline:descargar', pedido),
+    cancelar: (key: string): Promise<void> => ipcRenderer.invoke('audioOffline:cancelar', key),
+    quitar: (key: string): Promise<void> => ipcRenderer.invoke('audioOffline:quitar', key),
+    alProgreso: (fn: (progreso: ProgresoAudioOffline) => void): (() => void) => {
+      const listener = (_: IpcRendererEvent, progreso: ProgresoAudioOffline) => fn(progreso)
+      ipcRenderer.on('audioOffline:progreso', listener)
+      return () => ipcRenderer.removeListener('audioOffline:progreso', listener)
     },
   },
 

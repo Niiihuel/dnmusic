@@ -158,7 +158,7 @@ textarea:focus {
    El velo se compone sobre el color existente; no cambia medidas ni desplaza texto. */
 [data-dn-hover='inverse'] { --dn-hover-color: var(--color-primary-foreground); }
 @media (hover: hover) and (pointer: fine) {
-  :is(button, a[href], [role='link'], [role='button'], [role='menuitem'], [role='tab'], [role='radio'], [role='switch'], [role='checkbox']):not(:empty):not(input):not(textarea):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([data-dn-hover='none']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *):not(:has(:is(button, a[href], [role='link'], [role='button'], [role='menuitem']):hover)):hover {
+  :is(button, a[href], [role='link'], [role='button'], [role='menuitem'], [role='tab'], [role='radio'], [role='switch'], [role='checkbox']):not(:empty):not(input):not(textarea):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([data-dn-hover='none']):not([data-dn-hover='glass']):not([data-dn-hover='row']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *):not(:has(:is(button, a[href], [role='link'], [role='button'], [role='menuitem']):hover)):hover {
     background-image: linear-gradient(rgb(var(--dn-hover-color, var(--color-foreground)) / 0.08), rgb(var(--dn-hover-color, var(--color-foreground)) / 0.08));
   }
 }
@@ -167,7 +167,16 @@ textarea:focus {
 :is(button, a[href], [role='link'], [role='button'], [role='menuitem'], [role='tab'], [role='radio'], [role='switch'], [role='checkbox'], [role='scrollbar']):focus:not(:focus-visible) {
   outline: none;
 }
-:is(button, a[href], [role='link'], [role='button'], [role='menuitem'], [role='tab'], [role='radio'], [role='switch'], [role='checkbox'], [role='scrollbar']):not(input):not(textarea):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([data-dn-hover='none']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *):focus-visible {
+:is(button, a[href], [role='link'], [role='button'], [role='menuitem'], [role='tab'], [role='radio'], [role='switch'], [role='checkbox'], [role='scrollbar']):not(input):not(textarea):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([data-dn-hover='none']):not([data-dn-hover='glass']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *):focus-visible {
+  outline: 2px solid rgb(var(--color-ring) / 0.8) !important;
+  outline-offset: -2px;
+}
+/* El Pressable de BotonVidrio puede ser más estrecho por el padding del
+   material. No iluminar ese rectángulo: el teclado marca la píldora completa. */
+[data-dn-hover='glass']:focus-visible {
+  outline: none !important;
+}
+:has(> [data-dn-hover='glass']:not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):focus-visible):not([aria-disabled='true'] *):not([aria-hidden='true'] *) {
   outline: 2px solid rgb(var(--color-ring) / 0.8) !important;
   outline-offset: -2px;
 }

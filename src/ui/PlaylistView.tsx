@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FlatList, Pressable, Text, TextInput, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FlatList, Pressable, Text, View } from 'react-native'
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -23,14 +23,12 @@ import {
   getPlaybackState,
   playAt,
   playQueue,
-  toggleShuffle,
   syncQueue,
   togglePlayback,
   usePlaybackTrack,
   useManualPlaying,
   usePlaybackIndex,
   usePlaybackOriginId,
-  useShuffle,
   useWantPlay,
 } from '../state/playback'
 import { usePiso, useTecho } from '../state/shell'
@@ -39,13 +37,14 @@ import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { useColapso } from './useColapso'
 import { FormError } from './Button'
-import { CollectionHeader, CollectionTitle, Insignia, useAngosto, useCoverSize } from './CollectionHeader'
-import { TECLADO_FISICO } from '../lib/teclado'
+import { CollectionHeader, Insignia, useAngosto, useCoverSize } from './CollectionHeader'
+import { AccionesNombreLista, HojaNombreLista, TituloNombreLista, useNombreInline, useRenombrarLista, type EdicionNombreLista } from './RenombrarLista'
 import { compartirLista } from '../lib/compartirLista'
 import { useColorPortada } from '../lib/colorPortada'
 import { SearchField } from './SearchField'
 import { useConTooltip } from './Tooltip'
 import { Menu, type MenuItem } from './Menu'
+import { entradaDeTrack, menuDescarga, menuDescargasLista, type DescargaUI } from './descargasControl'
 import { Panel } from './Panel'
 import { ScrollArea } from './ScrollArea'
 import { Vacio } from './Vacio'
@@ -55,6 +54,7 @@ import { formatLength } from './SeekBar'
 import { SkeletonList } from './Skeleton'
 import { TrackColumnHeader, TrackRow } from './TrackRow'
 import { BotonMeGusta } from './BotonMeGusta'
+import { BotonAleatorio } from './Transport'
 import {
   ICON_COLOR,
   IconClose,
@@ -71,7 +71,6 @@ import {
   IconPlus,
   IconSearch,
   IconShare,
-  IconShuffle,
   IconTrash,
   IconUser,
   IconUsers,
@@ -82,11 +81,8 @@ import {
   descargar,
   descargarLista,
   HAY_DESCARGAS,
-  quitarDescarga,
-  quitarLista,
   resumenLista,
   useDescargas,
-  type Descarga,
 } from '../state/descargas'
 
 /**
@@ -234,16 +230,7 @@ export function PlaylistView({
    */
   const tracks = loaded?.playlistId === playlist.id ? loaded.tracks : null
   const [error, setError] = useState<string | null>(null)
-  /**
-   * Qué lista se está renombrando, no un simple «sí o no».
-   *
-   * Guarda el id porque la cabecera no se desmonta al cambiar de lista: con un
-   * booleano, empezar a renombrar una y saltar a otra dejaba el campo abierto
-   * sobre la segunda **con el nombre de la primera adentro** —el borrador vive
-   * en el campo y `initial` cambiando no lo resetea— y confirmar le ponía a la
-   * lista B el nombre de la A.
-   */
-  const [renaming, setRenaming] = useState<string | null>(null)
+  const editorNombre = useRenombrarLista(playlist.id, playlist.name, onRename)
 
   /*
    * Lo que hay bajado, para toda la pantalla.
@@ -363,34 +350,14 @@ export function PlaylistView({
   /** Lo que ofrece una canción de esta lista, para el botón y para el gesto. */
   const opcionesDe = (track: PlaylistTrack): MenuItem[] => [
     ...(menuFor?.(track) ?? []),
-    /*
-     * Bajar o quitar del teléfono, una canción sola.
-     *
-     * Es la misma acción que el botón de la cabecera pero por tema, porque no
-     * siempre se quiere la lista entera: alcanza con los cuatro que uno va a
-     * escuchar en el avión. Va en el menú y no como un control fijo en la fila
-     * —donde ya están los tres puntos y el indicador— porque es algo que se hace
-     * una vez y después se olvida.
-     */
-    ...(HAY_DESCARGAS
-      ? [
-          descargas[track.audioPath]
-            ? {
-                label: 'Quitar la descarga',
-                separadorAntes: true,
-                onPress: () => quitarDescarga(track.audioPath),
-                icon: <IconDownloaded size={15} color={ICON_COLOR.muted} />,
-                sfSymbol: 'arrow.down.circle.fill' as const,
-              }
-            : {
-                label: 'Descargar',
-                separadorAntes: true,
-                onPress: () => descargar(track),
-                icon: <IconDownload size={15} color={ICON_COLOR.muted} />,
-                sfSymbol: 'arrow.down.circle' as const,
-              },
-        ]
-      : []),
+    ...(HAY_DESCARGAS ? (() => {
+      const entrada = entradaDeTrack(track, descargas)
+      return entrada && !entrada.descarga.temporal ? menuDescarga(entrada) : [{
+        label: 'Descargar para escuchar sin conexión', separadorAntes: true,
+        onPress: () => descargar(track), icon: <IconDownload size={16} color={ICON_COLOR.muted} />,
+        sfSymbol: 'arrow.down.circle' as const,
+      }]
+    })() : []),
     {
       label: 'Quitar de la lista',
       onPress: () => void drop(track.id),
@@ -476,7 +443,7 @@ export function PlaylistView({
       )
       const archivos = firmadas.filter((a): a is { url: string; nombre: string } => a !== null)
       if (!archivos.length) {
-        avisar('No se pudo preparar ninguna canción para bajar.', true)
+        avisar('No se pudo preparar ninguna canción para exportar.', true)
         return
       }
       const r = await api.guardarLista({ archivos, carpetaSugerida: playlist.name })
@@ -489,7 +456,7 @@ export function PlaylistView({
           : `Guardé ${guardados} ${guardados === 1 ? 'canción' : 'canciones'} en la carpeta que elegiste.`,
       )
     } catch {
-      avisar('No se pudo descargar la lista.', true)
+      avisar('No se pudo exportar la lista.', true)
     } finally {
       dejarDeEscuchar()
       setGuardando(null)
@@ -499,20 +466,10 @@ export function PlaylistView({
   const total = tracks?.length ?? 0
   const bajado = resumenLista(tracks ?? [], descargas)
 
-  /**
-   * El botón de la cabecera: baja la lista entera, o la saca del teléfono.
-   *
-   * Es un interruptor y no dos botones, como en Spotify. Con algo a medio bajar,
-   * apagarlo cancela **y borra lo que ya había** — que suena drástico pero es lo
-   * correcto: el estado del botón dice «esta lista está en el teléfono», y dejar
-   * media lista bajada haría que dijera algo que no es cierto. Y volver a bajarla
-   * es tocar el mismo botón.
-   */
-  function alternarDescarga() {
-    const lista = tracks ?? []
-    if (!lista.length) return
-    if (bajado.listas === lista.length || bajado.bajando > 0) quitarLista(lista)
-    else descargarLista(lista)
+  // Descargar nunca borra: pausa, reintento y retirada viven en opciones explícitas.
+  const opcionesDescarga = menuDescargasLista(tracks ?? [], descargas)
+  function descargarParaOffline() {
+    descargarLista(tracks ?? [])
   }
   const piso = usePiso(16)
   /* El encabezado del teléfono flota: la cabecera de la lista arranca debajo
@@ -544,6 +501,12 @@ export function PlaylistView({
    */
   const mia = playlist.mia
   const menu: MenuItem[] = [
+    ...(HAY_DESCARGA_ESCRITORIO ? [{
+      label: 'Exportar', subtitle: guardando ? `${guardando.hechos} de ${guardando.total}` : 'Guardar archivos en una carpeta',
+      disabled: !!guardando || !total, sfSymbol: 'square.and.arrow.up' as const,
+      icon: <IconDisk size={16} color={ICON_COLOR.muted} />, onPress: () => void guardarTodoEnDisco(),
+    }] : []),
+
     /*
      * La anatomía del menú de Apple Music: arriba las acciones rápidas —sumar
      * música, publicar o compartir, la gente—, después lo que le cambia la cara
@@ -616,7 +579,7 @@ export function PlaylistView({
       ? [
           {
             label: 'Cambiar el nombre',
-            onPress: () => setRenaming(playlist.id),
+            onPress: editorNombre.abrir,
             icon: <IconPencil size={15} color={ICON_COLOR.muted} />,
             sfSymbol: 'pencil' as const,
           },
@@ -697,9 +660,15 @@ export function PlaylistView({
     <Panel className="flex-1">
       <View className="min-h-0 flex-1">
         <FlatList
-          renderScrollComponent={(props) => <ScrollArea {...props} />}
+          renderScrollComponent={(props) => (
+            <ScrollArea {...props} stableIndicator contentKey={`${playlist.id}:${visibles.length}`} />
+          )}
           data={visibles}
           keyExtractor={(t) => t.id}
+          initialNumToRender={18}
+          maxToRenderPerBatch={24}
+          updateCellsBatchingPeriod={32}
+          windowSize={9}
           className="min-h-0 flex-1"
           contentContainerClassName="gap-1"
           /* Lo que ocupan el reproductor y las pestañas: la última canción
@@ -712,28 +681,21 @@ export function PlaylistView({
               playlist={playlist}
               tint={tint}
               bleedTop={techo}
-              renaming={renaming === playlist.id}
-              onRenamed={async (next) => {
-                setRenaming(null)
-                if (next !== null)
-                  await onRename(next).catch(() => setError('No se pudo renombrar.'))
-              }}
+              editorNombre={editorNombre}
               total={total}
               totalMs={tracks?.reduce((sum, t) => sum + t.durationMs, 0) ?? playlist.totalMs}
               playing={isMine && soundingPlay}
               menu={menu}
               onVerGente={onVerGente}
               bajado={bajado}
-              onDescarga={alternarDescarga}
+              onDescarga={descargarParaOffline}
+              opcionesDescarga={opcionesDescarga}
               onPlay={() => (total > 0 ? play(isMine ? soundingIndex : 0) : undefined)}
               onPickCover={onPickCover}
-              onRename={() => setRenaming(playlist.id)}
               buscando={buscando}
               filtro={filtro}
               onBuscar={alternarBuscar}
               onFiltro={setFiltro}
-              onGuardarTodo={HAY_DESCARGA_ESCRITORIO ? guardarTodoEnDisco : undefined}
-              guardando={guardando}
             >
               {error ? (
                 <View className="px-6 pb-3">
@@ -835,7 +797,7 @@ export function PlaylistView({
                  y en el teléfono no aparecía nunca. */
               trailing={
                 <>
-                  <MarcaDescarga descarga={descargas[item.audioPath]} />
+                  <MarcaDescarga descarga={entradaDeTrack(item, descargas)?.descarga} />
                   <Menu
                     items={opcionesDe(item)}
                     label={`Opciones de ${item.title}`}
@@ -901,8 +863,7 @@ function Header({
   playlist,
   tint,
   bleedTop,
-  renaming,
-  onRenamed,
+  editorNombre,
   total,
   totalMs,
   playing,
@@ -910,25 +871,19 @@ function Header({
   onVerGente,
   bajado,
   onDescarga,
+  opcionesDescarga,
   onPlay,
   onPickCover,
-  onRename,
   buscando,
   filtro,
   onBuscar,
   onFiltro,
-  onGuardarTodo,
-  guardando,
   children,
 }: {
   playlist: Playlist
   tint: string | null
   bleedTop: number
-  renaming: boolean
-  /** `null` cancela sin guardar. */
-  onRenamed: (name: string | null) => void
-  /** Empezar a editar el nombre. */
-  onRename: () => void
+  editorNombre: EdicionNombreLista
   total: number
   totalMs: number
   playing: boolean
@@ -937,6 +892,7 @@ function Header({
   /** Cuánto de la lista está en el teléfono. Ver `resumenLista`. */
   bajado: ReturnType<typeof resumenLista>
   onDescarga: () => void
+  opcionesDescarga: MenuItem[]
   onPlay: () => void
   onPickCover: () => void
   /** El campo de búsqueda de la lista está abierto. */
@@ -945,26 +901,18 @@ function Header({
   /** Abrir o cerrar la búsqueda (al cerrar, limpia el filtro). */
   onBuscar: () => void
   onFiltro: (v: string) => void
-  /** Bajar la lista al disco (solo en la app de PC); sin esto no hay botón. */
-  onGuardarTodo?: () => void
-  guardando: { hechos: number; total: number } | null
   children: React.ReactNode
 }) {
   /* El aleatorio es global —una sola cola suena a la vez— así que se lee del
      store y no viaja como prop desde la pantalla. Por su selector propio y no
      con el estado entero: la cabecera no puede redibujarse con la posición. */
-  const aleatorio = useShuffle()
   const [overCover, setOverCover] = useState(false)
   const cover = useCoverSize()
-  /* Los rótulos de los controles. Cortos y con la acción: el del disco no puede
-     ser la etiqueta accesible, que dice «Descargando, 12 de 40» — eso está
-     escrito para escucharse, no para leerse al pasar el mouse. */
+  const inline = useNombreInline()
+  /* Los rótulos de los controles nombran su acción al pasar el cursor. */
   const tipPlay = useConTooltip(playing ? 'Pausar' : 'Reproducir')
-  const tipAzar = useConTooltip(aleatorio ? 'Reproducir en orden' : 'Reproducir al azar')
   const tipBuscar = useConTooltip(buscando ? 'Cerrar la búsqueda' : 'Buscar en la lista')
-  const tipDisco = useConTooltip(
-    guardando ? `Descargando ${guardando.hechos}/${guardando.total}` : 'Bajar la lista al disco',
-  )
+
 
   return (
     <View>
@@ -1010,16 +958,8 @@ function Header({
             ) : null}
           </Pressable>
         }
-        title={
-          renaming ? (
-            /* Con clave: cambiar de lista con el campo abierto tiene que
-               empezar un borrador nuevo, no seguir el de la anterior. */
-            <NameField key={playlist.id} initial={playlist.name} onDone={onRenamed} />
-          ) : (
-            <TituloEditable name={playlist.name} onRename={onRename} />
-          )
-        }
-        actions={
+        title={<TituloNombreLista nombre={playlist.name} editor={editorNombre} />}
+        actions={inline && editorNombre.borrador ? <AccionesNombreLista editor={editorNombre} /> :
           <>
             <Pressable
               {...tipPlay.gestos}
@@ -1052,53 +992,7 @@ function Header({
              * `primary`, que en este sistema **es** el acento (`docs/DESIGN.md`).
              * Apagado queda en gris, como cualquier control inactivo.
              */}
-            <Pressable
-              {...tipAzar.gestos}
-              accessibilityRole="button"
-              accessibilityLabel={aleatorio ? 'Reproducir en orden' : 'Reproducir al azar'}
-              accessibilityState={{ selected: aleatorio }}
-              onPress={toggleShuffle}
-              disabled={total === 0}
-              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-            >
-              <IconShuffle
-                size={19}
-                color={
-                  total === 0
-                    ? ICON_COLOR.muted
-                    : aleatorio
-                      ? ICON_COLOR.foreground
-                      : ICON_COLOR.muted
-                }
-              />
-            </Pressable>
-            {/*
-             * Descargar la lista al disco: solo en la app de PC. Mientras baja
-             * muestra «12/40» en vez del ícono —un número que avanza dice que
-             * pasa algo, mejor que un disco quieto—. Ver `desktop/src/descargas`.
-             */}
-            {onGuardarTodo ? (
-              <Pressable
-                {...tipDisco.gestos}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  guardando
-                    ? `Descargando, ${guardando.hechos} de ${guardando.total}`
-                    : 'Descargar la lista al disco'
-                }
-                onPress={onGuardarTodo}
-                disabled={total === 0 || guardando !== null}
-                className="h-11 min-w-11 items-center justify-center rounded-full px-2 active:bg-muted"
-              >
-                {guardando ? (
-                  <Text className="text-foreground text-[11px] font-semibold tabular-nums">
-                    {guardando.hechos}/{guardando.total}
-                  </Text>
-                ) : (
-                  <IconDisk size={19} color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.foreground} />
-                )}
-              </Pressable>
-            ) : null}
+            <BotonAleatorio size={19} lado={44} disabled={total === 0} />
             {/*
              * Buscar adentro de la lista, al lado de los otros controles de la
              * lista. Filtra las filas que ya están, sin ir al servidor —el de
@@ -1114,7 +1008,7 @@ function Header({
               onAbrir={onBuscar}
               onFiltro={onFiltro}
             />
-            <BotonDescarga total={total} bajado={bajado} onPress={onDescarga} />
+            <BotonDescarga total={total} bajado={bajado} onPress={onDescarga} opciones={opcionesDescarga} />
             <Menu items={menu} label={`Opciones de ${playlist.name}`} size={17} />
             {playlist.colaborativa && onVerGente ? (
               <ColaboradoresDeLista
@@ -1127,6 +1021,7 @@ function Header({
         }
       />
 
+      <HojaNombreLista editor={editorNombre} />
       {children}
     </View>
   )
@@ -1209,62 +1104,22 @@ function BuscadorDeLista({
   )
 }
 
-/**
- * Bajar la lista al teléfono, o sacarla.
- *
- * Va al lado de reproducir y del aleatorio porque es del mismo orden de cosa:
- * algo que se decide sobre **esta** lista, mirándola. Escondido en el menú de
- * los tres puntos nadie lo encontraría, y es la única forma de que la música
- * funcione sin señal.
- *
- * Mientras baja muestra el porcentaje en vez de un ícono. Una rueda girando dice
- * «esperá» sin decir cuánto, y bajar un disco entero con datos móviles puede ser
- * un rato largo — el número es lo que deja decidir si vale la pena esperar.
- *
- * El estado se marca por luminancia, como todo el resto: bajada es el blanco de
- * `primary`, sin bajar es el gris de los controles inactivos. Ver `docs/DESIGN.md`.
- */
-function BotonDescarga({
-  total,
-  bajado,
-  onPress,
-}: {
-  total: number
-  bajado: ReturnType<typeof resumenLista>
-  onPress: () => void
+/** Primera descarga directa; las siguientes acciones se eligen sin borrar al tocar. */
+function BotonDescarga({ total, bajado, onPress, opciones }: {
+  total: number; bajado: ReturnType<typeof resumenLista>; onPress: () => void; opciones: MenuItem[]
 }) {
   if (!HAY_DESCARGAS) return null
-
   const completa = total > 0 && bajado.listas === total
   const enCurso = bajado.bajando > 0
-  const vacia = total === 0
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={
-        enCurso
-          ? `Descargando, ${Math.round(bajado.progreso * 100)} por ciento. Tocá para cancelar`
-          : completa
-            ? 'Quitar la descarga'
-            : 'Descargar la lista'
-      }
-      accessibilityState={{ selected: completa }}
-      onPress={onPress}
-      disabled={vacia}
-      className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-    >
-      {enCurso ? (
-        <Text className="text-foreground text-[11px] font-semibold tabular-nums">
-          {Math.round(bajado.progreso * 100)}%
-        </Text>
-      ) : completa ? (
-        <IconDownloaded size={19} color={ICON_COLOR.foreground} />
-      ) : (
-        <IconDownload size={19} color={ICON_COLOR.muted} />
-      )}
-    </Pressable>
-  )
+  const contenido = enCurso
+    ? <Text className="text-foreground text-[11px] font-semibold tabular-nums">{Math.round(bajado.progreso * 100)}%</Text>
+    : completa ? <IconDownloaded size={19} color={ICON_COLOR.foreground} /> : <IconDownload size={19} color={ICON_COLOR.muted} />
+  const gestionar = opciones.some(o => o.label !== 'Descargar para escuchar sin conexión')
+  if (gestionar) return <Menu label="Opciones de descarga de la lista" items={opciones}
+    trigger={<View className="h-11 w-11 items-center justify-center">{contenido}</View>} />
+  return <Pressable accessibilityRole="button" accessibilityLabel="Descargar para escuchar sin conexión"
+    accessibilityState={{ disabled: total === 0 }} disabled={total === 0} onPress={onPress}
+    className="h-11 w-11 items-center justify-center rounded-full active:bg-muted">{contenido}</Pressable>
 }
 
 /**
@@ -1274,7 +1129,7 @@ function BotonDescarga({
  * canción. Un control más en la fila competiría con los tres puntos por el mismo
  * rincón, y en el teléfono ese rincón ya está justo.
  */
-function MarcaDescarga({ descarga }: { descarga: Descarga | undefined }) {
+function MarcaDescarga({ descarga }: { descarga: DescargaUI | undefined }) {
   if (!HAY_DESCARGAS || !descarga) return null
 
   return (
@@ -1292,116 +1147,6 @@ function MarcaDescarga({ descarga }: { descarga: Descarga | undefined }) {
           <IconDownload size={13} color={ICON_COLOR.muted} />
         </View>
       )}
-    </View>
-  )
-}
-
-/**
- * El nombre en reposo, que además es el botón para cambiarlo.
- *
- * Es donde uno va a hacer clic cuando quiere renombrar, así que ahí tiene que
- * poder hacerlo — el menú de los tres puntos es el otro camino, no el único.
- * Pero un texto que reacciona al clic sin avisar es una función escondida: bajo
- * el cursor aparece el lápiz y el nombre baja de brillo, que es lo mismo que ya
- * hace la portada de al lado.
- *
- * El lápiz **ocupa su lugar siempre**, transparente cuando no hay cursor: si
- * apareciera de la nada, el título se correría justo cuando lo vas a apuntar.
- */
-function TituloEditable({ name, onRename }: { name: string; onRename: () => void }) {
-  const [over, setOver] = useState(false)
-  const angosto = useAngosto()
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Cambiar el nombre de ${name}`}
-      onPress={onRename}
-      onPointerEnter={() => setOver(true)}
-      onPointerLeave={() => setOver(false)}
-      className={`flex-row items-center gap-2 rounded-lg active:opacity-70 ${
-        angosto ? 'justify-center' : ''
-      }`}
-      style={{ opacity: over ? 0.75 : 1 }}
-    >
-      <View className="min-w-0 shrink">
-        <CollectionTitle>{name}</CollectionTitle>
-      </View>
-      <View style={{ opacity: over ? 1 : 0 }}>
-        <IconPencil size={angosto ? 15 : 18} color={ICON_COLOR.muted} />
-      </View>
-    </Pressable>
-  )
-}
-
-/**
- * El nombre, mientras se edita.
- *
- * **Sale con el mismo cuerpo y la misma alineación que el título que
- * reemplaza**: entrar a renombrar no puede cambiarle el tamaño a lo que estás
- * mirando ni moverlo de lugar. Por eso el margen negativo — el campo tiene su
- * relleno para que el fondo respire, y sin corrimiento el texto arrancaría
- * doce píxeles a la derecha de donde estaba.
- *
- * El texto **arranca seleccionado**: nueve de cada diez veces renombrar es
- * cambiar el nombre entero, no corregirle una letra, y sin esto había que
- * borrarlo a mano antes de escribir. Para corregir una letra alcanza con hacer
- * clic donde va el cursor, que es lo que uno hace igual.
- *
- * Guarda al salir del campo y no solo con Enter. Antes, salir cancelaba: uno
- * escribía el nombre nuevo, hacía clic en cualquier lado y volvía el viejo sin
- * decir nada — se sentía roto, no cauteloso. Escape sigue estando para
- * arrepentirse a propósito, y el pie lo dice en vez de que haya que adivinarlo.
- *
- * El texto vive acá adentro y no en el padre porque es un borrador: mientras se
- * escribe no es todavía el nombre de la lista.
- */
-function NameField({
-  initial,
-  onDone,
-}: {
-  initial: string
-  /** `null` cancela sin guardar. */
-  onDone: (name: string | null) => void
-}) {
-  const angosto = useAngosto()
-  const [draft, setDraft] = useState(initial)
-  /* Enter guarda y saca el foco, y ese blur llegaría a guardar de nuevo. Una
-     sola salida por edición. */
-  const done = useRef(false)
-  const finish = (name: string | null) => {
-    if (done.current) return
-    done.current = true
-    onDone(name)
-  }
-  const trimmed = draft.trim()
-  const guardar = () => finish(trimmed && trimmed !== initial ? trimmed : null)
-
-  return (
-    <View className={angosto ? 'w-full items-center gap-1' : 'gap-1'}>
-      <TextInput
-        value={draft}
-        onChangeText={setDraft}
-        autoFocus
-        selectTextOnFocus
-        maxLength={60}
-        accessibilityLabel="Nombre de la lista"
-        // Un nombre vacío, o el mismo de antes, no es un cambio: se cancela.
-        onSubmitEditing={guardar}
-        onBlur={guardar}
-        onKeyPress={(e) => {
-          if (e.nativeEvent.key === 'Escape') finish(null)
-        }}
-        className={`self-stretch rounded-lg bg-muted text-foreground font-bold ${
-          angosto ? 'px-3 py-1 text-center text-2xl' : 'px-3 py-0.5 text-4xl'
-        }`}
-        // El anillo de foco del navegador ya lo apaga `global.css` para todo
-        // campo de texto; acá solo queda correr el relleno.
-        style={angosto ? null : { marginLeft: -12 }}
-      />
-      <Text className={`text-muted-foreground text-[11px] ${angosto ? 'text-center' : ''}`}>
-        {TECLADO_FISICO ? 'Enter para guardar · Esc para cancelar' : 'Tocá afuera para guardar'}
-      </Text>
     </View>
   )
 }

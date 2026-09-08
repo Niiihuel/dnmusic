@@ -162,8 +162,8 @@ export default function EntrarAlJam() {
         </View>
 
         <View className="w-full max-w-[420px] gap-3">
-          <AccionSocial label="Unirme al Jam" onPress={() => void entrar()} busy={entrando} />
-          <AccionSocial label="Ahora no" secundaria onPress={() => router.replace('/')} disabled={entrando} />
+          <AccionSocial label="Unirme al Jam" compacta onPress={() => void entrar()} busy={entrando} />
+          <AccionSocial label="Ahora no" compacta secundaria onPress={() => router.replace('/')} disabled={entrando} />
         </View>
       </ScrollView>
     </SafeAreaView>

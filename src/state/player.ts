@@ -1,3 +1,4 @@
+import { cargarDescargas, marcarAudioUsado, protegerDescargas, rutaLocal } from './descargas'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAudioPlayer } from 'expo-audio'
 import { useSharedValue } from 'react-native-reanimated'
@@ -88,6 +89,14 @@ export function useSnippetPlayer() {
    * su principio, sin que nadie hubiera tocado nada.
    */
   const pedido = useRef(false)
+  const revisionFuente = useRef(0)
+  const propietario = useRef(Symbol('fragmento'))
+  useEffect(() => {
+    const owner = propietario.current
+    protegerDescargas(current ? [current.song.path, `video:${current.song.videoId}`] : [], owner)
+    return () => protegerDescargas([], owner)
+  }, [current])
+  useEffect(() => () => { revisionFuente.current++ }, [])
 
   /**
    * Deja la posición a la vista.
@@ -110,6 +119,7 @@ export function useSnippetPlayer() {
   )
 
   const stop = useCallback(() => {
+    revisionFuente.current++
     player.pause()
     pendingPositionMs.current = null
     pedido.current = false
@@ -152,8 +162,16 @@ export function useSnippetPlayer() {
       marcarPosicion(song.startMs)
       pendingPositionMs.current = null
       pedido.current = true
+      const revision = ++revisionFuente.current
+      protegerDescargas([song.path, `video:${song.videoId}`], propietario.current)
+      setUrl(null)
       setCurrent({ id, song })
-      setUrl((await urlDeAudio(song.path, song.videoId)).url)
+      await cargarDescargas()
+      if (revision !== revisionFuente.current) return
+      const fuente = rutaLocal(song.path) ?? (await urlDeAudio(song.path, song.videoId)).url
+      if (revision !== revisionFuente.current) return
+      marcarAudioUsado(song.path)
+      setUrl(fuente)
     },
     [current, playing, player, positionMs, marcarPosicion],
   )
@@ -188,8 +206,16 @@ export function useSnippetPlayer() {
       marcarPosicion(targetMs)
       pendingPositionMs.current = targetMs
       pedido.current = true
+      const revision = ++revisionFuente.current
+      protegerDescargas([song.path, `video:${song.videoId}`], propietario.current)
+      setUrl(null)
       setCurrent({ id, song })
-      setUrl((await urlDeAudio(song.path, song.videoId)).url)
+      await cargarDescargas()
+      if (revision !== revisionFuente.current) return
+      const fuente = rutaLocal(song.path) ?? (await urlDeAudio(song.path, song.videoId)).url
+      if (revision !== revisionFuente.current) return
+      marcarAudioUsado(song.path)
+      setUrl(fuente)
     },
     [current, player, marcarPosicion],
   )

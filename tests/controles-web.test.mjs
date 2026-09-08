@@ -6,6 +6,44 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 
+import { createRequire } from 'node:module'
+import ts from 'typescript'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+
+const require = createRequire(import.meta.url)
+function botonesVidrioHTML() {
+  const rn = require('react-native-web'), etiquetas = []
+  function cargar(archivo, deps) {
+    const exports = {}
+    const { outputText } = ts.transpileModule(readFileSync(archivo, 'utf8'), { compilerOptions: {
+      module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022,
+    } })
+    new Function('exports', 'require', outputText)(exports, id => {
+      assert.ok(id in deps, id)
+      return deps[id]
+    })
+    return exports
+  }
+  const control = cargar('src/ui/estadoControl.ts', { 'react-native': rn })
+  const { BotonVidrio } = cargar('src/ui/Glass.tsx', {
+    'react/jsx-runtime': require('react/jsx-runtime'), 'react-native': rn,
+    'react-native-reanimated': { default: {} },
+    'expo-glass-effect': { isLiquidGlassAvailable: () => false },
+    './estadoControl': control,
+    './useConTooltip': { useConTooltip: label => { etiquetas.push(label); return { gestos: {} } } },
+  })
+  const markup = renderToStaticMarkup(React.createElement('div', null,
+    ...['profile', 'list'].map((id, i) => React.createElement('div', { id: `glass-${id}`, key: id, style: { display: 'inline-block' } },
+      React.createElement(BotonVidrio, { label: i ? 'Editar lista' : 'Editar perfil', onPress() {}, radius: 22,
+        style: { height: 44, paddingHorizontal: 18 }, tint: i ? '#ffffff' : undefined },
+      React.createElement(rn.Text, { style: { color: i ? '#121212' : '#ffffff' } }, i ? 'Editar lista' : 'Editar perfil')))),
+    React.createElement('div', { id: 'glass-disabled' }, React.createElement(BotonVidrio, { label: 'No disponible', disabled: true, onPress() {}, style: { height: 44 } }, React.createElement(rn.Text, null, 'No disponible'))),
+  ))
+  assert.deepEqual(etiquetas, ['Editar perfil', 'Editar lista', undefined], 'conserva tooltip y lo omite disabled')
+  return { markup, css: rn.StyleSheet.getSheet().textContent }
+}
+
 // Chrome propio sin cuenta, extensiones ni conexión con la sesión del usuario.
 const chrome = process.env.CHROME_BIN ?? '/run/current-system/sw/bin/google-chrome'
 test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flechas', { skip: !existsSync(chrome), timeout: 30000 }, async t => {
@@ -48,12 +86,14 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   const send = (method, params = {}) => new Promise((resolve, reject) => { const id = ++seq; pending.set(id, { resolve, reject }); ws.send(JSON.stringify({ id, method, params })) })
   const evaluate = async expression => { const r = await send('Runtime.evaluate', { expression, returnByValue: true }); if (r.exceptionDetails) throw Error(JSON.stringify(r.exceptionDetails)); return r.result.value }
   const css = readFileSync('global.css', 'utf8')
-  const html = `<style>${css}</style><style>body{background:#121212;color:white}button,[role=button],a{display:inline-block;margin:12px;padding:12px;border:0;border-radius:12px;background-color:#181818;color:white} .viewport{height:80px;width:160px;overflow:auto}.content{height:500px}.hidden-native{scrollbar-width:none}</style>
+  const vidrio = botonesVidrioHTML()
+  const html = `<style>${vidrio.css}</style><style>${css}</style><style>body{background:#121212;color:white}#active,#disabled,#aria,#child,#busy,#backdrop,#primary,#link,#outer,#inner{display:inline-block;margin:12px;padding:12px;border:0;border-radius:12px;background-color:#181818;color:white} .viewport{height:80px;width:160px;overflow:auto}.content{height:500px}.hidden-native{scrollbar-width:none}</style>
     <button id="active">Icono</button><button id="disabled" disabled>Icono</button><div id="aria" role="button" aria-disabled="true">Icono</div><div aria-disabled="true"><button id="child">Icono</button></div>
     <button id="busy" aria-busy="true">Icono</button><button id="backdrop" data-dn-hover="none">Cerrar</button><button id="primary" data-dn-hover="inverse">Guardar</button><svg id="decorative" width="24" height="24"><circle r="10"/></svg><a id="link" href="#">Abrir</a><div id="role-link" role="link" tabindex="0">Enlace RN sin href</div>
+    <div style="border-radius:8px;background:#303030"><button id="row" data-dn-hover="row">Reproducir canción</button></div>
     <div id="outer" role="button">Fila<button id="inner">Menú</button></div>
     <div id="native" class="viewport"><div class="content"></div></div><div id="hidden" class="viewport hidden-native"><div class="content"></div></div>
-    <div class="dn-scroll-area"><div id="custom" class="dn-scrollbar"><div id="thumb" class="dn-scrollbar-thumb"></div></div></div>`
+    ${vidrio.markup}<div class="dn-scroll-area"><div id="custom" class="dn-scrollbar"><div id="thumb" class="dn-scrollbar-thumb"></div></div></div>`
   await send('Page.enable')
   const { frameTree } = await send('Page.getFrameTree')
   await send('Page.setDocumentContent', { frameId: frameTree.frame.id, html })
@@ -63,7 +103,7 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'hover', value: 'hover' }, { name: 'pointer', value: 'fine' }] })
   const { root } = await send('DOM.getDocument')
   const ids = {}
-  for (const id of ['active', 'disabled', 'aria', 'child', 'busy', 'backdrop', 'primary', 'decorative', 'link', 'role-link', 'outer', 'inner']) ids[id] = (await send('DOM.querySelector', { nodeId: root.nodeId, selector: `#${id}` })).nodeId
+  for (const id of ['active', 'disabled', 'aria', 'child', 'busy', 'backdrop', 'primary', 'decorative', 'link', 'role-link', 'outer', 'inner', 'row']) ids[id] = (await send('DOM.querySelector', { nodeId: root.nodeId, selector: `#${id}` })).nodeId
   assert.equal(await evaluate('matchMedia("(hover: hover) and (pointer: fine)").matches'), true)
   const style = (id, prop, pseudo = '') => evaluate(`getComputedStyle(document.getElementById(${JSON.stringify(id)}), ${JSON.stringify(pseudo)})[${JSON.stringify(prop)}]`)
   for (const id of ['active', 'primary', 'link', 'role-link']) {
@@ -83,6 +123,34 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   await send('CSS.forcePseudoState', { nodeId: ids.inner, forcedPseudoClasses: ['hover'] })
   assert.equal(await style('outer', 'backgroundImage'), 'none', 'la fila no duplica hover del botón interno')
   assert.match(await style('inner', 'backgroundImage'), /linear-gradient/)
+  await send('CSS.forcePseudoState', { nodeId: ids.row, forcedPseudoClasses: ['hover'] })
+  assert.equal(await style('row', 'backgroundImage'), 'none', 'la reproducción no pinta otro rectángulo dentro de la fila')
+  await send('CSS.forcePseudoState', { nodeId: ids.row, forcedPseudoClasses: ['focus', 'focus-visible'] })
+  assert.equal(await style('row', 'outlineWidth'), '2px', 'reproducción conserva foco accesible')
+  for (const id of ['glass-profile', 'glass-list']) {
+    const selector = `#${id} [data-dn-hover='glass']`
+    const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector })
+    assert.ok(nodeId, 'usa el BotonVidrio real, renderizado por RN web')
+    const read = property => evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector)}))[${JSON.stringify(property)}]`)
+    const surface = property => evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector)}).parentElement)[${JSON.stringify(property)}]`)
+    const medidas = () => evaluate(`(() => { const b = document.querySelector(${JSON.stringify(selector)}); return [b.getBoundingClientRect().width, b.parentElement.getBoundingClientRect().width] })()`)
+    const antes = await medidas()
+    assert.ok(antes[1] > antes[0], 'reproduce el padding exterior de la captura')
+    await send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['hover'] })
+    assert.equal(await read('backgroundImage'), 'none', 'no pinta rectángulo interior en perfil/listas')
+    assert.equal(await surface('backgroundImage'), 'none', 'no agrega otra capa de hover')
+    assert.deepEqual(await medidas(), antes)
+    await send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['focus', 'focus-visible'] })
+    assert.equal(await read('outlineStyle'), 'none', 'no duplica el foco dentro del botón')
+    assert.equal(await surface('outlineWidth'), '2px', 'el foco sigue visible en la superficie completa')
+    assert.equal(await surface('borderRadius'), '22px', 'conserva el contorno redondeado')
+    await send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] })
+    assert.equal(await surface('outlineStyle'), 'none')
+  }
+  const { nodeId: disabledGlass } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: '#glass-disabled [data-dn-hover]' })
+  await send('CSS.forcePseudoState', { nodeId: disabledGlass, forcedPseudoClasses: ['hover', 'focus', 'focus-visible'] })
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('#glass-disabled [data-dn-hover]')).backgroundImage"), 'none')
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('#glass-disabled [data-dn-hover]').parentElement).outlineStyle"), 'none')
   assert.equal(await style('native', 'scrollbarColor'), 'auto')
   assert.equal(await style('native', 'width', '::-webkit-scrollbar'), '14px')
   assert.equal(await style('native', 'display', '::-webkit-scrollbar-button'), 'none')

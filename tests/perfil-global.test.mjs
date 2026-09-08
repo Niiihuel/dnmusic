@@ -102,7 +102,7 @@ test('ambos perfiles montan el fondo fuera del ScrollView y estadísticas sin du
       if (tag === 'FondoEstiloPerfil') fondos.push(scroll)
       if (tag === 'Resumen') resumenes.push(node.getText(source))
       if (tag === 'Reciente') recientes.push(node.getText(source))
-      ts.forEachChild(node, child => walk(child, scroll || tag === 'ScrollView'))
+      ts.forEachChild(node, child => walk(child, scroll || tag === 'ScrollView' || tag === 'ScrollArea'))
     }
     walk(source)
     assert.deepEqual(fondos, [false], ruta)

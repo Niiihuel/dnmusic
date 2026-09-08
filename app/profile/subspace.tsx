@@ -16,7 +16,8 @@ import { editarBorrador } from '../../src/state/vitrinaBorrador'
 import { Panel } from '../../src/ui/Panel'
 import { Vitrinas } from '../../src/ui/PerfilPublico'
 import { Vacio } from '../../src/ui/Vacio'
-import { ICON_COLOR, IconBack, IconGrilla, IconPencil } from '../../src/ui/icons'
+import { BotonVolver } from '../../src/ui/BotonVolver'
+import { ICON_COLOR, IconGrilla, IconPencil } from '../../src/ui/icons'
 
 const MAX_W = 520
 /** Alto de la barra de armado, más su respiro sobre lo que flota debajo. */
@@ -169,14 +170,7 @@ export default function SubspaceScreen() {
       <SafeAreaView className="flex-1 bg-background" edges={['top']}>
         <View className="flex-1">
           <View className="flex-row items-center gap-3 px-3 py-1">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Volver"
-              onPress={() => volver(router, '/profile')}
-              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-            >
-              <IconBack size={19} color={ICON_COLOR.foreground} />
-            </Pressable>
+            <BotonVolver onPress={() => volver(router, '/profile')} />
             <Text
               className="min-w-0 flex-1 text-foreground text-[15px] font-semibold"
               numberOfLines={1}

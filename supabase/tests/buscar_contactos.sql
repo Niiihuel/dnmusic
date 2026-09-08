@@ -12,11 +12,17 @@
 
 begin;
 
-insert into auth.users (id, email) values
-  ('00000000-0000-4000-8000-0000000000d1', 'buscadora@flora.local'),
-  ('00000000-0000-4000-8000-0000000000d2', 'martina@flora.local'),
-  ('00000000-0000-4000-8000-0000000000d3', 'marcos@flora.local'),
-  ('00000000-0000-4000-8000-0000000000d4', 'ana@flora.local');
+insert into auth.users (id, email, raw_app_meta_data) values
+  ('00000000-0000-4000-8000-0000000000d1', 'buscadora@flora.local', '{"provider":"google"}'),
+  ('00000000-0000-4000-8000-0000000000d2', 'martina@flora.local', '{"provider":"google"}'),
+  ('00000000-0000-4000-8000-0000000000d3', 'marcos@flora.local', '{"provider":"google"}'),
+  ('00000000-0000-4000-8000-0000000000d4', 'ana@flora.local', '{"provider":"google"}');
+-- Trusted SQL fixture setup: real Google signups remain pending until approved.
+update app_private.access_accounts set status='approved' where user_id in (
+ '00000000-0000-4000-8000-0000000000d1',
+ '00000000-0000-4000-8000-0000000000d2',
+ '00000000-0000-4000-8000-0000000000d3',
+ '00000000-0000-4000-8000-0000000000d4');
 
 update public.profiles set username = 'buscadora'
   where user_id = '00000000-0000-4000-8000-0000000000d1';

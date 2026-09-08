@@ -34,8 +34,8 @@ export function TarjetaPerfil({ perfil, animado = true }: { perfil: Profile; ani
               </View>
             </View>
             <PlacaDeNombre id={perfil.placa} animado={animado}>
-              <Text style={{ color: '#fff', fontSize: 23, fontWeight: '700' }} numberOfLines={2}>{nombre}</Text>
-              <Text style={{ color: '#ccc', fontSize: 13, marginTop: 3 }} numberOfLines={1}>@{perfil.username}</Text>
+              <Text style={{ color: '#fff', fontSize: 23, fontWeight: '700' }} numberOfLines={1}>{nombre}</Text>
+              <Text style={{ color: '#ccc', fontSize: 13, marginTop: 4 }} numberOfLines={1}>@{perfil.username}</Text>
             </PlacaDeNombre>
             {perfil.bio ? <Text style={{ color: '#e4e4e4', fontSize: 14, lineHeight: 21, marginTop: 18 }}>{perfil.bio}</Text> : null}
           </View>

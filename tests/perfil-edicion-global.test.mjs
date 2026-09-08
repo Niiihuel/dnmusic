@@ -75,3 +75,18 @@ test('cambiar de cuenta descarta el borrador anterior y rechaza confirmaciones t
   s.terminarPerfilEdicion('u2')
   assert.equal(s.getPerfilEdicion().ownerId, null)
 })
+
+
+test('escucha opcional conserva false al guardar y restablece el opt-in del borrador', () => {
+  const f = fixture(), s = f.api
+  f.guardar({ ...f.perfil, compartirEscucha: false })
+  s.iniciarPerfilEdicion(f.perfil)
+  s.actualizarPerfilEdicion({ compartirEscucha: true })
+  assert.deepEqual(s.cambiosParaGuardar(s.usePerfilBorrador(), s.getPerfilEdicion().cambios), { compartirEscucha: true })
+  s.restablecerPerfilEdicion()
+  assert.equal(s.usePerfilBorrador().compartirEscucha, false)
+  const compartido = { ...f.perfil, compartirEscucha: true }
+  f.guardar(compartido); s.confirmarPerfilEdicion(compartido)
+  s.actualizarPerfilEdicion({ compartirEscucha: false })
+  assert.deepEqual(s.cambiosParaGuardar(s.usePerfilBorrador(), s.getPerfilEdicion().cambios), { compartirEscucha: false })
+})

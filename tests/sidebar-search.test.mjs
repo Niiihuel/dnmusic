@@ -67,8 +67,9 @@ function scrollFixture(props = {}) {
   const effects = [], frames = new Map(), observed = [], listeners = new Map()
   let frameId = 0, disconnected = false
   const modulo = cargar('src/ui/ScrollArea.web.tsx', {
-    react: { forwardRef: (fn) => fn, useRef: (current) => ({ current }), useCallback: (f) => f, useEffect: (f) => effects.push(f), useId: () => 'scroll-test' },
+    react: { forwardRef: (fn) => fn, useContext: () => props.techoPanel ?? 0, useRef: (current) => ({ current }), useCallback: (f) => f, useEffect: (f) => effects.push(f), useId: () => 'scroll-test' },
     'react-native': { ScrollView: 'ScrollView', View: 'View' },
+    './ScrollAreaContext': { ScrollAreaTecho: { Provider: 'TechoProvider' } },
   }, {
     requestAnimationFrame: (f) => { frames.set(++frameId, f); return frameId },
     cancelAnimationFrame: (id) => frames.delete(id),
@@ -77,7 +78,7 @@ function scrollFixture(props = {}) {
   const native = { clientHeight: 200, scrollHeight: 1000, scrollTop: 0, id: '', firstElementChild: {}, classList: { add() {}, remove() {} }, addEventListener: (k, f) => listeners.set(k, f), removeEventListener: (k) => listeners.delete(k) }
   const thumb = { style: {}, contains: (target) => target === thumb }
   const attrs = {}, capture = new Set()
-  const track = { style: {}, dataset: {}, setAttribute: (k, v) => { attrs[k] = v }, focus() {}, setPointerCapture: (id) => capture.add(id), hasPointerCapture: (id) => capture.has(id), releasePointerCapture: (id) => capture.delete(id), getBoundingClientRect: () => ({ top: 100 }) }
+  const track = { style: {}, dataset: {}, setAttribute: (k, v) => { attrs[k] = v }, focus() {}, setPointerCapture: (id) => capture.add(id), hasPointerCapture: (id) => capture.has(id), releasePointerCapture: (id) => capture.delete(id), getBoundingClientRect: () => ({ top: 100 + (parseFloat(track.style.top) || 0) }) }
   const ref = { current: null }, instance = { getScrollableNode: () => native, scrollTo() {} }
   const contentSizes = [], scrollEvents = []
   const ui = modulo.ScrollArea({ children: 'filas', contentContainerStyle: { paddingBottom: 40 }, onContentSizeChange: (...args) => contentSizes.push(args), onScroll: (e) => scrollEvents.push(e), ...props }, ref)
@@ -103,6 +104,20 @@ test('barra superpuesta cubre inicio/final y contenido que entra sin división p
   s.native.scrollHeight = 150
   s.observed[0].fn(); s.flush()
   assert.equal(s.track.style.display, 'none')
+  s.cleanup()
+})
+
+
+test('indicador estable no cambia de tamaño cuando una lista virtual desmonta filas', () => {
+  const s = scrollFixture({ stableIndicator: true, contentKey: 'lista:200' })
+  assert.equal(s.thumb.style.height, '40px')
+  s.native.scrollHeight = 600
+  s.observed[0].fn(); s.flush()
+  assert.equal(s.thumb.style.height, '40px', 'conserva la extensión mayor ya medida')
+  assert.equal(s.attrs['aria-valuemax'], '400', 'ARIA y el arrastre siguen el contenido real')
+  s.native.scrollTop = 400
+  s.listeners.get('scroll')(); s.flush()
+  assert.equal(s.thumb.style.transform, 'translateY(160px)', 'el final visual coincide con el final real')
   s.cleanup()
 })
 
@@ -193,4 +208,53 @@ test('horizontal conserva props, ref y ScrollView nativo sin indicador propio ni
     assert.deepEqual(s.contentSizes, [[1500, 80]])
     s.cleanup()
   }
+})
+
+
+test('cabecera flotante acorta sólo el carril; drag, click y End alcanzan todo el contenido', () => {
+  const s = scrollFixture({ techoPanel: 48, scrollIndicatorInsets: { bottom: 12 } })
+  assert.equal(s.track.style.top, '48px')
+  assert.equal(s.track.style.bottom, '12px')
+  assert.equal(s.thumb.style.height, '28px')
+  assert.equal(nodos(s.ui, 'TechoProvider')[0].props.value, 0, 'un scroll interior no vuelve a reservar cabecera')
+  s.rail.props.onPointerDown(s.pointer(160))
+  s.rail.props.onPointerMove(s.pointer(216))
+  assert.equal(s.native.scrollTop, 400, 'la mitad del carril recorre la mitad del contenido')
+  s.rail.props.onPointerUp(s.pointer(216))
+  s.rail.props.onPointerDown(s.pointer(218, s.track))
+  assert.equal(s.native.scrollTop, 400, 'click usa el origen desplazado del carril')
+  s.rail.props.onPointerUp(s.pointer(218))
+  s.rail.props.onKeyDown({ key: 'End', preventDefault() {} })
+  s.flush()
+  assert.equal(s.native.scrollTop, 800)
+  assert.equal(s.thumb.style.transform, 'translateY(112px)')
+  assert.equal(s.attrs['aria-valuemax'], '800')
+  s.native.clientHeight = 40
+  s.observed[0].fn(); s.flush()
+  assert.equal(s.track.style.display, 'none', 'cabecera mayor que viewport no crea un indicador negativo')
+  s.cleanup()
+  const explicit = scrollFixture({ techoPanel: 48, scrollIndicatorInsets: { top: 0 } })
+  assert.equal(explicit.track.style.top, '0px', 'un panel con cabecera propia puede anular la herencia')
+  explicit.cleanup()
+})
+
+
+test('fallback nativo conserva hijos/ref e índices sticky; el inset heredado no crea otro hijo', () => {
+  const { ScrollArea } = cargar('src/ui/ScrollArea.tsx', {
+    react: { forwardRef: fn => fn, useContext: () => 48 },
+    'react-native': { ScrollView: 'ScrollView' },
+    './ScrollAreaContext': { ScrollAreaTecho: { Provider: 'TechoProvider' } },
+  })
+  const children = [jsx('Header', {}), jsx('Rows', {})], ref = {}
+  const props = { children, stickyHeaderIndices: [0], scrollIndicatorInsets: { bottom: 16 } }
+  const ui = ScrollArea(props, ref)
+  const scroll = nodos(ui, 'ScrollView')[0]
+  assert.equal(scroll.props.children, children)
+  assert.equal(scroll.props.ref, ref)
+  assert.deepEqual(scroll.props.stickyHeaderIndices, [0])
+  assert.deepEqual(scroll.props.scrollIndicatorInsets, { top: 48, bottom: 16 })
+  assert.equal(ui.props.value, 0)
+  const horizontal = ScrollArea({ ...props, horizontal: true }, ref)
+  assert.equal(horizontal.type, 'ScrollView')
+  assert.deepEqual(horizontal.props.scrollIndicatorInsets, { bottom: 16 })
 })

@@ -3,7 +3,7 @@ import type { Profile, saveMyProfile } from '../services/profile'
 import { createStore, useStore } from './store'
 import { useMyProfile } from './session'
 
-export const CAMPOS_PERFIL = ['username', 'displayName', 'bio', 'avatarPath', 'bannerPath', 'avatarEncuadre', 'bannerEncuadre', 'visibility', 'fuente', 'tema', 'marco', 'efecto', 'placa', 'marcoPerfil'] as const
+export const CAMPOS_PERFIL = ['username', 'displayName', 'bio', 'avatarPath', 'bannerPath', 'avatarEncuadre', 'bannerEncuadre', 'visibility', 'compartirEscucha', 'fuente', 'tema', 'marco', 'efecto', 'placa', 'marcoPerfil'] as const
 export type CambiosPerfil = Partial<Pick<Profile, typeof CAMPOS_PERFIL[number]>>
 type Edicion = { ownerId: string | null; base: Profile | null; cambios: CambiosPerfil; ocupado: boolean }
 const store = createStore<Edicion>({ ownerId: null, base: null, cambios: {}, ocupado: false })

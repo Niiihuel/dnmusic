@@ -25,8 +25,8 @@ import { avisar } from '../../src/state/aviso'
 import { playQueue, togglePlayback, usePlaybackTrack, useWantPlay } from '../../src/state/playback'
 import { abrirLista, usePiso } from '../../src/state/shell'
 import { Avatar } from '../../src/ui/Avatar'
+import { BotonVolver } from '../../src/ui/BotonVolver'
 import { CollectionHeader, CollectionTitle, Insignia } from '../../src/ui/CollectionHeader'
-import { BotonVidrio } from '../../src/ui/Glass'
 import { Panel } from '../../src/ui/Panel'
 import { PlaylistCover } from '../../src/ui/PlaylistCover'
 import { formatLength } from '../../src/ui/SeekBar'
@@ -35,7 +35,6 @@ import { TrackColumnHeader, TrackRow } from '../../src/ui/TrackRow'
 import { Vacio } from '../../src/ui/Vacio'
 import {
   ICON_COLOR,
-  IconBack,
   IconGlobe,
   IconMusic,
   IconPause,
@@ -169,14 +168,7 @@ export default function ListaPublica() {
             sobre el contenido. Mismo reparto que el perfil de otra persona. */}
         {ancho ? null : (
           <View className="flex-row items-center gap-3 px-3 py-1">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Volver"
-              onPress={() => volver(router, '/')}
-              className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-            >
-              <IconBack size={19} color={ICON_COLOR.foreground} />
-            </Pressable>
+            <BotonVolver onPress={() => volver(router, '/')} />
             <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
               {lista?.playlist.name ?? 'Lista'}
             </Text>
@@ -186,14 +178,7 @@ export default function ListaPublica() {
         <Panel className="flex-1">
           {ancho ? (
             <View className="absolute left-4 top-4 z-10">
-              <BotonVidrio
-                onPress={() => volver(router, '/')}
-                label="Volver"
-                radius={22}
-                style={{ height: 44, width: 44 }}
-              >
-                <IconBack size={19} color={ICON_COLOR.foreground} />
-              </BotonVidrio>
+              <BotonVolver onPress={() => volver(router, '/')} />
             </View>
           ) : null}
 

@@ -55,8 +55,8 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-icon.png",
-          "imageWidth": 200,
+          "image": "./assets/branding/splash-dnmusic.png",
+          "imageWidth": 128,
           "resizeMode": "contain",
           "backgroundColor": "#121212"
         }

@@ -8,14 +8,15 @@ import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Avatar } from '../../../src/ui/Avatar'
 import { BotonLateral, CabeceraLateral } from '../../../src/ui/CabeceraLateral'
+import { BotonVolver } from '../../../src/ui/BotonVolver'
 import { CollapsedSidebar } from '../../../src/ui/SidebarMotion'
 import { Panel, Shell } from '../../../src/ui/Panel'
-import { FilaAjuste, FilaInterruptor, GrupoAjustes } from '../../../src/ui/Ajustes'
+import { AjustesCompactos, FilaAjuste, FilaInterruptor, GrupoAjustes } from '../../../src/ui/Ajustes'
 import { FilaCampo, useEditorDeCampo } from '../../../src/ui/EditorDeCampo'
 import { BarraCambiosPerfil } from '../../../src/ui/BarraCambiosPerfil'
 import { useSalidaConCambios } from '../../../src/ui/useSalidaConCambios'
 import { getSupabase } from '../../../src/lib/supabase'
-import { ICON_COLOR, IconAt, IconBack, IconClose, IconCollapseLeft, IconCollapseRight, IconEye, IconEyeOff, IconGrilla, IconHeading, IconImage, IconLock, IconMessage, IconPalette, IconSparkles, IconType, IconUser, type IconProps } from '../../../src/ui/icons'
+import { ICON_COLOR, IconAt, IconClose, IconChevronRight, IconCollapseLeft, IconCollapseRight, IconEye, IconEyeOff, IconGrilla, IconHeading, IconImage, IconLock, IconMessage, IconPalette, IconSparkles, IconType, IconUser, type IconProps } from '../../../src/ui/icons'
 import { removeAvatar, saveMyProfile, uploadAvatar, type Profile } from '../../../src/services/profile'
 import { BarraDeProgreso, porciento } from '../../../src/ui/Progreso'
 import { FondoPerfil } from '../../../src/ui/PerfilPublico'
@@ -36,7 +37,7 @@ import { volver } from '../../../src/lib/volver'
 const ESCRITORIO_PX = 780
 const LATERAL_W = 210
 /** Tope del detalle: una lista agrupada más ancha se lee como una tabla. */
-const MAX_W = 640
+const MAX_W = 560
 
 type Seccion = {
   id: string
@@ -54,10 +55,8 @@ type Seccion = {
  * vitrinas— así que mirar tu perfil y editarlo eran la misma pantalla, y no se
  * podía ver cómo te ve otro sin los botones puestos por encima.
  *
- * Tiene la anatomía de Configuración: **en el teléfono** es la lista agrupada
- * de iOS —la foto arriba, los bloques debajo, cada campo de texto en su propia
- * pantalla apilada (`[campo].tsx`)—; **en la compu** es Ajustes del Sistema,
- * una barra lateral con las secciones y el detalle al lado. Identidad,
+ * En el teléfono una lista abre cada sección; en la compu, la barra lateral
+ * conserva las secciones junto al detalle. Identidad,
  * privacidad y medios comparten un borrador y una sola barra de confirmación,
  * también al cambiar de sección.
  */
@@ -78,7 +77,6 @@ export default function EditarPerfil() {
   const [progresoFondo, setProgresoFondo] = useState<number | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [altoBarra, setAltoBarra] = useState(0)
-  const [previaMovil, setPreviaMovil] = useState(false)
   const edicion = usePerfilEdicion()
   const profile = usePerfilBorrador()
   const setBorrador = (actualizar: (perfil: Partial<Profile>) => Partial<Profile>) => actualizarPerfilEdicion(actualizar(edicion.cambios))
@@ -297,25 +295,25 @@ export default function EditarPerfil() {
           />
         </View>
       ) : null}
-      <FilaAjuste
+      <FilaAjuste iconoPlano
         rotulo={conFondo ? 'Cambiar el fondo' : 'Elegir un fondo'}
         vacio={subiendoFondo ? 'Eligiendo…' : conFondo ? '' : 'Imagen, GIF o clip'}
-        icono={<IconImage size={17} color={ICON_COLOR.muted} />}
+        icono={<IconImage size={16} color={ICON_COLOR.muted} />}
         onPress={() => void subirFondo()}
         ultima={!conFondo}
       />
       {/* Solo con una imagen: un clip de fondo se dibuja con el reproductor
           de video y la pantalla de encuadre trabaja sobre una imagen quieta. */}
       {puedeEncuadrarFondo ? (
-        <FilaAjuste
+        <FilaAjuste iconoPlano
           rotulo="Encuadrar el fondo"
           vacio="Elegí qué parte se ve"
-          icono={<IconImage size={17} color={ICON_COLOR.muted} />}
+          icono={<IconImage size={16} color={ICON_COLOR.muted} />}
           onPress={() => abrir({ pathname: '/perfil/encuadrar', params: { que: 'fondo' } })}
         />
       ) : null}
       {conFondo ? (
-        <FilaAjuste
+        <FilaAjuste iconoPlano
           rotulo="Quitar el fondo"
           vacio=""
           destructivo
@@ -328,14 +326,14 @@ export default function EditarPerfil() {
 
   const bloqueEstilo = (
     <GrupoAjustes titulo={escritorio ? undefined : 'Tu estilo'}>
-      <FilaAjuste
+      <FilaAjuste iconoPlano
         rotulo="Tipografía"
         valor={fuenteDe(profile.fuente)?.nombre}
         vacio="La del sistema"
-        icono={<IconType size={17} color={ICON_COLOR.muted} />}
+        icono={<IconType size={16} color={ICON_COLOR.muted} />}
         onPress={() => abrir('/profile/fuente')}
       />
-      <FilaAjuste
+      <FilaAjuste iconoPlano
         rotulo="Marco de la foto"
         valor={
           profile.marco
@@ -345,12 +343,12 @@ export default function EditarPerfil() {
             : null
         }
         vacio="Ninguno"
-        icono={<IconPalette size={17} color={ICON_COLOR.muted} />}
+        icono={<IconPalette size={16} color={ICON_COLOR.muted} />}
         onPress={() => abrir({ pathname: '/profile/marco', params: { tipo: 'marco' } })}
       />
       {/* El efecto: una animación encima del fondo, como los «profile
           effects». Vive en el catálogo en imagen (`services/decoraciones`). */}
-      <FilaAjuste
+      <FilaAjuste iconoPlano
         rotulo="Efecto del perfil"
         valor={
           profile.efecto
@@ -360,18 +358,18 @@ export default function EditarPerfil() {
             : null
         }
         vacio="Ninguno"
-        icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+        icono={<IconSparkles size={16} color={ICON_COLOR.muted} />}
         onPress={() => abrir({ pathname: '/profile/marco', params: { tipo: 'efecto' } })}
       />
-      <FilaAjuste
+      <FilaAjuste iconoPlano
         rotulo="Placa de nombre"
         valor={profile.placa ? (nombreCosmetico(profile.placa) ?? nombreDePlaca(profile.placa) ?? 'Decoración guardada') : null}
         vacio="Ninguna"
-        icono={<IconHeading size={17} color={ICON_COLOR.muted} />}
+        icono={<IconHeading size={16} color={ICON_COLOR.muted} />}
         onPress={() => abrir({ pathname: '/profile/marco', params: { tipo: 'placa' } })}
       />
-      <FilaAjuste rotulo="Marco de estadísticas" valor={nombreCosmetico(profile.marcoPerfil)} vacio="Ninguno"
-        icono={<IconGrilla size={17} color={ICON_COLOR.muted} />}
+      <FilaAjuste iconoPlano rotulo="Marco de estadísticas" valor={nombreCosmetico(profile.marcoPerfil)} vacio="Ninguno"
+        icono={<IconGrilla size={16} color={ICON_COLOR.muted} />}
         onPress={() => abrir({ pathname: '/profile/marco', params: { tipo: 'marcoPerfil' } })}
         ultima
       />
@@ -383,17 +381,25 @@ export default function EditarPerfil() {
       titulo={escritorio ? undefined : 'Quién lo ve'}
       pie={
         profile.visibility === 'publico'
-          ? 'Cualquiera con cuenta puede ver tu perfil y tus vitrinas.'
+          ? 'Cualquiera con cuenta puede ver tu perfil y tus vitrinas. Si activás la escucha, solo tus contactos ven la canción mientras suena; pueden dejar reacciones que quedan en tu perfil.'
           : 'Solo vos podés ver tu perfil. Nadie más, ni con el enlace.'
       }
     >
-      <FilaInterruptor
+      <FilaInterruptor iconoPlano
         rotulo="Perfil público"
         activo={profile.visibility === 'publico'}
         onCambiar={(activo) => {
           if (!enVuelo.current) setBorrador(b => ({ ...b, visibility: activo ? 'publico' : 'privado' }))
         }}
-        icono={<IconLock size={17} color={ICON_COLOR.muted} />}
+        icono={<IconLock size={16} color={ICON_COLOR.muted} />}
+      />
+      <FilaInterruptor iconoPlano
+        rotulo="Mostrar lo que escucho en tiempo real"
+        activo={profile.compartirEscucha === true}
+        onCambiar={(activo) => {
+          if (!enVuelo.current) setBorrador(b => ({ ...b, compartirEscucha: activo }))
+        }}
+        icono={<IconEye size={16} color={ICON_COLOR.muted} />}
         ultima
       />
     </GrupoAjustes>
@@ -409,12 +415,12 @@ export default function EditarPerfil() {
       titulo={escritorio ? undefined : 'Tu mosaico'}
       pie="Las piezas se arman sobre el perfil, con el fondo y el tema puestos, que es donde se ve cómo quedan."
     >
-      <FilaAjuste rotulo="Tema del mosaico" vacio="Colores y acabado" icono={<IconPalette size={17} color={ICON_COLOR.muted} />}
+      <FilaAjuste iconoPlano rotulo="Tema del mosaico" vacio="Colores y acabado" icono={<IconPalette size={16} color={ICON_COLOR.muted} />}
         onPress={() => abrir({ pathname: '/profile/tema', params: { para: 'perfil' } })} />
-      <FilaAjuste
+      <FilaAjuste iconoPlano
         rotulo="Armar el mosaico"
         vacio="Piezas, temas y orden"
-        icono={<IconGrilla size={17} color={ICON_COLOR.muted} />}
+        icono={<IconGrilla size={16} color={ICON_COLOR.muted} />}
         onPress={() => {
           if (enVuelo.current) return
           router.push({ pathname: '/profile', params: { editar: '1' } })
@@ -431,7 +437,7 @@ export default function EditarPerfil() {
   </View>
   const abrirProbador = <Pressable accessibilityRole="button" accessibilityLabel="Abrir el probador de personalización" onPress={() => abrir('/profile/marco')}
     className="gap-3 rounded-xl bg-card p-5 active:bg-muted">
-    <View className="flex-row items-center gap-3"><IconSparkles size={22} color={ICON_COLOR.foreground} /><Text className="text-foreground text-[18px] font-bold">Encontrá tu estilo</Text></View>
+    <View className="flex-row items-center gap-3"><IconSparkles size={16} color={ICON_COLOR.foreground} /><Text className="text-foreground text-[18px] font-bold">Encontrá tu estilo</Text></View>
     <Text className="text-muted-foreground text-[13px] leading-5">Decoraciones de Discord, diseños de DMusic y tus propias piezas. Combiná y probá. Guardá todo junto al volver al editor.</Text>
     <View className="self-start rounded-full bg-primary px-4 py-3"><Text className="text-primary-foreground text-[13px] font-bold">Personalizar perfil</Text></View>
   </Pressable>
@@ -448,51 +454,12 @@ export default function EditarPerfil() {
   const espacioBarra = cambiado || ocupado || error ? altoBarra + 32 : 0
   const identidad = <GrupoAjustes titulo={escritorio ? undefined : 'Tu identidad'}
     pie="Vacío, el nombre muestra tu usuario. Los cambios se guardan juntos al confirmar.">
-    <FilaCampo compacto={!escritorio} cual="nombre" editor={nombreEditor} icono={<IconUser size={17} color={ICON_COLOR.muted} />} />
-    <FilaCampo compacto={!escritorio} cual="usuario" editor={usuarioEditor} icono={<IconAt size={17} color={ICON_COLOR.muted} />} />
-    <FilaCampo compacto={!escritorio} cual="linea" editor={lineaEditor} icono={<IconMessage size={17} color={ICON_COLOR.muted} />} ultima />
+    <FilaCampo iconoPlano compacto={!escritorio} cual="nombre" editor={nombreEditor} icono={<IconUser size={16} color={ICON_COLOR.muted} />} />
+    <FilaCampo iconoPlano compacto={!escritorio} cual="usuario" editor={usuarioEditor} icono={<IconAt size={16} color={ICON_COLOR.muted} />} />
+    <FilaCampo iconoPlano compacto={!escritorio} cual="linea" editor={lineaEditor} icono={<IconMessage size={16} color={ICON_COLOR.muted} />} ultima />
   </GrupoAjustes>
 
-  if (!escritorio) {
-    return (
-      <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-        <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View className="flex-row items-center gap-3 px-3 py-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver al perfil"
-            onPress={() => volver(router, '/profile')}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconBack size={19} color={ICON_COLOR.foreground} />
-          </Pressable>
-          <Text className="text-foreground text-[17px] font-semibold">Editar perfil</Text>
-        </View>
-        <ScrollView
-          contentContainerClassName="px-4 pt-4"
-          contentContainerStyle={{ paddingBottom: pisoVisible + espacioBarra }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View className="gap-7">
-            <PreviaPlegable abierta={previaMovil} onCambiar={() => setPreviaMovil(v => !v)}>{vistaPrevia}</PreviaPlegable>
-            {abrirProbador}
-            {bloqueFoto}
-            {identidad}
-            {bloqueFondo}
-            {bloqueEstilo}
-            {bloquePrivacidad}
-            {bloqueMosaico}
-          </View>
-        </ScrollView>
-        {barra}
-        {confirmarQuitar}
-        {dialogo}
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    )
-  }
-
-  /* La compu: las secciones, con los campos de texto editándose en el detalle. */
+  /* Las mismas secciones para la lista móvil y la barra lateral de escritorio. */
   const secciones: Seccion[] = [
     {
       id: 'identidad',
@@ -510,6 +477,16 @@ export default function EditarPerfil() {
     { id: 'privacidad', titulo: 'Quién lo ve', icono: IconLock, bloques: bloquePrivacidad },
     { id: 'mosaico', titulo: 'Mosaico', icono: IconGrilla, bloques: bloqueMosaico },
   ]
+
+
+  if (!escritorio) {
+    return <Movil secciones={secciones} previa={vistaPrevia} espacioBarra={espacioBarra}
+      pisoVisible={pisoVisible} onVolver={() => volver(router, '/profile')}>
+      {barra}
+      {confirmarQuitar}
+      {dialogo}
+    </Movil>
+  }
 
   return (
     <View className="flex-1">
@@ -539,6 +516,46 @@ export default function EditarPerfil() {
   )
 }
 
+/** Navegar por secciones conserva el editor y su borrador global montados. */
+function Movil({ secciones, previa, espacioBarra, pisoVisible, onVolver, children }: {
+  secciones: Seccion[]; previa: ReactNode; espacioBarra: number; pisoVisible: number
+  onVolver: () => void; children: ReactNode
+}) {
+  const [elegida, setElegida] = useState<string | null>(null)
+  const [previaMovil, setPreviaMovil] = useState(false)
+  const actual = secciones.find(s => s.id === elegida)
+  return <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+    <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View className="flex-row items-center gap-3 px-3 py-1">
+        <BotonVolver label={actual ? 'Volver a editar perfil' : 'Volver al perfil'}
+          onPress={actual ? () => setElegida(null) : onVolver} />
+        <Text accessibilityRole="header" className="text-foreground text-[17px] font-semibold">{actual?.titulo ?? 'Editar perfil'}</Text>
+      </View>
+      <ScrollView key={actual?.id ?? 'menu'} keyboardShouldPersistTaps="handled"
+        contentContainerClassName="px-4 pt-4" contentContainerStyle={{ paddingBottom: pisoVisible + espacioBarra }}>
+        <View className="gap-6">
+          {actual ? actual.bloques : <>
+            <PreviaPlegable abierta={previaMovil} onCambiar={() => setPreviaMovil(v => !v)}>{previa}</PreviaPlegable>
+            <View className="gap-1">
+              {secciones.map(s => {
+                const Icono = s.icono
+                return <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo}
+                  onPress={() => setElegida(s.id)}
+                  className="min-h-[44px] flex-row items-center gap-2.5 rounded-md px-2 active:bg-muted">
+                  <Icono size={16} color={ICON_COLOR.muted} />
+                  <Text className="min-w-0 flex-1 text-foreground text-[15px]">{s.titulo}</Text>
+                  <IconChevronRight size={16} color={ICON_COLOR.muted} />
+                </Pressable>
+              })}
+            </View>
+          </>}
+        </View>
+      </ScrollView>
+      {children}
+    </KeyboardAvoidingView>
+  </SafeAreaView>
+}
+
 /** La previa se pliega también cuando comparte la columna de edición. */
 function PreviaPlegable({ abierta, onCambiar, children }: {
   abierta: boolean; onCambiar: () => void; children: ReactNode
@@ -546,7 +563,7 @@ function PreviaPlegable({ abierta, onCambiar, children }: {
   return <View className="w-full min-w-0">
     <CabeceraLateral titulo="Vista previa">
       <BotonLateral label={abierta ? 'Ocultar vista previa' : 'Mostrar vista previa'} onPress={onCambiar}
-        icono={abierta ? <IconEyeOff size={17} color={ICON_COLOR.muted} /> : <IconEye size={17} color={ICON_COLOR.muted} />} />
+        icono={abierta ? <IconEyeOff size={16} color={ICON_COLOR.muted} /> : <IconEye size={16} color={ICON_COLOR.muted} />} />
     </CabeceraLateral>
     {abierta ? children : null}
   </View>
@@ -572,12 +589,12 @@ function Escritorio({ secciones, cuenta, onVolver, previa, espacioBarra }: {
       <View testID="editor-secciones" style={{ width: seccionesPlegadas ? 64 : LATERAL_W, flexShrink: 0 }}
         onPointerEnter={() => setHoverIzquierdo(true)} onPointerLeave={() => setHoverIzquierdo(false)}>
         {seccionesPlegadas ? <CollapsedSidebar side="left" hovered={hoverIzquierdo}
-          resting={<View className="items-center"><IconUser size={20} color={ICON_COLOR.muted} /></View>}
+          resting={<View className="items-center"><IconUser size={16} color={ICON_COLOR.muted} /></View>}
           label="Mostrar secciones del perfil" onExpand={() => setSeccionesPlegadas(false)} /> :
           <Panel tone="lateral" className="flex-1">
             <CabeceraLateral titulo="Editar perfil">
               <BotonLateral label="Contraer secciones del perfil" onPress={() => setSeccionesPlegadas(true)}
-                icono={<IconCollapseLeft size={17} color={ICON_COLOR.muted} />} />
+                icono={<IconCollapseLeft size={16} color={ICON_COLOR.muted} />} />
             </CabeceraLateral>
             {cuenta}
             <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-0.5 px-2 pt-3"
@@ -597,26 +614,26 @@ function Escritorio({ secciones, cuenta, onVolver, previa, espacioBarra }: {
       </View>
       <Panel className="min-w-0 flex-1">
         <View className="flex-row items-center gap-1 px-2 py-1">
-          <BotonLateral label="Volver al perfil" onPress={onVolver} icono={<IconBack size={17} color={ICON_COLOR.foreground} />} />
+          <BotonVolver label="Volver al perfil" onPress={onVolver} />
           <Text className="min-w-0 flex-1 text-foreground text-[15px] font-semibold" numberOfLines={1}>{actual?.titulo}</Text>
         </View>
         <ScrollView className="min-h-0 flex-1" keyboardShouldPersistTaps="handled"
           contentContainerClassName="items-center px-6 pt-5" contentContainerStyle={{ paddingBottom: 40 + espacioBarra }}>
           <View className="w-full min-w-0 gap-6" style={{ maxWidth: MAX_W }}>
             {!lateralPrevia ? <PreviaPlegable abierta={!previaPlegada} onCambiar={() => setPreviaPlegada(v => !v)}>{previa}</PreviaPlegable> : null}
-            {actual?.bloques}
+            <AjustesCompactos>{actual?.bloques}</AjustesCompactos>
           </View>
         </ScrollView>
       </Panel>
       {lateralPrevia ? <View testID="editor-previa-lateral" style={{ width: previaPlegada ? 64 : 350, flexShrink: 0 }}
         onPointerEnter={() => setHoverDerecho(true)} onPointerLeave={() => setHoverDerecho(false)}>
         {previaPlegada ? <CollapsedSidebar side="right" hovered={hoverDerecho}
-          resting={<View className="items-center"><IconEye size={20} color={ICON_COLOR.muted} /></View>}
+          resting={<View className="items-center"><IconEye size={16} color={ICON_COLOR.muted} /></View>}
           label="Mostrar vista previa" onExpand={() => setPreviaPlegada(false)} /> :
           <Panel tone="lateral" className="flex-1">
             <CabeceraLateral titulo="Vista previa">
               <BotonLateral label="Ocultar vista previa" onPress={() => setPreviaPlegada(true)}
-                icono={<IconCollapseRight size={17} color={ICON_COLOR.muted} />} />
+                icono={<IconCollapseRight size={16} color={ICON_COLOR.muted} />} />
             </CabeceraLateral>
             <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 24 + espacioBarra }}>{previa}</ScrollView>
           </Panel>}

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Platform } from 'react-native'
 import type { AudioPlayer } from 'expo-audio'
 import { RemoteCommands } from '../../modules/remote-commands'
@@ -50,8 +50,32 @@ export type LockScreenTrack = {
   artworkUrl: string | null
 }
 
-export function useLockScreen(player: AudioPlayer, track: LockScreenTrack | null) {
+const LOCK_SCREEN_OPTIONS = {
+  isLiveStream: false,
+  showSeekForward: false,
+  showSeekBackward: false,
+} as const
+
+function publicarFicha(player: AudioPlayer, track: LockScreenTrack): void {
+  player.setActiveForLockScreen(
+    true,
+    {
+      title: track.title,
+      artist: track.artist,
+      albumTitle: track.collection,
+      artworkUrl: track.artworkUrl ?? undefined,
+    },
+    LOCK_SCREEN_OPTIONS,
+  )
+}
+
+export function useLockScreen(
+  player: AudioPlayer,
+  track: LockScreenTrack | null,
+  appActiva = true,
+) {
   const { title, artist, collection, artworkUrl } = track ?? {}
+  const estabaActiva = useRef(appActiva)
 
   useEffect(() => {
     if (!title) return
@@ -63,36 +87,12 @@ export function useLockScreen(player: AudioPlayer, track: LockScreenTrack | null
      * que va todo defendido.
      */
     try {
-      player.setActiveForLockScreen(
-        true,
-        {
-          title,
-          artist,
-          albumTitle: collection,
-          artworkUrl: artworkUrl ?? undefined,
-        },
-        /*
-         * `isLiveStream: false`, dicho explícitamente.
-         *
-         * Sin este tercer argumento expo-audio cae a `player.isLive`, y un audio
-         * servido desde una URL firmada de Storage se le presenta a AVPlayer como
-         * un stream sin duración conocida: lo daba por vivo. En vivo, la ficha
-         * **borra la duración y el tiempo transcurrido** y esconde la barra —es
-         * literalmente lo que hace `applyPlaybackInfo` en `MediaController.swift`—
-         * y por eso la pantalla bloqueada decía «EN VIVO» en vez de mostrar el
-         * recorrido de la canción.
-         *
-         * Nuestras canciones son archivos con duración conocida, siempre. La
-         * afirmación es correcta y no un parche: no hay ningún caso en esta app
-         * en que se reproduzca una transmisión.
-         *
-         * Los saltos de ±10 segundos se apagan porque el lugar de esos dos
-         * botones lo ocupan anterior y siguiente, que los pone
-         * `modules/remote-commands`. Con los cuatro, iOS elige y quedaba una
-         * combinación distinta según la pantalla.
-         */
-        { isLiveStream: false, showSeekForward: false, showSeekBackward: false },
-      )
+      publicarFicha(player, {
+        title,
+        artist: artist ?? '',
+        collection: collection ?? '',
+        artworkUrl: artworkUrl ?? null,
+      })
     } catch {
       // Sin ficha en la pantalla bloqueada, pero sonando.
     }
@@ -136,4 +136,26 @@ export function useLockScreen(player: AudioPlayer, track: LockScreenTrack | null
       }
     }
   }, [player, title, artist, collection, artworkUrl])
+
+  /*
+   * Si otro audio tomó Control Center mientras DMusic estaba pausado, iOS
+   * conserva el AVPlayer pero reemplaza su ficha. Al volver al frente se
+   * publica la misma ficha otra vez, sin cambiar la fuente ni ordenar play().
+   */
+  useEffect(() => {
+    const volvio = !estabaActiva.current && appActiva
+    estabaActiva.current = appActiva
+    if (!volvio || !title) return
+    try {
+      publicarFicha(player, {
+        title,
+        artist: artist ?? '',
+        collection: collection ?? '',
+        artworkUrl: artworkUrl ?? null,
+      })
+      RemoteCommands?.start()
+    } catch {
+      // El audio sigue disponible aunque el sistema rechace la ficha.
+    }
+  }, [appActiva, player, title, artist, collection, artworkUrl])
 }

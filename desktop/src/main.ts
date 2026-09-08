@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, session, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, safeStorage, session, shell } from 'electron'
 import { join } from 'node:path'
 import {
   arrancarActualizador,
@@ -12,6 +12,13 @@ import { ORIGEN, raizWeb, registrarEsquema, servirWeb } from './protocolo'
 import { type Aporte } from './resolutor'
 import { cerrarResolutor, resolverEnHijo } from './resolutor-remoto'
 import { descargarArchivos } from './descargas'
+import { DiscoAudioOffline } from './audio-offline'
+import { origenAudioConfigurado } from './audio-offline-origen'
+import { registrarAudioOffline } from './audio-offline-ipc'
+import { GoogleOAuthEscritorio } from './oauth-google'
+import { registrarGoogleOAuth } from './oauth-google-ipc'
+import { AlmacenAuth } from './auth-storage'
+import { registrarAlmacenAuth } from './auth-storage-ipc'
 
 /**
  * dnmusic para escritorio.
@@ -280,8 +287,28 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', () => traerAlFrente())
 
-  void app.whenReady().then(() => {
-    servirWeb(raizWeb())
+  void app.whenReady().then(async () => {
+    const raiz = raizWeb()
+    const origenSupabase = await origenAudioConfigurado(raiz, app.isPackaged)
+    const disco = new DiscoAudioOffline(join(app.getPath('userData'), 'audio-offline'), {
+      origen: origenSupabase, desarrollo: !app.isPackaged,
+    })
+    const google = new GoogleOAuthEscritorio({ origen: origenSupabase, abrirExterno: url => shell.openExternal(url), alCompletar: traerAlFrente })
+    registrarGoogleOAuth(ipcMain, google, () => ventanaPrincipal?.webContents ?? null)
+    const auth = new AlmacenAuth(join(app.getPath('userData'), 'auth-session.bin'), {
+      codificar: (texto) => safeStorage.isEncryptionAvailable()
+        ? Buffer.concat([Buffer.from([1]), safeStorage.encryptString(texto)])
+        : Buffer.concat([Buffer.from([0]), Buffer.from(texto, 'utf8')]),
+      decodificar: (datos) => {
+        if (datos[0] === 1) return safeStorage.decryptString(datos.subarray(1))
+        if (datos[0] === 0) return datos.subarray(1).toString('utf8')
+        throw new Error('Formato de sesión desconocido.')
+      },
+    })
+    registrarAlmacenAuth(ipcMain, auth, () => ventanaPrincipal?.webContents ?? null)
+    app.on('will-quit', () => google.cancelar())
+    registrarAudioOffline(ipcMain, disco, () => ventanaPrincipal?.webContents ?? null)
+    servirWeb(raiz, pedido => disco.servir(pedido))
     permitirNotificaciones()
     registrarGPU()
 
@@ -300,6 +327,8 @@ if (!app.requestSingleInstanceLock()) {
 
     armarMenu()
     ventanaPrincipal = crearVentana()
+    ventanaPrincipal.webContents.on('destroyed', () => google.cancelar())
+    ventanaPrincipal.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => { if (isMainFrame && !isInPlace) google.cancelar() })
     arrancarActualizador()
   })
 

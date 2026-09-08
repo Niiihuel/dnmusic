@@ -322,6 +322,7 @@ function Item({
  */
 export function FilaChat({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets()
+  const ir = useIrATab()
 
   return (
     <View
@@ -335,7 +336,7 @@ export function FilaChat({ children }: { children: React.ReactNode }) {
     >
       <BotonVidrio
         label="Volver al inicio"
-        onPress={() => setTab('inicio')}
+        onPress={() => ir('inicio')}
         radius={26}
         style={{ width: 52, height: 52 }}
       >

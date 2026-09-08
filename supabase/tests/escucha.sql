@@ -11,9 +11,13 @@
 
 begin;
 
-insert into auth.users (id, email) values
-  ('00000000-0000-4000-8000-0000000000c1', 'carlaprueba@flora.local'),
-  ('00000000-0000-4000-8000-0000000000d2', 'dinoprueba@flora.local');
+insert into auth.users (id, email, raw_app_meta_data) values
+  ('00000000-0000-4000-8000-0000000000c1', 'carlaprueba@flora.local', '{"provider":"google"}'),
+  ('00000000-0000-4000-8000-0000000000d2', 'dinoprueba@flora.local', '{"provider":"google"}');
+-- Trusted SQL fixture setup: real Google signups remain pending until approved.
+update app_private.access_accounts set status='approved' where user_id in (
+ '00000000-0000-4000-8000-0000000000c1',
+ '00000000-0000-4000-8000-0000000000d2');
 
 create function pg_temp.como(u uuid) returns void
 language sql as $$
@@ -128,7 +132,7 @@ begin
   perform set_config('request.jwt.claims', '', true);
   perform pg_temp.debe_fallar(
     $q$select public.escucha_publicar('x', 'X', 0, null, false, 0, null)$q$,
-    'Sesión requerida');
+    'access_not_approved');
 
   raise notice 'ESCUCHA: todas las pruebas pasaron.';
 end;

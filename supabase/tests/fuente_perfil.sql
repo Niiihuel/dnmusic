@@ -1,8 +1,12 @@
 -- Ejecutar con psql -v ON_ERROR_STOP=1 después de las migraciones. No deja datos.
 begin;
-insert into auth.users (id, email) values
- ('00000000-0000-4000-8000-0000000000f1','fuente_prueba@example.test'),
- ('00000000-0000-4000-8000-0000000000f2','fuente_visita@example.test');
+insert into auth.users (id, email, raw_app_meta_data) values
+ ('00000000-0000-4000-8000-0000000000f1','fuente_prueba@example.test', '{"provider":"google"}'),
+ ('00000000-0000-4000-8000-0000000000f2','fuente_visita@example.test', '{"provider":"google"}');
+-- Trusted SQL fixture setup: real Google signups remain pending until approved.
+update app_private.access_accounts set status='approved' where user_id in (
+ '00000000-0000-4000-8000-0000000000f1',
+ '00000000-0000-4000-8000-0000000000f2');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000f1","role":"authenticated"}', true);
 set local role authenticated;
 do $$

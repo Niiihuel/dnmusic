@@ -1,5 +1,5 @@
 import { memo, useDeferredValue, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ActivityIndicator, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, FlatList, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
 import type { Profile } from '../services/profile'
 import { useCatalogoDiscord, seleccionPaqueteDiscord, type PiezaDiscord, type TipoPiezaDiscord, type PaqueteDiscord } from '../services/discordCatalogo'
@@ -13,6 +13,7 @@ import { DiscordMarcoPerfil } from './DiscordCosmeticos'
 import { TarjetaPerfil, CabeceraPerfil, SuperficiePerfil, FondoEstiloPerfil } from './TarjetaPerfil'
 import { Vitrinas, Resumen } from './PerfilPublico'
 import { SearchField } from './SearchField'
+import { ScrollArea } from './ScrollArea'
 import { BotonHoja } from './EncabezadoHoja'
 import { Menu, type MenuItem } from './Menu'
 import { IconCheck, IconChevronDown, IconClose, IconEye, IconPlus, IconSparkles, IconCollapseRight, IconExpandRight } from './icons'
@@ -105,9 +106,10 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
     : o.tipo !== 'paquete' && estilo[o.tipo] === o.id
 
   const previa = (
-    <View style={{ flex: 1, backgroundColor: '#151515' }}>
+    <View style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', backgroundColor: '#151515' }}>
     {vista === 'perfil' ? <FondoEstiloPerfil key={replay} perfil={mostrado} animado={animado} /> : null}
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: dosPaneles ? 16 : 20, gap: 8 }}>
+    <ScrollArea style={{ flex: 1, minHeight: 0 }} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false}
+      removeClippedSubviews={false} contentContainerStyle={{ padding: dosPaneles ? 16 : 20, paddingBottom: 32, gap: 8 }}>
       <View style={s.entre}>
         <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>Vista previa</Text>
         <View style={s.fila}>
@@ -143,12 +145,12 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
         </View>) : null}
       </View>
       <Text style={s.secundario}>{cambiados ? `${cambiados} ${cambiados === 1 ? 'pieza modificada' : 'piezas modificadas'}.` : 'Probá tu combinación.'}</Text>
-    </ScrollView>
+    </ScrollArea>
     </View>
   )
   const explorar = (
-    <View style={{ flex: 1, minWidth: 0 }}>
-      <View style={{ padding: 16, paddingBottom: 8, gap: 12 }}>
+    <View testID="catalogo-perfil" style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', backgroundColor: '#121212' }}>
+      <View testID="filtros-catalogo-perfil" style={{ flexShrink: 0, zIndex: 1, backgroundColor: '#121212', padding: 16, paddingBottom: 8, gap: 12 }}>
         <View style={s.entre}>
           <View style={s.fila}>
             <Pildora discreta texto="Discord" activa={origen === 'discord'} onPress={() => filtro(() => { setOrigen('discord'); setColeccion('todas') })} />
@@ -173,7 +175,9 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
           ...(origen === 'dmusic' && (tipo === 'marco' || tipo === 'efecto') && onSubir ? [{ id: '__subir', nombre: '', coleccion: '', coleccionId: '', tipo }] : []),
           ...visible,
         ]} numColumns={columnas}
-        keyExtractor={o => o.id} extraData={estilo} style={{ flex: 1 }}
+        keyExtractor={o => o.id} extraData={estilo} style={{ flex: 1, minHeight: 0, overflow: 'hidden', backgroundColor: '#121212' }}
+        contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} removeClippedSubviews={false}
+        renderScrollComponent={props => <ScrollArea {...props} />}
         contentContainerStyle={{ padding: 16, paddingTop: 8, gap: 10 }} columnWrapperStyle={{ gap: 10 }}
         keyboardShouldPersistTaps="handled" initialNumToRender={15} maxToRenderPerBatch={12} windowSize={5}
         onEndReachedThreshold={0.6} onEndReached={() => { if (visible.length < lista.length) setPaginas(n => n + 1) }}
@@ -199,7 +203,7 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
       </View>} />
     </View>
   )
-  return <View style={{ flex: 1, minHeight: 0 }} onLayout={e => setAncho(e.nativeEvent.layout.width)}>
+  return <View style={{ flex: 1, minHeight: 0, backgroundColor: '#121212', overflow: 'hidden' }} onLayout={e => setAncho(e.nativeEvent.layout.width)}>
     {!dosPaneles && verPrevia ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 8 }}>
       <BotonHoja tipo="volver" label="Volver al catálogo" onPress={() => setVerPrevia(false)} /><Text style={s.texto}>Catálogo</Text>
     </View> : null}
@@ -274,7 +278,7 @@ function Muestra({ opcion: o, nombre, avatarPath, animado }: { opcion: Opcion; n
       return <View style={{ width: 76, paddingVertical: 8 }}><DiscordMarcoPerfil id={piezas.marcoPerfil} animado>
         <View style={{ height: 98, backgroundColor: '#303030', borderRadius: 6, padding: 8, gap: 8, overflow: 'hidden' }}>
           <View style={{ width: 24, height: 24, marginTop: 20 }}><Avatar name={nombre} path={avatarPath} size={24} /><Marco marco={piezas.marco} size={24} animado /></View>
-          <PlacaDeNombre id={piezas.placa} animado radio={3}><Text style={{ color: '#fff', fontSize: 8 }} numberOfLines={1}>{nombre}</Text></PlacaDeNombre>
+          <PlacaDeNombre id={piezas.placa} animado compacta radio={3}><Text style={{ color: '#fff', fontSize: 8 }} numberOfLines={1}>{nombre}</Text></PlacaDeNombre>
           <EfectoPerfil id={piezas.efecto} alto={98} animado />
         </View>
       </DiscordMarcoPerfil></View>
@@ -282,7 +286,7 @@ function Muestra({ opcion: o, nombre, avatarPath, animado }: { opcion: Opcion; n
     return o.paquete?.preview ? <ImagenMuestra uri={o.paquete.preview} /> : <IconSparkles size={32} color="#aaa" />
   }
   if (o.tipo === 'marco') return <View style={{ width: 58, height: 58 }}><Avatar name={nombre} path={avatarPath} size={58} /><Marco marco={o.id} size={58} animado={animado} /></View>
-  if (o.tipo === 'placa') return <View style={{ width: '100%', paddingHorizontal: 8 }}><PlacaDeNombre id={o.id} animado={animado} radio={8}><Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }} numberOfLines={1}>{nombre}</Text></PlacaDeNombre></View>
+  if (o.tipo === 'placa') return <View style={{ width: '100%', paddingHorizontal: 8 }}><PlacaDeNombre id={o.id} animado={animado} compacta radio={8}><Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }} numberOfLines={1}>{nombre}</Text></PlacaDeNombre></View>
   if (o.tipo === 'marcoPerfil') return <View style={{ width: 76, paddingVertical: 8 }}><DiscordMarcoPerfil id={o.id} animado={animado}><View style={{ height: 84, borderRadius: 6, backgroundColor: '#303030', padding: 8 }}><View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#666', marginTop: 18 }} /><View style={{ height: 4, width: 32, backgroundColor: '#666', marginTop: 8 }} /></View></DiscordMarcoPerfil></View>
   if (animado && o.tipo === 'efecto') return <View style={{ width: 100, height: 110, overflow: 'hidden' }}><EfectoPerfil id={o.id} alto={110} animado /></View>
   const preview = o.discord?.staticPreview ?? o.discord?.reducedMotionSrc ?? o.discord?.preview

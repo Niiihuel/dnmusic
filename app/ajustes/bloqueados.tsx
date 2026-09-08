@@ -12,7 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { Avatar } from '../../src/ui/Avatar'
 import { Vacio } from '../../src/ui/Vacio'
-import { ICON_COLOR, IconBack, IconBan } from '../../src/ui/icons'
+import { BotonVolver } from '../../src/ui/BotonVolver'
+import { ICON_COLOR, IconBan } from '../../src/ui/icons'
 import {
   contactLabel,
   contactTitle,
@@ -87,14 +88,7 @@ export default function Bloqueados() {
     >
       <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
         <View className="flex-row items-center gap-3 px-3 py-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver"
-            onPress={() => volver(router, '/ajustes')}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconBack size={19} color={ICON_COLOR.foreground} />
-          </Pressable>
+          <BotonVolver onPress={() => volver(router, '/ajustes')} />
           <Text className="text-foreground text-[15px] font-semibold">Bloqueados</Text>
         </View>
 

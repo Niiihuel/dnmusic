@@ -42,7 +42,7 @@ def save(path, im, **kwargs):
 
 save('assets/icon.png', icon(1024))
 save('assets/favicon.png', icon(64))
-save('assets/splash-icon.png', icon(1024, .78, opaque=False))
+save('assets/branding/splash-dnmusic.png', icon(1024, .78, opaque=False))
 save('assets/android-icon-background.png', Image.new('RGB', (1024, 1024), BG[:3]))
 save('assets/android-icon-foreground.png', icon(1024, opaque=False, safe_radius=.30))
 save('assets/android-icon-monochrome.png', icon(1024, opaque=False, monochrome=True, safe_radius=.30))

@@ -4,31 +4,34 @@ import {
   FlatList,
   Image,
   Pressable,
-  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   Text,
   TextInput,
   useWindowDimensions,
   View,
+  type TextInputProps,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { LinearGradient } from 'expo-linear-gradient'
 import { useAudioPlayer } from 'expo-audio'
-import { Panel } from '../src/ui/Panel'
-import { Field, PLACEHOLDER_COLOR } from '../src/ui/Field'
-import { FormError, GhostButton, PrimaryButton } from '../src/ui/Button'
+import { PLACEHOLDER_COLOR } from '../src/ui/Field'
+import { FormError } from '../src/ui/Button'
+import { CabeceraSocial, AccionSocial } from '../src/ui/Social'
+import { Hoja, useHojaModal } from '../src/ui/Hoja'
+import { ScrollArea } from '../src/ui/ScrollArea'
+import { Menu } from '../src/ui/Menu'
+import { Confirmar } from '../src/ui/Confirmar'
+import { useNavigation, usePreventRemove, type NavigationAction } from 'expo-router/react-navigation'
 import { artworkSource } from '../src/lib/artwork'
 import { abrirLista, pauseForSnippet } from '../src/state/playback'
-import { usePiso } from '../src/state/shell'
 import { avisar } from '../src/state/aviso'
 import { volver } from '../src/lib/volver'
 import { mensajeError } from '../src/lib/mensajeError'
 import {
   ICON_COLOR,
-  IconBack,
   IconCheck,
   IconClose,
-  IconDownload,
   IconMusic,
   IconPause,
   IconPlay,
@@ -37,14 +40,11 @@ import {
   TOPE_SPOTIFY,
   emparejarLista,
   guardarLista,
-  interpretarPegado,
-  leerCancionesSpotify,
   leerListaSpotify,
   terminarEnSegundoPlano,
   type Avance,
   type Emparejado,
   type ListaSpotify,
-  type PistaSpotify,
 } from '../src/services/importar'
 import type { TrackResult } from '../src/services/music'
 
@@ -61,7 +61,7 @@ type Fase = 'entrada' | 'leyendo' | 'emparejando' | 'revision' | 'guardando'
 /** Debajo de esto la app es pestañas y el contenido va de borde a borde. */
 const SHELL_PX = 780
 /** Tope del contenido en escritorio, como en el resto de las pantallas. */
-const CAP = 672
+const CAP = 640
 
 /**
  * Traer una lista de Spotify.
@@ -82,24 +82,20 @@ const CAP = 672
  */
 export default function Importar() {
   const router = useRouter()
-  const suelto = useWindowDimensions().width < SHELL_PX
-  const piso = usePiso(24)
+  const { width, height } = useWindowDimensions()
+  const suelto = width < SHELL_PX
+  const modal = useHojaModal()
+  const navigation = useNavigation()
 
   const [fase, setFase] = useState<Fase>('entrada')
+  const [filtro, setFiltro] = useState<'todas' | 'revisar'>('todas')
+  const [salida, setSalida] = useState<NavigationAction | null>(null)
+  const [destino, setDestino] = useState<string | null>(null)
+  const operacion = useRef<'lectura' | 'guardando' | null>(null)
   const [enlace, setEnlace] = useState('')
-  const [pegado, setPegado] = useState('')
-  const [aMano, setAMano] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [lista, setLista] = useState<ListaSpotify | null>(null)
-  /**
-   * Cuántas canciones pegadas no se pudieron leer.
-   *
-   * Spotify puede no devolver alguna —un tema que ya no está en el catálogo de
-   * la región, un link viejo— y filtrarla en silencio sería perder canciones sin
-   * avisar, que es justo lo que esta pantalla existe para no hacer.
-   */
-  const [sinLeer, setSinLeer] = useState(0)
   const [nombre, setNombre] = useState('')
   const [avance, setAvance] = useState<Avance>({ hechas: 0, total: 0 })
   const [resultados, setResultados] = useState<Emparejado[]>([])
@@ -120,54 +116,41 @@ export default function Importar() {
   useEffect(() => () => corte.current?.abort(), [])
 
   const previo = usePrevio()
+  usePreventRemove(!destino && (fase !== 'entrada' || !!enlace.trim()), ({ data }) => {
+    if (operacion.current !== 'guardando') setSalida(data.action)
+  })
+  useEffect(() => {
+    if (!destino) return
+    abrirLista(destino)
+    volver(router, '/')
+  }, [destino, router])
+
+  function volverAEntrada() {
+    if (operacion.current === 'guardando') return
+    corte.current?.abort()
+    operacion.current = null
+    previo.detener()
+    setFase('entrada')
+  }
 
   const traer = useCallback(async () => {
+    if (operacion.current) return
+    operacion.current = 'lectura'
     setError(null)
+    setLista(null)
+    setFiltro('todas')
     const control = new AbortController()
     corte.current?.abort()
     corte.current = control
 
     try {
-      let pistas: PistaSpotify[]
-      let leida: ListaSpotify | null = null
-
-      if (aMano) {
-        const pegue = interpretarPegado(pegado)
-        if (pegue.tipo === 'enlaces') {
-          /*
-           * Links de canción: es lo que deja el «copiar» de Spotify, y es el
-           * camino de las listas de más de cien y de las privadas. Cada una se
-           * lee de su propia página, así que acá sí hay avance que mostrar.
-           */
-          setFase('leyendo')
-          setAvance({ hechas: 0, total: pegue.ids.length })
-          pistas = await leerCancionesSpotify(pegue.ids, {
-            signal: control.signal,
-            alAvanzar: setAvance,
-          })
-          if (control.signal.aborted) return
-          setSinLeer(pegue.ids.length - pistas.length)
-          if (!pistas.length) {
-            setError('Spotify no devolvió ninguna de esas canciones. Probá de nuevo en un rato.')
-            setFase('entrada')
-            return
-          }
-        } else {
-          pistas = pegue.pistas
-          if (!pistas.length) {
-            setError('No encontré ninguna canción en ese texto. Poné una por línea, como «Artista - Título», o pegá los enlaces copiados de Spotify.')
-            return
-          }
-        }
-        setNombre('Lista importada')
-      } else {
-        setFase('leyendo')
-        setAvance({ hechas: 0, total: 0 })
-        leida = await leerListaSpotify(enlace, control.signal)
-        pistas = leida.pistas
-        setLista(leida)
-        setNombre(leida.nombre)
-      }
+      setFase('leyendo')
+      setAvance({ hechas: 0, total: 0 })
+      const leida = await leerListaSpotify(enlace, control.signal)
+      if (control.signal.aborted) return
+      const pistas = leida.pistas
+      setLista(leida)
+      setNombre(leida.nombre)
 
       setFase('emparejando')
       setAvance({ hechas: 0, total: pistas.length })
@@ -187,10 +170,13 @@ export default function Importar() {
       if (control.signal.aborted) return
       setError(mensajeError(e))
       setFase('entrada')
+    } finally {
+      if (corte.current === control) operacion.current = null
     }
-  }, [aMano, enlace, pegado])
+  }, [enlace])
 
   const confirmar = useCallback(async () => {
+    if (operacion.current) return
     const elegidas = resultados.flatMap((resultado, indice) => {
       const videoId = decisiones[indice]
       if (!videoId) return []
@@ -202,12 +188,14 @@ export default function Importar() {
       return
     }
 
+    if (!nombre.trim()) { setError('Poné un nombre para la lista.'); return }
+    operacion.current = 'guardando'
     setError(null)
     setFase('guardando')
     setAvance({ hechas: 0, total: elegidas.length })
 
     try {
-      const resumen = await guardarLista(nombre, elegidas, {
+      const resumen = await guardarLista(nombre.trim(), elegidas, {
         alAvanzar: setAvance,
         salteadas: resultados.length - elegidas.length,
       })
@@ -237,291 +225,117 @@ export default function Importar() {
        * lista de vos»— con la insignia de pública puesta, que para una lista
        * recién importada es directamente falso.
        */
-      abrirLista(resumen.playlistId)
-      volver(router, '/')
+      setDestino(resumen.playlistId)
     } catch (e) {
+      operacion.current = null
       setError(mensajeError(e))
       setFase('revision')
     }
-  }, [decisiones, nombre, resultados, router])
+  }, [decisiones, nombre, resultados])
 
   const aRevisar = resultados.filter((r) => r.confianza !== 'segura').length
-  const aTraer = Object.values(decisiones).filter(Boolean).length
+  const aTraer = resultados.filter((r, i) => candidatoPorId(r, decisiones[i] ?? null)).length
+
+  const filas = resultados.map((resultado, indice) => ({ resultado, indice }))
+    .filter(({ resultado }) => filtro === 'todas' || resultado.confianza !== 'segura')
 
   return (
-    <SafeAreaView
-      className="flex-1 bg-background"
-      edges={suelto ? ['top'] : ['top', 'bottom']}
-    >
-      <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
-        <View className="flex-row items-center gap-3 px-3 py-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver"
-            onPress={() => {
-              corte.current?.abort()
-              volver(router, '/')
-            }}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconBack size={19} color={ICON_COLOR.foreground} />
-          </Pressable>
-          <View className="min-w-0 flex-1">
-            <Text className="text-foreground text-[15px] font-semibold">Traer de Spotify</Text>
-          </View>
-        </View>
-
-        <Panel className="flex-1">
+    <Hoja medida={modal ? 'contenido' : 'llena'} anchoMaximo={CAP} titulo="Traer de Spotify">
+      <SafeAreaView className="min-h-0 bg-background" edges={Platform.OS === 'web' ? [] : ['bottom']}
+        style={modal ? { height: Math.min(fase === 'revision' ? 720 : 320, height - 96) } : { flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="min-h-0 flex-1">
+          <CabeceraSocial titulo="Traer de Spotify" detalle={fase === 'revision' ? 'Revisar canciones' : 'Revisá antes de importar'}
+            ocupado={fase === 'guardando'} onCerrar={() => volver(router, '/')} />
           {fase === 'entrada' ? (
-            <Entrada
-              enlace={enlace}
-              onEnlace={setEnlace}
-              pegado={pegado}
-              onPegado={setPegado}
-              aMano={aMano}
-              onAMano={setAMano}
-              error={error}
-              onTraer={() => void traer()}
-              suelto={suelto}
-            />
+            <Entrada enlace={enlace} onEnlace={setEnlace} error={error} onTraer={() => void traer()} />
           ) : fase === 'revision' ? (
             <View className="min-h-0 flex-1">
-            <FlatList
-              className="min-h-0 flex-1"
-              data={resultados}
-              keyExtractor={(_, i) => String(i)}
-              contentContainerClassName={suelto ? 'px-3 pt-3' : 'p-5'}
-              contentContainerStyle={{ paddingBottom: 16 }}
-              ListHeaderComponent={
-                <Centrado suelto={suelto}>
-                  <Resumen
-                    lista={lista}
-                    sinLeer={sinLeer}
-                    nombre={nombre}
-                    onNombre={setNombre}
-                    total={resultados.length}
-                    aRevisar={aRevisar}
-                    error={error}
-                  />
-                </Centrado>
-              }
-              renderItem={({ item, index }) => (
-                <Centrado suelto={suelto}>
-                  <FilaResultado
-                    resultado={item}
-                    elegido={decisiones[index] ?? null}
-                    onElegir={(videoId) => setDecisiones((d) => ({ ...d, [index]: videoId }))}
-                    previo={previo}
-                  />
-                </Centrado>
-              )}
-              ListFooterComponent={<View style={{ height: 8 }} />}
-            />
-            {/*
-             * La barra de traer va **fija abajo**, fuera del scroll: con una
-             * playlist larga, el botón vivía al final de la lista y había que
-             * recorrer todas las canciones para llegar. Quien no quiere revisar
-             * nada aprieta acá de una — las dudosas ya vienen con su mejor match
-             * elegido, así que «Traer» es también «saltear la revisión».
-             */}
-            <View
-              className="border-t border-muted px-4 pt-3"
-              style={{ paddingBottom: suelto ? 12 : piso }}
-            >
-              <Centrado suelto={suelto}>
-                <View className="flex-row items-center gap-3">
-                  <View className="flex-1">
-                    <PrimaryButton
-                      label={aTraer === 1 ? 'Traer 1 canción' : `Traer ${aTraer} canciones`}
-                      onPress={() => void confirmar()}
-                      disabled={aTraer === 0}
-                    />
-                  </View>
-                  <GhostButton label="Cancelar" onPress={() => setFase('entrada')} />
+              <View className="gap-2 px-5 pb-2">
+                <Resumen lista={lista} nombre={nombre} onNombre={setNombre}
+                  total={resultados.length} aRevisar={aRevisar} error={error} />
+                <View className="flex-row items-center justify-between gap-3">
+                  <Text accessibilityLiveRegion="polite" className="min-w-0 flex-1 text-muted-foreground text-[13px]">
+                    {filtro === 'todas' ? `${resultados.length} canciones` : `${filas.length} para revisar`} · {aTraer} seleccionadas
+                  </Text>
+                  <Menu label="Opciones de importación" items={[
+                    { label: 'Mostrar', items: [
+                      { label: 'Todas las canciones', selected: filtro === 'todas', onPress: () => setFiltro('todas') },
+                      { label: 'Para revisar', selected: filtro === 'revisar', onPress: () => setFiltro('revisar') },
+                    ] },
+                    { label: 'Seleccionar encontradas', onPress: () => setDecisiones(Object.fromEntries(resultados.map((r, i) => [i, r.elegido?.videoId ?? null]))) },
+                    { label: 'No seleccionar ninguna', onPress: () => setDecisiones({}) },
+                    { label: 'Cambiar enlace', separadorAntes: true, onPress: () => volverAEntrada() },
+                  ]} />
                 </View>
-              </Centrado>
-            </View>
+              </View>
+              <FlatList className="min-h-0 flex-1" data={filas} extraData={decisiones}
+                keyExtractor={({ indice }) => String(indice)} keyboardShouldPersistTaps="handled"
+                renderScrollComponent={(props) => <ScrollArea {...props} />}
+                contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 12 }}
+                ListEmptyComponent={<Text className="text-muted-foreground py-5 text-[15px]">No hay coincidencias pendientes de revisar.</Text>}
+                renderItem={({ item }) => <FilaResultado resultado={item.resultado}
+                  elegido={decisiones[item.indice] ?? null} previo={previo}
+                  onElegir={(videoId) => setDecisiones(d => ({ ...d, [item.indice]: videoId }))} />} />
+              <View className="flex-row items-center justify-end gap-3 px-5 pt-3 pb-5">
+                <AccionSocial label={aTraer === 1 ? 'Traer 1 canción' : `Traer ${aTraer} canciones`}
+                  disabled={aTraer === 0 || !nombre.trim()} expandida={suelto} compacta
+                  style={suelto ? { flex: 1 } : undefined} onPress={() => { previo.detener(); void confirmar() }} />
+              </View>
             </View>
           ) : (
-            <Trabajando
-              fase={fase}
-              avance={avance}
-              onCancelar={() => {
-                corte.current?.abort()
-                setFase('entrada')
-              }}
-            />
+            <Trabajando fase={fase} avance={avance} onCancelar={() => volverAEntrada()} />
           )}
-        </Panel>
-      </View>
-    </SafeAreaView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+      <Confirmar visible={!!salida} titulo="¿Cancelar la importación?"
+        mensaje="El enlace y las elecciones de esta importación no se guardaron."
+        rotulo="Descartar" onCancelar={() => setSalida(null)} onConfirmar={() => {
+          const action = salida
+          setSalida(null)
+          corte.current?.abort()
+          previo.detener()
+          if (action) navigation.dispatch(action)
+        }} />
+    </Hoja>
   )
 }
 
-/** El contenido con el mismo tope de ancho que el resto de las pantallas. */
-function Centrado({ children, suelto }: { children: React.ReactNode; suelto: boolean }) {
-  return (
-    <View className="w-full items-center">
-      <View className="w-full" style={{ maxWidth: suelto ? undefined : CAP }}>
-        {children}
-      </View>
-    </View>
-  )
+/** Etiquetas legibles y controles de 44 px, sin el campo antiguo de versalitas. */
+function CampoImportar({ label, ...input }: TextInputProps & { label: string }) {
+  const escritorio = useWindowDimensions().width >= SHELL_PX
+  return <View className="gap-2">
+    <Text style={{ fontSize: escritorio ? 13 : 15 }} className="text-foreground font-medium">{label}</Text>
+    <TextInput {...input} accessibilityLabel={label} placeholderTextColor={PLACEHOLDER_COLOR}
+      className="bg-muted px-3 text-foreground"
+      style={[{ minHeight: escritorio ? 40 : 44, borderRadius: escritorio ? 10 : 16, fontSize: escritorio ? 15 : 16, paddingVertical: escritorio ? 8 : 10 }, input.style]} />
+  </View>
 }
 
 // ── Entrada ────────────────────────────────────────────────────────────────
 
-/**
- * Dónde se pega la lista.
- *
- * El enlace es el camino principal y el texto a mano el respaldo, pero el
- * respaldo no está escondido: cubre las listas privadas, las de más de cien y
- * el día que Spotify cambie su página. Está a un toque, con su propia
- * explicación de para qué sirve.
- */
-function Entrada({
-  enlace,
-  onEnlace,
-  pegado,
-  onPegado,
-  aMano,
-  onAMano,
-  error,
-  onTraer,
-  suelto,
-}: {
-  enlace: string
-  onEnlace: (v: string) => void
-  pegado: string
-  onPegado: (v: string) => void
-  aMano: boolean
-  onAMano: (v: boolean) => void
-  error: string | null
-  onTraer: () => void
-  suelto: boolean
+function Entrada({ enlace, onEnlace, error, onTraer }: {
+  enlace: string; onEnlace: (v: string) => void
+  error: string | null; onTraer: () => void
 }) {
-  const listo = aMano ? pegado.trim().length > 0 : enlace.trim().length > 0
-
-  /*
-   * Centrado en el alto, y en una columna angosta.
-   *
-   * En el teléfono la pantalla es justa y da igual, pero en escritorio el panel
-   * es enorme: con el contenido pegado arriba y a lo ancho del tope de 672, un
-   * campo y un botón quedaban flotando en un vacío de mil píxeles. Es la misma
-   * forma que el login —`flex-1 items-center justify-center` sobre una columna
-   * de 380— y por la misma razón: un formulario corto se lee como una tarjeta
-   * centrada, no como el principio de una página que sigue.
-   */
-  return (
-    <ScrollView
-      className="flex-1"
-      contentContainerClassName={`min-h-full items-center justify-center ${suelto ? 'px-5 py-6' : 'px-6 py-10'}`}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/*
-       * Una luz arriba, la misma del login.
-       *
-       * Del gris de `muted` al fondo, sin llegar nunca al blanco: le da
-       * profundidad a la mitad superior sin dibujar un borde, que es como Apple
-       * separa las capas —por luz, nunca por línea (docs/DESIGN.md)—. Es lo que
-       * hace que el formulario se lea como una tarjeta con aire propio en el
-       * panel enorme del escritorio, y no como un campo suelto en el vacío.
-       */}
-      <LinearGradient
-        pointerEvents="none"
-        colors={['#1F1F1F', '#121212']}
-        locations={[0, 1]}
-        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 420 }}
-      />
-      <View className="w-full gap-10" style={{ maxWidth: aMano ? 480 : 400 }}>
-        {/*
-         * El encabezado del panel.
-         *
-         * La barra de arriba ya dice «Traer de Spotify», así que acá no se
-         * repite el nombre: se dice **qué va a pasar**, que es la duda real de
-         * quien llega —si esto copia la lista o la recrea—.
-         */}
-        <View className="items-center gap-5">
-          {/* El ícono con más presencia: un redondel más grande y un aro sutil
-              alrededor, al modo de los glyphs de ajustes de iOS. */}
-          <View className="h-20 w-20 items-center justify-center rounded-full border border-border bg-card">
-            <IconDownload size={28} color={ICON_COLOR.foreground} />
-          </View>
-          <View className="items-center gap-2.5">
-            <Text className="text-center text-foreground text-[24px] font-bold tracking-[-0.3px]">
-              Tu lista, con tu música
-            </Text>
-            <Text className="max-w-[300px] text-center text-muted-foreground text-[14px] leading-[21px]">
-              Spotify no da el audio: la lista se rearma acá, buscando cada canción por su
-              nombre.
-            </Text>
-          </View>
+  const escritorio = useWindowDimensions().width >= SHELL_PX
+  const listo = enlace.trim().length > 0
+  return <View className="min-h-0 flex-1">
+    <ScrollArea className="flex-1" showsVerticalScrollIndicator={!escritorio} contentContainerStyle={{ flexGrow: 1, justifyContent: escritorio ? 'center' : 'flex-start', alignItems: 'center', paddingHorizontal: 20, paddingVertical: escritorio ? 28 : 12 }} keyboardShouldPersistTaps="handled">
+      <View style={{ width: '100%', maxWidth: 520, gap: escritorio ? 14 : 16 }}>
+        <View style={{ gap: escritorio ? 4 : 6 }}>
+          <Text accessibilityRole="header" style={{ fontSize: escritorio ? 19 : 21 }} className="text-foreground font-semibold">Importá una lista pública</Text>
+          <Text className="text-muted-foreground text-[13px] leading-5">Pegá el enlace de Spotify. Antes de crearla vas a poder revisar todas las coincidencias.</Text>
         </View>
-
-        <View className="gap-4">
-          {aMano ? (
-            <View className="gap-2">
-              <Text className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.8px]">
-                Las canciones, una por línea
-              </Text>
-              <TextInput
-                value={pegado}
-                onChangeText={onPegado}
-                multiline
-                textAlignVertical="top"
-                placeholder={
-                  'https://open.spotify.com/track/…\nhttps://open.spotify.com/track/…\n\no bien:\nTame Impala - The Less I Know The Better'
-                }
-                placeholderTextColor={PLACEHOLDER_COLOR}
-                accessibilityLabel="Las canciones, una por línea"
-                className="h-44 rounded-lg bg-muted p-4 text-foreground text-[15px]"
-              />
-              {/*
-               * La receta del «copiar», que es la parte que nadie adivina.
-               *
-               * Es lo que destraba los dos límites del enlace de lista —el tope
-               * de cien y que tenga que ser pública— y no está a la vista en
-               * ningún lado de Spotify: hay que saber que seleccionar todo
-               * dentro de una lista y copiar deja un link por canción.
-               */}
-              <Text className="text-muted-foreground text-[12px] leading-4">
-                En Spotify, abrí la lista, tocá una canción, seleccioná todas (Ctrl+A o
-                ⌘A) y copiá (Ctrl+C o ⌘C). Así entran las listas privadas y las de más de{' '}
-                {TOPE_SPOTIFY} canciones. También sirve «Artista - Título» por línea, o el
-                CSV de un exportador.
-              </Text>
-            </View>
-          ) : (
-            <Field
-              label="Enlace de la lista"
-              value={enlace}
-              onChangeText={onEnlace}
-              autoCapitalize="none"
-              autoCorrect={false}
-              inputMode="url"
-              placeholder="open.spotify.com/playlist/…"
-              hint="En Spotify: Compartir › Copiar enlace. La lista tiene que estar pública."
-              icon={<IconMusic size={17} color={ICON_COLOR.muted} />}
-            />
-          )}
-
-          <FormError message={error} />
-
-          <PrimaryButton label="Traer" onPress={onTraer} disabled={!listo} />
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => onAMano(!aMano)}
-            className="h-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <Text className="text-muted-foreground text-[13px]">
-              {aMano ? 'Usar un enlace de Spotify' : 'O pegar las canciones a mano'}
-            </Text>
-          </Pressable>
+        <CampoImportar label="Enlace de la lista" value={enlace} onChangeText={onEnlace} autoCapitalize="none" autoCorrect={false}
+          inputMode="url" placeholder="https://open.spotify.com/playlist/…" returnKeyType="go" onSubmitEditing={() => { if (listo) onTraer() }} />
+        <Text className="text-muted-foreground text-[12px] leading-4">En Spotify: Compartir → Copiar enlace. La lista tiene que ser pública.</Text>
+        <FormError message={error} />
+        <View className="items-end pt-1">
+          <AccionSocial label="Revisar canciones" onPress={onTraer} disabled={!listo} compacta expandida={!escritorio} />
         </View>
       </View>
-    </ScrollView>
-  )
+    </ScrollArea>
+  </View>
 }
 
 // ── Mientras trabaja ───────────────────────────────────────────────────────
@@ -542,7 +356,7 @@ function Trabajando({
   avance: Avance
   onCancelar: () => void
 }) {
-  const porcentaje = avance.total > 0 ? Math.round((avance.hechas / avance.total) * 100) : 0
+  const porcentaje = avance.total > 0 ? Math.min(100, Math.round((avance.hechas / avance.total) * 100)) : 0
 
   const rotulo =
     fase === 'guardando'
@@ -555,18 +369,18 @@ function Trabajando({
 
   const detalle =
     fase === 'guardando'
-      ? 'Las canciones se descargan cuando las escuches, no ahora.'
+      ? 'Agregando las canciones que elegiste a tu biblioteca.'
       : fase === 'leyendo'
-        ? 'De Spotify salen los nombres. El audio no viene de ahí.'
-        : 'Cada canción se busca en YouTube Music por su nombre.'
+        ? 'Preparando las canciones para que puedas revisarlas.'
+        : 'Buscando las mejores coincidencias para tu lista.'
 
   return (
-    <View className="flex-1 items-center justify-center gap-5 px-8">
+    <View accessibilityLiveRegion="polite" className="flex-1 items-center justify-center gap-4 px-5">
       <ActivityIndicator color={ICON_COLOR.muted} />
       <Text className="text-foreground text-center text-[15px]">{rotulo}</Text>
 
       {avance.total > 0 ? (
-        <View className="h-1 w-full max-w-[280px] overflow-hidden rounded-full bg-muted">
+        <View accessibilityRole="progressbar" accessibilityLabel={rotulo} accessibilityValue={{ min: 0, max: avance.total, now: avance.hechas }} className="h-1 w-full max-w-[280px] overflow-hidden rounded-full bg-muted">
           <View className="h-1 rounded-full bg-foreground" style={{ width: `${porcentaje}%` }} />
         </View>
       ) : null}
@@ -588,72 +402,18 @@ function Trabajando({
 
 // ── Revisión ───────────────────────────────────────────────────────────────
 
-function Resumen({
-  lista,
-  sinLeer,
-  nombre,
-  onNombre,
-  total,
-  aRevisar,
-  error,
-}: {
-  lista: ListaSpotify | null
-  /** De lo pegado, cuántas no devolvió Spotify. */
-  sinLeer: number
-  nombre: string
-  onNombre: (v: string) => void
-  total: number
-  aRevisar: number
-  error: string | null
+function Resumen({ lista, nombre, onNombre, total, aRevisar, error }: {
+  lista: ListaSpotify | null; nombre: string; onNombre: (v: string) => void
+  total: number; aRevisar: number; error: string | null
 }) {
-  return (
-    <View className="gap-4 pb-4">
-      <Field
-        label="Nombre de la lista"
-        value={nombre}
-        onChangeText={onNombre}
-        maxLength={60}
-        hint={
-          aRevisar === 0
-            ? `${total} canciones, todas encontradas.`
-            : `${total} canciones · ${aRevisar} para mirar, marcadas abajo.`
-        }
-      />
-
-      {sinLeer > 0 ? (
-        <View className="rounded-lg bg-muted px-4 py-3">
-          <Text className="text-muted-foreground text-[13px] leading-5">
-            {sinLeer === 1
-              ? 'Una de las canciones pegadas no la devolvió Spotify y quedó afuera.'
-              : `${sinLeer} de las canciones pegadas no las devolvió Spotify y quedaron afuera.`}
-          </Text>
-        </View>
-      ) : null}
-
-      {/*
-       * El aviso del tope, con la salida al lado.
-       *
-       * Decir «hay 100 y puede haber más» sin decir qué hacer es dejar a alguien
-       * con una lista incompleta y ninguna acción. La salida existe y es
-       * concreta, así que va acá, en el momento exacto en que hace falta.
-       */}
-      {lista?.truncada ? (
-        <View className="gap-2 rounded-lg bg-muted px-4 py-3">
-          <Text className="text-foreground text-[13px] leading-5">
-            Un enlace trae hasta {TOPE_SPOTIFY} canciones. Si la lista era más larga, esto
-            es solo el principio.
-          </Text>
-          <Text className="text-muted-foreground text-[12px] leading-4">
-            Para traerla entera: en Spotify abrí la lista, tocá una canción, seleccioná
-            todas (Ctrl+A o ⌘A), copiá (Ctrl+C o ⌘C) y pegá eso en «pegar las canciones a
-            mano». Así no hay tope.
-          </Text>
-        </View>
-      ) : null}
-
-      <FormError message={error} />
-    </View>
-  )
+  return <View className="gap-2">
+    <CampoImportar label="Nombre de la lista" value={nombre} onChangeText={onNombre} maxLength={60} />
+    <Text className="text-muted-foreground text-[13px]">{aRevisar ? `${aRevisar} de ${total} coincidencias para revisar` : 'Todas las canciones tienen coincidencia.'}</Text>
+    {lista?.truncada ? <View className="gap-1">
+      <Text accessibilityRole="alert" className="text-muted-foreground text-[13px]">Spotify devolvió hasta {TOPE_SPOTIFY} canciones. La lista puede estar incompleta.</Text>
+    </View> : null}
+    <FormError message={error} />
+  </View>
 }
 
 /**
@@ -678,14 +438,15 @@ function FilaResultado({
   const dudosa = resultado.confianza !== 'segura'
   const [abierta, setAbierta] = useState(false)
 
-  if (!dudosa && !abierta) {
+  if (!abierta) {
     const track = candidatoPorId(resultado, elegido)
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Cambiar la elección para ${resultado.pista.titulo}`}
+        accessibilityLabel={`Revisar ${resultado.pista.titulo}`}
+        accessibilityState={{ expanded: false }}
         onPress={() => setAbierta(true)}
-        className="flex-row items-center gap-3 rounded-lg py-1.5 active:bg-card"
+        className="min-h-14 flex-row items-center gap-3 rounded-xl py-2 active:bg-card"
       >
         <Tapa url={track?.artworkUrl} />
         <View className="min-w-0 flex-1">
@@ -695,6 +456,7 @@ function FilaResultado({
           <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
             {track?.artist ?? resultado.pista.artista}
           </Text>
+          {dudosa ? <Text className="text-muted-foreground text-[12px]">{resultado.confianza === 'sin_resultado' ? 'Sin coincidencia' : 'Revisar coincidencia'}</Text> : null}
         </View>
         {elegido ? (
           <IconCheck size={15} color={ICON_COLOR.muted} />
@@ -706,7 +468,7 @@ function FilaResultado({
   }
 
   return (
-    <View className="my-1.5 gap-3 rounded-lg bg-card p-3">
+    <View className="my-1.5 gap-3 rounded-2xl bg-card p-3">
       <View className="flex-row items-center gap-3">
         <View className="min-w-0 flex-1">
           <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
@@ -727,7 +489,7 @@ function FilaResultado({
             accessibilityRole="button"
             accessibilityLabel={`Escuchar el original de ${resultado.pista.titulo}`}
             onPress={() => previo.alternar(resultado.pista.previewUrl!)}
-            className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
+            className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-70"
           >
             {previo.sonando === resultado.pista.previewUrl ? (
               <IconPause size={13} color={ICON_COLOR.foreground} />
@@ -778,13 +540,14 @@ function FilaResultado({
         accessibilityRole="button"
         accessibilityState={{ selected: elegido === null }}
         onPress={() => onElegir(null)}
-        className={`h-10 flex-row items-center justify-center gap-2 rounded-full ${
+        className={`min-h-11 flex-row items-center justify-center gap-2 rounded-full ${
           elegido === null ? 'bg-muted' : 'active:bg-muted'
         }`}
       >
         <IconClose size={13} color={ICON_COLOR.muted} />
         <Text className="text-muted-foreground text-[13px]">No traer esta</Text>
       </Pressable>
+      <AccionSocial label="Cerrar opciones" secundaria expandida={false} onPress={() => setAbierta(false)} />
     </View>
   )
 }
@@ -804,7 +567,7 @@ function Tapa({ url }: { url: string | undefined }) {
 
 // ── El preview de Spotify ──────────────────────────────────────────────────
 
-type Previo = { sonando: string | null; alternar: (url: string) => void }
+type Previo = { sonando: string | null; alternar: (url: string) => void; detener: () => void }
 
 /**
  * Reproductor chiquito para los treinta segundos de Spotify.
@@ -839,6 +602,7 @@ function usePrevio(): Previo {
 
   return {
     sonando: url,
+    detener: () => setUrl(null),
     alternar: (siguiente: string) => setUrl((actual) => (actual === siguiente ? null : siguiente)),
   }
 }

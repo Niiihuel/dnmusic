@@ -186,16 +186,23 @@ export function abrirChat(pairId: string) {
  * listas ni de conversaciones, y la pantalla no puede dibujarse abajo de todo.
  */
 let onTab: ((tab: Tab) => void) | null = null
+let tabPendiente: Tab | null = null
 
 export function registerTabHandler(handler: ((tab: Tab) => void) | null) {
   onTab = handler
+  if (handler && tabPendiente) {
+    const pendiente = tabPendiente
+    tabPendiente = null
+    handler(pendiente)
+  }
 }
 
 export function setTab(tab: Tab) {
   /* Cambiar de sección despliega. Aterrizar en una pantalla nueva con la barra
      plegada sin haber desplazado nada la deja escondida sin explicación. */
   store.set({ tab, colapsada: false })
-  onTab?.(tab)
+  if (onTab) onTab(tab)
+  else tabPendiente = tab
 }
 
 export function setTabsVisible(tabsVisible: boolean) {

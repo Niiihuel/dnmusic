@@ -47,6 +47,8 @@ export type Profile = {
    * app, que se puede olvidar de preguntar.
    */
   visibility: 'publico' | 'privado'
+  /** Opt-in explícito; solo contactos con acceso al perfil ven la escucha. */
+  compartirEscucha?: boolean
   /** Cómo mirar la foto dentro de su círculo. `null` = cubrir y centrar. */
   avatarEncuadre: Encuadre | null
   /** Lo mismo para el fondo. */
@@ -94,6 +96,7 @@ type ProfileRow = {
   banner_path?: unknown
   created_at?: unknown
   visibility?: unknown
+  compartir_escucha?: unknown
   avatar_encuadre?: unknown
   banner_encuadre?: unknown
   marco?: unknown
@@ -130,6 +133,7 @@ function profileFromRow(row: ProfileRow | null | undefined): Profile | null {
     bannerPath: typeof row.banner_path === 'string' ? row.banner_path : null,
     createdAt: typeof row.created_at === 'string' ? row.created_at : null,
     visibility: row.visibility === 'publico' ? 'publico' : 'privado',
+    compartirEscucha: row.compartir_escucha === true,
     avatarEncuadre: encuadreDe(row.avatar_encuadre),
     bannerEncuadre: encuadreDe(row.banner_encuadre),
     marco: typeof row.marco === 'string' && row.marco ? row.marco : null,
@@ -164,6 +168,7 @@ export async function saveMyProfile(changes: {
   bio?: string
   bannerPath?: string
   visibility?: 'publico' | 'privado'
+  compartirEscucha?: boolean
   /** `null` borra el encuadre y vuelve al centrado; no mandarlo lo deja. */
   avatarEncuadre?: Encuadre | null
   bannerEncuadre?: Encuadre | null
@@ -185,6 +190,7 @@ export async function saveMyProfile(changes: {
     p_bio: changes.bio ?? null,
     p_banner_path: changes.bannerPath ?? null,
     p_visibility: changes.visibility ?? null,
+    ...(changes.compartirEscucha !== undefined ? { p_compartir_escucha: changes.compartirEscucha } : {}),
     /*
      * `undefined` no viaja y la base no lo toca. `null` viaja como el texto
      * `BORRAR`, no como JSON null: PostgREST traduce el null de JSON a NULL de

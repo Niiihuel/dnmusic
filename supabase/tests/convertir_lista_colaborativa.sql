@@ -1,8 +1,12 @@
 -- Verifica permisos sobre una lista existente; no deja datos de prueba.
 begin;
-insert into auth.users(id,email) values
- ('00000000-0000-4000-8000-0000000000c1','lista_owner@example.test'),
- ('00000000-0000-4000-8000-0000000000c2','lista_guest@example.test');
+insert into auth.users (id, email, raw_app_meta_data) values
+ ('00000000-0000-4000-8000-0000000000c1','lista_owner@example.test', '{"provider":"google"}'),
+ ('00000000-0000-4000-8000-0000000000c2','lista_guest@example.test', '{"provider":"google"}');
+-- Trusted SQL fixture setup: real Google signups remain pending until approved.
+update app_private.access_accounts set status='approved' where user_id in (
+ '00000000-0000-4000-8000-0000000000c1',
+ '00000000-0000-4000-8000-0000000000c2');
 insert into public.playlists(id,owner_id,name) values
  ('00000000-0000-4000-8000-0000000000c3','00000000-0000-4000-8000-0000000000c1','Lista existente');
 insert into public.playlist_tracks(playlist_id,position,video_id,title,artist,audio_path) values

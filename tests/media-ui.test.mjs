@@ -26,15 +26,27 @@ const byLabel = (ui, label) => nodes(ui, n => n.props?.accessibilityLabel === la
 
 test('duración/corazón ocupan una sola columna; hover y teclado muestran like sin reproducir', () => {
   let plays = 0, likes = 0
-  const h = harness('src/ui/TrackRow.tsx', { 'react-native': rn, '../state/playback': { usePlaybackCargada: () => true }, './useClicDerecho': { useClicDerecho: () => ({ gestos: {}, punto: null }) }, './SeekBar': { formatClock: () => '3:00' } })
+  const h = harness('src/ui/TrackRow.tsx', { 'react-native': rn, '../state/playback': { usePlaybackCargada: () => true }, './useClicDerecho': { useClicDerecho: () => ({ gestos: {}, punto: null }) }, './SeekBar': { formatClock: () => '3:00' }, './estadoControl': { estadoControlWeb: modo => ({ dataSet: { dnHover: modo } }) } })
   const props = { index: 0, title: 'Tema', artist: 'Artista', artwork: null, durationMs: 180000, sounding: false, playing: false,
     onPlay: () => plays++, gusto: jsx('Pressable', { accessibilityLabel: 'Me gusta', onPress: () => likes++ }) }
   let ui = h.render('TrackRow', props)
   const play = byLabel(ui, 'Reproducir Tema')
+  assert.equal(play.props.dataSet.dnHover, 'row', 'el hover pertenece a la superficie redondeada')
+  const slot = nodes(ui, n => n.props?.style?.width === 48)[0]
+  assert.equal(slot.props.style.height, 44)
+  assert.equal(slot.props.style.alignItems, 'center')
+  assert.equal(slot.props.style.justifyContent, 'center')
+  const heartLayer = nodes(slot, n => n.props?.style?.position === 'absolute')[0]
+  assert.equal(heartLayer.props.style.inset, 0)
+  assert.equal(heartLayer.props.style.alignItems, 'center')
+  assert.equal(heartLayer.props.style.justifyContent, 'center')
+  assert.equal(heartLayer.props.pointerEvents, 'none')
   assert.equal(nodes(play, n => n.props?.accessibilityLabel === 'Me gusta').length, 0)
   ui.props.onPointerEnter()
   ui = h.render('TrackRow', props)
   assert.equal(nodes(ui, n => n.props?.children === '3:00')[0].props.style.opacity, 0)
+  assert.match(ui.props.className, /bg-muted/)
+  assert.equal(nodes(ui, n => n.props?.style?.position === 'absolute' && n.props?.style?.inset === 0)[0].props.pointerEvents, 'auto')
   byLabel(ui, 'Me gusta').props.onPress()
   assert.equal(likes, 1)
   assert.equal(plays, 0)
@@ -65,7 +77,7 @@ test('reproductor: expandir/contraer es explícito; ajustar volumen conserva anc
   const h = harness('src/ui/NowPlayingBar.tsx', {
     'react-native': rn, 'expo-router': { useRouter: () => ({}) }, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '../lib/artwork': { artworkSource: () => null }, '../state/shell': { useTabsVisible: () => false, useColapsada: () => collapsedByScroll },
-    '../state/playback': { usePlaybackState: () => ({ tracks: [track], index: 0, manual: null, wantPlay: false, positionMs: 0, durationMs: 180000, volume, cargada: true, shuffle: false, view: null, error: null }), useHaySiguiente: () => true, usePlaybackOriginName: () => '', canOpenPlaylist: () => false, setVolume: v => volume = v },
+    '../state/playback': { usePlaybackState: () => ({ tracks: [track], index: 0, manual: null, wantPlay: false, positionMs: 0, durationMs: 180000, volume, cargada: true, shuffle: false, view: null, error: null }), useHaySiguiente: () => true, usePlaybackOriginName: () => '', useModoReproduccion: () => 'orden', canOpenPlaylist: () => false, setVolume: v => volume = v },
     '../state/jam': { useJamActivo: () => false, useCuantosJam: () => 0 }, '../state/escucha': { useEscuchaEspejoNombre: () => null },
     './Glass': { ES_WEB: true, HAY_VIDRIO: true, Glass: 'Glass' }, './useClicDerecho': { useClicDerecho: () => ({ gestos: {}, punto: null }) }, './SeekBar': { formatClock: () => '0:00' },
   }, '\nexport { AnchoPildora, Volume }')

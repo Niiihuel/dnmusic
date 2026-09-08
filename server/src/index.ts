@@ -1,3 +1,4 @@
+import { accesoAprobado } from './acceso.js'
 import { createServer } from 'node:http'
 import { pathToFileURL } from 'node:url'
 import { waitUntil } from '@vercel/functions'
@@ -283,16 +284,7 @@ function rutaDePropia(uid: string, nombre: string): string {
 }
 
 async function autorizado(req: import('node:http').IncomingMessage): Promise<boolean> {
-  if (!supabase) return false
-  const cabecera = req.headers.authorization
-  if (!cabecera?.startsWith('Bearer ')) return false
-  try {
-    const { data, error } = await supabase.auth.getUser(cabecera.slice(7))
-    return !error && !!data.user
-  } catch {
-    // Supabase no contestó: se niega. Ante la duda, no se atiende.
-    return false
-  }
+  return accesoAprobado(supabase, req.headers.authorization)
 }
 
 /**

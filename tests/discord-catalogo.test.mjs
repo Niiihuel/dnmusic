@@ -254,6 +254,9 @@ test('cabecera sin tarjeta conserva la fuente y propaga pausa/reanudación a pla
     assert.equal(props.animado, animado)
     const cuerpo = identidad.Identidad(props)
     assert.equal(nodosUI(cuerpo, 'Placa')[0].props.animado, animado)
+    const textosPlaca = nodosUI(nodosUI(cuerpo, 'Placa')[0], 'Text')
+    assert.equal(textosPlaca.length, 2, 'nombre y usuario ocupan dos líneas dentro de la placa')
+    assert.equal(nodosUI(cuerpo, 'Text').length, 2, 'el usuario no se duplica fuera de la placa')
     const foto = nodosUI(cuerpo, identidad.FotoDeHeroe)[0]
     assert.equal(foto.props.animado, animado)
     assert.equal(nodosUI(identidad.FotoDeHeroe(foto.props), 'Marco')[0].props.animado, animado)

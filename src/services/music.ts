@@ -1,3 +1,4 @@
+import { trabajosCompartidos } from '../lib/trabajosCompartidos'
 import { getSupabase } from '../lib/supabase'
 import { parseLrc, type LyricLine } from './letra'
 import { hayResolutorABordo, resolverYAportar } from './motor/resolutorABordo'
@@ -389,7 +390,13 @@ export type ResolvedSong = {
  * La primera vez descarga de YouTube Music (unos segundos); después el servicio
  * la encuentra en Storage y responde al instante.
  */
-export async function resolveSong(track: TrackResult, signal?: AbortSignal): Promise<ResolvedSong> {
+const compartirResolucion = trabajosCompartidos<ResolvedSong>()
+
+export function resolveSong(track: TrackResult, signal?: AbortSignal): Promise<ResolvedSong> {
+  return compartirResolucion(track.videoId, compartida => resolverCancion(track, compartida), signal)
+}
+
+async function resolverCancion(track: TrackResult, signal?: AbortSignal): Promise<ResolvedSong> {
   // La carátula va en el pedido: el servicio la copia a Storage y así deja de
   // depender del CDN de Google, que la corta con 429 cada tanto. La duración
   // también, si se sabe: el camino cacheado la devuelve tal cual y solo mide el

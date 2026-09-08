@@ -30,7 +30,7 @@ function navigation(options = {}) {
   const calls = []
   const defaults = {
     suelto: false, music: true, canGoBack: true, canGoForward: true,
-    caraSonando: null, pendientesChats: 0, leftCollapsed: true, rightCollapsed: true, showDetail: true,
+    caraCentro: null, pistaSonando: null, caraSonando: null, pendientesChats: 0, leftCollapsed: true, rightCollapsed: true, showDetail: true,
     ICON_COLOR: {}, router: { push: route => calls.push(['route', route]) },
     ...Object.fromEntries(['LinearGradient', 'View', 'Text', 'BotonLateral', 'IconBack', 'IconForward', 'IconInbox', 'IconMusic', 'Menu'].map(k => [k, k])),
     ...Object.fromEntries(['toggleView', 'goBack', 'goForward', 'cambiarModo', 'dejarCara', 'changeGlobalSearch', 'setMusic', 'setStack', 'setAt', 'setLeftCollapsed', 'setRightPlegado', 'endSession'].map(k => [k, (...args) => calls.push([k, ...args])])),
@@ -60,6 +60,8 @@ test('solo atrás/adelante flotan sobre el gradiente; no hay franja, inbox ni me
   assert.equal(overlay.props.pointerEvents, 'box-none')
   assert.equal(nodes(n.tree, 'LinearGradient')[0].props.pointerEvents, 'none')
   const chat = navigation({ music: false })
+  assert.equal(nodes(chat.tree, 'LinearGradient').length, 0, 'el velo de navegación no oscurece la cabecera propia del chat')
+  assert.equal(nodes(navigation({ music: false, caraCentro: 'letra', pistaSonando: {} }).tree, 'LinearGradient').length, 1, 'al abrir letra sobre chat vuelve el velo del contenido')
   chat.button('Atrás').onPress()
   assert.deepEqual(chat.calls, [['cambiarModo']])
   assert.equal(nodes(navigation({ suelto: true }).tree, 'View').length, 0)
@@ -85,6 +87,43 @@ test('el control lateral conserva tooltip, foco, callback y 44px en táctil', ()
 
 
 
+test('la pestaña tocada antes de montar Inicio se entrega al registrar su controlador', () => {
+  let current
+  const store = {
+    createStore(initial) {
+      current = initial
+      return {
+        get: () => current,
+        set: patch => { current = { ...current, ...patch } },
+        subscribe: () => () => {},
+      }
+    },
+    useStore: () => current,
+  }
+  const shell = compile(readFileSync('src/state/shell.ts', 'utf8'), { './store': store })
+  const recibidas = []
+  shell.setTab('chats')
+  assert.equal(current.tab, 'chats')
+  shell.registerTabHandler(tab => recibidas.push(tab))
+  assert.deepEqual(recibidas, ['chats'])
+  shell.registerTabHandler(null)
+})
+
+test('el botón Volver de iOS usa el chevron y un área estándar de 44 puntos', () => {
+  const { BotonVolver } = compile(readFileSync('src/ui/BotonVolver.tsx', 'utf8'), {
+    'react-native': { Platform: { OS: 'ios' }, Pressable: 'Pressable' },
+    './Glass': { BotonVidrio: 'BotonVidrio' },
+    './estadoControl': { estadoControlWeb: () => ({}) },
+    './icons': { ICON_COLOR: { foreground: '#fff' }, IconChevronLeft: 'IconChevronLeft' },
+  })
+  const boton = BotonVolver({ onPress() {} })
+  assert.equal(boton.type, 'BotonVidrio')
+  assert.equal(boton.props.style.width, 44)
+  assert.equal(boton.props.style.height, 44)
+  assert.equal(boton.props.children.type, 'IconChevronLeft')
+})
+
+
 test('el chat no afirma presencia con un rótulo fijo independiente de datos', () => {
   for (const path of ['app/index.tsx', 'src/ui/MessageDetailBody.tsx', 'src/ui/ChatBubble.tsx']) {
     const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
@@ -101,5 +140,31 @@ test('el chat no afirma presencia con un rótulo fijo independiente de datos', (
     }
     visit(source)
     assert.deepEqual(fixed, [], path)
+  }
+})
+
+
+test('el desvanecido superior del chat vive dentro del hilo y no sobre avatar/nombre', () => {
+  const start = index.indexOf('<Movible style={[{ flex: 1, minHeight: 0 }, seguirTeclado]}>')
+  const end = index.indexOf('</Movible>', start) + '</Movible>'.length
+  assert.ok(start >= 0 && end > start)
+  for (const suelto of [false, true]) {
+    const globals = {
+      suelto, seguirTeclado: null, hilo: {}, messages: [], pisoChat: 80, draft: {}, cargandoMensajes: false, contactName: 'Cuenta local',
+      ...Object.fromEntries(['Movible', 'FlatList', 'LinearGradient', 'View', 'SkeletonList', 'EmptyThread', 'ChatBubble'].map(k => [k, k])),
+      ubicarHiloAlFinal() {}, alSoltarHilo() {},
+    }
+    const { render } = compile(`export function render(){return (${index.slice(start, end)})}`, {}, globals)
+    const tree = render()
+    assert.equal(tree.type, 'Movible')
+    const list = nodes(tree, 'FlatList')[0], gradient = nodes(tree, 'LinearGradient')[0]
+    assert.ok(list && gradient)
+    assert.equal(gradient.props.style.top, 0)
+    assert.equal(gradient.props.style.height, 24)
+    assert.equal(gradient.props.pointerEvents, 'none')
+    assert.equal(nodes(tree, 'Avatar').length, 0)
+    assert.equal(list.props.onContentSizeChange, globals.ubicarHiloAlFinal)
+    assert.equal(list.props.contentContainerStyle.paddingBottom, 172)
+    assert.equal(list.props.showsVerticalScrollIndicator, !suelto)
   }
 })

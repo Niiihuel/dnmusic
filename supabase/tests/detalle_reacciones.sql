@@ -1,8 +1,13 @@
 begin;
-insert into auth.users(id,email) values
-('00000000-0000-4000-8000-0000000000e1','reaccion_owner@example.test'),
-('00000000-0000-4000-8000-0000000000e2','reaccion_autor@example.test'),
-('00000000-0000-4000-8000-0000000000e3','reaccion_visitante@example.test');
+insert into auth.users (id, email, raw_app_meta_data) values
+('00000000-0000-4000-8000-0000000000e1','reaccion_owner@example.test', '{"provider":"google"}'),
+('00000000-0000-4000-8000-0000000000e2','reaccion_autor@example.test', '{"provider":"google"}'),
+('00000000-0000-4000-8000-0000000000e3','reaccion_visitante@example.test', '{"provider":"google"}');
+-- Trusted SQL fixture setup: real Google signups remain pending until approved.
+update app_private.access_accounts set status='approved' where user_id in (
+ '00000000-0000-4000-8000-0000000000e1',
+ '00000000-0000-4000-8000-0000000000e2',
+ '00000000-0000-4000-8000-0000000000e3');
 update public.profiles set visibility='publico',username='reaccion_owner' where user_id='00000000-0000-4000-8000-0000000000e1';
 update public.profiles set username='reaccion_autor' where user_id='00000000-0000-4000-8000-0000000000e2';
 insert into public.profile_showcases(id,owner_id,kind,payload,position) values

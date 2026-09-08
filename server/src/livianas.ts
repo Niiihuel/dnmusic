@@ -1,3 +1,4 @@
+import { accesoAprobado } from './acceso.js'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { cacheImage } from './artwork.js'
 import { leerCanciones, leerLista } from './spotify.js'
@@ -52,15 +53,7 @@ const supabase: SupabaseClient | null =
  * `/img` es la excepción y no pasa por acá — ver más abajo.
  */
 async function autorizado(cabecera: string | null): Promise<boolean> {
-  if (!supabase) return false
-  if (!cabecera?.startsWith('Bearer ')) return false
-  try {
-    const { data, error } = await supabase.auth.getUser(cabecera.slice(7))
-    return !error && !!data.user
-  } catch {
-    // Supabase no contestó: se niega. Ante la duda, no se atiende.
-    return false
-  }
+  return accesoAprobado(supabase, cabecera)
 }
 
 const ORIGENES = (process.env.ALLOWED_ORIGIN ?? '')

@@ -35,7 +35,7 @@ export function AnimatedSidebarTitle({
   }, [progress, visible])
 
   const iconTranslate = progress.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] })
-  const titleTranslate = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 28] })
+  const titleTranslate = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 36] })
 
   return (
     <View className="relative min-w-0 flex-1">
@@ -53,7 +53,7 @@ export function AnimatedSidebarTitle({
           accessibilityRole="button"
           accessibilityLabel={label}
           onPress={onPress}
-          className="h-9 w-7 items-start justify-center active:opacity-70"
+          className="h-9 w-9 items-center justify-center rounded-full active:opacity-70"
         >
           {icon}
         </Pressable>

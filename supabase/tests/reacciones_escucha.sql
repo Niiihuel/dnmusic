@@ -12,12 +12,17 @@
 
 begin;
 
-insert into auth.users (id, email) values
-  ('00000000-0000-4000-8000-0000000000e1', 'emi@flora.local'),
-  ('00000000-0000-4000-8000-0000000000e2', 'eze@flora.local'),
-  ('00000000-0000-4000-8000-0000000000e3', 'eva@flora.local');
+insert into auth.users (id, email, raw_app_meta_data) values
+  ('00000000-0000-4000-8000-0000000000e1', 'emi@flora.local', '{"provider":"google"}'),
+  ('00000000-0000-4000-8000-0000000000e2', 'eze@flora.local', '{"provider":"google"}'),
+  ('00000000-0000-4000-8000-0000000000e3', 'eva@flora.local', '{"provider":"google"}');
+-- Trusted SQL fixture setup: real Google signups remain pending until approved.
+update app_private.access_accounts set status='approved' where user_id in (
+ '00000000-0000-4000-8000-0000000000e1',
+ '00000000-0000-4000-8000-0000000000e2',
+ '00000000-0000-4000-8000-0000000000e3');
 
-update public.profiles set username = 'emiprueba'
+update public.profiles set username = 'emiprueba', compartir_escucha = true, visibility = 'publico'
   where user_id = '00000000-0000-4000-8000-0000000000e1';
 update public.profiles set username = 'ezeprueba'
   where user_id = '00000000-0000-4000-8000-0000000000e2';
@@ -175,7 +180,9 @@ begin
     raise exception 'FALLO: el contacto no ve las reacciones del perfil';
   end if;
 
-  -- Una desconocida no, mientras el perfil sea privado (el default).
+  perform pg_temp.andamio(format(
+    'update public.profiles set visibility = ''privado'' where user_id = %L', emi));
+  -- Una desconocida no, mientras el perfil sea privado.
   perform pg_temp.como(eva);
   if exists (select 1 from public.reacciones_de(emi, 12)) then
     raise exception 'FALLO: una desconocida ve las reacciones de un perfil privado';

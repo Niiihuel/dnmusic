@@ -34,6 +34,7 @@ import type { ReaccionesVitrina } from '../services/reacciones'
 import { Onda, ONDA_PENDIENTE, usePicos } from './Onda'
 import { estiloEncuadrado } from './Encuadre'
 import { Glass, HAY_VIDRIO } from './Glass'
+import { estadoControlWeb } from './estadoControl'
 import { PlaylistCover } from './PlaylistCover'
 import { formatClock } from './SeekBar'
 import {
@@ -46,6 +47,7 @@ import {
   IconGrilla,
   IconPencil,
   IconPlay,
+  IconPlus,
 } from './icons'
 
 /**
@@ -75,11 +77,13 @@ export function Vitrina({
   onTogglePlay,
   onSeek,
   onOpenPlaylist,
+  onOpenArtist,
   editando = false,
   onRemove,
   onEditar,
   onAbrirSubspace,
   reacciones,
+  onAgregarReaccion,
   recarga = 0,
 }: {
   showcase: Showcase
@@ -91,6 +95,8 @@ export function Vitrina({
    * Las pide `Vitrinas` para el mosaico entero y las reparte.
    */
   reacciones?: ReaccionesVitrina | null
+  /** Abre el selector sin reproducir ni navegar la pieza. */
+  onAgregarReaccion?: () => void
   /**
    * Un estilo que pisa al de la vitrina. Lo usa la vista previa del editor,
    * que dibuja la vitrina con el tema a medio elegir sin tocar la de verdad.
@@ -126,7 +132,8 @@ export function Vitrina({
   onTogglePlay: (id: string, song: SongSnippet) => void
   /** Mover la reproducción arrastrando la onda. Sin esto, la onda no se toca. */
   onSeek?: (id: string, song: SongSnippet, fraccion: number) => void
-  onOpenPlaylist: (playlistId: string) => void
+  onOpenPlaylist?: (playlistId: string) => void
+  onOpenArtist?: (artistId: string, nombre: string) => void
   /**
    * El modo de edición: los controles en las esquinas y el contenido quieto.
    *
@@ -250,12 +257,13 @@ export function Vitrina({
               playlists={playlists}
               esMio={esMio}
               c={colores}
-              onOpen={onOpenPlaylist}
+              onOpen={editando ? undefined : onOpenPlaylist}
+              mitad={showcase.ancho === 'mitad'}
             />
           ) : showcase.kind === 'imagen' ? (
             <VitrinaImagen imagen={showcase.imagen} grande={grande} />
           ) : showcase.kind === 'artista' ? (
-            <VitrinaArtista artista={showcase.artista} c={colores} mitad={showcase.ancho === 'mitad'} />
+            <VitrinaArtista artista={showcase.artista} c={colores} mitad={showcase.ancho === 'mitad'} onOpen={editando ? undefined : onOpenArtist} />
           ) : showcase.kind === 'album' ? (
             <VitrinaAlbum album={showcase.album} c={colores} mitad={showcase.ancho === 'mitad'} />
           ) : showcase.kind === 'letra' ? (
@@ -287,36 +295,20 @@ export function Vitrina({
           onRemove={onRemove ? () => onRemove(showcase.id) : undefined}
           onEditar={onEditar ? () => onEditar(showcase) : undefined}
         />
-      ) : reacciones ? (
-        <ChipsDeReacciones showcaseId={showcase.id} reacciones={reacciones} c={colores} />
+      ) : reacciones || onAgregarReaccion ? (
+        <ChipsDeReacciones showcaseId={showcase.id} reacciones={reacciones ?? { conteo: {}, mia: null }} c={colores} onAgregar={onAgregarReaccion} />
       ) : null}
     </View>
   )
 }
 
-/**
- * Lo que le dejaron a la pieza: «🔥 3 💜 1», apoyado sobre el borde de abajo.
- *
- * Es la burbuja de reacciones de Instagram: cuelga de la esquina inferior
- * izquierda, medio adentro y medio afuera de la tarjeta, así no le roba lugar
- * al contenido ni se confunde con él. Desborda 9px, menos que el hueco de la
- * grilla (12px), para no pisar la fila de abajo.
- *
- * Toma los colores del tema de la pieza y no los de la interfaz: la pieza es
- * contenido de su dueño, y un chip gris de la app sobre una tarjeta rosa se
- * vería pegado. El chip va del lado claro u oscuro de la tarjeta; **el tuyo se
- * invierte** —blanco sobre oscura, negro sobre clara— que es la marca de
- * «activo» de `docs/DESIGN.md`: el contraste, nunca un color.
- *
- * Hover, foco o toque abren los autores; el chip detiene el evento para no
- * reproducir ni editar la pieza debajo.
- */
-function ChipsDeReacciones({ showcaseId, reacciones, c }: { showcaseId: string; reacciones: ReaccionesVitrina; c: ColoresVitrina }) {
+/** Conteos y acción visible, fuera de la onda y de los controles de reproducción. */
+function ChipsDeReacciones({ showcaseId, reacciones, c, onAgregar }: { showcaseId: string; reacciones: ReaccionesVitrina; c: ColoresVitrina; onAgregar?: () => void }) {
   /* Las más dejadas primero; a igual cuenta, el orden en que se ofrecen. */
   const filas = Object.entries(reacciones.conteo)
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1])
-  if (!filas.length) return null
+  if (!filas.length && !onAgregar) return null
 
   const lectura = filas.map(([emoji, n]) => `${emoji} ${n}`).join(', ')
 
@@ -324,8 +316,14 @@ function ChipsDeReacciones({ showcaseId, reacciones, c }: { showcaseId: string; 
     <View
       pointerEvents="box-none"
       accessibilityLabel={`Reacciones: ${lectura}`}
-      style={{ position: 'absolute', left: 10, bottom: -9, flexDirection: 'row', gap: 4, zIndex: 20 }}
+      style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, paddingTop: 8, paddingHorizontal: 10 }}
     >
+      {onAgregar ? <Pressable accessibilityRole="button" accessibilityLabel="Reaccionar a esta pieza"
+        onPress={e => { e.stopPropagation(); onAgregar() }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 44, paddingHorizontal: 10, borderRadius: 22 }}>
+        <IconPlus size={14} color={c.texto} />
+        <Text style={{ color: c.texto, fontSize: 12 }}>{reacciones.mia ? 'Cambiar reacción' : 'Reaccionar'}</Text>
+      </Pressable> : null}
       {filas.map(([emoji, n]) => {
         const mia = reacciones.mia === emoji
         const fondo = mia
@@ -638,10 +636,12 @@ function VitrinaArtista({
   artista,
   c,
   mitad,
+  onOpen,
 }: {
   artista: ShowcaseArtista
   c: ColoresVitrina
   mitad: boolean
+  onOpen?: (id: string, nombre: string) => void
 }) {
   const [recuperada, setRecuperada] = useState<{ id: string; url: string } | null>(null)
   const [fallida, setFallida] = useState('')
@@ -669,38 +669,11 @@ function VitrinaArtista({
       <HuecoDeTapa c={c} size={lado} redondo />
     )
 
-  if (mitad) {
-    return (
-      <View className="gap-3">
-        {foto}
-        <View className="gap-0.5">
-          <Text className="text-[10px] font-semibold uppercase tracking-[1.2px]" style={{ color: c.secundario }}>
-            Artista
-          </Text>
-          <Text className="text-[15px] font-bold" numberOfLines={2} style={{ color: c.texto }}>
-            {artista.nombre}
-          </Text>
-        </View>
-      </View>
-    )
-  }
-
-  return (
-    <View className="flex-row items-center gap-3">
-      {foto}
-      <View className="min-w-0 flex-1">
-        <Text className="text-[10px] font-semibold uppercase tracking-[1.2px]" style={{ color: c.secundario }}>
-          Artista
-        </Text>
-        <Text className="text-[15px] font-bold" numberOfLines={1} style={{ color: c.texto }}>
-          {artista.nombre}
-        </Text>
-      </View>
-    </View>
-  )
+  return <FichaFijada imagen={foto} tipo="Artista" titulo={artista.nombre} c={c} mitad={mitad}
+    onPress={onOpen ? () => onOpen(artista.artistId, artista.nombre) : undefined} />
 }
 
-/** Un álbum fijado: la tapa, el título y de quién es. Misma regla que el artista. */
+/** Un álbum fijado conserva la tapa cuadrada y el artista como metadato. */
 function VitrinaAlbum({ album, c, mitad }: { album: ShowcaseAlbum; c: ColoresVitrina; mitad: boolean }) {
   const lado = mitad ? 72 : 56
   const tapa = album.tapaUrl ? (
@@ -708,35 +681,40 @@ function VitrinaAlbum({ album, c, mitad }: { album: ShowcaseAlbum; c: ColoresVit
   ) : (
     <HuecoDeTapa c={c} size={lado} />
   )
-  const textos = (
-    <>
-      <Text className="text-[10px] font-semibold uppercase tracking-[1.2px]" style={{ color: c.secundario }}>
-        Álbum
-      </Text>
-      <Text className="text-[15px] font-bold" numberOfLines={mitad ? 2 : 1} style={{ color: c.texto }}>
-        {album.titulo}
-      </Text>
-      <Text className="text-[12px]" numberOfLines={1} style={{ color: c.secundario }}>
-        {album.artista}
-      </Text>
-    </>
-  )
+  return <FichaFijada imagen={tapa} tipo="Álbum" titulo={album.titulo} detalle={album.artista} c={c} mitad={mitad} />
+}
 
-  if (mitad) {
-    return (
-      <View className="gap-3">
-        {tapa}
-        <View className="gap-0.5">{textos}</View>
-      </View>
-    )
-  }
-
-  return (
-    <View className="flex-row items-center gap-3">
-      {tapa}
-      <View className="min-w-0 flex-1">{textos}</View>
+/** Una sola superficie; el enlace usa la pieza, sin otra caja al pasar el cursor. */
+function FichaFijada({ imagen, tipo, titulo, detalle, privada = false, c, mitad, onPress }: {
+  imagen: ReactNode
+  tipo: string
+  titulo: string
+  detalle?: string
+  privada?: boolean
+  c: ColoresVitrina
+  mitad: boolean
+  onPress?: () => void
+}) {
+  const contenido = <>
+    <View style={{ flexShrink: 0 }}>{imagen}</View>
+    <View style={{ minWidth: 0, flex: mitad ? undefined : 1, gap: 2 }}>
+      <Text style={{ fontSize: 12, color: c.secundario }}>{tipo}</Text>
+      <Text numberOfLines={2} style={{ fontSize: 15, fontWeight: '600', color: c.texto }}>{titulo}</Text>
+      {detalle ? <Text numberOfLines={1} style={{ fontSize: 13, color: c.secundario }}>{detalle}</Text> : null}
+      {privada ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <IconLock size={12} color={c.secundario} />
+        <Text style={{ fontSize: 12, color: c.secundario }}>Privada · Solo vos</Text>
+      </View> : null}
     </View>
-  )
+  </>
+  const forma: ViewStyle = { flexDirection: mitad ? 'column' : 'row', alignItems: mitad ? 'stretch' : 'center', gap: 12, minHeight: 56, borderRadius: 10 }
+  if (!onPress) return <View style={forma}>{contenido}</View>
+  return <Pressable {...estadoControlWeb('glass')} accessibilityRole="link" accessibilityLabel={`Abrir ${tipo.toLowerCase()}: ${titulo}`}
+    onPress={onPress}
+    style={forma}
+    className="active:opacity-70">
+    {contenido}
+  </Pressable>
 }
 
 /**
@@ -1132,11 +1110,11 @@ function VitrinaCancion({
           duracionMs={song.durationMs}
           activa={sonando}
           onSeek={onSeek ? (f) => onSeek(showcase.id, song, f) : undefined}
-          height={40}
+          height={34}
           etiqueta={cancion.title}
         />
       ) : (
-        <View className="justify-center" style={{ height: 40 }}>
+        <View className="justify-center" style={{ height: 34 }}>
           <View className="h-[3px] w-full rounded-full" style={{ backgroundColor: ONDA_PENDIENTE }} />
         </View>
       )}
@@ -1160,12 +1138,14 @@ function VitrinaLista({
   esMio,
   c,
   onOpen,
+  mitad,
 }: {
   playlistId: string
   playlists: Playlist[] | null
   esMio: boolean
   c: ColoresVitrina
-  onOpen: (playlistId: string) => void
+  onOpen?: (playlistId: string) => void
+  mitad: boolean
 }) {
   const lista = playlists?.find((p) => p.id === playlistId) ?? null
 
@@ -1192,43 +1172,11 @@ function VitrinaLista({
     )
   }
 
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Abrir ${lista.name}`}
-      onPress={() => onOpen(lista.id)}
-      className="gap-3 active:opacity-70"
-    >
-      <View className="flex-row items-center gap-2">
-        <Text className="text-[11px] font-semibold uppercase tracking-[1.2px]" style={{ color: c.secundario }}>
-          Su lista
-        </Text>
-        {/* Fijaste una privada: la ves vos y nadie más. Sin esta marca, el
-            perfil se veía lleno para vos y vacío para el resto sin que nada
-            lo explicara. */}
-        {esMio && lista.visibilidad === 'privada' ? (
-          <View
-            className="flex-row items-center gap-1 rounded-full px-2 py-0.5"
-            style={{ backgroundColor: c.claro ? 'rgba(18,18,18,0.08)' : 'rgba(255,255,255,0.1)' }}
-          >
-            <IconLock size={9} color={c.secundario} />
-            <Text className="text-[10px] uppercase tracking-[1.2px]" style={{ color: c.secundario }}>
-              Solo vos
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <View className="flex-row items-center gap-3">
-        <PlaylistCover covers={lista.covers} coverPath={lista.coverPath} size={64} />
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Text className="text-[16px] font-semibold" numberOfLines={1} style={{ color: c.texto }}>
-            {lista.name}
-          </Text>
-          <Text className="text-[13px]" style={{ color: c.secundario }}>
-            {lista.tracks} {lista.tracks === 1 ? 'canción' : 'canciones'}
-          </Text>
-        </View>
-      </View>
-    </Pressable>
-  )
+  return <FichaFijada
+    imagen={<PlaylistCover covers={lista.covers} coverPath={lista.coverPath} size={mitad ? 72 : 56} />}
+    tipo="Lista" titulo={lista.name}
+    detalle={`${lista.tracks} ${lista.tracks === 1 ? 'canción' : 'canciones'}`}
+    privada={esMio && lista.visibilidad === 'privada'} c={c} mitad={mitad}
+    onPress={onOpen ? () => onOpen(lista.id) : undefined}
+  />
 }

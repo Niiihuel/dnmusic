@@ -21,7 +21,7 @@ import {
 /** Ancho ideal de una barra más su separación. La misma geometría que `Onda`. */
 const PITCH = BARRA + HUECO
 /** Tope de barras dibujadas: más que esto no se distinguen a simple vista. */
-const MAX_BARS = 1200
+const MAX_BARS = 800
 
 /*
  * Los tres tonos de la onda, de más apagado a más brillante: fuera del recorte,
@@ -261,11 +261,11 @@ export function Waveform({
             left: windowLeft,
             width: windowW,
             height,
-            borderRadius: 8,
+            borderRadius: 10,
             overflow: 'hidden',
-            backgroundColor: 'rgba(255,255,255,0.10)',
-            borderWidth: 2,
-            borderColor: '#FFFFFF',
+            backgroundColor: 'rgba(255,255,255,0.045)',
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.32)',
             justifyContent: 'center',
           }}
         >

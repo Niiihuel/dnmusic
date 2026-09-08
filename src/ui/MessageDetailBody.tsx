@@ -69,7 +69,7 @@ export function MessageDetailBody({ message, mine, contactName, playing, sonando
           </Pressable>
         </View>
         {picos ? <Onda picos={picos} posicionMs={posicionSV} desdeMs={song.startMs} duracionMs={song.durationMs}
-          activa={sonando} onSeek={onSeek} height={44} etiqueta={song.title} /> :
+          activa={sonando} onSeek={onSeek} height={36} etiqueta={song.title} /> :
           <SeekBar label={song.title} elapsedMs={elapsed} totalMs={song.durationMs}
             progress={elapsed / Math.max(1, song.durationMs)} onSeek={onSeek} />}
         {/* Cuatro renglones y no tres: desde que los versos largos se parten en dos

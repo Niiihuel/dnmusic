@@ -198,7 +198,7 @@ export function subscribeToInbox(
   /* El primer SUBSCRIBED no relee: la carga inicial ya la hizo quien llamó. */
   let primera = true
   let channel: RealtimeChannel | null = supabase
-    .channel(`inbox:${uid}`)
+    .channel(`inbox:${uid}`, { config: { private: true } })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, onChange)
     .on(
       'postgres_changes',

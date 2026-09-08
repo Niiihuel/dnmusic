@@ -24,9 +24,13 @@ y esconde las categorías que no coinciden; sin coincidencias, un vacío con la
 salida de volver a ver todo.
 
 Las preferencias viven en `src/state/ajustes.ts`, en AsyncStorage bajo
-`ajustes:v1`. Son del dispositivo y se conservan al cerrar sesión. Las
-instalaciones anteriores mantienen autoplay y Wi-Fi, y reciben los valores por
-defecto para las opciones nuevas:
+`ajustes:v1`. Son del dispositivo y se conservan al cerrar sesión. El modo de
+reproducción vive con la cola, se conserva entre sesiones y ofrece orden,
+aleatorio dentro de la colección y descubrimiento, que intercala una sugerencia
+cada tres temas y continúa como radio al final. Las recomendaciones combinan
+los artistas de la colección con el historial, los corazones, las listas y las
+afinidades de género del catálogo. Las instalaciones anteriores mantienen
+Wi-Fi y reciben los valores por defecto para las opciones nuevas:
 
 - **Ayudas al pasar el cursor:** controla los tooltips del mouse. El foco de
   teclado sigue mostrando el nombre de los controles.

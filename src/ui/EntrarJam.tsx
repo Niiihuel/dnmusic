@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pressable, Text, TextInput, View } from 'react-native'
+import { Pressable, Text, TextInput, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { codigoDeJam } from '../lib/invitarJam'
 import { AccionSocial } from './Social'
@@ -14,8 +14,10 @@ import { AccionSocial } from './Social'
  * puerta de siempre (`app/jam/[code]`), donde se elige dónde escuchar y se
  * entra. Vive en el estado vacío del Jam, al lado de «Iniciar».
  */
-export function EntrarConCodigo() {
+export function EntrarConCodigo({ compacta = false }: { compacta?: boolean }) {
   const router = useRouter()
+  const { width } = useWindowDimensions()
+  const densa = compacta && width >= 780
   const [abierto, setAbierto] = useState(false)
   const [valor, setValor] = useState('')
   const [error, setError] = useState(false)
@@ -33,7 +35,7 @@ export function EntrarConCodigo() {
   }
 
   if (!abierto) {
-    return <AccionSocial label="Entrar con un código" secundaria onPress={() => setAbierto(true)} />
+    return <AccionSocial label="Entrar con un código" compacta={compacta} secundaria onPress={() => setAbierto(true)} />
   }
 
   return (
@@ -58,7 +60,8 @@ export function EntrarConCodigo() {
         placeholderTextColor="#6A6A6A"
         returnKeyType="go"
         accessibilityLabel="Código o link del Jam"
-        className="text-foreground rounded-2xl bg-card px-4 py-3.5 text-center text-[17px] font-semibold"
+        style={{ minHeight: densa ? 40 : 48, borderRadius: densa ? 10 : 16, paddingVertical: densa ? 8 : 14, fontSize: densa ? 15 : 17 }}
+        className="text-foreground bg-card px-4 text-center font-semibold"
       />
       <Text
         className={`text-center text-[13px] leading-5 ${
@@ -77,7 +80,8 @@ export function EntrarConCodigo() {
             setValor('')
             setError(false)
           }}
-          className="min-h-11 justify-center rounded-2xl bg-muted px-4 py-3 active:opacity-80"
+          style={{ minHeight: densa ? 36 : 44, borderRadius: densa ? 10 : 16, paddingVertical: densa ? 8 : 12 }}
+          className="justify-center bg-muted px-4 active:opacity-80"
         >
           <Text className="text-foreground text-[15px] font-semibold">Cancelar</Text>
         </Pressable>
@@ -86,7 +90,8 @@ export function EntrarConCodigo() {
           accessibilityLabel="Entrar al Jam"
           onPress={entrar}
           disabled={!valor.trim()}
-          className={`min-h-11 flex-1 justify-center rounded-2xl px-5 py-3 ${
+          style={{ minHeight: densa ? 36 : 44, borderRadius: densa ? 10 : 16, paddingVertical: densa ? 8 : 12 }}
+          className={`flex-1 justify-center px-5 ${
             valor.trim() ? 'bg-primary active:opacity-80' : 'bg-muted'
           }`}
         >

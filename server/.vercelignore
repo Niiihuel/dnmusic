@@ -1,0 +1,9 @@
+# Deploy only application source/configuration. Local credentials stay on this machine.
+.env
+.env.*
+.vercel
+node_modules
+dist
+coverage
+tests
+*.log

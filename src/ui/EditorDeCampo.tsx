@@ -5,7 +5,7 @@ import { BotonConfirmar, BotonHoja, EncabezadoHoja } from './EncabezadoHoja'
 import { BarraCambiosPerfil } from './BarraCambiosPerfil'
 import { useSalidaConCambios } from './useSalidaConCambios'
 import { ICON_COLOR, IconAt, IconCheck, IconClose, IconMessage, IconUser } from './icons'
-import { IconoAjuste } from './Ajustes'
+import { IconoAjuste, useAjustesCompactos } from './Ajustes'
 import { isUsernameAvailable } from '../services/auth'
 import { saveMyProfile } from '../services/profile'
 import { setMyProfile, useMyProfile } from '../state/session'
@@ -210,14 +210,16 @@ export function useEditorDeCampo(cual: CampoPerfil, onGuardado?: () => void, ocu
 export type EditorCampoPerfil = ReturnType<typeof useEditorDeCampo>
 
 /** Campo controlado por el borrador del editor principal; nunca persiste por fila. */
-export function FilaCampo({ cual, editor, icono, ultima = false, compacto = false }: {
+export function FilaCampo({ cual, editor, icono, iconoPlano = false, ultima = false, compacto = false }: {
   cual: CampoPerfil
   editor: EditorCampoPerfil
   icono?: ReactNode
+  iconoPlano?: boolean
   ultima?: boolean
   /** En móvil, la etiqueta y el campo aprovechan cada uno el ancho completo. */
   compacto?: boolean
 }) {
+  const densidadCompacta = useAjustesCompactos()
   const esUsuario = cual === 'usuario'
   const esBio = cual === 'linea'
   const apilado = compacto || esBio
@@ -236,19 +238,19 @@ export function FilaCampo({ cual, editor, icono, ultima = false, compacto = fals
       scrollEnabled={!esBio}
       submitBehavior={esBio ? 'newline' : 'blurAndSubmit'}
       textAlignVertical={esBio ? 'top' : 'center'}
-      className={`text-foreground text-[17px] ${apilado ? 'text-left' : 'text-right'}`}
+      className={`text-foreground ${densidadCompacta ? 'text-[15px]' : 'text-[17px]'} ${apilado ? 'text-left' : 'text-right'}`}
       style={esBio
         ? { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', paddingVertical: 6, paddingHorizontal: 0, lineHeight: 24 }
-        : { minHeight: 44, minWidth: apilado ? 0 : 120, flex: apilado ? undefined : 1, paddingVertical: 6, paddingHorizontal: 0 }}
+        : { minHeight: densidadCompacta ? 36 : 44, minWidth: apilado ? 0 : 120, flex: apilado ? undefined : 1, paddingVertical: densidadCompacta ? 4 : 6, paddingHorizontal: 0 }}
     />
   )
   return (
-    <View className="px-4">
-      <View className={`min-h-[52px] gap-1 py-3 ${ultima ? '' : 'border-b border-muted'}`}>
-        <View className={apilado ? 'gap-1' : 'min-h-[44px] flex-row items-center gap-3'}>
+    <View className={densidadCompacta ? 'px-3' : 'px-4'}>
+      <View className={`${densidadCompacta ? 'min-h-[44px] py-2' : 'min-h-[52px] py-3'} gap-1 ${ultima ? '' : 'border-b border-muted'}`}>
+        <View className={apilado ? 'gap-1' : `${densidadCompacta ? 'min-h-[36px] gap-2.5' : 'min-h-[44px] gap-3'} flex-row items-center`}>
           <View className="flex-row items-center gap-2">
-            {icono ? <IconoAjuste>{icono}</IconoAjuste> : null}
-            <Text className={apilado ? 'text-muted-foreground text-[14px]' : 'text-foreground text-[17px]'}>{TITULO_CAMPO[cual]}</Text>
+            {icono ? densidadCompacta || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : null}
+            <Text className={apilado ? 'text-muted-foreground text-[14px]' : `text-foreground ${densidadCompacta ? 'text-[15px]' : 'text-[17px]'}`}>{TITULO_CAMPO[cual]}</Text>
           </View>
           {esBio ? (
             <View style={{ minHeight: 60 }}>

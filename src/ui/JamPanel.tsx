@@ -1,6 +1,6 @@
 import { ScrollArea as ScrollView } from './ScrollArea'
 import { useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { crearJamActual, salirDelJam, useConexionJam, useJam, useMiembrosJam, usePresentesJam, useSoyHostJam } from '../state/jam'
@@ -23,6 +23,7 @@ export function JamBody({ enHoja = false }: { enHoja?: boolean }) {
   const modal = useHojaModal()
   const insets = useSafeAreaInsets()
   const piso = usePiso(16)
+  const escritorio = useWindowDimensions().width >= 780
   const abajo = enHoja ? (modal ? 16 : insets.bottom + 16) : Math.max(piso, insets.bottom + 12)
   const [creando, setCreando] = useState(false)
   const creandoRef = useRef(false)
@@ -38,26 +39,26 @@ export function JamBody({ enHoja = false }: { enHoja?: boolean }) {
   }
 
   if (!jam) return <ScrollView className="flex-1" keyboardShouldPersistTaps="handled"
-    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 24, paddingBottom: abajo + 24 }}>
-    <View style={{ width: '100%', maxWidth: 360, alignSelf: 'center', gap: 20 }}>
-      <View className="items-center gap-3">
-        <View className="h-16 w-16 items-center justify-center rounded-2xl bg-muted"><IconUsers size={28} color={ICON_COLOR.foreground} /></View>
-        <Text className="text-foreground text-center text-[22px] font-semibold">{conexion === 'conectando' ? 'Conectando…' : 'La música, en compañía'}</Text>
-        <Text className="text-muted-foreground text-center text-[15px] leading-6">Escuchen lo mismo y armen una cola entre todos, desde sus dispositivos.</Text>
+    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: escritorio ? 20 : 24, paddingBottom: abajo + (escritorio ? 20 : 24) }}>
+    <View style={{ width: '100%', maxWidth: escritorio ? 320 : 360, alignSelf: 'center', gap: escritorio ? 16 : 20 }}>
+      <View style={{ gap: escritorio ? 8 : 12 }} className="items-center">
+        <View style={{ width: escritorio ? 48 : 64, height: escritorio ? 48 : 64, borderRadius: escritorio ? 14 : 16 }} className="items-center justify-center bg-muted"><IconUsers size={escritorio ? 21 : 28} color={ICON_COLOR.foreground} /></View>
+        <Text style={{ fontSize: escritorio ? 20 : 22 }} className="text-foreground text-center font-semibold">{conexion === 'conectando' ? 'Conectando…' : 'La música, en compañía'}</Text>
+        <Text style={{ fontSize: escritorio ? 14 : 15, lineHeight: escritorio ? 20 : 24 }} className="text-muted-foreground text-center">Escuchen lo mismo y armen una cola entre todos, desde sus dispositivos.</Text>
       </View>
-      {conexion === 'conectando' ? <ActivityIndicator color={ICON_COLOR.foreground} /> : <View className="gap-3">
-        <AccionSocial label="Iniciar un Jam" onPress={() => void iniciar()} busy={creando} />
-        <EntrarConCodigo />
+      {conexion === 'conectando' ? <ActivityIndicator color={ICON_COLOR.foreground} /> : <View style={{ gap: escritorio ? 8 : 12 }}>
+        <AccionSocial label="Iniciar un Jam" onPress={() => void iniciar()} busy={creando} compacta />
+        <EntrarConCodigo compacta />
       </View>}
     </View>
   </ScrollView>
 
   return <View className="min-h-0 flex-1">
     <ScrollView className="min-h-0 flex-1" scrollEnabled={!arrastrando}
-      contentContainerStyle={{ padding: 20, paddingBottom: abajo + 84, gap: 24 }}>
+      contentContainerStyle={{ padding: escritorio ? 16 : 20, paddingBottom: abajo + (escritorio ? 64 : 84), gap: escritorio ? 18 : 24 }}>
       <View className="gap-4">
         <Pressable accessibilityRole="button" accessibilityLabel="Ver participantes del Jam" onPress={() => router.push('/jam/personas')}
-          className="min-h-11 flex-row items-center gap-3 rounded-2xl bg-card p-4 active:opacity-70">
+          style={{ minHeight: escritorio ? 52 : 44, borderRadius: escritorio ? 12 : 16, padding: escritorio ? 12 : 16 }} className="flex-row items-center gap-3 bg-card active:opacity-70">
           <View className="flex-row">
             {miembros.slice(0, 3).map((m, i) => <View key={m.userId} style={{ marginLeft: i ? -12 : 0 }} className="rounded-full border-2 border-card">
               <Avatar name={m.displayName || m.username} path={m.avatarPath} size={36} />
@@ -69,8 +70,8 @@ export function JamBody({ enHoja = false }: { enHoja?: boolean }) {
           </View><IconChevronRight size={16} color={ICON_COLOR.muted} />
         </Pressable>
         <View className="flex-row gap-3">
-          <View className="flex-1"><AccionSocial label="Invitar" onPress={() => router.push('/jam/personas')} icono={<IconShare size={17} color={ICON_COLOR.onPrimary} />} /></View>
-          <View className="flex-1"><AccionSocial label="Opciones" secundaria onPress={() => router.push('/jam/opciones')} icono={<IconSliders size={17} color={ICON_COLOR.foreground} />} /></View>
+          <View className="flex-1"><AccionSocial label="Invitar" compacta onPress={() => router.push('/jam/personas')} icono={<IconShare size={16} color={ICON_COLOR.onPrimary} />} /></View>
+          <View className="flex-1"><AccionSocial label="Opciones" compacta secundaria onPress={() => router.push('/jam/opciones')} icono={<IconSliders size={16} color={ICON_COLOR.foreground} />} /></View>
         </View>
       </View>
       <View className="gap-3">
@@ -79,7 +80,7 @@ export function JamBody({ enHoja = false }: { enHoja?: boolean }) {
       </View>
     </ScrollView>
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 20, right: 20, bottom: abajo }}>
-      <AccionSocial label={soyHost ? 'Terminar el Jam' : 'Salir del Jam'} secundaria onPress={salirDelJam} />
+      <AccionSocial label={soyHost ? 'Terminar el Jam' : 'Salir del Jam'} compacta secundaria onPress={salirDelJam} />
     </View>
   </View>
 }

@@ -359,7 +359,7 @@ export function suscribirJam(
 ): Unsubscribe {
   const supabase = getSupabase()
   let channel: RealtimeChannel | null = supabase
-    .channel(`jam:${jamId}`, { config: { presence: { key: miId } } })
+    .channel(`jam:${jamId}`, { config: { private: true, presence: { key: miId } } })
     .on(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'jams', filter: `id=eq.${jamId}` },

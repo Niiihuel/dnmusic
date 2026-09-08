@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Pressable, Text, View } from 'react-native'
-import { IconoAjuste } from './Ajustes'
+import { IconoAjuste, useAjustesCompactos } from './Ajustes'
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -47,6 +47,7 @@ export function FilaSostener({
   onCompletar: () => void
   ultima?: boolean
 }) {
+  const compacto = useAjustesCompactos()
   const progreso = useSharedValue(0)
   const [pista, setPista] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -94,7 +95,7 @@ export function FilaSostener({
       accessibilityHint="Mantené apretado para confirmar"
       onPressIn={empezar}
       onPressOut={soltar}
-      className="flex-row items-center gap-3 pl-4"
+      className={`flex-row items-center ${compacto ? 'gap-2.5 pl-3' : 'gap-3 pl-4'}`}
     >
       {/* El relleno va por `style`: NativeWind no procesa clases en componentes
           animados (docs/DESIGN.md). Blanco al 10% — el acento del sistema,
@@ -116,20 +117,20 @@ export function FilaSostener({
         ]}
       />
 
-      {icono ? <IconoAjuste>{icono}</IconoAjuste> : null}
+      {icono ? compacto ? icono : <IconoAjuste>{icono}</IconoAjuste> : null}
 
       <View
-        className={`min-h-[52px] min-w-0 flex-1 justify-center gap-0.5 py-2.5 pr-4 ${
+        className={`${compacto ? 'min-h-[44px] py-2 pr-3' : 'min-h-[52px] py-2.5 pr-4'} min-w-0 flex-1 justify-center gap-0.5 ${
           ultima ? '' : 'border-b border-muted'
         }`}
       >
-        <Text className="text-foreground text-[17px]">{rotulo}</Text>
+        <Text className={`text-foreground ${compacto ? 'text-[15px]' : 'text-[17px]'}`}>{rotulo}</Text>
         {pista ? (
-          <Text className="text-muted-foreground text-[13px] leading-[18px]">
+          <Text className={`text-muted-foreground ${compacto ? 'text-[12px] leading-4' : 'text-[13px] leading-[18px]'}`}>
             Mantené apretado para confirmar
           </Text>
         ) : detalle ? (
-          <Text className="text-muted-foreground text-[13px] leading-[18px]">{detalle}</Text>
+          <Text className={`text-muted-foreground ${compacto ? 'text-[12px] leading-4' : 'text-[13px] leading-[18px]'}`}>{detalle}</Text>
         ) : null}
       </View>
     </Pressable>

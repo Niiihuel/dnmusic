@@ -7,6 +7,7 @@ import { artworkUrlAtSize } from '../lib/artwork'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { EstadoTapa } from './CoverState'
 import { SkeletonList } from './Skeleton'
+import { estadoControlWeb } from './estadoControl'
 import { ICON_COLOR, IconMusic, IconPlus } from './icons'
 
 /**
@@ -153,17 +154,16 @@ function Fila({
   const isCurrent = current?.videoId === track.videoId
 
   return (
-    <View
-      onPointerEnter={() => setOver(true)}
-      onPointerLeave={() => setOver(false)}
-      className={`flex-row items-center gap-1 rounded-lg pr-1 ${over ? 'bg-muted' : ''}`}
-    >
+    <View className="flex-row items-center gap-1 rounded-lg pr-1">
       <Pressable
+        {...estadoControlWeb('row')}
         accessibilityRole="button"
         accessibilityLabel={`Escuchar ${track.title}`}
         /* Si ya es la que suena, tocarla pausa o sigue, como en el buscador. */
         onPress={() => (isCurrent ? togglePlayback() : onPlay())}
-        className="min-w-0 flex-1 flex-row items-center gap-3 rounded-lg p-2"
+        onPointerEnter={() => setOver(true)}
+        onPointerLeave={() => setOver(false)}
+        className={`min-w-0 flex-1 flex-row items-center gap-3 rounded-lg p-2 ${over ? 'bg-muted' : ''}`}
       >
         <View className="h-11 w-11 overflow-hidden rounded bg-muted">
           {track.artworkUrl ? (
@@ -195,7 +195,7 @@ function Fila({
         accessibilityLabel={`Agregar ${track.title} a la lista`}
         onPress={onAdd}
         disabled={busy}
-        className="h-11 w-11 items-center justify-center active:opacity-60"
+        className="h-11 w-11 items-center justify-center rounded-full active:opacity-60"
       >
         {/*
          * La espera se dice sobre la tapa (`EstadoTapa`) y acá el «+» solo se

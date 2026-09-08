@@ -60,6 +60,8 @@ import { EfectoPerfil } from './DecoracionImagen'
 import { PlacaDeNombre } from './Placas'
 import { EMOJIS } from './Reacciones'
 import { Vitrina } from './Vitrina'
+import { useRouter } from 'expo-router'
+import { abrirArtista } from '../state/shell'
 
 /**
  * El fondo del perfil: la imagen entera, detrás de todo.
@@ -344,7 +346,7 @@ export function Identidad({
             <Text className="text-foreground text-[32px] font-bold" numberOfLines={1}>
               {nombre}
             </Text>
-            <Text className="text-muted-foreground text-[14px]">@{usuario}</Text>
+            <Text className="text-muted-foreground text-[14px] mt-1" numberOfLines={1}>@{usuario}</Text>
           </PlacaDeNombre>
           {bio.trim() ? (
             <Text className="text-foreground text-[15px] leading-6" numberOfLines={2}>
@@ -372,7 +374,7 @@ export function Identidad({
           <Text className="text-foreground text-[26px] font-bold" numberOfLines={1}>
             {nombre}
           </Text>
-          <Text className="text-muted-foreground text-[14px]">@{usuario}</Text>
+          <Text className="text-muted-foreground text-[14px]" numberOfLines={1}>@{usuario}</Text>
         </View>
       </PlacaDeNombre>
       {bio.trim() ? (
@@ -607,6 +609,7 @@ export function Vitrinas({
   /** Tocar un sub-space, mirando: abrir su mosaico. Lo pasan los dos perfiles. */
   onAbrirSubspace?: (showcase: Showcase) => void
 }) {
+  const router = useRouter()
   const [lectura, setLectura] = useState<Showcase[] | null>(null)
   const vitrinas = borrador ? borrador.vitrinas : lectura
   const setVitrinas = borrador ? borrador.editar : setLectura
@@ -640,6 +643,7 @@ export function Vitrinas({
    * que es lo mismo que si no hubiera — un perfil no se rompe por sus chips.
    */
   const [reacciones, setReacciones] = useState<Map<string, ReaccionesVitrina>>(() => new Map())
+  const reaccionesEnviando = useRef(new Set<string>())
   const [abierta, setAbierta] = useState<{ showcase: Showcase; rect: Rect | null } | null>(null)
 
   useEffect(() => {
@@ -886,6 +890,8 @@ export function Vitrinas({
    * reacción, y sin él no habría forma de arrepentirse.
    */
   function reaccionar(v: Showcase, emoji: string) {
+    if (reaccionesEnviando.current.has(v.id)) return
+    reaccionesEnviando.current.add(v.id)
     setAbierta(null)
     const antes = reacciones.get(v.id) ?? { conteo: {}, mia: null }
     const proximo = antes.mia === emoji ? null : emoji
@@ -900,7 +906,7 @@ export function Vitrinas({
     reaccionarAVitrina(v.id, proximo).catch((e: unknown) => {
       setReacciones((m) => new Map(m).set(v.id, antes))
       avisar(mensajeError(e), true)
-    })
+    }).finally(() => reaccionesEnviando.current.delete(v.id))
   }
 
   /* Solo lo que muestra algo se reacciona: un título de sección o un espacio
@@ -961,6 +967,7 @@ export function Vitrinas({
             playlists={listas}
             esMio={esMio}
             reacciones={reacciones.get(v.id) ?? null}
+            onAgregarReaccion={sePuedeReaccionar && !puedeEditar && !borrador ? apretonDe(v, i) : undefined}
             playing={player.currentId === v.id && player.playing}
             sonando={player.currentId === v.id}
             posicionMs={player.posicionSV}
@@ -978,7 +985,8 @@ export function Vitrinas({
             onSeek={(id, song, fraccion) => {
               player.seek(id, song, fraccion).catch((e: unknown) => avisar(mensajeError(e), true))
             }}
-            onOpenPlaylist={() => undefined}
+            onOpenPlaylist={editando || borrador ? undefined : (id) => router.push(`/lista/${id}`)}
+            onOpenArtist={editando || borrador ? undefined : (id, nombre) => { abrirArtista(id, nombre); router.dismissTo('/') }}
             onAbrirSubspace={puedeEditar || borrador?.guardando ? undefined : onAbrirSubspace}
             recarga={recarga}
             editando={puedeEditar}
@@ -1044,17 +1052,19 @@ function FilaDeEmojis({
 }) {
   const { width, height } = useWindowDimensions()
 
+  const anchoFila = Math.min(FILA_ANCHO, width - FILA_AIRE * 2)
+  const ladoEmoji = Math.min(EMOJI_LADO, (anchoFila - 12) / EMOJIS.length - 4)
   let top: number
   let left: number
   if (rect) {
     const arriba = rect.y - FILA_ALTO - FILA_AIRE >= FILA_AIRE
     top = arriba ? rect.y - FILA_ALTO - FILA_AIRE : rect.y + rect.h + FILA_AIRE
-    left = rect.x + rect.w / 2 - FILA_ANCHO / 2
+    left = rect.x + rect.w / 2 - anchoFila / 2
   } else {
     top = height / 2 - FILA_ALTO / 2
-    left = width / 2 - FILA_ANCHO / 2
+    left = width / 2 - anchoFila / 2
   }
-  left = Math.max(FILA_AIRE, Math.min(left, width - FILA_ANCHO - FILA_AIRE))
+  left = Math.max(FILA_AIRE, Math.min(left, width - anchoFila - FILA_AIRE))
   top = Math.max(FILA_AIRE, Math.min(top, height - FILA_ALTO - FILA_AIRE))
 
   return (
@@ -1072,7 +1082,7 @@ function FilaDeEmojis({
         <View style={{ position: 'absolute', top, left }}>
           <Glass
             radius={FILA_ALTO / 2}
-            style={{ width: FILA_ANCHO, height: FILA_ALTO, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
+            style={{ width: anchoFila, height: FILA_ALTO, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
           >
             <View className="flex-1 flex-row items-center justify-center" style={{ gap: 4 }}>
               {EMOJIS.map((emoji) => {
@@ -1087,7 +1097,7 @@ function FilaDeEmojis({
                     className={`items-center justify-center rounded-full ${
                       marcado ? 'bg-primary' : 'active:bg-muted'
                     }`}
-                    style={{ width: EMOJI_LADO, height: EMOJI_LADO }}
+                    style={{ width: ladoEmoji, height: EMOJI_LADO }}
                   >
                     <Text style={{ fontSize: 22, lineHeight: 28 }}>{emoji}</Text>
                   </Pressable>

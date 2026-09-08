@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Image, ScrollView, Text, View } from 'react-native'
+import { Image, Text, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import { fetchArtist, type ArtistInfo } from '../services/music'
 import {
@@ -16,6 +16,7 @@ import { EnlaceArtista } from './EnlaceArtista'
 import { ColaBody } from './ColaBody'
 import { JamBody } from './JamPanel'
 import { Panel } from './Panel'
+import { ScrollArea } from './ScrollArea'
 import { Vacio } from './Vacio'
 import { AnimatedSidebarTitle } from './SidebarMotion'
 import { ICON_COLOR, IconCollapseRight, IconMusic } from './icons'
@@ -138,7 +139,7 @@ export function NowPlayingPanel({
         /* La ficha, siempre: el disco y la letra ya no son caras de este
            panel — toman el del medio, como en Spotify (ver `CentroSonando`
            en `app/index.tsx`), y mientras tanto acá queda quién canta. */
-        <ScrollView
+        <ScrollArea
           className="min-h-0 flex-1"
           contentContainerClassName="gap-4 px-4"
           contentContainerStyle={{ paddingBottom: piso }}
@@ -175,7 +176,7 @@ export function NowPlayingPanel({
               loading={loadingArtist}
             />
           ) : null}
-        </ScrollView>
+        </ScrollArea>
       )}
     </Panel>
   )

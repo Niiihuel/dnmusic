@@ -16,9 +16,9 @@ function fixture() {
   const state = [], exports = {}, jsx = (type, props) => ({ type, props })
   let cursor = 0, consulta = '', vuelta = 0
   vm.runInNewContext(code, {
-    exports, require: () => ({ jsx, jsxs: jsx }), LATERAL_W: 240, MAX_W: 640,
+    exports, require: () => ({ jsx, jsxs: jsx }), LATERAL_W: 240, MAX_W: 540,
     useState(initial) { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], v => { state[i] = typeof v === 'function' ? v(state[i]) : v }] },
-    ...Object.fromEntries(['Shell', 'SafeAreaView', 'View', 'Panel', 'Text', 'Pressable', 'ScrollView', 'CabeceraLateral', 'BotonLateral', 'CollapsedSidebar', 'SearchField', 'IconCollapseLeft', 'IconSliders', 'IconBack'].map(k => [k, k])),
+    ...Object.fromEntries(['Shell', 'SafeAreaView', 'View', 'Panel', 'Text', 'Pressable', 'ScrollView', 'CabeceraLateral', 'BotonLateral', 'BotonVolver', 'CollapsedSidebar', 'SearchField', 'IconCollapseLeft', 'IconSliders', 'IconBack', 'AjustesCompactos'].map(k => [k, k])),
     ICON_COLOR: { foreground: 'white', muted: 'gray' },
   })
   const categorias = [{ id: 'music', titulo: 'Reproducción', icono: 'IconoMusic', bloques: { type: 'Music' } }, { id: 'app', titulo: 'La app', icono: 'IconoApp', bloques: { type: 'App' } }]
@@ -60,4 +60,13 @@ test('filas como Inicio: icono directo, 16px y sin placa individual', () => {
   assert.equal(fila.props.children[0].props.size, 16)
   assert.match(fila.props.className, /h-\[30px\].*gap-2\.5.*rounded-md/)
   assert.equal(f.render().find(n => n.type === 'SearchField').props.density, 'compact')
+})
+
+
+test('detalle de escritorio usa columna contenida y activa la densidad compacta', () => {
+  const f = fixture()
+  const ui = f.render()
+  const contenido = ui.find(n => n.props?.style?.maxWidth === 540)
+  assert.ok(contenido, 'la lista no debe expandirse como una tabla')
+  assert.ok(ui.some(n => n.type === 'AjustesCompactos'))
 })

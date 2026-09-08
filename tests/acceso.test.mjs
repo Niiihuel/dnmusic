@@ -29,6 +29,7 @@ function fixture(route, configured = true) {
     if (id.endsWith('/supabase')) return { isSupabaseConfigured: configured }
     if (id.endsWith('/auth')) return {
       isUsernameAvailable: async () => available,
+      signInWithGoogle: async () => { calls.push(['google']); if (failure) throw failure },
       signIn: async (...args) => { calls.push(['signIn', ...args]); if (failure) throw failure },
       signUp: async (...args) => { calls.push(['signUp', ...args]); if (failure) throw failure },
     }
@@ -39,7 +40,7 @@ function fixture(route, configured = true) {
   function render() { index = 0; return flatten(exports.default()) }
   return { calls, navigation, render, fail: e => failure = e, available: v => available = v,
     field: label => render().find(n => n.type === 'CampoAcceso' && n.props.label === label).props,
-    button: () => render().find(n => n.type === 'AccionSocial').props,
+    button: (label = 'Iniciar sesión') => render().find(n => n.type === 'AccionSocial' && n.props.label === label).props,
     error: () => render().find(n => n.type === 'FormError' && n.props.message)?.props.message,
     async check() { effects.length = 0; render(); effects.splice(0).forEach(fn => fn()); timers.splice(0).forEach(fn => fn()); await Promise.resolve(); await Promise.resolve() },
   }
@@ -47,6 +48,7 @@ function fixture(route, configured = true) {
 
 test('login: siguiente enfoca contraseña, error conserva datos y reintento no duplica autenticación', async () => {
   const f = fixture('sign-in')
+  f.render().find(n => n.type === 'EnlaceAcceso' && n.props.expanded === false).props.onPress()
   assert.equal(f.button().disabled, true)
   let focused = 0
   f.field('Contraseña').ref.current = { focus: () => focused++ }
@@ -66,57 +68,41 @@ test('login: siguiente enfoca contraseña, error conserva datos y reintento no d
   assert.equal(f.field('Usuario').editable, false)
 })
 
-test('registro: valida disponibilidad/confirmación, mantiene autofill y marca onboarding tras alta', async () => {
+test('registro nuevo usa únicamente Google, evita duplicados y permite reintentar tras error o cancelación', async () => {
   const f = fixture('sign-up')
-  f.field('Usuario').onChangeText('NUEVA_LOCAL')
-  f.field('Contraseña').onChangeText('secreto_local')
-  f.field('Repetir contraseña').onChangeText('otra_clave')
-  f.field('Repetir contraseña').onBlur()
-  assert.equal(f.field('Repetir contraseña').error, 'No coinciden.')
-  assert.equal(f.button().disabled, true)
-  await f.check()
-  f.field('Repetir contraseña').onChangeText('secreto_local')
-  assert.equal(f.button().disabled, false)
-  assert.equal(f.field('Contraseña').autoComplete, 'new-password')
-  let focuses = 0
-  f.field('Repetir contraseña').ref.current = { focus: () => focuses++ }
-  f.field('Contraseña').onSubmitEditing()
-  assert.equal(focuses, 1)
-  const submit = f.button().onPress
+  assert.equal(f.render().some(n => n.type === 'CampoAcceso'), false)
+  assert.match(f.render().find(n => n.type === 'PantallaAcceso').props.detalle, /@nihuel/)
+  f.fail(new Error('Network'))
+  const submit = f.button('Continuar con Google').onPress
   await Promise.all([submit(), submit()])
-  assert.deepEqual(f.calls, [['signUp', 'nueva_local', 'secreto_local'], ['onboarding']])
+  assert.deepEqual(f.calls, [['google']])
+  assert.match(f.error(), /No se pudo continuar con Google/)
+  assert.equal(f.button('Continuar con Google').disabled, false)
+  f.fail(null)
+  await f.button('Continuar con Google').onPress()
+  assert.equal(f.error(), undefined)
+  assert.equal(f.button('Continuar con Google').busy, false, 'cancelar OAuth no deja un spinner infinito')
+  assert.equal(f.calls.some(c => c[0] === 'signUp' || c[0] === 'onboarding'), false)
 })
 
-test('registro: nombre ocupado impide alta; fallo remoto deja reintentar sin perder campos', async () => {
-  const f = fixture('sign-up')
-  f.available(false)
-  f.field('Usuario').onChangeText('ocupado')
-  f.field('Contraseña').onChangeText('secreto_local')
-  f.field('Repetir contraseña').onChangeText('secreto_local')
-  await f.check()
-  assert.equal(f.button().disabled, true)
-  await f.button().onPress()
-  assert.equal(f.calls.length, 0)
-  f.available(true)
-  f.field('Usuario').onChangeText('otro_local')
-  await f.check()
-  f.fail({ code: 'signup_disabled' })
-  await f.button().onPress()
-  assert.equal(f.error(), 'El registro está cerrado por ahora.')
-  assert.equal(f.field('Usuario').value, 'otro_local')
-  assert.equal(f.button().disabled, false)
-  assert.equal(f.calls.some(c => c[0] === 'onboarding'), false)
+test('login ofrece Google primero y mantiene el acceso de cuentas antiguas como opción secundaria', async () => {
+  const f = fixture('sign-in')
+  assert.equal(f.render().some(n => n.type === 'CampoAcceso'), false)
+  const botonGoogle = f.button('Continuar con Google')
+  assert.equal(botonGoogle.icono.type, 'GoogleIcon')
+  const google = botonGoogle.onPress
+  await Promise.all([google(), google()])
+  assert.deepEqual(f.calls, [['google']])
+  assert.equal(f.button('Continuar con Google').busy, false)
 })
 
-test('las puertas de acceso conservan el enlace recíproco y sin configuración no envían', async () => {
+test('las puertas conservan el enlace recíproco y sin configuración no envían OAuth', async () => {
   for (const route of ['sign-in', 'sign-up']) {
     const f = fixture(route, false)
-    f.render().find(n => n.props?.accessibilityRole === 'link').props.onPress()
+    f.render().find(n => n.type === 'EnlaceAcceso' && n.props.label === (route === 'sign-in' ? 'Crear cuenta' : 'Ya tengo cuenta · Iniciar sesión')).props.onPress()
     assert.deepEqual(f.navigation, [route === 'sign-in' ? '/sign-up' : '/sign-in'])
-    f.field('Usuario').onChangeText('cuenta_local')
-    f.field('Contraseña').onChangeText('secreto_local')
-    if (route === 'sign-up') { f.field('Repetir contraseña').onChangeText('secreto_local'); await f.check() }
-    await f.button().onPress()
+    assert.equal(f.button('Continuar con Google').disabled, true)
+    await f.button('Continuar con Google').onPress()
     assert.equal(f.calls.length, 0)
   }
 })

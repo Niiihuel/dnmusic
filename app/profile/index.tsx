@@ -1,3 +1,4 @@
+import { EscuchaConReacciones } from '../../src/ui/Reacciones'
 import { BarraHerramientasMosaico } from '../../src/ui/BarraHerramientasMosaico'
 import { useMosaicoPerfil } from '../../src/ui/useMosaicoPerfil'
 import { CabeceraPerfil, SuperficiePerfil, FondoEstiloPerfil } from '../../src/ui/TarjetaPerfil'
@@ -291,6 +292,7 @@ export default function ProfileScreen() {
       ownerId={profile.userId}
       nombre={nombre}
       propio
+      escucha={profile.compartirEscucha ? <EscuchaConReacciones ownerId={profile.userId} nombre={nombre} /> : null}
       recarga={recarga}
       onAbrirLista={(lista) => router.push(`/lista/${lista.id}`)}
       sinResumen

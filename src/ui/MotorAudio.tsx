@@ -1,7 +1,9 @@
+import { proximasCola } from '../lib/proximasCola'
+import { usePrecargaCola } from './usePrecargaCola'
 import { useEspectroAudio } from './useEspectroAudio'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform } from 'react-native'
-import { preload, setAudioModeAsync, useAudioPlayer } from 'expo-audio'
+import { setAudioModeAsync, useAudioPlayer } from 'expo-audio'
 import { artworkSource } from '../lib/artwork'
 import { headroomGain, perceptualGain, resolveSong, signedUrl, type TrackResult } from '../services/music'
 import { useLockScreen } from '../state/lockScreen'
@@ -10,7 +12,6 @@ import type { PlaylistTrack } from '../services/playlists'
 import {
   advance,
   completarCancion,
-  descartarSinAudio,
   pausaExterna,
   playbackOrigin,
   reanudacionExterna,
@@ -27,7 +28,7 @@ import {
   type PlaybackOrigin,
 } from '../state/playback'
 import { proximasRecomendadas, type ArtistaEscuchado } from '../services/recomendaciones'
-import { rutaLocal } from '../state/descargas'
+import { HAY_DESCARGAS, marcarAudioUsado, rutaLocal, useDescargasCargadas, useDescargasError } from '../state/descargas'
 import {
   jamEsperaArranqueMs,
   jamPosicionObjetivoMs,
@@ -105,11 +106,15 @@ const JAM_REVISA_CADA_MS = 7000
  * escribe posición y duración, la barra las lee. No hay props entre ellos.
  */
 export function MotorAudio() {
+  const indiceLocalListo = useDescargasCargadas()
+  const errorIndiceLocal = useDescargasError()
   const {
     tracks,
     index,
     manual,
     upNext,
+    shuffle,
+    repetir,
     origin,
     wantPlay,
     positionMs,
@@ -125,7 +130,8 @@ export function MotorAudio() {
    * que sigue en la lista. Si acá dijera otra cosa, precargaríamos una canción
    * que no va a sonar.
    */
-  const nextUp = upNext[0] ?? (manual ? null : (tracks[index + 1] ?? null))
+  const proximas = useMemo(() => proximasCola({ tracks, index, manual, upNext, shuffle, repetir }),
+    [tracks, index, manual, upNext, shuffle, repetir])
   /*
    * La carátula de la pantalla bloqueada, aparte y grande.
    *
@@ -178,8 +184,13 @@ export function MotorAudio() {
    */
   const [urls, setUrls] = useState<{ trackId: string; url: string }[]>([])
   const urlOf = useCallback(
-    (trackId: string | undefined) =>
-      (trackId ? urls.find((u) => u.trackId === trackId)?.url : null) ?? null,
+    (track: PlaylistTrack | null) => {
+      const uri = track ? urls.find(u => u.trackId === track.id)?.url : null
+      if (!uri || !track) return null
+      // Una caché temporal puede haberse eliminado desde la última escucha.
+      if ((uri.startsWith('file:') || uri.startsWith('app://dnmusic/_audio/')) && rutaLocal(track.audioPath) !== uri) return null
+      return uri
+    },
     [urls],
   )
 
@@ -195,8 +206,8 @@ export function MotorAudio() {
   /* Se anota después de dibujar y no durante: `remember` siempre corre detrás
      de un `await signedUrl(...)`, así que para cuando lee esto ya está al día. */
   useEffect(() => {
-    vivas.current = [current?.id, nextUp?.id]
-  }, [current?.id, nextUp?.id])
+    vivas.current = [current?.id, ...proximas.map(t => t.id)]
+  }, [current?.id, proximas])
 
   /**
    * Guarda una URL firmada, tirando las viejas.
@@ -230,6 +241,10 @@ export function MotorAudio() {
       })
     })
   }, [])
+  const olvidar = useCallback((trackId: string, uri: string) => {
+    setUrls(prev => prev.filter(entry => entry.trackId !== trackId || entry.url !== uri))
+  }, [])
+
   /*
    * El Jam, visto desde el motor.
    *
@@ -252,7 +267,25 @@ export function MotorAudio() {
    */
   const espejo = useEscuchaEspejo()
   const mudo = silencioso || espejo
-  const url = mudo ? null : urlOf(current?.id)
+  // Elegir disco al entrar a un tema; una descarga que termine durante ese
+  // tema no cambia su fuente ni reinicia la reproducción.
+  const idActual = current?.id
+  const pathActual = current?.audioPath
+  const fuenteLocal = useMemo(() => pathActual ? rutaLocal(pathActual) : null,
+    // idActual diferencia una nueva selección de la misma fuente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [idActual, pathActual, indiceLocalListo])
+  /*
+   * Una URL que ya está en uso manda sobre una descarga que acaba de terminar.
+   * useAudioPlayer recrea su reproductor cuando cambia la fuente; priorizar
+   * el archivo local nuevo hacía un microcorte al volver a la app (y podía
+   * devolver la canción al principio). La próxima selección de este tema sí
+   * tomará el archivo local desde el comienzo.
+   */
+  const url = mudo ? null : urlOf(current) ?? fuenteLocal
+  useEffect(() => {
+    if (!mudo && pathActual && fuenteLocal) marcarAudioUsado(pathActual)
+  }, [mudo, pathActual, fuenteLocal])
   const raf = useRef<number | null>(null)
   /** El cuadro anterior, para medir cuánto sonó de verdad entre uno y otro. */
   const ultimoTick = useRef(0)
@@ -274,8 +307,8 @@ export function MotorAudio() {
     crossOrigin: 'anonymous',
   })
   const playing = wantPlay && url !== null
-  const espectroVisible = useAppActiva()
-  useEspectroAudio(player, current?.videoId, playing && espectroVisible)
+  const appActiva = useAppActiva()
+  useEspectroAudio(player, current?.videoId, playing && appActiva)
 
   /*
    * La ficha se publica recién con la URL cargada: es el momento en que el
@@ -292,6 +325,7 @@ export function MotorAudio() {
           artworkUrl: artworkBloqueo,
         }
       : null,
+    appActiva,
   )
 
   /*
@@ -337,19 +371,19 @@ export function MotorAudio() {
    * recomendada —y saltear rápido dejaba los saltos muertos hasta que llegara
    * la tanda—; con la pantalla bloqueada ese silencio es fatal: sin audio
    * sonando, iOS suspende la app y la música no vuelve. La función revisa sola
-   * que corresponda — autoplay prendido, sin repetir, quedan pocas de verdad.
+   * que corresponda — modo Descubrimiento activo, sin repetir, quedan pocas de verdad.
    */
   useEffect(() => {
     if (!current || !playing) return
     rellenarSiFalta()
-  }, [current, nextUp, upNext.length, playing])
+  }, [current, proximas, upNext.length, playing])
 
   /*
    * El relleno del Jam, aparte del común: lo maneja el host contra el
    * servidor (ver `rellenarJamSiFalta`), y su disparador es cada mutación del
    * Jam — el arranque de la última canción de la cola llega como un cambio de
    * `itemActual`, o sea una revisión nueva. La función revisa sola que
-   * corresponda: ser host, autoplay prendido, última canción, sin tanda ya en
+   * corresponda: ser host, modo Descubrimiento activo, última canción, sin tanda ya en
    * vuelo.
    */
   useEffect(() => {
@@ -414,37 +448,20 @@ export function MotorAudio() {
    * que sigue mientras suena la actual — cada salto empuja la resolución de
    * la próxima, así la cola nunca se queda sin a dónde ir.
    *
-   * El set evita resolver dos veces la misma: la actual y la siguiente pueden
+   * El servicio comparte la resolución: la actual y la siguiente pueden
    * ser la misma canción por un cuadro al saltear rápido.
    */
-  const resolviendo = useRef(new Set<string>())
   const resolver = useCallback(
     (track: PlaylistTrack) => {
-      if (resolviendo.current.has(track.videoId)) return null
-      resolviendo.current.add(track.videoId)
-      const pedido: TrackResult = {
-        videoId: track.videoId,
-        title: track.title,
-        artist: track.artist,
-        artistId: track.artistId,
-        album: '',
-        albumId: null,
-        artworkUrl: track.artworkUrl,
-        durationMs: track.durationMs,
-      }
-      return resolveSong(pedido)
-        .then((song) => {
-          completarCancion(track.videoId, {
-            audioPath: song.path,
-            artworkPath: song.artworkPath,
-            durationMs: song.durationMs,
-          })
-          remember(track.id, song.url)
-          return song
+      const pedido: TrackResult = { ...track, album: '', albumId: null }
+      return resolveSong(pedido).then((song) => {
+        completarCancion(track.videoId, {
+          audioPath: song.path, artworkPath: song.artworkPath, durationMs: song.durationMs,
         })
-        .finally(() => resolviendo.current.delete(track.videoId))
-    },
-    [remember],
+        remember(track.id, rutaLocal(song.path) ?? song.url)
+        return song
+      })
+    }, [remember],
   )
 
   // Firmar la URL de la canción actual. Se firma al reproducir y no antes: una
@@ -452,18 +469,18 @@ export function MotorAudio() {
   useEffect(() => {
     // De control remoto o de espejo no se firma nada: no hay reproductor que
     // alimentar.
-    if (mudo) return
+    if (mudo || (HAY_DESCARGAS && !indiceLocalListo && !errorIndiceLocal)) return
     // Si la veníamos preparando ya está firmada, y encima a medio bajar.
-    if (!current || urlOf(current.id)) return
+    if (!current || urlOf(current)) return
     /*
      * Una candidata sin audio primero se resuelve. El error sí se muestra: es
      * la canción que la persona está esperando escuchar, y el servicio ya
      * devuelve el motivo en una frase para la app.
      */
     if (!current.audioPath) {
-      const pedido = resolver(current)
-      if (pedido) void pedido.catch((causa: unknown) => reportError(mensajeError(causa)))
-      return
+      let alive = true
+      void resolver(current).catch((causa: unknown) => { if (alive) reportError(mensajeError(causa)) })
+      return () => { alive = false }
     }
     /*
      * Si está bajada, suena del teléfono y no se firma nada.
@@ -488,65 +505,9 @@ export function MotorAudio() {
     return () => {
       alive = false
     }
-  }, [current, urlOf, remember, mudo, resolver])
+  }, [current, urlOf, remember, mudo, resolver, indiceLocalListo, errorIndiceLocal])
 
-  /*
-   * Preparar la que sigue mientras suena la de ahora.
-   *
-   * Sin esto, el cambio de canción arranca con un viaje al servidor para firmar
-   * la URL y otro para empezar a bajar el audio: se oye un hueco entre temas y,
-   * en el teléfono, ese hueco es el momento en que iOS puede suspender la app
-   * —no hay audio sonando— y cortar la cola justo con la pantalla bloqueada.
-   *
-   * La URL firmada se guarda, no solo el aviso de que se precargó: volver a
-   * firmar daría otra distinta y el buffer que ya bajamos no serviría de nada.
-   *
-   * Si falla no pasa nada: cuando le toque, se firma como siempre. Por eso el
-   * error se traga en vez de mostrarse — todavía no es un problema de nadie.
-   */
-  useEffect(() => {
-    if (mudo) return
-    if (!nextUp || urlOf(nextUp.id)) return
-    /*
-     * Una candidata sin audio se **resuelve ahora**, mientras suena la actual:
-     * es la mitad de la resolución perezosa — cada avance de la cola empuja la
-     * resolución de la que sigue. Si el audio no se puede traer, la candidata
-     * se descarta de la cola en silencio: dejarla sería un hueco en el que el
-     * salto tropieza, y para eso la tanda trae de sobra.
-     */
-    if (!nextUp.audioPath) {
-      const pedido = resolver(nextUp)
-      if (pedido)
-        void pedido
-          .then((song) => preload({ uri: song.url }))
-          .catch(() => descartarSinAudio(nextUp.videoId))
-      return
-    }
-    /*
-     * La bajada no se precarga: ya está entera en el disco, así que no hay buffer
-     * que adelantar ni firma que conseguir. Guardarla alcanza para que el cambio
-     * de canción sea instantáneo.
-     */
-    const local = rutaLocal(nextUp.audioPath)
-    if (local) {
-      remember(nextUp.id, local)
-      return
-    }
-    let alive = true
-    const id = nextUp.id
-    signedUrl(nextUp.audioPath)
-      .then((next) => {
-        if (!alive) return
-        remember(id, next)
-        return preload({ uri: next })
-      })
-      .catch(() => {
-        // Sin precarga, pero la cola sigue funcionando igual.
-      })
-    return () => {
-      alive = false
-    }
-  }, [nextUp, urlOf, remember, mudo, resolver])
+  usePrecargaCola({ current, proximas, url, player, wantPlay, mudo, remember, olvidar })
 
   /**
    * Pasar a la siguiente, una sola vez por canción.

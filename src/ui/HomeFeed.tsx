@@ -3,7 +3,6 @@ import {
   Image,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -53,12 +52,13 @@ import { PlaylistCover } from './PlaylistCover'
 import { useColapso } from './useColapso'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { Panel } from './Panel'
+import { ScrollArea } from './ScrollArea'
+import { BotonVolver } from './BotonVolver'
 import { VacioError } from './Vacio'
 import { EstadoTapa } from './CoverState'
 import { Skeleton } from './Skeleton'
 import {
   ICON_COLOR,
-  IconBack,
   IconChevronRight,
   IconHeart,
   IconMusic,
@@ -241,7 +241,7 @@ export function HomeFeed({
 
   return (
     <Panel className="flex-1">
-      <ScrollView
+      <ScrollArea
         className="min-h-0 flex-1"
         contentContainerClassName="gap-8"
         contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
@@ -316,9 +316,9 @@ export function HomeFeed({
                 pendingId={pendingId}
               />
             ))}
-            {tendencias.map((section) => (
+            {tendencias.map((section, index) => (
               <Section
-                key={section.title}
+                key={`chart-${section.title}-${section.items[0]?.id ?? index}`}
                 section={section}
                 titulo={/^trending$/i.test(section.title) ? 'Tendencias' : section.title}
                 onOpen={() => onOpenSection(section.title)}
@@ -343,7 +343,7 @@ export function HomeFeed({
               />
             ) : null}
             {resto.map((section, i) => (
-              <Fragment key={section.title}>
+              <Fragment key={`section-${section.title}-${section.items[0]?.id ?? i}`}>
                 <Section
                   section={section}
                   onOpen={() => onOpenSection(section.title)}
@@ -363,7 +363,7 @@ export function HomeFeed({
             ))}
           </>
         )}
-      </ScrollView>
+      </ScrollArea>
     </Panel>
   )
 }
@@ -1500,7 +1500,7 @@ function GenerosPage({
   return (
     /* La cabecera adentro del scroll, como la de una sección: el contenido
        corre hasta el borde y se apaga contra el velo en vez de cortarse. */
-    <ScrollView
+    <ScrollArea
       className="min-h-0 flex-1"
       contentContainerClassName="px-6"
       contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
@@ -1529,7 +1529,7 @@ function GenerosPage({
           ))}
         </View>
       )}
-    </ScrollView>
+    </ScrollArea>
   )
 }
 
@@ -1579,7 +1579,7 @@ function GeneroPage({
      * las tapas.
      */
     return (
-      <ScrollView
+      <ScrollArea
         className="min-h-0 flex-1"
         contentContainerClassName="px-6"
         contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
@@ -1593,7 +1593,7 @@ function GeneroPage({
             </View>
           ))}
         </View>
-      </ScrollView>
+      </ScrollArea>
     )
   }
 
@@ -1628,14 +1628,7 @@ function CabeceraDePagina({
 }) {
   return (
     <View className="flex-row items-center gap-3 pb-4">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Volver a la portada"
-        onPress={onBack}
-        className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-70"
-      >
-        <IconBack size={15} color={ICON_COLOR.muted} />
-      </Pressable>
+      <BotonVolver label="Volver a la portada" onPress={onBack} />
       <View className="min-w-0 flex-1">
         <Text className="text-foreground text-2xl font-bold" numberOfLines={1}>
           {titulo}
@@ -1742,7 +1735,7 @@ function SectionPage({
      * álbum y el artista. Con la cabecera fija afuera, las filas se cortaban
      * en seco contra su borde — la única línea dura de la app.
      */
-    <ScrollView
+    <ScrollArea
       className="min-h-0 flex-1"
       contentContainerClassName="px-6"
       contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
@@ -1785,7 +1778,7 @@ function SectionPage({
             ))}
           </View>
         )}
-    </ScrollView>
+    </ScrollArea>
   )
 }
 

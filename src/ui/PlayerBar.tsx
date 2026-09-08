@@ -9,6 +9,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated'
 import type { PopoverOption } from './Popover'
+import { TECLADO_FISICO } from '../lib/teclado'
 import { Menu, type MenuItem } from './Menu'
 import {
   ICON_COLOR,
@@ -179,13 +180,15 @@ export function PlayerBar({
     ...(onCambiarCancion ? [{ label: 'Cambiar canción', sfSymbol: 'music.note' as const, onPress: onCambiarCancion, separadorAntes: true }] : []),
   ]
 
+  const compacto = TECLADO_FISICO
+
   return (
-    <View className="gap-2">
+    <View className={compacto ? 'gap-1.5' : 'gap-2'}>
       {view !== 'wave' ? <View className="flex-row items-center gap-3">
         <Elapsed positionMs={positionMs} startMs={startMs} snippetMs={snippetMs} />
         <GestureDetector gesture={gesture}>
           <View
-            className="min-h-11 flex-1 justify-center py-2"
+            className={`${compacto ? 'min-h-9 py-1.5' : 'min-h-11 py-2'} flex-1 justify-center`}
             onPointerEnter={() => setHover(true)}
             onPointerLeave={() => setHover(false)}
           >
@@ -236,12 +239,12 @@ export function PlayerBar({
         </Text>
       </View> : null}
 
-      <View className="flex-row items-center gap-3">
+      <View className={`flex-row items-center ${compacto ? 'gap-2' : 'gap-3'}`}>
         <PlayButton playing={playing} onPress={onToggle} disabled={ocupado} />
         <View pointerEvents={ocupado ? 'none' : 'auto'}>
           <Menu label="Opciones del fragmento" tooltip="Vista, duración y traducción"
             items={opciones} triggerSymbol="slider.horizontal.3" triggerText={fmt(snippetMs)}
-            trigger={<View className="min-h-11 flex-row items-center gap-2 rounded-full bg-muted px-3">
+            trigger={<View className={`${compacto ? 'min-h-9 rounded-[10px] px-2.5' : 'min-h-11 rounded-full px-3'} flex-row items-center gap-2 bg-muted`}>
               <IconWave size={17} color={ICON_COLOR.foreground} /><Text className="text-foreground text-[13px] tabular-nums">{fmt(snippetMs)}</Text>
             </View>} />
         </View>
@@ -295,7 +298,7 @@ function PlayButton({ playing, onPress, disabled }: { playing: boolean; onPress:
       onPress={onPress}
       disabled={disabled}
       accessibilityState={{ disabled }}
-      className="h-11 w-11 items-center justify-center rounded-full bg-primary active:opacity-80"
+      className={`${TECLADO_FISICO ? 'h-9 w-9' : 'h-11 w-11'} items-center justify-center rounded-full bg-primary active:opacity-80`}
     >
       {playing ? (
         <IconPause size={18} color={ICON_COLOR.onPrimary} />

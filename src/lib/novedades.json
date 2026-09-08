@@ -1,5 +1,22 @@
 [
   {
+    "version": "1.12.0",
+    "fecha": "8 de septiembre de 2026",
+    "titulo": "Entrá más fácil y escuchá sin esperar.",
+    "cambios": [
+      "Las cuentas nuevas entran con Google y quedan esperando la aprobación de @nihuel. Las cuentas existentes conservan el acceso con usuario.",
+      "En la computadora, Google abre en el navegador y vuelve a dnmusic mediante un callback local verificado. La sesión se guarda en el almacenamiento protegido del sistema para evitar cierres inesperados en Windows.",
+      "Nuevo sistema de descargas y caché: podés administrar canciones una por una, elegir el límite de espacio y controlar el uso de Wi-Fi o datos. Mientras escuchás, dnmusic prepara las próximas canciones para que empiecen más rápido.",
+      "Tres modos de reproducción: en orden, aleatorio dentro de la lista o álbum, y Descubrimiento, que intercala recomendaciones según sus artistas y géneros.",
+      "El reproductor conserva mejor la música y los controles del sistema al bloquear el teléfono, pausar, volver a la app o ceder el audio a un video.",
+      "Inicio de sesión, Traer de Spotify, Jam y el recorte de fragmentos adoptan controles más livianos. Las cabeceras, los sidebars, los hovers y las barras de desplazamiento ahora siguen el mismo lenguaje visual.",
+      "El perfil puede mostrar en tiempo real lo que escuchás, si lo habilitás. Los fragmentos fijados aceptan reacciones y permiten ver quién reaccionó.",
+      "En escritorio, el artista del reproductor es navegable, el corazón aparece sobre la duración de una canción y el reproductor compacto ya no se expande al ajustar el volumen. La cuenta abre sus opciones con clic o clic derecho.",
+      "Las listas grandes mantienen una altura estable y un desplazamiento más claro. También se corrigieron el doble hover, la alineación del corazón, la creación de Jam y la navegación intermitente de Chat.",
+      "El nuevo icono queda aplicado en el arranque, la ventana, los accesos y los recursos de la aplicación."
+    ]
+  },
+  {
     "version": "1.11.0",
     "fecha": "6 de septiembre de 2026",
     "titulo": "Tu perfil, tu música y una nueva imagen.",

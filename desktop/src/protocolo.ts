@@ -9,9 +9,9 @@ import { pathToFileURL } from 'node:url'
  * No se usa `file://` —que sería lo obvio para servir una carpeta— por una
  * razón concreta: en `file://` el origen es opaco y **localStorage no
  * persiste**. La sesión de Supabase en web vive justo ahí (ver el comentario
- * de `storage` en src/lib/supabase.ts: en web se deja el default, que es
- * localStorage), así que con `file://` la app pediría iniciar sesión en cada
- * arranque. Tampoco habría contexto seguro, y sin contexto seguro no hay
+ * de storage en src/lib/supabase.ts. Las versiones actuales migran esa sesión
+ * a un archivo cifrado del proceso principal, pero el origen estable sigue
+ * siendo necesario para la migración y para el resto del almacenamiento web. Tampoco habría contexto seguro, y sin contexto seguro no hay
  * `crypto.subtle` ni History API en condiciones, que es de lo que vive
  * expo-router.
  *
@@ -101,11 +101,14 @@ async function servirArchivo(ruta: string, pathname: string): Promise<Response> 
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
 }
 
-export function servirWeb(raiz: string): void {
+export function servirWeb(raiz: string, servirAudio?: (pedido: Request) => Promise<Response>): void {
   const indice = join(raiz, 'index.html')
 
   protocol.handle(ESQUEMA, async (pedido) => {
-    const { pathname } = new URL(pedido.url)
+    const url = new URL(pedido.url)
+    const { pathname } = url
+    if (url.hostname !== HOST || url.port || url.username || url.password) return new Response(null, { status: 404 })
+    if (pathname.startsWith('/_audio/')) return servirAudio ? servirAudio(pedido) : new Response(null, { status: 404 })
     const destino = resolverDentro(raiz, decodeURIComponent(pathname))
 
     if (destino && esArchivo(destino)) return servirArchivo(destino, pathname)

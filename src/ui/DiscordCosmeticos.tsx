@@ -170,12 +170,12 @@ function PlacaVideoDiscord({ uri, onError }: { uri: string; onError: () => void 
   }, [player, onError])
   // Se monta sólo en movimiento, nunca en iOS. useVideoPlayer libera el
   // reproductor al salir/cambiar de placa o pasar a segundo plano.
-  return <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover"
+  return <VideoView player={player} style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]} contentFit="cover"
     nativeControls={false} fullscreenOptions={{ enable: false }} allowsPictureInPicture={false}
     pointerEvents="none" accessible={false} surfaceType="textureView" />
 }
 
-export function DiscordPlaca({ id, animado = true, radio = 14, children, onError }: IdProps & { radio?: number; children: ReactNode }) {
+export function DiscordPlaca({ id, animado = true, radio = 14, compacta = false, children, onError }: IdProps & { radio?: number; compacta?: boolean; children: ReactNode }) {
   const pieza = usePiezaVisible(id)
   const mover = useMovimiento(animado && pieza?.tipo === 'placa')
   const [falloVideo, setFalloVideo] = useState<string>()
@@ -185,14 +185,14 @@ export function DiscordPlaca({ id, animado = true, radio = 14, children, onError
   const estatica = pieza?.staticPreview ?? urls?.estatica
   const colores = gradientePlacaDiscord(pieza?.palette)
   if (pieza?.tipo !== 'placa') return <>{children}</>
-  return <View style={{ position: 'relative', borderRadius: radio, overflow: 'hidden' }}>
+  return <View testID="placa-nombre-discord" style={{ position: 'relative', width: 320, maxWidth: '100%', minWidth: 0, minHeight: compacta ? 24 : 72, justifyContent: 'center', borderRadius: radio, overflow: 'hidden' }}>
     <View pointerEvents="none" accessible={false} style={StyleSheet.absoluteFill}>
       {colores ? <LinearGradient colors={colores} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} pointerEvents="none" /> : null}
       <ImagenDiscord uri={estatica} onError={onError} style={StyleSheet.absoluteFill} contentFit="cover" />
       {mover && Platform.OS !== 'ios' && video && falloVideo !== video
         ? <PlacaVideoDiscord key={video} uri={video} onError={fallo} /> : null}
     </View>
-    {children}
+    <View style={{ minWidth: 0, paddingHorizontal: compacta ? 6 : 14, paddingVertical: compacta ? 3 : 8 }}>{children}</View>
   </View>
 }
 

@@ -4,7 +4,8 @@ import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
 import { Actualizador } from '../../src/ui/Actualizador'
-import { ICON_COLOR, IconBack, IconChevronRight } from '../../src/ui/icons'
+import { BotonVolver } from '../../src/ui/BotonVolver'
+import { ICON_COLOR, IconChevronRight } from '../../src/ui/icons'
 import { NOVEDADES, type Novedad } from '../../src/lib/novedades'
 import { usePiso } from '../../src/state/shell'
 import { volver } from '../../src/lib/volver'
@@ -64,14 +65,7 @@ export default function Novedades() {
     <SafeAreaView className="flex-1 bg-background" edges={suelto ? ['top'] : ['top', 'bottom']}>
       <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
         <View className="flex-row items-center gap-3 px-3 py-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver"
-            onPress={() => volver(router, '/ajustes')}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconBack size={19} color={ICON_COLOR.foreground} />
-          </Pressable>
+          <BotonVolver onPress={() => volver(router, '/ajustes')} />
           <Text className="text-foreground text-[15px] font-semibold">Actualizaciones</Text>
         </View>
         <Panel className="flex-1">

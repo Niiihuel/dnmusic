@@ -20,6 +20,7 @@ import {
   useHaySiguiente,
   usePlaybackOriginName,
   usePlaybackState,
+  useModoReproduccion,
 } from '../state/playback'
 import { crearJamActual, salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
 import { abrirSelectorDispositivos, useEscuchaEspejoNombre } from '../state/escucha'
@@ -29,7 +30,7 @@ import { useClicDerecho } from './useClicDerecho'
 import { compartirHistoria } from './CompartirHistoria'
 import { Menu, type MenuItem } from './Menu'
 import { SeekBar, formatClock } from './SeekBar'
-import { BotonAleatorio, BotonRepetir } from './Transport'
+import { BotonAleatorio, BotonRepetir, NOMBRE_MODO_REPRODUCCION } from './Transport'
 import { BotonMeGusta } from './BotonMeGusta'
 import { EnlaceArtista } from './EnlaceArtista'
 import { BotonLateral } from './CabeceraLateral'
@@ -47,6 +48,7 @@ import {
   IconRepeat,
   IconShare,
   IconShuffle,
+  IconSparkles,
   IconCola,
   IconDisc,
   IconLyrics,
@@ -146,7 +148,6 @@ export function NowPlayingBar({
     durationMs,
     volume,
     cargada,
-    shuffle,
     view,
     error,
   } = usePlaybackState()
@@ -158,6 +159,7 @@ export function NowPlayingBar({
   /* El nombre de la lista de la que salió la cola, para el subtítulo de «Ver
      la lista». Vacío con algo encolado a mano o sin origen. */
   const listName = usePlaybackOriginName()
+  const modoReproduccion = useModoReproduccion()
   const enJam = useJamActivo()
   const cuantosJam = useCuantosJam()
   /*
@@ -300,13 +302,21 @@ export function NowPlayingBar({
       ? []
       : [
           {
-            label: shuffle ? 'Aleatorio: activado' : 'Aleatorio',
+            label: `Modo · ${NOMBRE_MODO_REPRODUCCION[modoReproduccion]}`,
+            subtitle: 'Tocá para cambiar',
             separadorAntes: true,
+            selected: modoReproduccion !== 'orden',
             onPress: toggleShuffle,
-            icon: (
-              <IconShuffle size={15} color={shuffle ? ICON_COLOR.foreground : ICON_COLOR.muted} />
-            ),
-            sfSymbol: 'shuffle' as const,
+            icon:
+              modoReproduccion === 'recomendado' ? (
+                <IconSparkles size={15} color={ICON_COLOR.foreground} />
+              ) : (
+                <IconShuffle
+                  size={15}
+                  color={modoReproduccion === 'aleatorio' ? ICON_COLOR.foreground : ICON_COLOR.muted}
+                />
+              ),
+            sfSymbol: modoReproduccion === 'recomendado' ? 'sparkles' as const : 'shuffle' as const,
           },
         ]),
     {

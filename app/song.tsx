@@ -206,10 +206,10 @@ export default function SongPicker() {
   const recipientName = draft.recipient?.username
 
   return (
-    <Hoja medida={modal ? "contenido" : "llena"} anchoMaximo={860} titulo={track ? 'Elegir fragmento' : 'Agregar canción'}>
+    <Hoja medida={modal ? "contenido" : "llena"} anchoMaximo={720} titulo={track ? 'Elegir fragmento' : 'Agregar canción'}>
     <SafeAreaView
       className="min-h-0 bg-background"
-      style={modal ? { height: Math.min(620, height - 96) } : { flex: 1 }}
+      style={modal ? { height: Math.min(track ? 480 : 540, height - 96) } : { flex: 1 }}
       edges={Platform.OS === 'web' ? [] : ['bottom']}
     >
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="min-h-0 flex-1">
@@ -613,7 +613,7 @@ function SnippetEditor({
         artworkPath={artworkPath}
         title={track.title}
         playing={playing}
-        size={wide ? 260 : 200}
+        size={wide ? 220 : 184}
       />
       <View className="items-center gap-1">
         <Text className="text-foreground text-lg font-semibold" numberOfLines={1}>
@@ -631,7 +631,7 @@ function SnippetEditor({
   ) : view === 'lyrics' && shownLyrics ? (
     <Lyrics lines={shownLyrics} atMs={lyricAtMs} size="lg" onPickLine={onChangeStart} />
   ) : (
-    <ScrollView contentContainerClassName="grow justify-center gap-6 p-4">
+    <ScrollView contentContainerClassName="grow w-full max-w-[720px] self-center justify-center gap-4 px-5 py-4">
       <Waveform
         peaks={peaks ?? []}
         durationMs={songMs}
@@ -641,7 +641,7 @@ function SnippetEditor({
         positionMs={positionSV}
         onScrub={onSeek}
         playing={playing}
-        height={wide ? 96 : 80}
+        height={wide ? 72 : 64}
       />
       <Text className="text-muted-foreground text-center text-[13px] tabular-nums">
         {fmt(startMs)} – {fmt(startMs + snippetMs)} de {fmt(songMs)}
@@ -658,13 +658,13 @@ function SnippetEditor({
       {/* En la vista de letra la ficha se va: la letra es el contenido y el
           tema ya está nombrado en el encabezado de la pantalla. */}
       {showTrackHeader && (
-        <View className="mx-5 mt-4 flex-row items-center gap-3">
+        <View className="mx-5 mt-3 flex-row items-center gap-3">
           <Image
             source={{ uri: artworkSource(artworkPath, track.artworkUrl, 128) ?? '' }}
-            className="h-14 w-14 rounded-md bg-background"
+            className="h-11 w-11 rounded-[10px] bg-background"
           />
           <View className="flex-1">
-            <Text className="text-foreground text-base font-medium" numberOfLines={1}>
+            <Text className="text-foreground text-[15px] font-medium" numberOfLines={1}>
               {track.title}
             </Text>
             <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
@@ -677,7 +677,7 @@ function SnippetEditor({
       {stage === 'error' ? (
         <View className="gap-3 p-5">
           <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="text-destructive text-[15px] leading-6">{error}</Text>
-          <AccionSocial label="Elegir otra canción" secundaria expandida={false} onPress={onCambiarCancion} />
+          <AccionSocial label="Elegir otra canción" secundaria compacta expandida={false} onPress={onCambiarCancion} />
         </View>
       ) : stage !== 'ready' ? (
         <View accessibilityLiveRegion="polite" className="flex-1 items-center justify-center gap-3">
@@ -690,7 +690,7 @@ function SnippetEditor({
         <>
           <View className="flex-1">{canvas}</View>
 
-          <View className="bg-background px-5 pt-3" style={{ paddingBottom: 20 }}>
+          <View className="bg-background px-5 pt-2" style={{ paddingBottom: wide ? 16 : 20 }}>
             <PlayerBar view={view} onChangeView={setView} hasLyrics={!!lyrics?.length}
               playing={playing} onToggle={toggle} positionMs={positionSV} startMs={startMs}
               snippetMs={snippetMs} onSeek={onSeek} choice={choice} choices={SNIPPET_OPTIONS}
@@ -699,6 +699,7 @@ function SnippetEditor({
               accion={
               <AccionSocial
                 label={paraPerfil ? 'Fijar fragmento' : 'Usar fragmento'}
+                compacta
                 expandida={false}
                 style={{ alignSelf: 'flex-end' }}
                 busy={ocupado}

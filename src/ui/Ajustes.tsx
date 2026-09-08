@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import Animated, {
   useAnimatedStyle,
@@ -9,6 +9,18 @@ import type { SFSymbol } from 'sf-symbols-typescript'
 import { BORDE_REFERENTE, Glass, HAY_VIDRIO } from './Glass'
 import { Menu } from './Menu'
 import { ICON_COLOR, IconChevronDown, IconChevronRight } from './icons'
+
+const DensidadAjustesContext = createContext(false)
+
+// En escritorio usa la escala de Ajustes del Sistema; en teléfono conserva
+// las medidas táctiles de iOS.
+export function AjustesCompactos({ children }: { children: ReactNode }) {
+  return <DensidadAjustesContext.Provider value>{children}</DensidadAjustesContext.Provider>
+}
+
+export function useAjustesCompactos() {
+  return useContext(DensidadAjustesContext)
+}
 
 /**
  * Las piezas de una lista agrupada, con las medidas de Configuración de iOS.
@@ -65,14 +77,15 @@ export function GrupoAjustes({
   pie?: string
   children: ReactNode
 }) {
+  const compacto = useAjustesCompactos()
   return (
     <View>
       {titulo ? (
-        <Text className="px-4 pb-2 text-muted-foreground text-[13px]">{titulo}</Text>
+        <Text className={`${compacto ? 'px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[1.1px]' : 'px-4 pb-2 text-[13px]'} text-muted-foreground`}>{titulo}</Text>
       ) : null}
-      <View className="overflow-hidden rounded-[22px] bg-card">{children}</View>
+      <View className={`overflow-hidden bg-card ${compacto ? 'rounded-[16px]' : 'rounded-[22px]'}`}>{children}</View>
       {pie ? (
-        <Text className="px-4 pt-2 text-muted-foreground text-[13px] leading-[18px]">{pie}</Text>
+        <Text className={`${compacto ? 'px-3 pt-1.5 text-[12px] leading-[17px]' : 'px-4 pt-2 text-[13px] leading-[18px]'} text-muted-foreground`}>{pie}</Text>
       ) : null}
     </View>
   )
@@ -101,6 +114,7 @@ export function FilaAjuste({
   valor,
   vacio = 'Sin poner',
   icono,
+  iconoPlano = false,
   globito,
   onPress,
   ultima = false,
@@ -112,6 +126,8 @@ export function FilaAjuste({
   valor?: string | null
   vacio?: string
   icono?: ReactNode
+  /** Icono directo, como en la navegación lateral del editor. */
+  iconoPlano?: boolean
   globito?: number
   onPress: () => void
   /** La última del bloque no lleva la línea de separación. */
@@ -122,6 +138,7 @@ export function FilaAjuste({
    */
   destructivo?: boolean
 }) {
+  const compacto = useAjustesCompactos()
   const puesto = !!valor?.trim()
 
   return (
@@ -129,27 +146,27 @@ export function FilaAjuste({
       accessibilityRole="button"
       accessibilityLabel={`${rotulo}${puesto ? `: ${valor}` : vacio ? `: ${vacio}` : ''}`}
       onPress={onPress}
-      className="flex-row items-center gap-3 pl-4 active:bg-muted"
+      className={`flex-row items-center active:bg-muted ${compacto ? 'gap-2.5 pl-3' : 'gap-3 pl-4'}`}
     >
-      {icono ? <IconoAjuste>{icono}</IconoAjuste> : null}
+      {icono ? compacto || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : null}
 
       {/* La separación va adentro y no en el contenedor: así la línea arranca
           después del ícono, como en Ajustes, en vez de cortar el bloque entero. */}
       <View
-        className={`min-h-[52px] min-w-0 flex-1 flex-row items-center gap-3 py-2.5 pr-4 ${
+        className={`${compacto ? 'min-h-[44px] gap-2.5 py-2 pr-3' : 'min-h-[52px] gap-3 py-2.5 pr-4'} min-w-0 flex-1 flex-row items-center ${
           ultima ? '' : 'border-b border-muted'
         }`}
       >
         <View className="min-w-0 shrink">
-          <Text className={`text-[17px] ${destructivo ? 'text-destructive' : 'text-foreground'}`} numberOfLines={1}>
+          <Text className={`${compacto ? 'text-[15px]' : 'text-[17px]'} ${destructivo ? 'text-destructive' : 'text-foreground'}`} numberOfLines={1}>
             {rotulo}
           </Text>
           {detalle ? (
-            <Text className="text-muted-foreground text-[13px] leading-[18px]">{detalle}</Text>
+            <Text className={`text-muted-foreground ${compacto ? 'text-[12px] leading-4' : 'text-[13px] leading-[18px]'}`}>{detalle}</Text>
           ) : null}
         </View>
         <Text
-          className={`min-w-0 flex-1 text-right text-[17px] ${
+          className={`min-w-0 flex-1 text-right ${compacto ? 'text-[14px]' : 'text-[17px]'} ${
             puesto ? 'text-muted-foreground' : 'text-muted-foreground/60'
           }`}
           numberOfLines={1}
@@ -226,6 +243,7 @@ export function FilaInterruptor({
   activo,
   onCambiar,
   icono,
+  iconoPlano = false,
   ultima = false,
 }: {
   rotulo: string
@@ -234,31 +252,34 @@ export function FilaInterruptor({
   activo: boolean
   onCambiar: (activo: boolean) => void
   icono?: ReactNode
+  /** Icono directo, como en la navegación lateral del editor. */
+  iconoPlano?: boolean
   ultima?: boolean
 }) {
+  const compacto = useAjustesCompactos()
   return (
     <Pressable
       accessibilityRole="switch"
       accessibilityLabel={rotulo}
       aria-checked={activo}
       onPress={() => onCambiar(!activo)}
-      className="flex-row items-center gap-3 pl-4 active:bg-muted"
+      className={`flex-row items-center active:bg-muted ${compacto ? 'gap-2.5 pl-3' : 'gap-3 pl-4'}`}
     >
-      {icono ? <IconoAjuste>{icono}</IconoAjuste> : null}
+      {icono ? compacto || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : null}
 
       <View
-        className={`min-h-[52px] min-w-0 flex-1 flex-row items-center gap-3 py-2.5 pr-4 ${
+        className={`${compacto ? 'min-h-[44px] gap-2.5 py-2 pr-3' : 'min-h-[52px] gap-3 py-2.5 pr-4'} min-w-0 flex-1 flex-row items-center ${
           ultima ? '' : 'border-b border-muted'
         }`}
       >
         <View className="min-w-0 flex-1 gap-0.5">
-          <Text className="text-foreground text-[17px]">{rotulo}</Text>
+          <Text className={`text-foreground ${compacto ? 'text-[15px]' : 'text-[17px]'}`}>{rotulo}</Text>
           {detalle ? (
-            <Text className="text-muted-foreground text-[13px] leading-[18px]">{detalle}</Text>
+            <Text className={`text-muted-foreground ${compacto ? 'text-[12px] leading-4' : 'text-[13px] leading-[18px]'}`}>{detalle}</Text>
           ) : null}
         </View>
 
-        <Interruptor activo={activo} />
+        <Interruptor activo={activo} compacto={compacto} />
       </View>
     </Pressable>
   )
@@ -289,6 +310,7 @@ export function FilaOpciones<T extends string | number>({
   icono?: ReactNode
   ultima?: boolean
 }) {
+  const compacto = useAjustesCompactos()
   const elegida = opciones.find((o) => o.value === valor)
   return (
     <Menu
@@ -303,16 +325,16 @@ export function FilaOpciones<T extends string | number>({
         separadorAntes: o.separadorAntes,
       }))}
       trigger={
-        <View className="w-full flex-row items-center gap-3 pl-4">
-          {icono ? <IconoAjuste>{icono}</IconoAjuste> : null}
+        <View className={`w-full flex-row items-center ${compacto ? 'gap-2.5 pl-3' : 'gap-3 pl-4'}`}>
+          {icono ? compacto ? icono : <IconoAjuste>{icono}</IconoAjuste> : null}
           <View
-            className={`min-h-[52px] min-w-0 flex-1 flex-row items-center gap-3 py-2.5 pr-4 ${
+            className={`${compacto ? 'min-h-[44px] gap-2.5 py-2 pr-3' : 'min-h-[52px] gap-3 py-2.5 pr-4'} min-w-0 flex-1 flex-row items-center ${
               ultima ? '' : 'border-b border-muted'
             }`}
           >
-            <Text className="shrink-0 text-foreground text-[17px]">{rotulo}</Text>
+            <Text className={`shrink-0 text-foreground ${compacto ? 'text-[15px]' : 'text-[17px]'}`}>{rotulo}</Text>
             <Text
-              className="min-w-0 flex-1 text-right text-muted-foreground text-[17px]"
+              className={`min-w-0 flex-1 text-right text-muted-foreground ${compacto ? 'text-[14px]' : 'text-[17px]'}`}
               numberOfLines={1}
             >
               {elegida?.label ?? '—'}
@@ -345,11 +367,12 @@ const RESORTE = { damping: 20, stiffness: 300, mass: 0.6, overshootClamping: tru
  * largo para volver se ve como un error de cálculo. Es el mismo criterio que el
  * indicador de las pestañas.
  */
-function Interruptor({ activo }: { activo: boolean }) {
+function Interruptor({ activo, compacto = false }: { activo: boolean; compacto?: boolean }) {
+  const recorrido = compacto ? 18 : RECORRIDO
   const p = useDerivedValue(() => withSpring(activo ? 1 : 0, RESORTE), [activo])
 
   const perilla = useAnimatedStyle(() => ({
-    transform: [{ translateX: p.value * RECORRIDO }],
+    transform: [{ translateX: p.value * recorrido }],
   }))
   /* La pista encendida aparece por encima de la apagada en vez de cambiarle el
      color: animar un color de fondo obliga a interpolarlo cuadro a cuadro, y
@@ -357,7 +380,7 @@ function Interruptor({ activo }: { activo: boolean }) {
   const encendida = useAnimatedStyle(() => ({ opacity: p.value }))
 
   const cuerpo = (
-    <View className="h-[31px] w-[51px] justify-center px-[3px]">
+    <View className={`${compacto ? 'h-[26px] w-[44px]' : 'h-[31px] w-[51px]'} justify-center px-[3px]`}>
       {/* Todo por `style`: NativeWind no procesa `className` sobre componentes
           animados, y acá eso dejaba la pista encendida sin fondo y la perilla
           sin tamaño — el interruptor entero se veía como una píldora gris muerta,
@@ -373,7 +396,9 @@ function Interruptor({ activo }: { activo: boolean }) {
       {/* #121212 es `primary-foreground` (sobre la pista blanca), #4D4D4D es `border`. */}
       <Animated.View
         style={[
-          { width: 25, height: 25, borderRadius: 13, backgroundColor: activo ? '#121212' : '#4D4D4D' },
+          compacto
+            ? { width: 20, height: 20, borderRadius: 10, backgroundColor: activo ? '#121212' : '#4D4D4D' }
+            : { width: 25, height: 25, borderRadius: 13, backgroundColor: activo ? '#121212' : '#4D4D4D' },
           perilla,
         ]}
       />
@@ -388,7 +413,7 @@ function Interruptor({ activo }: { activo: boolean }) {
        librería de referencia los inputs llevan el anillo y el resplandor que
        los leen como una pieza hundida — a diferencia de los botones, que van
        lisos. */
-    <Glass radius={16} style={{ alignSelf: 'center', boxShadow: BORDE_REFERENTE }}>
+    <Glass radius={compacto ? 13 : 16} style={{ alignSelf: 'center', boxShadow: BORDE_REFERENTE }}>
       {cuerpo}
     </Glass>
   )

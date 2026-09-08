@@ -36,6 +36,7 @@ import { ResizableRegion } from '../src/ui/ResizableRegion'
 import { CollapsedSidebar } from '../src/ui/SidebarMotion'
 import { Panel } from '../src/ui/Panel'
 import { CabeceraLateral, BotonLateral } from '../src/ui/CabeceraLateral'
+import { BotonVolver } from '../src/ui/BotonVolver'
 import { Avatar } from '../src/ui/Avatar'
 import { isSentBy, type Message } from '../src/models/message'
 import {
@@ -125,6 +126,7 @@ import {
 import { hayJam } from '../src/state/jam'
 import { SearchDropdown } from '../src/ui/SearchDropdown'
 import { ScrollArea } from '../src/ui/ScrollArea'
+import { ScrollAreaTecho } from '../src/ui/ScrollAreaContext'
 import { SearchRecents } from '../src/ui/SearchRecents'
 import { useColapso } from '../src/ui/useColapso'
 import { BotonVidrio, Glass, HAY_VIDRIO } from '../src/ui/Glass'
@@ -2392,10 +2394,11 @@ export default function Home() {
            * el contenido corrido a la izquierda.
            */}
           <Animated.View style={[{ flex: 1, minHeight: 0 }, estiloArrastre]}>
+          <ScrollAreaTecho.Provider value={music ? techo : 0}>
           {!suelto ? (
             <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 40 }}>
-              <LinearGradient pointerEvents="none" colors={['rgba(18,18,18,0.94)', 'rgba(18,18,18,0.65)', 'rgba(18,18,18,0)']}
-                locations={[0, 0.5, 1]} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 76 }} />
+              {music || (caraCentro && pistaSonando) ? <LinearGradient pointerEvents="none" colors={['rgba(18,18,18,0.94)', 'rgba(18,18,18,0.65)', 'rgba(18,18,18,0)']}
+                locations={[0, 0.5, 1]} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 76 }} /> : null}
               <View pointerEvents="box-none" className="flex-row items-center gap-1 px-3 py-2">
                 <BotonLateral label="Atrás" disabled={music && !canGoBack}
                   onPress={music ? goBack : cambiarModo}
@@ -2704,14 +2707,10 @@ export default function Home() {
                       {/* Solo en el teléfono: en escritorio la lista está a la
                           izquierda, siempre a la vista, y no hay a dónde volver. */}
                       {suelto ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Volver a las conversaciones"
+                        <BotonVolver
+                          label="Volver a las conversaciones"
                           onPress={() => setChatAbierto(false)}
-                          className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-                        >
-                          <IconBack size={19} color={ICON_COLOR.foreground} />
-                        </Pressable>
+                        />
                       ) : null}
                       {/*
                        * La foto y el nombre abren su perfil.
@@ -2819,22 +2818,14 @@ export default function Home() {
                         />
                       )}
                     />
+                    {/* El velo pertenece al hilo: la cabecera queda fuera y legible. */}
+                    <LinearGradient
+                      pointerEvents="none"
+                      colors={['rgba(18,18,18,0.92)', 'rgba(18,18,18,0)']}
+                      style={{ position: 'absolute', zIndex: 10, left: 0, right: 0, top: 0, height: 24 }}
+                    />
                     </Movible>
                   )}
-
-                  <LinearGradient
-                    pointerEvents="none"
-                    colors={['rgba(18,18,18,1)', 'rgba(18,18,18,1)', 'rgba(18,18,18,0)']}
-                    locations={[0, 0.62, 1]}
-                    style={{
-                      position: 'absolute',
-                      zIndex: 10,
-                      left: 0,
-                      right: 0,
-                      top: 0,
-                      height: 124,
-                    }}
-                  />
 
                   {/* Con vidrio no va: terminaría opaco justo detrás del campo
                       y el material difuminaría un gris plano en vez del hilo.
@@ -3018,6 +3009,7 @@ export default function Home() {
               )}
             </Panel>
           )}
+          </ScrollAreaTecho.Provider>
           </Animated.View>
           </GestureDetector>
 

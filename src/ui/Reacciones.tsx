@@ -1,7 +1,9 @@
 import { AutoresReaccion } from './AutoresReaccion'
 import { useLecturaViva } from './useLecturaViva'
 import { TextoPerfil as Text } from './FuentePerfil'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { escuchaVigente, VIGENCIA_ESCUCHA_MS } from '../services/lecturaViva'
+import { useUser } from '../state/session'
 import { ActivityIndicator, Image, Pressable, ScrollView, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import { mensajeError } from '../lib/mensajeError'
@@ -53,7 +55,7 @@ export const EMOJIS = ['🔥', '💜', '😭', '😂', '🎧', '👀'] as const
  * Es la idea de Airbuds puesta en el perfil: la música ajena que suena **ahora**
  * es lo más vivo que tiene un perfil, y señalarla tiene que costar un toque.
  *
- * Solo aparece si hay algo sonando y si sos su contacto — la base devuelve
+ * Solo aparece con opt-in, escucha vigente y permiso — la base devuelve
  * vacío en los dos casos y no se distinguen. Sin esto no hay hueco: un cartel
  * de «no está escuchando nada» sería contar una ausencia que a nadie le sirve.
  */
@@ -65,10 +67,20 @@ export function EscuchaConReacciones({
   ownerId: string
   nombre: string
   /** Se acaba de mandar una: el perfil recarga su lista. */
-  onReaccion: () => void
+  onReaccion?: () => void
 }) {
   const leer = useCallback(() => escuchaDe(ownerId), [ownerId])
-  const escucha = useLecturaViva(ownerId, leer)
+  const user = useUser()
+  const escucha = useLecturaViva(`${user?.id ?? ''}:${ownerId}`, leer)
+  const puedeReaccionar = !!user && user.id !== ownerId && !!onReaccion
+  const [, actualizarReloj] = useState(0)
+  // Caduca incluso si la siguiente RPC queda esperando por una desconexión.
+  const latido = escucha?.cuando?.getTime()
+  useEffect(() => {
+    if (latido === undefined) return
+    const timer = setTimeout(() => actualizarReloj(n => n + 1), Math.max(0, latido + VIGENCIA_ESCUCHA_MS - Date.now() + 1))
+    return () => clearTimeout(timer)
+  }, [latido])
   const enviando = useRef(false)
   /* Cuál se está mandando: apaga la fila entera mientras viaja, así un toque
      nervioso no manda seis. */
@@ -79,13 +91,13 @@ export function EscuchaConReacciones({
 
   const mandar = useCallback(
     async (emoji: string) => {
-      if (enviando.current || !escucha?.suena) return
+      if (enviando.current || !puedeReaccionar || !escucha || !escuchaVigente(escucha.suena, escucha.cuando)) return
       enviando.current = true
       setMandando(emoji)
       try {
         await reaccionar(ownerId, emoji)
         setMandado(`${escucha.track.videoId}:${emoji}`)
-        onReaccion()
+        onReaccion?.()
       } catch (e) {
         avisar(mensajeError(e), true)
       } finally {
@@ -93,10 +105,10 @@ export function EscuchaConReacciones({
         setMandando(null)
       }
     },
-    [escucha, onReaccion, ownerId],
+    [escucha, onReaccion, ownerId, puedeReaccionar],
   )
 
-  if (escucha === undefined || escucha === null) return null
+  if (!escucha || !escuchaVigente(escucha.suena, escucha.cuando)) return null
 
   const { track, suena } = escucha
 
@@ -110,7 +122,7 @@ export function EscuchaConReacciones({
                 una interfaz sin colores distingue «ahora» por el movimiento. */}
             <PlayingBars playing={suena} size={11} />
             <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-              {suena ? 'Escuchando ahora' : 'Lo último que escuchó'}
+              Escuchando ahora
             </Text>
           </View>
           <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
@@ -122,7 +134,7 @@ export function EscuchaConReacciones({
         </View>
       </View>
 
-      {suena ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
+      {puedeReaccionar ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
         {EMOJIS.map((emoji) => {
           const esta = mandando === emoji
           const listo = mandado === `${track.videoId}:${emoji}`
