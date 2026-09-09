@@ -26,7 +26,8 @@ select pg_temp.denied($q$insert into auth.users(id,email,raw_user_meta_data) val
 insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
  ('00000000-0000-4000-8000-00000000aa01','owner.access@example.test','{"provider":"google"}','{"name":"Owner","username":"nihuel"}'),
  ('00000000-0000-4000-8000-00000000aa02','approved.access@example.test','{"provider":"google"}','{"name":"Approved"}'),
- ('00000000-0000-4000-8000-00000000aa03','pending.access@example.test','{"provider":"google"}','{"name":"Pending","username":"nihuel","is_admin":true,"status":"approved","role":"service_role"}');
+ ('00000000-0000-4000-8000-00000000aa03','pending.access@example.test','{"provider":"google"}','{"name":"Pending","username":"nihuel","is_admin":true,"status":"approved","role":"service_role"}'),
+ ('00000000-0000-4000-8000-00000000aa04','remove.access@example.test','{"provider":"google"}','{"name":"Remove me"}');
 select pg_temp.check_ok((select status='pending' from app_private.access_accounts where user_id='00000000-0000-4000-8000-00000000aa03'),'Google defaults pending despite forged metadata');
 update app_private.access_accounts set status='approved' where user_id in ('00000000-0000-4000-8000-00000000aa01','00000000-0000-4000-8000-00000000aa02');
 select app_private.bootstrap_access_owner('00000000-0000-4000-8000-00000000aa01');
@@ -61,6 +62,7 @@ select pg_temp.denied('select * from realtime.messages');
 select pg_temp.denied('select public.get_my_profile()');
 select pg_temp.denied('select public.access_requests()');
 select pg_temp.denied($q$select public.decide_access('00000000-0000-4000-8000-00000000aa03',true)$q$);
+select pg_temp.denied($q$select public.delete_access_account('00000000-0000-4000-8000-00000000aa04')$q$);
 select pg_temp.denied('select public.access_token_hook(''{}'')');
 select pg_temp.denied($q$select app_private.bootstrap_access_owner('00000000-0000-4000-8000-00000000aa03')$q$);
 reset role;
@@ -91,11 +93,15 @@ select set_config('request.path','/rpc/access_status',true);
 select public.check_app_access();
 select pg_temp.denied('select public.access_requests()');
 select pg_temp.denied($q$select public.decide_access('00000000-0000-4000-8000-00000000aa03',true)$q$);
+select pg_temp.denied($q$select public.delete_access_account('00000000-0000-4000-8000-00000000aa04')$q$);
 
 select pg_temp.as_user('00000000-0000-4000-8000-00000000aa01');
 select pg_temp.check_ok(public.access_status()='{"status":"approved","is_admin":true}','owner pinned to UUID');
 select pg_temp.check_ok(exists(select 1 from public.access_requests() where user_id='00000000-0000-4000-8000-00000000aa03' and status='pending' and email='pending.access@example.test'),'admin sees request fields');
 select pg_temp.denied($q$select public.decide_access('00000000-0000-4000-8000-00000000aa01',false)$q$);
+select pg_temp.denied($q$select public.delete_access_account('00000000-0000-4000-8000-00000000aa01')$q$);
+select pg_temp.check_ok(public.delete_access_account('00000000-0000-4000-8000-00000000aa04')->>'deleted'='true','admin deletes non-owner account');
+select pg_temp.check_ok(not exists(select 1 from auth.users where id='00000000-0000-4000-8000-00000000aa04'),'deleted auth account is gone');
 select pg_temp.check_ok(public.decide_access('00000000-0000-4000-8000-00000000aa03',false)->>'status'='rejected','reject');
 select pg_temp.as_user('00000000-0000-4000-8000-00000000aa03');
 select pg_temp.check_ok(public.access_status()->>'status'='rejected','recheck remains rejected');
@@ -142,7 +148,7 @@ select pg_temp.check_ok(not exists(
   select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
   where n.nspname='public' and p.prosecdef and p.prorettype not in ('trigger'::regtype,'event_trigger'::regtype)
   and has_function_privilege('authenticated',p.oid,'execute')
-  and p.proname not in ('auth_email_for_username','access_status','access_requests','decide_access','check_app_access')
+  and p.proname not in ('auth_email_for_username','access_status','access_requests','decide_access','delete_access_account','check_app_access')
   and p.prosrc not like '%app_private.require_approved()%'
 ),'all client definers guarded');
 select pg_temp.check_ok(not exists(

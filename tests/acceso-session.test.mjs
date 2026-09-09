@@ -53,13 +53,37 @@ test('fallo de red inicial permanece cerrado y permite reintentar',async()=>{
  assert.equal(f.api.useUser(),null);assert.ok(f.api.useAccessError());assert.ok(!f.calls.includes('subscribe'))
  f.fail(null);await f.api.refrescarAcceso();assert.equal(f.api.useAccessStatus().status,'pending')
 })
+/*
+ * Las cuatro rutas de link compartido, y solo esas cuatro, se dibujan sin
+ * cuenta aprobada. Están afuera de `Stack.Protected` a propósito —adentro no se
+ * montan, y un link de WhatsApp terminaba en el login— pero eso les saca la
+ * única protección declarativa que hay, así que acá se exige la que las
+ * reemplaza: que cada una caiga en `Aterrizaje`, que no lee nada más que
+ * `tarjeta_enlace`. Sumar una quinta ruta pública es cambiar esta lista, que es
+ * exactamente el peso que esa decisión tiene que tener.
+ */
+const RUTAS_DE_ENLACE=new Set(['cancion/[id]','lista/[id]','jam/[code]','perfil/[usuario]'])
+
 test('todas las rutas de producto están declaradas dentro del grupo aprobado',()=>{
  const layout=readFileSync('app/_layout.tsx','utf8')
  const protectedRoutes=layout.split('<Stack.Protected guard={approved}>')[1].split('</Stack.Protected>')[0]
  const names=new Set([...protectedRoutes.matchAll(/name="([^"]+)"/g)].map(m=>m[1]))
- const publicRoutes=new Set(['sign-in','sign-up','acceso-pendiente','auth/callback','_layout'])
+ const publicRoutes=new Set(['sign-in','sign-up','acceso-pendiente','auth/callback','_layout',...RUTAS_DE_ENLACE])
  const walk=(path,prefix='')=>readdirSync(path,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path+'/'+e.name,prefix+e.name+'/'):e.name.endsWith('.tsx')?[prefix+e.name.slice(0,-4)]:[])
  for(const route of walk('app'))if(!publicRoutes.has(route))assert.ok(names.has(route),'Ruta sin protección: '+route)
+ for(const route of RUTAS_DE_ENLACE)assert.ok(!names.has(route),'Ruta de enlace adentro del grupo: '+route)
+})
+
+test('cada ruta de enlace tiene su aterrizaje y nada más que eso sin sesión',()=>{
+ for(const route of RUTAS_DE_ENLACE){
+  const fuente=readFileSync('app/'+route+'.tsx','utf8')
+  assert.match(fuente,/<Aterrizaje que="(cancion|lista|jam|perfil)"/,'Sin aterrizaje: '+route)
+  assert.match(fuente,/if \(!aprobado\) return <Aterrizaje/,'El aterrizaje no cierra el paso: '+route)
+ }
+ /* Y que el gate imperativo no las mande al login antes de que se vean. */
+ const layout=readFileSync('app/_layout.tsx','utf8')
+ assert.match(layout,/if \(!enAterrizaje\) router\.replace\('\/sign-in'\)/)
+ assert.match(layout,/if \(!onPending && !enAterrizaje\) router\.replace\('\/acceso-pendiente'\)/)
 })
 
 test('una carga inicial fallida de bandeja puede reintentarse sin salir de la cuenta',async()=>{

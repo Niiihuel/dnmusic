@@ -17,6 +17,8 @@ import { Menu, type MenuItem } from './Menu'
 import { formatLength } from './SeekBar'
 import { Skeleton, SkeletonList } from './Skeleton'
 import { TrackColumnHeader, TrackRow } from './TrackRow'
+import { BuscadorColeccion, CampoBusquedaColeccion, useBusquedaColeccion } from './BusquedaColeccion'
+import { Vacio } from './Vacio'
 import { BotonMeGusta } from './BotonMeGusta'
 import { BotonAleatorio } from './Transport'
 import { useMeGusta } from '../state/gustos'
@@ -27,6 +29,7 @@ import {
   IconPause,
   IconPlay,
   IconPlus,
+  IconSearch,
 } from './icons'
 
 /**
@@ -68,6 +71,7 @@ export function AlbumPanel({
   pendingId: string | null
 }) {
   const [loaded, setLoaded] = useState<{ id: string; info: AlbumInfo | null } | null>(null)
+  const busqueda = useBusquedaColeccion(`${kind}:${albumId}`)
   const [hovered, setHovered] = useState<string | null>(null)
   const cover = useCoverSize()
   /** En el teléfono la fila deja de ser una tabla. Ver `TrackRow`. */
@@ -122,6 +126,11 @@ export function AlbumPanel({
   }
 
   const tapa = artworkSource(album.artworkPath, album.artworkUrl, 640)
+  const q = busqueda.filtro.trim().toLowerCase()
+  // Filtrar después de numerar conserva el índice original para la cola completa.
+  const visibles = album.tracks.map((track, index) => ({ track, index }))
+    .filter(({ track }) => !q || `${track.title} ${track.artist}`.toLowerCase().includes(q))
+  const contexto = kind === 'album' ? 'álbum' : 'lista'
   const total = album.tracks.length
   const totalMs = album.tracks.reduce((sum, t) => sum + t.durationMs, 0)
   const ids = new Set(album.tracks.map((t) => t.videoId))
@@ -236,6 +245,9 @@ export function AlbumPanel({
                 blanco de acento, apagado el gris (docs/DESIGN.md). */}
             <BotonAleatorio size={19} lado={44} disabled={total === 0} />
 
+            <BuscadorColeccion contexto={contexto} abierto={busqueda.abierto}
+              filtro={busqueda.filtro} onFiltro={busqueda.setFiltro}
+              onAbrir={busqueda.alternar} vacia={total === 0} />
             {menu.length ? (
               <Menu items={menu} label={`Opciones de ${album.title}`} size={17} />
             ) : null}
@@ -243,10 +255,16 @@ export function AlbumPanel({
         }
       />
 
+      <CampoBusquedaColeccion contexto={contexto} abierto={busqueda.abierto}
+        filtro={busqueda.filtro} onFiltro={busqueda.setFiltro} onCerrar={busqueda.alternar} />
+      {q && visibles.length === 0 ? <Vacio compacto
+        icono={<IconSearch size={20} color={ICON_COLOR.muted} />}
+        titulo="Sin resultados"
+        detalle={`No encontramos «${busqueda.filtro.trim()}» en ${kind === 'album' ? 'este álbum' : 'esta lista'}.`} /> : null}
       {total > 0 ? <TrackColumnHeader trailing={72} /> : null}
 
       <View className="gap-1">
-        {album.tracks.map((track, i) => {
+        {visibles.map(({ track, index: i }) => {
           const esta = sounding?.videoId === track.videoId
           return (
             <TrackRow

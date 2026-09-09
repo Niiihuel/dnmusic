@@ -22,6 +22,8 @@ import {
   type PlaylistTrack,
 } from '../../src/services/playlists'
 import { avisar } from '../../src/state/aviso'
+import { useUser } from '../../src/state/session'
+import { Aterrizaje } from '../../src/ui/Aterrizaje'
 import { playQueue, togglePlayback, usePlaybackTrack, useWantPlay } from '../../src/state/playback'
 import { abrirLista, usePiso } from '../../src/state/shell'
 import { Avatar } from '../../src/ui/Avatar'
@@ -86,9 +88,20 @@ export default function ListaPublica() {
   const [guardando, setGuardando] = useState(false)
   const sonando = usePlaybackTrack()
   const suena = useWantPlay()
+  /*
+   * Quien todavía no está adentro ve la tarjeta, no la lista.
+   *
+   * `useUser` ya contesta las dos preguntas en una: devuelve `undefined`
+   * mientras la sesión se resuelve —y ahí no se dibuja nada, o parpadearía la
+   * tarjeta en cada arranque— y `null` tanto sin sesión como con la cuenta sin
+   * aprobar, que para esta pantalla es lo mismo. Ver `Aterrizaje` y la
+   * excepción del gate en `app/_layout`.
+   */
+  const quien = useUser()
+  const aprobado = !!quien
 
   useEffect(() => {
-    if (!id || fresco) return
+    if (!id || fresco || !aprobado) return
     let vivo = true
 
     const cargar = async () => {
@@ -117,7 +130,7 @@ export default function ListaPublica() {
     return () => {
       vivo = false
     }
-  }, [id, fresco, colaborar])
+  }, [id, fresco, colaborar, aprobado])
 
   /*
    * De quién es la fila que suena.
@@ -157,6 +170,9 @@ export default function ListaPublica() {
   const nombreDueño = lista?.dueño.displayName?.trim() || `@${lista?.dueño.username ?? ''}`
   const inicialesDueño = lista?.dueño.displayName?.trim() || lista?.dueño.username || ''
   const total = tracks.length
+
+  if (quien === undefined) return <SafeAreaView className="flex-1 bg-background" />
+  if (!aprobado) return <Aterrizaje que="lista" id={id ?? ''} />
 
   return (
     <SafeAreaView

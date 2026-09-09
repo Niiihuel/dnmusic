@@ -13,6 +13,19 @@
           {
             "/": "/lista/*",
             "comment": "Listas públicas compartidas: abre la app en esa lista"
+          },
+          {
+            "/": "/cancion/*",
+            "comment": "Una canción compartida: abre la app en esa canción"
+          },
+          {
+            "/": "/perfil/*",
+            "comment": "Un perfil compartido: abre la app en ese perfil"
+          },
+          {
+            "/": "/embed/*",
+            "exclude": true,
+            "comment": "La tarjeta incrustada se mira donde está; abrir la app la sacaría de su iframe"
           }
         ]
       }

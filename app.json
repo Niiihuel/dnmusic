@@ -2,7 +2,7 @@
   "expo": {
     "name": "dnmusic",
     "slug": "flora",
-    "version": "1.11.0",
+    "version": "1.13.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "dnmusic",
@@ -36,6 +36,38 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "dnmusic-app.vercel.app",
+              "pathPrefix": "/cancion"
+            },
+            {
+              "scheme": "https",
+              "host": "dnmusic-app.vercel.app",
+              "pathPrefix": "/lista"
+            },
+            {
+              "scheme": "https",
+              "host": "dnmusic-app.vercel.app",
+              "pathPrefix": "/jam"
+            },
+            {
+              "scheme": "https",
+              "host": "dnmusic-app.vercel.app",
+              "pathPrefix": "/perfil"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {

@@ -315,6 +315,6 @@ export function CabeceraEdicionPerfil({ titulo, ocupado, puedeGuardar, onCancela
   onGuardar?: () => void
 }) {
   return <EncabezadoHoja titulo={titulo} velo={false}
-    izquierda={<BotonHoja tipo="volver" label={rotuloVolver === 'Cancelar' ? 'Cancelar edición' : 'Volver a editar perfil'} disabled={ocupado} onPress={onCancelar} />}
+    izquierda={<BotonHoja tipo={rotuloVolver === 'Cancelar' ? 'cerrar' : 'volver'} label={rotuloVolver === 'Cancelar' ? 'Cancelar edición' : 'Volver a editar perfil'} disabled={ocupado} onPress={onCancelar} />}
     derecha={onGuardar ? <BotonConfirmar label="Guardar" activo={!!puedeGuardar} ocupado={ocupado} onPress={onGuardar} /> : undefined} />
 }

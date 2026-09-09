@@ -185,6 +185,8 @@ import {
   IconUsers,
 } from '../src/ui/icons'
 import { compartirLista } from '../src/lib/compartirLista'
+import { compartirCancion } from '../src/lib/compartir'
+import { estadoControlWeb } from '../src/ui/estadoControl'
 
 const SIDEBAR_PX = 780
 const DETAIL_PX = 1120
@@ -1462,14 +1464,31 @@ export default function Home() {
         icon: <IconQueue size={15} color={ICON_COLOR.muted} />,
         sfSymbol: 'text.badge.plus',
       },
-      /* La tarjeta de historia de la canción: en el teléfono abre la hoja de
-         compartir, en la web baja el PNG. Ver `CompartirHistoria`. */
+      /*
+       * Las dos formas de pasar una canción, en este orden.
+       *
+       * «Compartir» manda el **link**, que es lo que espera cualquiera que
+       * toque compartir y lo único que del otro lado se puede escuchar: quien
+       * lo abre ve la tapa y el título aunque no tenga la app, y si tiene
+       * cuenta, suena. Ver `lib/compartir` y `app/cancion/[id]`.
+       *
+       * «Compartir historia» es la tarjeta de 1080×1920 para Instagram, que es
+       * otra cosa: una imagen linda que no lleva a ningún lado. Estaba primera
+       * y sin apellido, y era la única — mandar una canción por WhatsApp
+       * terminaba en una captura de pantalla. Ver `CompartirHistoria`.
+       */
       {
         label: 'Compartir',
         rapida: true,
-        onPress: () => compartirHistoria(playlistTrackDeResultado(track)),
+        onPress: () => void compartirCancion(track),
         icon: <IconShare size={15} color={ICON_COLOR.muted} />,
         sfSymbol: 'square.and.arrow.up',
+      },
+      {
+        label: 'Compartir historia',
+        onPress: () => compartirHistoria(playlistTrackDeResultado(track)),
+        icon: <IconImage size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'photo',
       },
       /*
        * Dónde guardarla. En el teléfono abre **la hoja** de elegir lista —con
@@ -2721,6 +2740,7 @@ export default function Home() {
                        * la misma esquina.
                        */}
                       <Pressable
+                        {...estadoControlWeb('none')}
                         accessibilityRole="button"
                         accessibilityLabel={`Ver el perfil de ${contactName}`}
                         onPress={() => router.push(`/perfil/${contact.username}`)}

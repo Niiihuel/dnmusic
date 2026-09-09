@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.13.0",
+    "fecha": "9 de septiembre de 2026",
+    "titulo": "Mandá una canción y que del otro lado se escuche.",
+    "cambios": [
+      "Las canciones ya tienen link propio. Pasás una por WhatsApp y del otro lado se ve la tapa, el título y el artista antes de abrir nada. Las listas, los Jam y los perfiles compartidos también muestran su tarjeta.",
+      "Quien recibe un link ve qué le mandaste aunque todavía no tenga cuenta, y al entrar vuelve exactamente a eso. Escuchar, ver un perfil entero o entrar a un Jam siguen pidiendo cuenta aprobada.",
+      "Si tenés dnmusic instalado, el link abre la app: en iPhone directamente, y en la computadora con «Abrir en la app».",
+      "«Compartir» ahora manda el link, que es lo que se puede escuchar. La tarjeta para historias de Instagram quedó al lado, como «Compartir historia». Un link también se puede incrustar en otra página, como el reproductor chico de Spotify.",
+      "Podés conectar tu cuenta de Google desde Configuración → Cuenta, sin perder el perfil, las listas ni la aprobación. En la computadora, Google abre en el navegador y vuelve solo.",
+      "dnmusic avisa cuando hay una versión nueva. Si la tuya quedó demasiado atrás, pide actualizar antes de seguir; ese pedido no se pospone. El aviso común sí se descarta y respeta tu preferencia.",
+      "Solicitudes de acceso permite además eliminar una cuenta, y la cuenta del dueño nunca se puede borrar desde la app.",
+      "Seis tipografías nuevas para el perfil: editorial, geométrica, urbana, caligráfica, suave y clásica. Vienen empaquetadas, así que se ven aunque estés sin conexión.",
+      "En iPhone, buscar dentro de una lista o un álbum usa el buscador del sistema, y mantener apretada una canción abre el menú nativo de iOS con su vista previa. El filtro de un álbum conserva el orden original y la cola completa.",
+      "El video de fondo del perfil se sube bien desde el iPhone, incluso cuando el original estaba solo en iCloud, y abrir un perfil con video ya no corta la música. Un video que no puede reproducirse deja de mostrarse como un fondo negro sin explicación.",
+      "Los globitos de ayuda de la computadora quedan pegados al control que explican. Las hojas de iOS usan el control de navegación del sistema y su material nativo."
+    ]
+  },
+  {
     "version": "1.12.0",
     "fecha": "8 de septiembre de 2026",
     "titulo": "Entrá más fácil y escuchá sin esperar.",

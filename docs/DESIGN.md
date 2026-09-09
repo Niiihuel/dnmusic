@@ -16,6 +16,14 @@ Estas convenciones rigen las pantallas nuevas y sus adaptaciones:
   Las superficies agrupadas tienen radio de 16 px. Cada nivel de contenido
   necesita una jerarquía clara; evitar envolver una tarjeta compartida en
   varias tarjetas adicionales.
+- **El link compartido tiene su propia anatomía.** Quien llega desde afuera no
+  viene navegando: primero tiene que resolver si esto le interesa, y recién
+  después la puerta. `ui/Aterrizaje` pone la tapa grande y centrada con el
+  degradado de su color, el título de 22 px y el artista de 15 px debajo, y una
+  sola acción principal —entrar— con «Abrir en la app» como secundaria en
+  `muted`. La tapa se despega por sombra, nunca por borde. La versión incrustable
+  (`/embed/…`) repite los mismos tokens escritos a mano: no puede traer el
+  bundle. Ver [los links compartidos](COMPARTIR.md).
 - **PC y iOS comparten el flujo, no el ancho.** Los formularios breves se
   presentan centrados en PC; la navegación extensa puede usar barras laterales.
   En iOS se usan hojas y contenido apilado. Los controles táctiles tienen
@@ -429,3 +437,20 @@ gigante en el navegador — así apareció el logo de 1024px ocupando todo el lo
 `style={{ width, height }}`, nunca por `className`. Las imágenes por URI no
 sufren esto (el tamaño no se conoce al renderizar), pero seguir la misma regla
 no cuesta nada.
+
+
+## Hojas y regreso en iOS
+
+El encabezado distingue volver a la pantalla anterior (chevron) de cerrar una
+presentación modal (cruz). Ambos usan el control circular de 44 pt, un nombre
+accesible y el mismo material de `BotonVolver`/`BotonHoja`. No se añade texto
+visible «Volver» junto al icono en el diseño actual de iOS.
+Referencia: [Apple HIG: Toolbars](https://developer.apple.com/design/human-interface-guidelines/toolbars)
+y [Sheets](https://developer.apple.com/design/human-interface-guidelines/sheets).
+
+Las rutas con listas o contenido flexible (Spotify, recorte, tipografía) usan
+`formSheet` con un detent explícito y raíz `collapsable={false}`. Reservar
+`fitToContents` para contenido de altura natural: una raíz `flex: 1` no permite
+al sistema deducir la altura intrínseca. El fondo de la hoja es opaco y sólo su
+contenido se desplaza. En escritorio se conserva el modal centrado de `Hoja`.
+Referencia: [Expo Router: Stack](https://docs.expo.dev/router/advanced/stack/).

@@ -23,10 +23,13 @@ import {
 import { EscuchaConReacciones } from '../../src/ui/Reacciones'
 import { FilaSostener } from '../../src/ui/Mantener'
 import { Vacio } from '../../src/ui/Vacio'
-import { ICON_COLOR, IconBan, IconUser } from '../../src/ui/icons'
+import { ICON_COLOR, IconBan, IconShare, IconUser } from '../../src/ui/icons'
+import { FilaAjuste } from '../../src/ui/Ajustes'
+import { compartirPerfil } from '../../src/lib/compartir'
 import { fetchProfile, type Profile } from '../../src/services/profile'
 import { blockUser } from '../../src/services/contacts'
-import { refreshConversations, useMyProfile } from '../../src/state/session'
+import { refreshConversations, useMyProfile, useUser } from '../../src/state/session'
+import { Aterrizaje } from '../../src/ui/Aterrizaje'
 import { avisar } from '../../src/state/aviso'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { usePiso } from '../../src/state/shell'
@@ -72,12 +75,17 @@ export default function PerfilAjeno() {
    * esa diferencia, el cartel de «no hay nada para ver» parpadearía en cada
    * apertura antes de que llegue la respuesta.
    */
+  /* Quien todavía no está adentro ve la tarjeta, no el perfil: `useUser` da
+     `undefined` mientras la sesión se resuelve y `null` tanto sin sesión como
+     con la cuenta sin aprobar. Ver `Aterrizaje`. */
+  const quien = useUser()
+  const aprobado = !!quien
   const [cargado, setCargado] = useState<{ usuario: string; perfil: Profile | null } | null>(null)
   const fresco = !!usuario && cargado?.usuario === usuario
   const perfil = fresco ? cargado.perfil : undefined
 
   useEffect(() => {
-    if (!usuario || fresco) return
+    if (!usuario || fresco || !aprobado) return
     let vivo = true
     fetchProfile(usuario)
       .then((p) => vivo && setCargado({ usuario, perfil: p }))
@@ -85,7 +93,7 @@ export default function PerfilAjeno() {
     return () => {
       vivo = false
     }
-  }, [usuario, fresco])
+  }, [usuario, fresco, aprobado])
 
   /* Sube al mandar una reacción: es lo que hace que la pared se relea sin
      recargar el perfil entero. */
@@ -200,6 +208,26 @@ export default function PerfilAjeno() {
   const resumen = perfil ? <Resumen ownerId={perfil.userId} marcoPerfil={perfil.marcoPerfil}
     vitrinas={cuantasVitrinas} desde={perfil.createdAt} /> : null
 
+  /*
+   * Pasar el perfil de alguien, al fondo y en su propia superficie.
+   *
+   * Va separado de bloquear —que es la otra cosa que se hace acá— porque no se
+   * parecen en nada: una comparte y la otra saca de tu vista, y compartirlas de
+   * a dos filas en la misma tarjeta invitaría a errarle. El link solo muestra
+   * algo si el perfil está en público; si no, quien lo abra ve que no lo está.
+   * Ver `lib/compartir`.
+   */
+  const compartir = perfil ? (
+    <View className="overflow-hidden rounded-2xl bg-card">
+      <FilaAjuste
+        rotulo={soyYo ? 'Compartir mi perfil' : `Compartir el perfil de @${perfil.username}`}
+        icono={<IconShare size={17} color={ICON_COLOR.muted} />}
+        onPress={() => void compartirPerfil(perfil.username, perfil.displayName)}
+        ultima
+      />
+    </View>
+  ) : null
+
   /* Bloquear vive al fondo del perfil, fuera de las pestañas: es la pantalla
      de esa persona y es una decisión sobre esa persona, no sobre lo que armó
      ni sobre lo que escucha. Se sostiene, como todo lo que saca algo de tu
@@ -216,6 +244,9 @@ export default function PerfilAjeno() {
         />
       </View>
     ) : null
+
+  if (quien === undefined) return <SafeAreaView className="flex-1 bg-background" />
+  if (!aprobado) return <Aterrizaje que="perfil" id={usuario ?? ''} />
 
   return (
     <FuentePerfil fuente={perfil?.fuente}>
@@ -287,6 +318,7 @@ export default function PerfilAjeno() {
                       <View className="w-[320px] shrink-0 gap-7">
                         {resumen}
                         {reciente}
+                        {compartir}
                         {bloqueo}
                       </View>
                     </View>
@@ -300,6 +332,7 @@ export default function PerfilAjeno() {
                         instante en blanco que una pestaña que salta. */}
                       {pestana === 'space' ? vitrinas : pestana === 'reciente' ? <>{resumen}{reciente}</> : null}
 
+                      {compartir}
                       {bloqueo}
                     </>
                   )}

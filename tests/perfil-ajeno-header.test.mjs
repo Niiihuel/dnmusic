@@ -40,9 +40,14 @@ function render({ width = 390, top = 59, bottom = 34, bannerPath = null, state =
     '../../src/ui/PestanasPerfil': { pestanaInicial: () => 'reciente', PestanasPerfil: 'PestanasPerfil', Reciente: 'Reciente' },
     '../../src/ui/Reacciones': { EscuchaConReacciones: 'EscuchaConReacciones' },
     '../../src/ui/Mantener': { FilaSostener: 'FilaSostener' }, '../../src/ui/Vacio': { Vacio: 'Vacio' },
-    '../../src/ui/icons': { ICON_COLOR: {}, IconBack: 'IconBack', IconBan: 'IconBan', IconUser: 'IconUser' },
+    '../../src/ui/icons': { ICON_COLOR: {}, IconBack: 'IconBack', IconBan: 'IconBan', IconShare: 'IconShare', IconUser: 'IconUser' },
+    '../../src/ui/Ajustes': { FilaAjuste: 'FilaAjuste' },
+    '../../src/lib/compartir': { compartirPerfil: forbidden },
     '../../src/services/profile': { fetchProfile: forbidden }, '../../src/services/contacts': { blockUser: forbidden },
-    '../../src/state/session': { refreshConversations: forbidden, useMyProfile: () => ({ userId: 'local-self' }) },
+    /* El perfil se dibuja sin sesión en modo tarjeta; acá se prueba lo que ve
+       quien sí tiene cuenta aprobada. Ver `ui/Aterrizaje`. */
+    '../../src/ui/Aterrizaje': { Aterrizaje: 'Aterrizaje' },
+    '../../src/state/session': { refreshConversations: forbidden, useMyProfile: () => ({ userId: 'local-self' }), useUser: () => ({ id: 'local-self' }) },
     '../../src/state/aviso': { avisar: forbidden }, '../../src/lib/mensajeError': { mensajeError: forbidden },
     '../../src/state/shell': { usePiso: extra => 80 + extra },
     '../../src/lib/volver': compile('src/lib/volver.ts', {}),

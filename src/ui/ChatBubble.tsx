@@ -8,6 +8,7 @@ import { formatMessageDate } from './MessageCard'
 import { Onda, usePicos } from './Onda'
 import { SeekBar, formatClock } from './SeekBar'
 import { ICON_COLOR, IconMusic, IconPause, IconPlay } from './icons'
+import { estadoControlWeb } from './estadoControl'
 
 export function ChatBubble({
   message,
@@ -50,15 +51,16 @@ export function ChatBubble({
     <View className={`w-full ${mine ? 'items-end' : 'items-start'}`}>
       <View style={{ maxWidth: '92%', minWidth: 140, ...(song ? { width: 360 } : {}) }}>
         <View
-          style={selected ? { backgroundColor: '#303030' } : undefined}
-          className={`gap-2 rounded-2xl px-3.5 py-2.5 active:opacity-80 ${
-            mine ? 'rounded-br-sm bg-muted' : 'rounded-bl-sm bg-card'
+          style={selected ? { backgroundColor: '#2A2A2C', borderColor: 'rgba(255,255,255,0.18)' } : undefined}
+          className={`gap-2 rounded-[20px] border px-3.5 py-2.5 ${
+            mine ? 'border-transparent bg-muted' : 'border-white/5 bg-card'
           }`}
         >
           {invitacionEnTexto(message.text) ? (
             <InvitacionJam texto={message.text} />
           ) : message.text ? (
             <Pressable
+              {...estadoControlWeb('none')}
               accessibilityRole="button"
               accessibilityState={{ selected }}
               accessibilityLabel={`Abrir mensaje: ${message.text}`}
@@ -104,6 +106,7 @@ export function ChatBubble({
               ) : null}
               <View className="flex-row items-center gap-2.5">
                 <Pressable
+                  {...estadoControlWeb('none')}
                   accessibilityRole="button"
                   accessibilityLabel={`Abrir fragmento: ${song.title}, ${song.artist}`}
                   onPress={onPress}

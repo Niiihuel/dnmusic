@@ -63,8 +63,11 @@ import { AvisoCaptura } from '../src/ui/AvisoCaptura'
 import { NowPlayingBar } from '../src/ui/NowPlayingBar'
 import { MotorAudio } from '../src/ui/MotorAudio'
 import { MotorWebView } from '../src/services/motor/MotorWebView'
+import { esAterrizaje } from '../src/lib/compartir'
+import { useEnlacesDelEscritorio } from '../src/lib/enlacesEscritorio'
 import { CompartirHistoria } from '../src/ui/CompartirHistoria'
 import { AvisoActualizacion } from '../src/ui/AvisoActualizacion'
+import { ControlActualizaciones, AvisoActualizacionSinPolitica } from '../src/ui/ControlActualizaciones'
 import { NovedadesAlAbrir } from '../src/ui/NovedadesAlAbrir'
 import { FilaChat } from '../src/ui/TabBar'
 import { Cascara } from '../src/ui/Cascara'
@@ -125,7 +128,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="light" />
-      <Chrome />
+      <ControlActualizaciones><Chrome /></ControlActualizaciones>
       {splashListo ? null : <SplashAnimado onDone={() => setSplashListo(true)} />}
     </GestureHandlerRootView>
   )
@@ -795,7 +798,7 @@ function Chrome() {
        * pero la pantalla de turno le comía los clics — medido en el navegador
        * con el puente simulado. Ver `src/ui/AvisoActualizacion.tsx`.
        */}
-      <AvisoActualizacion />
+      <AvisoActualizacionSinPolitica><AvisoActualizacion /></AvisoActualizacionSinPolitica>
       {/*
        * Qué trajo la versión que acabás de abrir, la primera vez que la abrís.
        *
@@ -857,6 +860,10 @@ function SessionGate() {
      vez al arrancar la app: es una bandera del aparato, no un dato vivo. */
   const [onboardingPendiente, setOnboardingPendiente] = useState(false)
 
+  /* Los `dnmusic://` que le llegan al escritorio desde afuera. En el teléfono
+     y en la web no hace nada: no hay puente. Ver `lib/enlacesEscritorio`. */
+  useEnlacesDelEscritorio()
+
   useEffect(() => {
     startSession()
     void esOnboardingPendiente().then(setOnboardingPendiente)
@@ -881,8 +888,24 @@ function SessionGate() {
     if (onCallback) return
     const onPending = segments[0] === 'acceso-pendiente'
     const onGate = segments[0] === 'sign-in' || segments[0] === 'sign-up'
+    /*
+     * Las cuatro rutas de link compartido se dibujan **sin sesión**, y son las
+     * únicas de la app que lo hacen.
+     *
+     * Antes de esto, un link de WhatsApp abría el login y nada más: quien lo
+     * recibía no llegaba a ver qué le habían mandado, y decidir si crearse una
+     * cuenta sin saber para qué no lo hace nadie. Ahora la ruta se muestra en
+     * modo tarjeta —`ui/Aterrizaje`, que lee el único RPC con excepción en la
+     * reja— y la puerta viene después, con la cosa a la vista.
+     *
+     * El destino se guarda igual, así que entrar te devuelve exactamente acá.
+     * Y no se abre nada: la tarjeta son cinco campos de presentación; escuchar,
+     * ver el perfil entero o entrar al Jam sigue pidiendo cuenta aprobada, y
+     * eso lo hace cumplir la RLS, no esta pantalla.
+     */
+    const enAterrizaje = esAterrizaje(segments)
     if (user && !approved) {
-      if (!onPending) router.replace('/acceso-pendiente')
+      if (!onPending && !enAterrizaje) router.replace('/acceso-pendiente')
       return
     }
     if (!user && !onGate) {
@@ -899,7 +922,7 @@ function SessionGate() {
        * patrón de la ruta (`lista/[id]`), no el id que hay que abrir.
        */
       destino.current = pathname && pathname !== '/' ? pathname : null
-      router.replace('/sign-in')
+      if (!enAterrizaje) router.replace('/sign-in')
     }
     if (approved && (onGate || onPending)) {
       /* Primero lo prometido en el registro: si la cuenta debe su paseo por
@@ -994,20 +1017,13 @@ function SessionGate() {
       </Stack.Protected>
       <Stack.Protected guard={approved}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="importar" />
+      <Stack.Screen name="importar" options={HOJA_SOCIAL} />
       <Stack.Screen name="ajustes/novedades" />
       <Stack.Screen name="ajustes/accesos" />
       {/* El onboarding: géneros y artistas con los que nace la radio de una
           cuenta nueva. Pantalla común, como las puertas de entrada. */}
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="compose" options={HOJA_SOCIAL} />
-      {/* El perfil es una carpeta: la vista y su editor son pantallas
-          distintas, apiladas. Ver `app/profile/`. */}
-      <Stack.Screen name="perfil/[usuario]" />
-      {/* La lista pública de alguien: se llega por el link compartido o desde
-          su perfil. Pantalla común, como la puerta de un Jam — llega de afuera
-          y no tiene panel del medio detrás sobre el que flotar. */}
-      <Stack.Screen name="lista/[id]" />
       <Stack.Screen name="ajustes/index" />
       <Stack.Screen name="ajustes/descargas" />
       <Stack.Screen name="ajustes/bloqueados" />
@@ -1047,19 +1063,7 @@ function SessionGate() {
               }
         }
       />
-      <Stack.Screen
-        name="profile/fuente"
-        options={
-          ES_WEB
-            ? HOJA_WEB
-            : {
-                presentation: 'formSheet',
-                sheetAllowedDetents: 'fitToContents',
-                sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
-              }
-        }
-      />
+      <Stack.Screen name="profile/fuente" options={HOJA_SOCIAL} />
       <Stack.Screen
         name="profile/tema"
         options={
@@ -1165,7 +1169,6 @@ function SessionGate() {
               }
         }
       />
-      <Stack.Screen name="jam/[code]" />
       {/*
         Crear una lista es **una** hoja —portada, nombre y si es colaborativa—
         como la «Nueva playlist» de Apple Music; si es colaborativa, al crear
@@ -1281,6 +1284,33 @@ function SessionGate() {
       {/* El mensaje a pantalla completa, al modo de una historia. */}
       <Stack.Screen name="message/[id]" options={{ presentation: 'modal' }} />
       </Stack.Protected>
+
+      {/*
+        Las cuatro rutas de link compartido: las únicas que se dibujan **sin**
+        cuenta aprobada, y por eso las únicas que quedan afuera del grupo.
+        `Stack.Protected` no es un detalle de navegación: una pantalla que no
+        está en el grupo activo no se monta, así que mientras estuvieron acá
+        adentro un link de WhatsApp terminaba en el login y quien lo recibía no
+        llegaba a ver qué le habían mandado.
+
+        Lo que se muestra sin sesión no es la pantalla: cada una cae en
+        `ui/Aterrizaje`, que dibuja la tapa y la puerta y no lee más que
+        `tarjeta_enlace` —el único RPC con excepción en la reja—. Escuchar, ver
+        el perfil entero o entrar al Jam sigue pidiendo cuenta aprobada, y eso
+        lo hace cumplir la RLS. Lo cubre `tests/acceso-session`, que exige que
+        estas cuatro y solo estas cuatro estén afuera y que cada una tenga su
+        aterrizaje.
+      */}
+      <Stack.Screen name="cancion/[id]" />
+      {/* La lista pública de alguien: se llega por el link compartido o desde
+          su perfil. Pantalla común, como la puerta de un Jam — llega de afuera
+          y no tiene panel del medio detrás sobre el que flotar. */}
+      <Stack.Screen name="lista/[id]" />
+      <Stack.Screen name="jam/[code]" />
+      {/* El perfil es una carpeta: la vista y su editor son pantallas
+          distintas, apiladas. Ver `app/profile/`. */}
+      <Stack.Screen name="perfil/[usuario]" />
+
       <Stack.Screen name="auth/callback" />
     </Stack>
   )

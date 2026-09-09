@@ -1,7 +1,7 @@
 import { useFonts } from 'expo-font'
 import type { TextStyle } from 'react-native'
 
-/** Seis fuentes empaquetadas para todo el perfil, disponibles también sin red.
+/** Fuentes empaquetadas para todo el perfil, disponibles también sin red.
  * `profiles.fuente` se comparte con quienes visitan el perfil; FuentePerfil
  * conserva los tamaños de cada texto y aplica la familia elegida en conjunto.
  */
@@ -23,6 +23,12 @@ export const FUENTES: Fuente[] = [
   { id: 'manuscrita', nombre: 'Manuscrita', familia: 'Caveat_700Bold', detalle: 'A mano alzada', escala: 1.25 },
   { id: 'cartel', nombre: 'Cartel', familia: 'BebasNeue_400Regular', detalle: 'Condensada, de afiche', escala: 1.2 },
   { id: 'retro', nombre: 'Retro', familia: 'Righteous_400Regular', detalle: 'Redondeada, años setenta', escala: 1 },
+  { id: 'editorial', nombre: 'Editorial', familia: 'Lora_600SemiBold', detalle: 'Serif cálida y legible', escala: 1 },
+  { id: 'geometrica', nombre: 'Geométrica', familia: 'Montserrat_600SemiBold', detalle: 'Líneas limpias y contemporáneas', escala: 0.96 },
+  { id: 'urbana', nombre: 'Urbana', familia: 'Oswald_500Medium', detalle: 'Alta y compacta', escala: 1.08 },
+  { id: 'caligrafica', nombre: 'Caligráfica', familia: 'Pacifico_400Regular', detalle: 'Cursiva fluida y expresiva', escala: 1 },
+  { id: 'suave', nombre: 'Suave', familia: 'Quicksand_600SemiBold', detalle: 'Redondeada y ligera', escala: 1 },
+  { id: 'clasica', nombre: 'Clásica', familia: 'CormorantGaramond_600SemiBold', detalle: 'Serif de libro', escala: 1.12 },
 ]
 
 /* Los archivos, uno por familia. Los `require` van con la ruta literal:
@@ -34,10 +40,16 @@ const ARCHIVOS: Record<string, number> = {
   Caveat_700Bold: require('@expo-google-fonts/caveat/700Bold/Caveat_700Bold.ttf'),
   BebasNeue_400Regular: require('@expo-google-fonts/bebas-neue/400Regular/BebasNeue_400Regular.ttf'),
   Righteous_400Regular: require('@expo-google-fonts/righteous/400Regular/Righteous_400Regular.ttf'),
+  Lora_600SemiBold: require('@expo-google-fonts/lora/600SemiBold/Lora_600SemiBold.ttf'),
+  Montserrat_600SemiBold: require('@expo-google-fonts/montserrat/600SemiBold/Montserrat_600SemiBold.ttf'),
+  Oswald_500Medium: require('@expo-google-fonts/oswald/500Medium/Oswald_500Medium.ttf'),
+  Pacifico_400Regular: require('@expo-google-fonts/pacifico/400Regular/Pacifico_400Regular.ttf'),
+  Quicksand_600SemiBold: require('@expo-google-fonts/quicksand/600SemiBold/Quicksand_600SemiBold.ttf'),
+  CormorantGaramond_600SemiBold: require('@expo-google-fonts/cormorant-garamond/600SemiBold/CormorantGaramond_600SemiBold.ttf'),
 }
 
 /**
- * Carga las seis al arrancar. No bloquea nada: mientras llegan, las piezas se
+ * Carga el catálogo al arrancar. No bloquea nada: mientras llegan, las piezas se
  * dibujan con la del sistema y cambian solas — es un lujo, no un requisito.
  * Va en la raíz de la app (`app/_layout.tsx`) para cargarlas una vez.
  */

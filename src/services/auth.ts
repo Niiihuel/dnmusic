@@ -144,11 +144,12 @@ export type { User }
 const GOOGLE_PENDIENTE = 'auth:google:pendiente:v1'
 const DURACION_GOOGLE = 10 * 60 * 1000
 const CALLBACK_NATIVO = 'dnmusic://auth/callback'
-type PendienteGoogle = { nonce: string; redirectTo: string; vence: number; flowId?: string | null; desktopId?: string }
+type PendienteGoogle = { nonce: string; redirectTo: string; vence: number; flowId?: string | null; desktopId?: string; userId?: string }
 type ResultadoNavegadorGoogle = { type: 'success'; url: string } | { type: 'cancel' }
 type OAuthEscritorio = {
   preparar: () => Promise<{ id: string; redirectTo: string }>
   abrir: (pedido: { id: string; url: string }) => Promise<ResultadoNavegadorGoogle>
+  abrirVinculacion?: (pedido: { id: string; url: string; retorno: string }) => Promise<ResultadoNavegadorGoogle>
   cancelar: (id: string) => Promise<void>
 }
 function escritorioGoogle() {
@@ -182,21 +183,39 @@ let generacionGoogle = 0
 let intercambiandoGoogle = false
 let intercambioValidado: Promise<User | null> | null = null
 
-export function signInWithGoogle(): Promise<User | null> {
+export function signInWithGoogle(): Promise<User | null> { return comenzarGoogle() }
+
+/** Agrega una identidad a la sesión actual; jamás crea otra cuenta mediante signIn. */
+export function conectarGoogle(userId: string): Promise<User | null> {
+  if (!userId) return Promise.reject(new Error('Iniciá sesión antes de conectar Google.'))
+  return comenzarGoogle(userId)
+}
+let vinculacionActual = false
+export async function destinoTrasGoogle(): Promise<'/ajustes?seccion=cuenta' | '/'> {
+  return (await leerPendiente())?.userId || vinculacionActual ? '/ajustes?seccion=cuenta' : '/'
+}
+function comenzarGoogle(userId?: string): Promise<User | null> {
   if (inicioGoogle) return inicioGoogle
   if (intercambiandoGoogle && intercambioValidado) return intercambioValidado
+  vinculacionActual = !!userId
   generacionGoogle++
   const intento = { cancelado: false } as NonNullable<typeof intentoGoogle>
   intentoGoogle = intento
   googleCancelado = false
   callbackEnCurso = null; nonceReclamado = null; intercambioValidado = null
-  inicioGoogle = iniciarGoogle(intento).finally(() => { inicioGoogle = null; if (intentoGoogle === intento) intentoGoogle = null })
+  inicioGoogle = iniciarGoogle(intento, userId).finally(() => { inicioGoogle = null; if (intentoGoogle === intento) intentoGoogle = null })
   return inicioGoogle
 }
 
-async function iniciarGoogle(intento: NonNullable<typeof intentoGoogle>): Promise<User | null> {
+async function iniciarGoogle(intento: NonNullable<typeof intentoGoogle>, userId?: string): Promise<User | null> {
   const desktop = escritorioGoogle()
   if (desktop && !desktop.oauthGoogle) throw new Error('Actualizá la app de escritorio para continuar con Google.')
+  if (userId) {
+    if (desktop?.oauthGoogle && !desktop.oauthGoogle.abrirVinculacion) throw new Error('Actualizá la app de escritorio para conectar Google.')
+    const { data, error } = await getSupabase().auth.getUser()
+    if (error || data.user?.id !== userId) throw new Error('La sesión cambió. Volvé a abrir Configuración.')
+    if (data.user.identities?.some(i => i.provider === 'google')) return data.user
+  }
   const anterior = await leerPendiente()
   if (anterior?.desktopId) await desktop?.oauthGoogle?.cancelar(anterior.desktopId)
   await guardarPendiente(null)
@@ -218,16 +237,19 @@ async function iniciarGoogle(intento: NonNullable<typeof intentoGoogle>): Promis
       if (redirectTo !== CALLBACK_NATIVO) throw new Error('Para usar Google, abrí una compilación de dnmusic instalada en el dispositivo.')
     }
     if (intento.cancelado) return null
-    pendiente = { nonce: randomUUID(), redirectTo, vence: Date.now() + DURACION_GOOGLE, desktopId: intento.desktopId }
+    pendiente = { nonce: randomUUID(), redirectTo, vence: Date.now() + DURACION_GOOGLE, desktopId: intento.desktopId, userId }
     const retorno = new URL(redirectTo); retorno.searchParams.set('dn_state', pendiente.nonce)
-    const { data, error } = await getSupabase().auth.signInWithOAuth({ provider: 'google', options: {
+    const credentials = { provider: 'google' as const, options: {
       redirectTo: retorno.href, skipBrowserRedirect: true, queryParams: { prompt: 'select_account' },
-    } })
+    } }
+    const { data, error } = userId
+      ? await getSupabase().auth.linkIdentity(credentials)
+      : await getSupabase().auth.signInWithOAuth(credentials)
     if (error) throw error
     if (intento.cancelado) return null
     if (!data.url) throw new Error('No se pudo abrir Google.')
     let authURL = data.url
-    if (Platform.OS !== 'web') {
+    if (!userId && Platform.OS !== 'web') {
       const nativa = new URL(authURL)
       // El SDK puede emitir plain internamente sin WebCrypto. El verificador permanece en su storage;
       // sólo su SHA-256 sale al navegador, calculado por el módulo criptográfico nativo.
@@ -241,11 +263,16 @@ async function iniciarGoogle(intento: NonNullable<typeof intentoGoogle>): Promis
       }
     }
     pendiente.flowId = data.flowId ?? null
-    validarInicioGoogle(authURL, retorno, pendiente.flowId)
+    if (userId) {
+      validarVinculacionGoogle(authURL)
+      if (pendiente.flowId) retorno.searchParams.set('sb_flow_id', pendiente.flowId)
+    } else validarInicioGoogle(authURL, retorno, pendiente.flowId)
     await guardarPendiente(pendiente)
     if (intento.cancelado) return null
     if (desktop?.oauthGoogle && intento.desktopId) {
-      const result = await desktop.oauthGoogle.abrir({ id: intento.desktopId, url: authURL })
+      const result = userId
+        ? await desktop.oauthGoogle.abrirVinculacion!({ id: intento.desktopId, url: authURL, retorno: retorno.href })
+        : await desktop.oauthGoogle.abrir({ id: intento.desktopId, url: authURL })
       return result.type === 'success' && !intento.cancelado ? await completarGoogleCallback(result.url) : null
     }
     if (Platform.OS === 'web') {
@@ -261,6 +288,16 @@ async function iniciarGoogle(intento: NonNullable<typeof intentoGoogle>): Promis
     if (pendiente && !redirigido) await limpiarPendiente(pendiente.nonce)
   }
 }
+/** linkIdentity retorna la URL del proveedor, firmada por Auth, no /authorize. */
+function validarVinculacionGoogle(raw: string) {
+  const u = new URL(raw), base = new URL(process.env.EXPO_PUBLIC_SUPABASE_URL ?? '')
+  if (u.origin !== 'https://accounts.google.com' || !['/o/oauth2/auth', '/o/oauth2/v2/auth'].includes(u.pathname) ||
+    u.username || u.password || u.hash || u.searchParams.get('response_type') !== 'code' ||
+    u.searchParams.get('redirect_uri') !== `${base.origin}${base.pathname.replace(/\/$/, '')}/auth/v1/callback` ||
+    !u.searchParams.get('state') || !u.searchParams.get('client_id')?.endsWith('.apps.googleusercontent.com') ||
+    [...u.searchParams.keys()].some(k => u.searchParams.getAll(k).length !== 1)) throw new Error('La vinculación con Google no es válida.')
+}
+
 function validarInicioGoogle(raw: string, retorno: URL, flowId?: string | null) {
   const u = new URL(raw), base = new URL(process.env.EXPO_PUBLIC_SUPABASE_URL ?? '')
   const redirect = new URL(u.searchParams.get('redirect_to') ?? '')
@@ -298,6 +335,7 @@ export async function completarGoogleCallback(url?: string): Promise<User | null
 async function intercambiarGoogle(raw: string): Promise<User | null> {
   const generacion = generacionGoogle
   const p = await leerPendiente()
+  if (p) vinculacionActual = !!p.userId
   if (googleCancelado || generacion !== generacionGoogle) throw new Error('El inicio con Google fue cancelado.')
   if (!p || p.vence <= Date.now()) throw new Error('El inicio con Google venció. Volvé a intentarlo.')
   const u = new URL(raw), esperado = new URL(p.redirectTo)
@@ -323,9 +361,18 @@ async function intercambiarGoogle(raw: string): Promise<User | null> {
     try {
       if (error === 'access_denied') return null
       if (error) throw new Error('Google no pudo completar el acceso. Volvé a intentarlo.')
+      if (p.userId) {
+        const { data: actual } = await getSupabase().auth.getSession()
+        if (actual.session?.user.id !== p.userId) throw new Error('La sesión cambió. La vinculación fue cancelada.')
+      }
       const { data, error: fallo } = await getSupabase().auth.exchangeCodeForSession(code!, p.flowId ? { flowId: p.flowId } : undefined)
       if (fallo) throw fallo
       if (!data.user || !data.session) throw new Error('No se pudo completar el acceso con Google.')
+      if (p.userId && data.user.id !== p.userId) {
+        await getSupabase().auth.signOut({ scope: 'local' })
+        throw new Error('Google no devolvió la cuenta original. Iniciá sesión nuevamente.')
+      }
+      if (p.userId && !data.user.identities?.some(i => i.provider === 'google')) throw new Error('No se confirmó la vinculación. Ese Google puede estar conectado a otra cuenta.')
       return data.user
     } finally { await limpiarPendiente(p.nonce) }
   }).finally(() => { intercambiandoGoogle = false })

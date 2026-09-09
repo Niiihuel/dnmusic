@@ -2,6 +2,7 @@ import { AIRE_CELDA_MOSAICO as AIRE_CELDA, objetivoResizeMosaico } from './mosai
 import { MarcoContenidoDiscord } from './DiscordCosmeticos'
 import { usePiezaDiscord } from '../services/discordCatalogo'
 import type { MosaicoPerfil } from './useMosaicoPerfil'
+import { useAppActiva } from '../lib/appActiva'
 import { TECLADO_FISICO } from '../lib/teclado'
 import { TextoPerfil as Text } from './FuentePerfil'
 import {
@@ -161,7 +162,7 @@ export function FondoPerfil({
   return (
     <View pointerEvents="none" className="absolute inset-0">
       {clip ? (
-        <FondoClip uri={uri} animado={animado} />
+        <FondoClip key={uri} uri={uri} animado={animado} />
       ) : (
         <FondoImagen uri={uri} encuadre={encuadre} animado={animado} />
       )}
@@ -260,17 +261,37 @@ function FondoImagen({ uri, encuadre, animado }: { uri: string; encuadre: Encuad
  * audio a nadie.
  */
 function FondoClip({ uri, animado }: { uri: string; animado: boolean }) {
+  const activa = useAppActiva()
+  const reproducir = animado && activa
+  const [fallo, setFallo] = useState(false)
   const video = useVideoPlayer(uri, (p) => {
     p.loop = true
     p.muted = true
     p.audioMixingMode = 'mixWithOthers'
-    if (animado) p.play()
+    p.showNowPlayingNotification = false
   })
 
   useEffect(() => {
-    if (animado) video.play()
+    // AVPlayer puede fallar después de montar VideoView; antes quedaba un
+    // fondo negro sin explicación. Escuchar también cuando termina de cargar.
+    const actualizar = () => {
+      setFallo(video.status === 'error')
+      if (video.status === 'readyToPlay' && reproducir) video.play()
+    }
+    const sub = video.addListener('statusChange', actualizar)
+    actualizar()
+    if (reproducir) video.play()
     else video.pause()
-  }, [animado, video])
+    return () => sub.remove()
+  }, [reproducir, video])
+
+  if (fallo) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+        <Text accessibilityRole="alert" style={{ color: '#fff', fontSize: 14, textAlign: 'center' }}>No se pudo reproducir el video de fondo.</Text>
+      </View>
+    )
+  }
 
   return (
     <VideoView
@@ -278,6 +299,8 @@ function FondoClip({ uri, animado }: { uri: string; animado: boolean }) {
       style={{ width: '100%', height: '100%' }}
       contentFit="cover"
       nativeControls={false}
+      playsInline
+      allowsVideoFrameAnalysis={false}
     />
   )
 }

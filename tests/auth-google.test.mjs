@@ -7,7 +7,7 @@ const tick = () => new Promise(r => setImmediate(r))
 const code = (path) => ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
 const origen = 'https://test-auth.supabase.co'
 const user = { id: 'local-google-user', email: 'persona@example.test' }
-function montar({ os = 'web', oauthError, result, exchange, desktop, signedURL, plain = false, memory = new Map(), leerStorage } = {}) {
+function montar({ linkUser = { id: 'legacy' }, linkedUser = { id: 'legacy', identities: [{ provider: 'google' }] }, linkError, linkURL, currentSession, os = 'web', oauthError, result, exchange, desktop, signedURL, plain = false, memory = new Map(), leerStorage } = {}) {
   const calls = [], browsed = [], replaced = [], assigned = []
   let pendingResult, closed = 0, signups = 0, exchangeCount = 0
   const storage = { getItem: async k => leerStorage ? leerStorage(k, memory.get(k) ?? null) : memory.get(k) ?? null, setItem: async (k, v) => { memory.set(k, v) }, removeItem: async k => { memory.delete(k) } }
@@ -21,7 +21,16 @@ function montar({ os = 'web', oauthError, result, exchange, desktop, signedURL, 
       u.searchParams.set('code_challenge', 'a'.repeat(plain ? 112 : 43)); u.searchParams.set('code_challenge_method', plain ? 'plain' : 's256')
       return { data: { url: signedURL ?? u.href, flowId: 'flow-local-0123456789' }, error: null }
     },
-    async exchangeCodeForSession(c, options) { exchangeCount++; calls.push(['exchange', c, options]); return exchange ? exchange() : { data: { user, session: { user } }, error: null } },
+    async getUser() { return { data: { user: linkUser }, error: null } },
+    async getSession() { return { data: { session: { user: currentSession ?? linkUser } } } },
+    async linkIdentity({ provider, options }) {
+      calls.push(['link', provider, options]);
+      const u = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+      u.searchParams.set('redirect_uri', origen + '/auth/v1/callback'); u.searchParams.set('response_type', 'code');
+      u.searchParams.set('client_id', 'test.apps.googleusercontent.com'); u.searchParams.set('state', 'signed-server-state');
+      return { data: { url: linkURL ?? u.href, flowId: 'flow-local-0123456789' }, error: linkError };
+    },
+    async exchangeCodeForSession(c, options) { exchangeCount++; calls.push(['exchange', c, options]); return exchange ? exchange() : { data: { user: calls.some(c => c[0] === 'link') ? linkedUser : user, session: { user } }, error: null } },
     async signInWithPassword(credentials) { calls.push(['password', credentials]); return { data: { user: { id: 'legacy' } }, error: null } },
     async signUp() { signups++; assert.fail('No crear cuentas por contraseña') }, async signOut() { calls.push(['logout']); return { error: null } },
   } }
@@ -214,3 +223,50 @@ test('Electron migra localStorage al almacén nativo y lo usa para las sesiones 
   await config.auth.storage.removeItem('sb-proyecto-auth-token')
   assert.equal(nativo.has('sb-proyecto-auth-token'), false)
 })
+
+for (const os of ['web', 'ios']) test(`${os}: conecta Google a la cuenta existente y vuelve a Ajustes`, async () => {
+  const h = montar({ os });
+  const pending = h.api.conectarGoogle('legacy'); await tick();
+  assert.equal(h.calls.filter(c => c[0] === 'link').length, 1);
+  assert.equal(h.calls.filter(c => c[0] === 'oauth').length, 0);
+  assert.equal(await h.api.destinoTrasGoogle(), '/ajustes?seccion=cuenta');
+  if (os === 'ios') h.terminar({ type: 'success', url: h.callback() });
+  else { await pending; await h.api.completarGoogleCallback(h.callback()); }
+  if (os === 'ios') assert.equal((await pending).id, 'legacy');
+  assert.equal(h.exchanges, 1);
+  assert.equal(h.memory.size, 0);
+  assert.equal(await h.api.destinoTrasGoogle(), '/ajustes?seccion=cuenta');
+});
+
+test('vincular: sesión incorrecta, ya conectado y errores no abren otro login', async () => {
+  const changed = montar(); await assert.rejects(changed.api.conectarGoogle('other'), /sesión cambió/); assert.equal(changed.calls.length, 0);
+  const linked = montar({ linkUser: { id: 'legacy', identities: [{ provider: 'google' }] } });
+  assert.equal((await linked.api.conectarGoogle('legacy')).id, 'legacy'); assert.equal(linked.calls.length, 0);
+  const disabled = montar({ linkError: new Error('manual_linking_disabled') }); await assert.rejects(disabled.api.conectarGoogle('legacy'), /manual_linking/);
+  assert.equal(disabled.assigned.length, 0); assert.equal(disabled.memory.size, 0);
+  const invalid = montar({ linkURL: 'https://evil.test/' }); await assert.rejects(invalid.api.conectarGoogle('legacy'), /vinculación/); assert.equal(invalid.assigned.length, 0);
+});
+
+test('vincular: cancelar conserva sesión y rechaza intercambio tras cambiar de cuenta', async () => {
+  const cancel = montar({ os: 'ios' }); const pending = cancel.api.conectarGoogle('legacy'); await tick(); await cancel.api.cancelarGoogle(); assert.equal(await pending, null);
+  assert.equal(cancel.calls.filter(c => c[0] === 'logout').length, 0);
+  const changed = montar({ currentSession: { id: 'other' } }); await changed.api.conectarGoogle('legacy');
+  await assert.rejects(changed.api.completarGoogleCallback(changed.callback()), /sesión cambió/); assert.equal(changed.exchanges, 0);
+  const wrong = montar({ linkedUser: { id: 'other', identities: [{ provider: 'google' }] } }); await wrong.api.conectarGoogle('legacy');
+  await assert.rejects(wrong.api.completarGoogleCallback(wrong.callback()), /cuenta original/);
+  assert.equal(wrong.calls.filter(c => c[0] === 'logout').length, 1);
+  const missing = montar({ linkedUser: { id: 'legacy', identities: [] } }); await missing.api.conectarGoogle('legacy');
+  await assert.rejects(missing.api.completarGoogleCallback(missing.callback()), /No se confirmó/);
+});
+
+test('Electron vincula mediante navegador externo y exige puente compatible', async () => {
+  let h;
+  const desktop = { preparar: async () => ({ id: 'local-desktop-id', redirectTo: 'http://127.0.0.1:34567/auth/callback/local-desktop-id' }), cancelar: async () => {},
+    abrir: async () => assert.fail('No iniciar otro usuario'),
+    abrirVinculacion: async ({ url, retorno }) => {
+      assert.equal(new URL(url).origin, 'https://accounts.google.com');
+      const cb = new URL(retorno); cb.searchParams.set('code', 'valid-code'); return { type: 'success', url: cb.href };
+    } };
+  h = montar({ desktop }); assert.equal((await h.api.conectarGoogle('legacy')).id, 'legacy'); assert.equal(h.assigned.length, 0);
+  const old = montar({ desktop: { ...desktop, abrirVinculacion: undefined } }); await assert.rejects(old.api.conectarGoogle('legacy'), /Actualizá/);
+});

@@ -14,5 +14,11 @@ export function registrarGoogleOAuth(ipc: IpcMain, oauth: GoogleOAuthEscritorio,
     comprobar(e)
     return resultado
   })
+  ipc.handle('oauthGoogle:vincular', async (e, pedido) => {
+    comprobar(e)
+    const resultado = await oauth.abrirVinculacion(pedido)
+    comprobar(e)
+    return resultado
+  })
   ipc.handle('oauthGoogle:cancelar', (e, id) => { comprobar(e); if (typeof id !== 'string') throw new Error('Inicio OAuth no válido.'); oauth.cancelar(id) })
 }

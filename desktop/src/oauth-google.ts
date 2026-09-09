@@ -47,16 +47,27 @@ export class GoogleOAuthEscritorio {
     finally { this.preparando = false }
   }
 
-  async abrir(pedido: { id: string; url: string }): Promise<ResultadoGoogle> {
+  async abrirVinculacion(pedido: { id: string; url: string; retorno: string }): Promise<ResultadoGoogle> {
+    if (!pedido || typeof pedido.retorno !== 'string') throw new Error('Retorno de vinculación inválido.')
+    return this.abrir(pedido, pedido.retorno)
+  }
+
+  async abrir(pedido: { id: string; url: string }, retornoVinculacion?: string): Promise<ResultadoGoogle> {
     const p = this.pendiente
     if (!p || !pedido || pedido.id !== p.id || p.abierta) throw new Error('El inicio con Google no está pendiente.')
     const u = new URL(pedido.url), origen = this.opciones.origen
     const permitidos = new Set(['provider', 'redirect_to', 'code_challenge', 'code_challenge_method', 'prompt', 'scopes'])
-    if (u.origin !== origen || u.pathname !== '/auth/v1/authorize' || u.username || u.password || u.hash ||
+    if (retornoVinculacion !== undefined) {
+      if (u.origin !== 'https://accounts.google.com' || !['/o/oauth2/auth', '/o/oauth2/v2/auth'].includes(u.pathname) ||
+        u.username || u.password || u.hash || u.searchParams.get('response_type') !== 'code' ||
+        u.searchParams.get('redirect_uri') !== `${origen}/auth/v1/callback` ||
+        !u.searchParams.get('state') || !u.searchParams.get('client_id')?.endsWith('.apps.googleusercontent.com') ||
+        [...u.searchParams.keys()].some(k => u.searchParams.getAll(k).length !== 1)) throw new Error('URL de vinculación no permitida.')
+    } else if (u.origin !== origen || u.pathname !== '/auth/v1/authorize' || u.username || u.password || u.hash ||
       u.searchParams.get('provider') !== 'google' || u.searchParams.get('code_challenge_method')?.toLowerCase() !== 's256' ||
       !/^[A-Za-z0-9_-]{43}$/.test(u.searchParams.get('code_challenge') ?? '') ||
       [...u.searchParams.keys()].some(k => !permitidos.has(k) || u.searchParams.getAll(k).length !== 1)) throw new Error('URL de Google no permitida.')
-    const retorno = new URL(u.searchParams.get('redirect_to') ?? '')
+    const retorno = new URL(retornoVinculacion ?? u.searchParams.get('redirect_to') ?? '')
     const base = new URL(p.redirectTo)
     const nonce = retorno.searchParams.get('dn_state')
     const flowId = retorno.searchParams.get('sb_flow_id')

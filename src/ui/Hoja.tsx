@@ -64,7 +64,8 @@ export function usePisoHoja(extra = 20): number {
  * La presentación de una pantalla-hoja, según dónde corra.
  *
  * En iOS estas rutas son `formSheet` y el sistema pone todo: la subida, el
- * grabber, el gesto de bajar y el oscurecido. Acá no se dibuja nada.
+ * grabber, el gesto de bajar y el oscurecido. Acá sólo se da una raíz
+ * medible y opaca al contenido; la presentación sigue a cargo del sistema.
  *
  * En la **web angosta** —el teléfono— se imita esa hoja: sube desde abajo con
  * la app viva detrás y un velo que la oscurece.
@@ -94,7 +95,10 @@ export function Hoja({
   titulo?: string
 }) {
   const ancho = useWindowDimensions().width >= ESCRITORIO_PX
-  if (!ES_WEB) return <>{children}</>
+  if (!ES_WEB) return <View collapsable={false}
+    style={{ backgroundColor: '#121212', ...(medida === 'llena' ? { flex: 1 } : {}) }}>
+    {children}
+  </View>
   if (ancho)
     return (
       <Modal medida={medida} anchoMaximo={anchoMaximo} titulo={titulo} onCerrar={onCerrar}>

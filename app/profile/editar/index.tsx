@@ -29,7 +29,7 @@ import { esVideo, uploadIlustracionConProgreso } from '../../../src/services/sho
 import { setMyProfile, useMyProfile, useUser } from '../../../src/state/session'
 import { useKeyboardH, usePiso } from '../../../src/state/shell'
 import { avisar } from '../../../src/state/aviso'
-import { actualizarPerfilEdicion, cambiosParaGuardar, confirmarPerfilEdicion, getPerfilEdicion, iniciarPerfilEdicion, ocuparPerfilEdicion, restablecerPerfilEdicion, terminarPerfilEdicion, usePerfilBorrador, usePerfilEdicion } from '../../../src/state/perfilEdicion'
+import { actualizarPerfilEdicion, completarMedioPerfilEdicion, cambiosParaGuardar, confirmarPerfilEdicion, getPerfilEdicion, iniciarPerfilEdicion, ocuparPerfilEdicion, restablecerPerfilEdicion, terminarPerfilEdicion, usePerfilBorrador, usePerfilEdicion } from '../../../src/state/perfilEdicion'
 import { cambioMosaicosEdicion, guardarMosaicosEdicion, restablecerMosaicosEdicion, terminarMosaicosEdicion, useMosaicosEdicion, validarMosaicosEdicion } from '../../../src/state/mosaicoEdicion'
 import { volver } from '../../../src/lib/volver'
 
@@ -164,8 +164,11 @@ export default function EditarPerfil() {
       if (!elegida) return
       setProgresoFondo(0)
       const ruta = await uploadIlustracionConProgreso(user.id, elegida.blob, elegida.fileName, elegida.mime, setProgresoFondo)
+      if (!completarMedioPerfilEdicion(user.id, 'fondo', ruta)) {
+        void getSupabase().storage.from('showcases').remove([ruta]).catch(() => {})
+        return
+      }
       temporales.current.set(ruta, 'showcases')
-      setBorrador(b => ({ ...b, bannerPath: ruta, bannerEncuadre: null }))
     } catch (e) {
       setError((e as { message?: string })?.message || 'No se pudo preparar el fondo.')
     } finally {
@@ -188,8 +191,11 @@ export default function EditarPerfil() {
       const elegida = await pickImage()
       if (!elegida) return
       const ruta = await uploadAvatar(user.id, elegida.blob, elegida.fileName, elegida.mime)
+      if (!completarMedioPerfilEdicion(user.id, 'foto', ruta)) {
+        void getSupabase().storage.from('avatars').remove([ruta]).catch(() => {})
+        return
+      }
       temporales.current.set(ruta, 'avatars')
-      setBorrador(b => ({ ...b, avatarPath: ruta, avatarEncuadre: null }))
     } catch (e) {
       setError((e as { message?: string })?.message || 'No se pudo preparar la foto.')
     } finally {

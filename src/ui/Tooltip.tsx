@@ -16,61 +16,43 @@ import { SuperficieTooltip } from './SuperficieTooltip'
  * mouse, y una tablet ancha no. En pantallas de tocar esto no existe, y no es
  * una limitación sino lo correcto — un tooltip al tocar llega tarde, porque el
  * toque ya ejecutó el botón. Ahí el que explica es el menú.
- *
- * Lo que se muestra tiene que ser corto y decir **la acción**: «Pausar»,
- * «Silenciar», «Buscar en la lista». Nada de frases con el nombre de la canción
- * adentro ni instrucciones: para eso está el menú, que sí se puede leer con
- * calma.
- */
-
-/**
- * Engancha un botón al tooltip. Devuelve lo que hay que ponerle encima.
- *
- * Se usa así, sobre un `View` que envuelva al botón (o sobre el botón mismo si
- * ya tiene ref propia):
- *
- * ```tsx
- * const tip = useConTooltip('Pausar')
- * <Pressable {...tip.gestos}>…</Pressable>
- * ```
  */
 export { useConTooltip } from './useConTooltip'
 
-/**
- * Aire entre el botón y el rótulo.
- *
- * Poco a propósito: el rótulo tiene que leerse **pegado a lo que nombra**. Con
- * más aire deja de pertenecerle al botón y se lee como un cartel suelto, sobre
- * todo en una fila de íconos donde el de al lado está a pocos píxeles.
- */
+/** Aire entre el botón y el rótulo. */
 const SEPARACION = 6
 /** Margen mínimo contra el borde de la ventana. */
 const MARGEN = 8
-/**
- * Alto aproximado, **solo** para decidir si entra arriba o va abajo.
- *
- * Para colocarlo no se usa: arriba se ancla por el borde de abajo (`bottom`),
- * que no necesita saber cuánto mide. Antes se restaba esta estimación al `top`,
- * y como estimaba de más el rótulo quedaba flotando más arriba de lo pedido —
- * el aire real terminaba siendo mayor que el que dice `SEPARACION`.
- */
+/** Alto aproximado, solo para decidir si entra arriba o va abajo. */
 const ALTO = 28
 /** Ancho máximo: si no entra, el texto era demasiado largo para un tooltip. */
 const ANCHO_MAX = 260
+const ANCHO_MIN = 56
 
 /**
- * El rótulo dibujado, montado una sola vez en la raíz (ver `app/_layout`).
+ * Calcula una caja compacta pegada al control.
  *
- * Va arriba del botón y centrado, que es lo esperable; si no hay lugar arriba
- * se pasa abajo, y si se saldría por un costado se corre para adentro. Es lo
- * mismo que hacen `flip` y `shift` de Floating UI: volteo cambia de lado,
- * corrimiento desliza sin cambiarlo.
+ * Antes todos los rótulos ocupaban una caja invisible de 260 px. Al acotarla
+ * contra el borde derecho, un texto corto terminaba centrado lejos del icono.
+ * La punta conserva además la referencia exacta cuando la caja debe correrse.
  */
+export function geometriaTooltip(
+  tip: { texto: string; x: number; y: number; w: number; h: number },
+  width: number,
+  height: number,
+) {
+  const arriba = tip.y - SEPARACION - ALTO >= MARGEN || tip.y > height / 2
+  const ancho = Math.min(ANCHO_MAX, Math.max(ANCHO_MIN, tip.texto.length * 7 + 20))
+  const centro = tip.x + tip.w / 2
+  const left = Math.max(MARGEN, Math.min(centro - ancho / 2, width - ancho - MARGEN))
+  const punta = Math.max(12, Math.min(centro - left - 4, ancho - 20))
+  return { arriba, left, ancho, punta }
+}
+
+/** El rótulo dibujado, montado una sola vez en la raíz. */
 export function Tooltip() {
   const tip = useTooltip()
 
-  /* Escape lo cierra sin mover el cursor: lo pide la APG y el criterio 1.4.13.
-     Solo se escucha mientras hay algo puesto. */
   useEffect(() => {
     if (!tip || Platform.OS !== 'web' || typeof window === 'undefined') return
     const alTeclear = (e: KeyboardEvent) => {
@@ -83,8 +65,6 @@ export function Tooltip() {
   if (!tip) return null
 
   return (
-    /* La capa no atrapa nada; el rótulo sí, para poder pasarle el cursor por
-       encima sin que se apague (criterio 1.4.13, «se puede señalar»). */
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       <Rotulo tip={tip} />
     </View>
@@ -93,15 +73,10 @@ export function Tooltip() {
 
 function Rotulo({ tip }: { tip: { texto: string; x: number; y: number; w: number; h: number } }) {
   const { width, height } = useVentana()
-  const arriba = tip.y - SEPARACION - ALTO >= MARGEN || tip.y > height / 2
-  /* Arriba se ancla por abajo y abajo por arriba: en los dos casos el borde
-     que mira al botón queda exactamente a `SEPARACION`, sin estimar nada. */
+  const { arriba, left, ancho, punta } = geometriaTooltip(tip, width, height)
   const vertical = arriba
     ? { bottom: height - tip.y + SEPARACION }
     : { top: tip.y + tip.h + SEPARACION }
-  /* Centrado sobre el botón y metido para adentro si se saliera. El ancho real
-     lo pone el texto; el centro se calcula sobre el máximo y se acota. */
-  const centro = tip.x + tip.w / 2
 
   return (
     <View
@@ -110,18 +85,29 @@ function Rotulo({ tip }: { tip: { texto: string; x: number; y: number; w: number
       style={{
         position: 'absolute',
         ...vertical,
-        left: Math.max(MARGEN, Math.min(centro - ANCHO_MAX / 2, width - ANCHO_MAX - MARGEN)),
-        width: ANCHO_MAX,
-        alignItems: centro < ANCHO_MAX / 2 + MARGEN ? 'flex-start' : 'center',
+        left,
+        width: ancho,
       }}
     >
-      {/* Sin borde: se separa por luminancia y por la sombra, como pide
-          docs/DESIGN.md. 12px/400 es el «Fino» de la escala tipográfica. */}
-      <SuperficieTooltip style={{ maxWidth: ANCHO_MAX, paddingHorizontal: 10, paddingVertical: 6 }}>
-        <Text className="text-foreground text-[12px]" numberOfLines={1}>
+      <SuperficieTooltip
+        style={{ width: '100%', paddingHorizontal: 10, paddingVertical: 6 }}
+      >
+        <Text className="text-foreground text-center text-[12px]" numberOfLines={1}>
           {tip.texto}
         </Text>
       </SuperficieTooltip>
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: punta,
+          width: 8,
+          height: 8,
+          backgroundColor: 'rgba(28,28,28,0.9)',
+          transform: [{ rotate: '45deg' }],
+          ...(arriba ? { bottom: -3 } : { top: -3 }),
+        }}
+      />
     </View>
   )
 }

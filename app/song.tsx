@@ -21,7 +21,8 @@ import { SearchDropdown } from '../src/ui/SearchDropdown'
 import { SearchField } from '../src/ui/SearchField'
 import { addShowcase } from '../src/services/showcases'
 import { leerRecorte, limpiarRecorte } from '../src/state/recorte'
-import { useVolume } from '../src/state/playback'
+import { pauseForSnippet, useVolume } from '../src/state/playback'
+import { useAudioLease } from '../src/lib/useAudioLease'
 import { avisar } from '../src/state/aviso'
 import { getSupabase } from '../src/lib/supabase'
 import { type PopoverOption } from '../src/ui/Popover'
@@ -208,6 +209,7 @@ export default function SongPicker() {
   return (
     <Hoja medida={modal ? "contenido" : "llena"} anchoMaximo={720} titulo={track ? 'Elegir fragmento' : 'Agregar canción'}>
     <SafeAreaView
+      collapsable={false}
       className="min-h-0 bg-background"
       style={modal ? { height: Math.min(track ? 480 : 540, height - 96) } : { flex: 1 }}
       edges={Platform.OS === 'web' ? [] : ['bottom']}
@@ -339,7 +341,9 @@ function SnippetEditor({
   // largo real, así que la resolución se hace en este punto y no al elegir.
   const snippetMs = choice === 0 ? songMs : Math.min(choice, songMs || choice)
 
-  const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : null)
+  const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : null, { keepAudioSessionActive: true })
+  const lease = useAudioLease(player)
+  const intentoPlay = useRef(0)
   const [playing, setPlaying] = useState(false)
   const raf = useRef<number | null>(null)
 
@@ -475,6 +479,7 @@ function SnippetEditor({
       return
     }
     const tick = () => {
+      if (!lease.active) return
       const raw = player.currentTime * 1000
       // Antes de que el audio esté listo la posición puede no ser un número, y
       // `NaN !== NaN` daba por bueno el salto una y otra vez.
@@ -519,23 +524,34 @@ function SnippetEditor({
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current)
     }
-  }, [playing, startMs, snippetMs, player, lyrics, positionSV, alaVista])
+  }, [playing, startMs, snippetMs, player, lyrics, positionSV, alaVista, lease])
 
   const toggle = async () => {
+    if (!lease.active) return
+    const intento = ++intentoPlay.current
     if (playing) {
       player.pause()
       setPlaying(false)
       return
     }
-    seekAt.current = performance.now()
-    await player.seekTo(startMs / 1000)
-    positionSV.set(startMs)
-    lastLineRef.current = -2
-    player.play()
-    setPlaying(true)
+    try {
+      seekAt.current = performance.now()
+      await player.seekTo(startMs / 1000)
+      if (!lease.active || intento !== intentoPlay.current) return
+      positionSV.set(startMs)
+      lastLineRef.current = -2
+      pauseForSnippet()
+      player.play()
+      setPlaying(true)
+    } catch (cause) {
+      if (lease.active && intento === intentoPlay.current) {
+        avisar(`No se pudo reproducir el fragmento: ${(cause as Error).message}`, true)
+      }
+    }
   }
 
   const onChangeChoice = (next: number) => {
+    intentoPlay.current++
     setChoice(next)
     const nextMs = next === 0 ? songMs : Math.min(next, songMs || next)
     // Si el recorte se agranda y ya no entra, correrlo hacia atrás.
@@ -631,7 +647,7 @@ function SnippetEditor({
   ) : view === 'lyrics' && shownLyrics ? (
     <Lyrics lines={shownLyrics} atMs={lyricAtMs} size="lg" onPickLine={onChangeStart} />
   ) : (
-    <ScrollView contentContainerClassName="grow w-full max-w-[720px] self-center justify-center gap-4 px-5 py-4">
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', gap: 16, paddingHorizontal: 20, paddingVertical: 16 }}>
       <Waveform
         peaks={peaks ?? []}
         durationMs={songMs}

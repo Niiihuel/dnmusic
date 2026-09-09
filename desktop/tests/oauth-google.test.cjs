@@ -91,11 +91,11 @@ test('preload conserva audioOffline, OAuth y el almacén nativo de sesión', asy
   runInNewContext(readFileSync(require.resolve('../dist/preload.js'), 'utf8'), { exports: {}, require: id => {
     assert.equal(id, 'electron'); return { contextBridge: { exposeInMainWorld: (_, b) => { bridge = b } }, ipcRenderer: ipc }
   } })
-  assert.deepEqual(Object.keys(bridge.oauthGoogle), ['preparar', 'abrir', 'cancelar']); assert.ok(bridge.audioOffline.descargar)
+  assert.deepEqual(Object.keys(bridge.oauthGoogle), ['preparar', 'abrir', 'abrirVinculacion', 'cancelar']); assert.ok(bridge.audioOffline.descargar)
   assert.deepEqual(Object.keys(bridge.authStorage), ['getItem', 'setItem', 'removeItem'])
-  await bridge.oauthGoogle.preparar(); await bridge.oauthGoogle.abrir({ id: 'id', url: 'url' }); await bridge.oauthGoogle.cancelar('id')
+  await bridge.oauthGoogle.preparar(); await bridge.oauthGoogle.abrir({ id: 'id', url: 'url' }); await bridge.oauthGoogle.abrirVinculacion({ id: 'id', url: 'url', retorno: 'callback' }); await bridge.oauthGoogle.cancelar('id')
   await bridge.authStorage.getItem('sb-test-auth-token'); await bridge.authStorage.setItem('sb-test-auth-token', 'sesion'); await bridge.authStorage.removeItem('sb-test-auth-token')
-  assert.deepEqual(calls.map(c => c[0]), ['oauthGoogle:preparar', 'oauthGoogle:abrir', 'oauthGoogle:cancelar', 'authStorage:get', 'authStorage:set', 'authStorage:remove'])
+  assert.deepEqual(calls.map(c => c[0]), ['oauthGoogle:preparar', 'oauthGoogle:abrir', 'oauthGoogle:vincular', 'oauthGoogle:cancelar', 'authStorage:get', 'authStorage:set', 'authStorage:remove'])
 })
 
 
@@ -105,4 +105,31 @@ test('cerrar o navegar durante preparar cancela el receptor aún antes de obtene
   await assert.rejects(pending, /cancelado/)
   const siguiente = await h.oauth.preparar()
   assert.ok(siguiente.redirectTo); assert.equal(h.opened.length, 0)
+})
+
+function googleLink() {
+  const u = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+  u.searchParams.set('redirect_uri', origin + '/auth/v1/callback'); u.searchParams.set('response_type', 'code')
+  u.searchParams.set('state', 'signed-state'); u.searchParams.set('client_id', 'test.apps.googleusercontent.com')
+  return u
+}
+test('vinculación abre Google externo y conserva el callback loopback con nonce', async t => {
+  const h = fixture(t), inicio = await h.oauth.preparar(), a = armar(h.oauth, inicio)
+  const retorno = new URL(a.url).searchParams.get('redirect_to')
+  const pending = h.oauth.abrirVinculacion({ id: inicio.id, url: googleLink().href, retorno })
+  assert.equal(h.opened.length, 1)
+  const cb = a.cb('linked-code'); assert.equal((await get(cb)).status, 200)
+  assert.deepEqual(await pending, { type: 'success', url: cb.href })
+})
+test('vinculación no admite otros hosts, callbacks externos o un retorno sin nonce', async t => {
+  const h = fixture(t), inicio = await h.oauth.preparar(), a = armar(h.oauth, inicio)
+  const retorno = new URL(a.url).searchParams.get('redirect_to')
+  const badCallback = googleLink(); badCallback.searchParams.set('redirect_uri', 'https://evil.test/callback')
+  for (const url of [googleLink().href.replace('accounts.google.com', 'evil.test'), badCallback.href, googleLink().href + '&state=other']) {
+    await assert.rejects(h.oauth.abrirVinculacion({ id: inicio.id, url, retorno }))
+  }
+  for (const badReturn of ['https://evil.test/', inicio.redirectTo, retorno.replace('127.0.0.1', 'localhost')]) {
+    await assert.rejects(h.oauth.abrirVinculacion({ id: inicio.id, url: googleLink().href, retorno: badReturn }))
+  }
+  assert.equal(h.opened.length, 0)
 })

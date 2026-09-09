@@ -90,3 +90,21 @@ test('escucha opcional conserva false al guardar y restablece el opt-in del borr
   s.actualizarPerfilEdicion({ compartirEscucha: false })
   assert.deepEqual(s.cambiosParaGuardar(s.usePerfilBorrador(), s.getPerfilEdicion().cambios), { compartirEscucha: false })
 })
+
+for (const medio of ['foto', 'fondo']) {
+  test(`subir ${medio} aplica el resultado mientras el editor está ocupado`, () => {
+    const f = fixture(), s = f.api
+    s.iniciarPerfilEdicion(f.perfil)
+    s.actualizarPerfilEdicion({ bio: 'Borrador pendiente' })
+    s.ocuparPerfilEdicion(true)
+    s.actualizarPerfilEdicion({ bio: 'No debe entrar' })
+    assert.equal(s.completarMedioPerfilEdicion(f.perfil.userId, medio, 'nueva.jpg'), true)
+    assert.equal(s.usePerfilBorrador()[medio === 'foto' ? 'avatarPath' : 'bannerPath'], 'nueva.jpg')
+    assert.equal(s.usePerfilBorrador().bio, 'Borrador pendiente')
+    assert.equal(s.getPerfilEdicion().ocupado, true)
+    assert.equal(s.completarMedioPerfilEdicion('otra-cuenta', medio, 'ajena.jpg'), false)
+    assert.equal(s.usePerfilBorrador()[medio === 'foto' ? 'avatarPath' : 'bannerPath'], 'nueva.jpg')
+    s.terminarPerfilEdicion(f.perfil.userId)
+    assert.equal(s.completarMedioPerfilEdicion(f.perfil.userId, medio, 'tardia.jpg'), false)
+  })
+}

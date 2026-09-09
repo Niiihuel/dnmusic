@@ -1,5 +1,6 @@
 import { Platform } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
+import { File } from 'expo-file-system'
 
 /**
  * Elegir una imagen del dispositivo.
@@ -7,8 +8,8 @@ import * as ImagePicker from 'expo-image-picker'
  * Dos caminos según la plataforma, por una razón concreta: en web un
  * `<input type="file">` abre el diálogo del sistema sin pedir permisos ni
  * cargar un módulo nativo, mientras que en el teléfono hace falta el selector
- * de fotos de verdad. Quien llama recibe lo mismo en los dos casos —un Blob y
- * un nombre de archivo— y no se entera de la diferencia.
+ * de fotos de verdad. Quien llama recibe los bytes, el MIME y
+ * un nombre de archivo y no se entera de la diferencia.
  *
  * Devuelve `null` si se canceló. Cancelar no es un error: no hay nada que
  * avisar. Permisos no pide — ver el comentario dentro de `pickImage`.
@@ -116,8 +117,9 @@ const POR_EXTENSION: Record<string, string> = {
  * extensión del archivo, que es lo que el selector sí conoce.
  */
 function mimeDe(nombre: string, delBlob: string): string {
-  if (delBlob.startsWith('image/') || delBlob.startsWith('video/')) return delBlob
-  const ext = nombre.split('.').pop()?.toLowerCase() ?? ''
+  const tipo = delBlob.split(';')[0].trim().toLowerCase()
+  if (tipo.startsWith('image/') || tipo.startsWith('video/')) return tipo
+  const ext = nombre.split(/[?#]/)[0].split('.').pop()?.toLowerCase() ?? ''
   /* JPEG por defecto: es lo que devuelve la fototeca de iOS y el único formato
      que el selector garantiza. */
   return POR_EXTENSION[ext] ?? 'image/jpeg'
@@ -138,18 +140,12 @@ export async function pickImage({
     return desdeAsset(foto.assets[0])
   }
 
-  /*
-   * **Sin pedir permiso.**
-   *
-   * El selector de fotos del sistema (PHPicker en iOS, el Photo Picker en
-   * Android) corre en un proceso aparte: la app nunca ve la fototeca, solo
-   * recibe lo que se eligió, así que abrirlo no requiere ningún permiso.
-   *
-   * Acá se pedía `requestMediaLibraryPermissionsAsync` igual, y eso era la
-   * trampa: si alguna vez se contestó que no, iOS no vuelve a preguntar y la
-   * puerta quedaba clavada en «las fotos están bloqueadas — andá a Ajustes»
-   * para un permiso que el selector ni siquiera necesita. Sin el pedido, tocar
-   * «Subir foto» abre el selector directo, siempre.
+  /* PHPicker no necesita permiso para lo seleccionado. La excepción de Expo
+   * es video + Passthrough: intenta acceder al PHAsset original y puede pedir
+   * Fotos o fallar con iCloud (shouldDownloadFromNetwork es false por defecto).
+   * Exportar H.264 usa la copia del picker y descarga el video remoto; además
+   * evita subir un MOV HEVC/ProRes de cámara como fondo sin convertirlo.
+   * El preset solo afecta videos: no recorta ni aplasta los GIF elegidos.
    */
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: conVideo ? ['images', 'videos'] : ['images'],
@@ -157,6 +153,10 @@ export async function pickImage({
     allowsEditing: cuadrada,
     ...(cuadrada ? { aspect: [1, 1] as [number, number] } : {}),
     quality: 0.9,
+    ...(Platform.OS === 'ios' && conVideo ? {
+      videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
+      shouldDownloadFromNetwork: true,
+    } : {}),
   })
   if (result.canceled || !result.assets[0]) return null
   return desdeAsset(result.assets[0])
@@ -164,21 +164,27 @@ export async function pickImage({
 
 /** Lo que devolvió el selector —o la cámara— en la forma que espera la app. */
 async function desdeAsset(asset: ImagePicker.ImagePickerAsset): Promise<PickedImage> {
-  /*
-   * El selector devuelve una URI local, y Storage necesita bytes. `fetch` sobre
-   * un `file://` funciona en React Native y es la forma más corta de leerlos sin
-   * sumar expo-file-system solo para esto.
-   *
-   * Se leen como **ArrayBuffer**, no como Blob: el Blob de React Native viene
-   * con `text/plain` de tipo y storage-js se lo cree — ver el comentario de
-   * `PickedImage.blob`. El tipo real va aparte, en `mime`.
-   */
-  const blob = await fetch(asset.uri).then((r) => r.arrayBuffer())
-  const fileName = asset.fileName || asset.uri.split('/').pop() || 'foto.jpg'
+  // Leer el archivo que Expo copió/exportó, no el PHAsset de la fototeca.
+  // File evita el recorrido fetch → Blob → base64 → ArrayBuffer de RN.
+  const archivo = new File(asset.uri)
+  if (archivo.size > 25 * 1024 * 1024) {
+    throw new Error('No puede pesar más de 25 MB.')
+  }
+  const blob = await archivo.arrayBuffer()
+  if (blob.byteLength === 0) throw new Error('El archivo elegido está vacío. Volvé a elegirlo en Fotos.')
+  const nombreLocal = asset.uri.split(/[?#]/)[0].split('/').pop() ?? ''
+  const extLocal = nombreLocal.split('.').pop()?.toLowerCase() ?? ''
+  // El nombre original puede seguir siendo .MOV/.HEIC después de exportar.
+  // La extensión de la copia local describe los bytes que realmente subimos.
+  const mime = POR_EXTENSION[extLocal] ?? mimeDe(asset.fileName ?? nombreLocal, asset.mimeType ?? '')
+  if (asset.type === 'video' && !mime.startsWith('video/')) {
+    throw new Error('No se pudo reconocer el formato del video. Elegí un MP4 o MOV.')
+  }
+  const fileName = POR_EXTENSION[extLocal] ? nombreLocal : asset.fileName || nombreLocal || 'foto.jpg'
   return {
     blob,
     fileName,
-    mime: mimeDe(fileName, asset.mimeType ?? ''),
+    mime,
     /* El selector ya las midió: no hay que volver a abrir la imagen. */
     alto: asset.width > 0 && asset.height > 0 ? asset.height / asset.width : undefined,
     uri: asset.uri,

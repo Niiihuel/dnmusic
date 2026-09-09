@@ -25,6 +25,8 @@ const rn = { ActivityIndicator: 'ActivityIndicator', Pressable: 'Pressable', Tex
 const cabecera = cargar('src/ui/EncabezadoHoja.tsx', {
   'react/jsx-runtime': runtime, 'react-native': rn,
   'expo-linear-gradient': { LinearGradient: 'LinearGradient' },
+  './BotonVolver': { BotonVolver: 'BotonVolver' },
+  './Glass': { BotonVidrio: 'BotonVidrio', ES_WEB: false },
   './estadoControl': { estadoControlWeb: modo => ({ dataSet: { dnHover: modo } }) },
   './icons': { ICON_COLOR: {}, IconCheck: 'IconCheck', IconClose: 'IconClose', IconChevronLeft: 'IconChevronLeft' },
 })
@@ -94,6 +96,10 @@ function montar({ width = 390, jamInicial = null } = {}) {
     '../../src/ui/NowPlayingBar': { PANEL_PX: 1100 },
     '../../src/ui/icons': { ICON_COLOR: {}, IconCheck: 'IconCheck', IconUsers: 'IconUsers' },
     '../../src/ui/ScrollArea': { ScrollArea: 'ScrollArea' },
+    /* La puerta del Jam se dibuja sin sesión en modo tarjeta; acá se prueba lo
+       que ve quien sí tiene cuenta aprobada. Ver `ui/Aterrizaje`. */
+    '../../src/state/session': { useUser: () => ({ id: 'quien' }) },
+    '../../src/ui/Aterrizaje': { Aterrizaje: 'Aterrizaje' },
   }).default
   function render() {
     cursor = 0

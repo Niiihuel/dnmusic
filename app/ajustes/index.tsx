@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Platform, Pressable, Text, useWindowDimensions, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   AjustesCompactos,
@@ -48,7 +48,7 @@ import {
 import { setPreferencia, setPrecargaAutomatica, setPrecargaDatos, setSoloWifi, useAjustes } from '../../src/state/ajustes'
 import { programarApagado, setModoReproduccion, useDormirMin, useModoReproduccion } from '../../src/state/playback'
 import { borrarHistorial } from '../../src/services/plays'
-import { endSession, useIsAccessAdmin, useMyProfile } from '../../src/state/session'
+import { endSession, useAuthUser, useIsAccessAdmin, useMyProfile } from '../../src/state/session'
 import { useNovedadesPendientes } from '../../src/state/novedadesVistas'
 import { avisar } from '../../src/state/aviso'
 import { mensajeError } from '../../src/lib/mensajeError'
@@ -58,6 +58,9 @@ import { NOVEDADES } from '../../src/lib/novedades'
 import { HAY_ACTUALIZADOR } from '../../src/state/actualizacion'
 import { DETALLE_PRECARGA_SESION, DETALLE_RED_PC, inventarioDescargas } from '../../src/ui/descargasControl'
 import { TECLADO_FISICO } from '../../src/lib/teclado'
+import { ListaSolicitudes } from '../../src/ui/SolicitudesAcceso'
+import { ConectarGoogle } from '../../src/ui/ConectarGoogle'
+import { AdministrarActualizaciones } from '../../src/ui/AdministrarActualizaciones'
 
 /** Desde acá la pantalla es la de macOS: barra lateral con las categorías y el detalle al lado. */
 const ESCRITORIO_PX = 780
@@ -107,8 +110,10 @@ type Categoria = {
  */
 export default function Configuracion() {
   const router = useRouter()
+  const { seccion } = useLocalSearchParams<{ seccion?: string }>()
   const ajustes = useAjustes()
   const esAdmin = useIsAccessAdmin()
+  const cuentaAuth = useAuthUser()
   const dormirMin = useDormirMin()
   const modoReproduccion = useModoReproduccion()
   const perfil = useMyProfile()
@@ -255,15 +260,31 @@ export default function Configuracion() {
       ),
     },
     {
+      id: 'actualizaciones',
+      titulo: 'Actualizaciones',
+      icono: IconDownload,
+      palabras: 'actualizaciones versiones mínima obligatoria opcional administración',
+      visible: esAdmin,
+      bloques: <AdministrarActualizaciones />,
+    },
+    {
       id: 'accesos',
       titulo: 'Solicitudes de acceso',
       icono: IconUser,
       palabras: 'administración aprobar rechazar solicitudes acceso cuentas google',
       visible: esAdmin,
-      bloques: (
+      bloques: escritorio && cuentaAuth ? (
+        <ListaSolicitudes key={cuentaAuth.id} administradorId={cuentaAuth.id} integrada />
+      ) : (
         <GrupoAjustes pie="Revisá quién puede entrar a DMusic.">
-          <FilaAjuste iconoPlano rotulo="Solicitudes de acceso" vacio="" icono={<IconUser size={16} color={ICON_COLOR.muted} />}
-            onPress={() => router.push('/ajustes/accesos')} ultima />
+          <FilaAjuste
+            iconoPlano
+            rotulo="Solicitudes de acceso"
+            vacio=""
+            icono={<IconUser size={16} color={ICON_COLOR.muted} />}
+            onPress={() => router.push('/ajustes/accesos')}
+            ultima
+          />
         </GrupoAjustes>
       ),
     },
@@ -294,9 +315,11 @@ export default function Configuracion() {
       id: 'cuenta',
       titulo: 'Cuenta',
       icono: IconUser,
-      palabras: 'perfil foto nombre fuente tipografía espacio cerrar sesión salir cuenta',
+      palabras: 'perfil foto nombre fuente tipografía espacio cerrar sesión salir cuenta conectar google vincular correo',
       visible: true,
       bloques: (
+        <>
+        {cuentaAuth ? <ConectarGoogle key={cuentaAuth.id} user={cuentaAuth} /> : null}
         <GrupoAjustes pie="Cerrar sesión no borra nada: tus listas y tu perfil siguen en tu cuenta.">
           <FilaAjuste
             rotulo="Personalizar perfil"
@@ -311,6 +334,7 @@ export default function Configuracion() {
             ultima
           />
         </GrupoAjustes>
+        </>
       ),
     },
   ].filter((c) => c.visible)
@@ -358,6 +382,7 @@ export default function Configuracion() {
     return (
       <Escritorio
         categorias={categorias}
+        initialId={typeof seccion === 'string' ? seccion : undefined}
         coinciden={coinciden}
         buscando={buscando}
         busqueda={busqueda}
@@ -484,6 +509,7 @@ function Telefono({
  */
 function Escritorio({
   categorias,
+  initialId,
   coinciden,
   buscando,
   busqueda,
@@ -494,6 +520,7 @@ function Escritorio({
   onVolver,
 }: {
   categorias: Categoria[]
+  initialId?: string
   coinciden: Categoria[]
   buscando: boolean
   busqueda: string
@@ -503,7 +530,9 @@ function Escritorio({
   sinResultados: ReactNode
   onVolver: () => void
 }) {
-  const [elegida, setElegida] = useState(categorias[0]?.id ?? '')
+  const [elegida, setElegida] = useState(() =>
+    categorias.some((c) => c.id === initialId) ? initialId! : (categorias[0]?.id ?? ''),
+  )
   const [plegada, setPlegada] = useState(false)
   const [hover, setHover] = useState(false)
   const actual = categorias.find((c) => c.id === elegida) ?? categorias[0]
@@ -564,7 +593,7 @@ function Escritorio({
             keyboardShouldPersistTaps="handled"
             contentContainerClassName="items-center px-8 pb-10 pt-6"
           >
-            <View className="w-full gap-4" style={{ maxWidth: MAX_W }}>
+            <View className="w-full gap-4" style={{ maxWidth: actual?.id === 'accesos' ? 720 : MAX_W }}>
               {mostradas.map((c) => (
                 <View key={c.id} className="gap-4">
                   {buscando ? (

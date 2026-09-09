@@ -1,19 +1,16 @@
-import { Platform, Share } from 'react-native'
-import { avisar } from '../state/aviso'
-import { copiarAlPortapapeles } from './portapapeles'
+import { baseDe, linkDe, ofrecer } from './compartir'
 
 /**
- * El link de una lista pública.
+ * Los dos links de una lista: el de mirarla y el de sumarse a armarla.
  *
- * Mismo dominio cableado que el del Jam y por la misma razón: es el que está
- * declarado en `associatedDomains` y en el `apple-app-site-association`, y los
- * tres tienen que decir lo mismo o el link deja de abrir la app. Ver
- * `lib/invitarJam`, que es el hermano de este módulo.
+ * El dominio y la hoja de compartir viven en `lib/compartir`, que es lo que
+ * comparten los cuatro compartibles. Acá queda lo que es de una lista y de
+ * nadie más: que tenga **dos** links distintos.
  */
-export const BASE_LISTA = 'https://dnmusic-app.vercel.app/lista'
+export const BASE_LISTA = baseDe('lista')
 
 export function linkDeLista(id: string): string {
-  return `${BASE_LISTA}/${id}`
+  return linkDe('lista', id)
 }
 
 /**
@@ -29,7 +26,7 @@ export function linkDeLista(id: string): string {
  * link **es** la invitación. Si se fue de las manos, el dueño saca a quien sobre.
  */
 export function linkParaColaborar(id: string): string {
-  return `${BASE_LISTA}/${id}?colaborar=1`
+  return `${linkDeLista(id)}?colaborar=1`
 }
 
 /** Pasar la lista para que la escuchen. */
@@ -42,27 +39,4 @@ export async function compartirLista(id: string, nombre: string): Promise<void> 
 export async function invitarAColaborar(id: string, nombre: string): Promise<void> {
   const enlace = linkParaColaborar(id)
   await ofrecer(enlace, `Sumate a «${nombre}» en dnmusic y poné tus canciones: ${enlace}`)
-}
-
-/**
- * El gesto nativo de cada lado: la hoja de compartir en el teléfono, el
- * portapapeles en el navegador — que no tiene hoja.
- *
- * El nombre viaja en el mensaje porque una URL con un uuid no dice nada de qué
- * se está pasando; con el nombre, quien lo recibe sabe si le interesa antes de
- * tocarlo.
- */
-async function ofrecer(enlace: string, mensaje: string): Promise<void> {
-  // Copiar siempre, con el respaldo del textarea para el escritorio —donde
-  // `navigator.clipboard` puede no estar—; ver `lib/portapapeles`.
-  const copiado = await copiarAlPortapapeles(enlace)
-  if (Platform.OS !== 'web') {
-    try {
-      await Share.share({ message: mensaje })
-      return
-    } catch {
-      // Hoja cancelada: el link ya quedó copiado.
-    }
-  }
-  avisar(copiado ? 'Link copiado. Mandáselo a quien quieras.' : `Compartí el link ${enlace}`)
 }

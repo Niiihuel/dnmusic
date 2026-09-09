@@ -2,6 +2,8 @@ import { estadoControlWeb } from './estadoControl'
 import type { ReactNode } from 'react'
 import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import { BotonVolver } from './BotonVolver'
+import { BotonVidrio, ES_WEB } from './Glass'
 import { ICON_COLOR, IconCheck, IconChevronLeft, IconClose } from './icons'
 
 /** Lo que mide la cabecera, para quien la pega arriba y necesita reservarlo. */
@@ -72,9 +74,9 @@ export function EncabezadoHoja({
 /**
  * El redondel de una hoja: cerrar, volver, o cualquier ícono.
  *
- * Es `muted` y no vidrio a propósito: adentro de una hoja no hay nada que
- * pase por detrás que valga difuminar, y `docs/DESIGN.md` reserva el material
- * para lo que flota sobre contenido.
+ * En iOS comparte el control circular de navegación y su material nativo.
+ * En web conserva el fondo `muted`. La flecha retrocede dentro del flujo;
+ * la cruz cierra la presentación.
  */
 export function BotonHoja({
   tipo,
@@ -89,8 +91,18 @@ export function BotonHoja({
   children?: ReactNode
   disabled?: boolean
 }) {
+  if (tipo === 'volver' && !children) {
+    return <BotonVolver onPress={onPress} label={label} disabled={disabled} />
+  }
+  if (!ES_WEB) {
+    return <BotonVidrio label={label ?? 'Cerrar'} onPress={onPress} disabled={disabled}
+      radius={22} style={{ width: 44, height: 44 }}>
+      {children ?? <IconClose size={18} color={ICON_COLOR.foreground} />}
+    </BotonVidrio>
+  }
   return (
     <Pressable
+      {...estadoControlWeb('none')}
       accessibilityRole="button"
       accessibilityLabel={label ?? (tipo === 'volver' ? 'Volver' : 'Cerrar')}
       onPress={onPress}

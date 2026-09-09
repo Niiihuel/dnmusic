@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, safeStorage, session, shell } from 'electron'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import {
   arrancarActualizador,
   buscarAhora,
@@ -9,6 +9,7 @@ import {
   seguirAudioDe,
 } from './actualizador'
 import { ORIGEN, raizWeb, registrarEsquema, servirWeb } from './protocolo'
+import { ESQUEMA_ENLACE, EntregaDeEnlaces } from './enlaces'
 import { type Aporte } from './resolutor'
 import { cerrarResolutor, resolverEnHijo } from './resolutor-remoto'
 import { descargarArchivos } from './descargas'
@@ -54,6 +55,9 @@ app.setAppUserModelId('com.nihuel.dnmusic')
 registrarEsquema()
 
 let ventanaPrincipal: BrowserWindow | null = null
+/* Los `dnmusic://` que manda el sistema, guardados hasta que haya ventana.
+   Ver `enlaces.ts`: en Windows y Linux el primero llega antes que ella. */
+const enlaces = new EntregaDeEnlaces()
 
 /** Solo http y https: un link no puede terminar lanzando algo de la máquina. */
 function abrirAfuera(url: string): void {
@@ -278,6 +282,27 @@ function armarMenu(): void {
 }
 
 /*
+ * Que el sistema sepa que los `dnmusic://` son de esta app.
+ *
+ * Va antes de `whenReady` porque en Windows el registro se escribe en el
+ * arranque. Sin empaquetar hay que decirle además **qué** ejecutar: el binario
+ * de Electron con el script como argumento, o el registro apuntaría a un
+ * `electron` pelado que no sabe qué abrir. Empaquetado, el instalador ya lo
+ * declara (`protocols` en electron-builder.yml) y esto es el respaldo para la
+ * AppImage, que no instala nada.
+ */
+if (app.isPackaged) app.setAsDefaultProtocolClient(ESQUEMA_ENLACE)
+else app.setAsDefaultProtocolClient(ESQUEMA_ENLACE, process.execPath, [resolve(process.argv[1] ?? '.')])
+
+/* En macOS el link nunca llega por argv: llega por acá, y también con la app
+   ya abierta. Se registra afuera de `whenReady` porque el sistema puede
+   dispararlo antes de que la app esté lista. */
+app.on('open-url', (evento, url) => {
+  evento.preventDefault()
+  if (enlaces.recibir(url)) traerAlFrente()
+})
+
+/*
  * Una sola instancia. Abrir dnmusic dos veces daría dos reproductores peleando
  * por la misma cuenta y por la misma sesión de escucha (docs/ESCUCHA.md), así
  * que el segundo arranque le devuelve el foco al primero y se va.
@@ -285,7 +310,14 @@ function armarMenu(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => traerAlFrente())
+  /* El `argv` del segundo arranque es por dónde llega un link en Windows y en
+     Linux cuando la app ya estaba abierta: es el caso normal, no el raro. */
+  app.on('second-instance', (_evento, argv) => {
+    enlaces.recibirArgumentos(argv)
+    traerAlFrente()
+  })
+  /* Y el de este mismo arranque, para el clic que abrió la app. */
+  enlaces.recibirArgumentos(process.argv)
 
   void app.whenReady().then(async () => {
     const raiz = raizWeb()
@@ -327,6 +359,10 @@ if (!app.requestSingleInstanceLock()) {
 
     armarMenu()
     ventanaPrincipal = crearVentana()
+    /* Recién con la ventana hay a quién darle los links: se le manda la ruta y
+       navega expo-router, sin recargar el bundle ni cortar lo que suena. */
+    enlaces.conectar((ruta) => ventanaPrincipal?.webContents.send('enlace:abrir', ruta))
+    ventanaPrincipal.on('closed', () => enlaces.desconectar())
     ventanaPrincipal.webContents.on('destroyed', () => google.cancelar())
     ventanaPrincipal.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => { if (isMainFrame && !isInPlace) google.cancelar() })
     arrancarActualizador()

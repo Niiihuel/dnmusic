@@ -36,6 +36,7 @@ const { MenuNativo } = cargar(readFileSync('src/ui/MenuNativo.ios.tsx', 'utf8'),
   '@expo/ui/swift-ui': { ...Object.fromEntries(['Button', 'ControlGroup', 'Divider', 'Host', 'Image', 'Label', 'Menu', 'RNHostView', 'Text', 'Toggle'].map((k) => [k, k])), ContextMenu: { Trigger: 'Trigger', Items: 'Items' } },
   '@expo/ui/swift-ui/modifiers': modifiers,
   './menuReparto': reparto,
+  './MenuContextualColeccion': { HAY_CONTEXTO_COLECCION: false },
   './icons': { ICON_COLOR: { foreground: '#fff', muted: '#aaa' } },
 })
 

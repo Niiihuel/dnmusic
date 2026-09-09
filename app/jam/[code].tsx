@@ -12,6 +12,8 @@ import { usePreventRemove } from 'expo-router/react-navigation'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { verJam, type VistaJam } from '../../src/services/jam'
 import { unirseAJam, useJam } from '../../src/state/jam'
+import { useUser } from '../../src/state/session'
+import { Aterrizaje } from '../../src/ui/Aterrizaje'
 import { abrirVista } from '../../src/state/playback'
 import { CabeceraSocial, AccionSocial } from '../../src/ui/Social'
 import { usePiso } from '../../src/state/shell'
@@ -54,6 +56,11 @@ export default function EntrarAlJam() {
     } else router.replace('/jam')
   }, [width, router])
 
+  /* Quien todavía no está adentro ve la tarjeta, no la puerta: `useUser` da
+     `undefined` mientras la sesión se resuelve y `null` tanto sin sesión como
+     con la cuenta sin aprobar. Ver `Aterrizaje`. */
+  const quien = useUser()
+  const aprobado = !!quien
   // Sin código no hay nada que buscar: nace resuelto, sin pasar por cargando.
   const [vista, setVista] = useState<VistaJam | null | 'cargando'>(code ? 'cargando' : null)
   const [salida, setSalida] = useState<'propia' | 'host'>('propia')
@@ -62,14 +69,14 @@ export default function EntrarAlJam() {
 
   useEffect(() => {
     let vivo = true
-    if (!code) return
+    if (!code || !aprobado) return
     verJam(code)
       .then((v) => vivo && setVista(v))
       .catch(() => vivo && setVista(null))
     return () => {
       vivo = false
     }
-  }, [code])
+  }, [code, aprobado])
 
   /* Ya adentro de este Jam —o de otro—: la invitación no tiene nada que
      ofrecer, y quedarse acá sería una puerta que da a donde ya estás. */
@@ -85,6 +92,9 @@ export default function EntrarAlJam() {
     try { await unirseAJam(code, salida) }
     finally { setEntrando(false) }
   }
+
+  if (quien === undefined) return <SafeAreaView className="flex-1 bg-background" />
+  if (!aprobado) return <Aterrizaje que="jam" id={code ?? ''} />
 
   if (vista === 'cargando') {
     return (

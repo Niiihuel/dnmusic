@@ -28,6 +28,23 @@ export function actualizarPerfilEdicion(patch: CambiosPerfil) {
   }
   store.set({ cambios })
 }
+/** Completa la subida que mantiene ocupado al editor, sin abrir otros campos. */
+export function completarMedioPerfilEdicion(ownerId: string, medio: 'foto' | 'fondo', ruta: string): boolean {
+  const actual = store.get()
+  if (!actual.base || actual.ownerId !== ownerId) return false
+  const patch: CambiosPerfil = medio === 'foto'
+    ? { avatarPath: ruta, avatarEncuadre: null }
+    : { bannerPath: ruta, bannerEncuadre: null }
+  const cambios = { ...actual.cambios }
+  for (const campo of CAMPOS_PERFIL) {
+    if (!(campo in patch)) continue
+    const valor = patch[campo]
+    if (JSON.stringify(valor ?? null) === JSON.stringify(actual.base[campo] ?? null)) delete cambios[campo]
+    else Object.assign(cambios, { [campo]: valor })
+  }
+  store.set({ cambios })
+  return true
+}
 export function ocuparPerfilEdicion(ocupado: boolean) { store.set({ ocupado }) }
 export function restablecerPerfilEdicion() { if (!store.get().ocupado) store.set({ cambios: {} }) }
 export function confirmarPerfilEdicion(perfil: Profile) {

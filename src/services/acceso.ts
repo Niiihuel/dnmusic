@@ -13,6 +13,7 @@ export type AccessRequest = {
   decided_at: string | null
 }
 export type AccessDecision = { user_id: string; status: 'approved' | 'rejected'; decided_at: string }
+export type AccessDeletion = { user_id: string; deleted: true }
 
 function isAccessState(value: unknown): value is AccessState {
   return value === 'pending' || value === 'approved' || value === 'rejected'
@@ -44,6 +45,15 @@ export async function decideAccess(userId: string, approve: boolean): Promise<Ac
     throw new Error('No se pudo confirmar la decisión. Actualizá las solicitudes.')
   }
   return { user_id: data.user_id, status: data.status, decided_at: data.decided_at }
+}
+
+export async function deleteAccessAccount(userId: string): Promise<AccessDeletion> {
+  const { data, error } = await getSupabase().rpc('delete_access_account', { p_user_id: userId })
+  if (error) throw error
+  if (!data || data.user_id !== userId || data.deleted !== true) {
+    throw new Error('No se pudo confirmar la eliminación. Actualizá las cuentas.')
+  }
+  return { user_id: data.user_id, deleted: true }
 }
 
 /** Solo orienta la renovación del JWT; no verifica firmas ni concede acceso. */

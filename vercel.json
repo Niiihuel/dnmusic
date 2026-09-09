@@ -5,7 +5,15 @@
   "framework": null,
   "rewrites": [
     {
-      "source": "/((?!_expo|icons|assets|manifest.json|favicon.ico|\\.well-known).*)",
+      "source": "/embed/:que(cancion|lista|jam|perfil)/:id",
+      "destination": "/api/tarjeta?modo=embed&que=:que&id=:id"
+    },
+    {
+      "source": "/:que(cancion|lista|jam|perfil)/:id",
+      "destination": "/api/tarjeta?que=:que&id=:id"
+    },
+    {
+      "source": "/((?!_expo|api|icons|assets|manifest.json|favicon.ico|\\.well-known).*)",
       "destination": "/index.html"
     }
   ],

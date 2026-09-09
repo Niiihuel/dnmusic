@@ -22,6 +22,15 @@ extraResources:
   - from: web
     to: app
 
+# El esquema propio, para que «Abrir en la app» desde la web abra ésta.
+# Lo declara el instalador —NSIS lo escribe en el registro de Windows, y en
+# Linux va al .desktop como MimeType—; la AppImage no instala nada, así que
+# ahí lo pide `app.setAsDefaultProtocolClient` en el arranque (main.ts).
+protocols:
+  - name: dnmusic
+    schemes:
+      - dnmusic
+
 # El cuerpo del release: las mismas novedades que muestra la app, en markdown.
 # Lo escribe scripts/notas-release.mjs antes de empaquetar (el CI lo corre con
 # la versión del tag; los scripts de npm lo corren solos).

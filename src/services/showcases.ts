@@ -569,7 +569,7 @@ const VITRINA_MAX_BYTES = 25 * 1024 * 1024
 
 /** Si esa ruta es un clip y no una imagen. Lo mira el fondo para dibujarlo. */
 export function esVideo(path: string): boolean {
-  const ext = path.split('.').pop()?.toLowerCase() ?? ''
+  const ext = path.split(/[?#]/)[0].split('.').pop()?.toLowerCase() ?? ''
   return ext === 'mp4' || ext === 'mov'
 }
 
@@ -590,7 +590,7 @@ export async function uploadIlustracion(
   mime = file instanceof Blob ? file.type : '',
 ): Promise<string> {
   validarIlustracion(file, mime)
-  const path = rutaDeIlustracion(ownerId, fileName)
+  const path = rutaDeIlustracion(ownerId, fileName, mime)
   const { error } = await getSupabase()
     .storage.from('showcases')
     .upload(path, file, { contentType: mime, upsert: true })
@@ -617,7 +617,7 @@ export async function uploadIlustracionConProgreso(
   onProgreso: (fraccion: number) => void,
 ): Promise<string> {
   validarIlustracion(file, mime)
-  const path = rutaDeIlustracion(ownerId, fileName)
+  const path = rutaDeIlustracion(ownerId, fileName, mime)
   const supabase = getSupabase()
   const { data, error } = await supabase.storage
     .from('showcases')
@@ -641,6 +641,9 @@ export async function uploadIlustracionConProgreso(
         ? resolver()
         : rechazar(new Error(`No se pudo subir (${xhr.status}).`))
     xhr.onerror = () => rechazar(new Error('No se pudo subir. ¿Hay conexión?'))
+    xhr.timeout = 120_000
+    xhr.ontimeout = () => rechazar(new Error('La subida tardó demasiado. Revisá la conexión y volvé a intentar.'))
+    xhr.onabort = () => rechazar(new Error('La subida se interrumpió. Volvé a intentar.'))
     xhr.send(file)
   })
   onProgreso(1)
@@ -651,9 +654,10 @@ export async function uploadIlustracionConProgreso(
  *  para que el servidor diga que no. */
 function validarIlustracion(file: Blob | ArrayBuffer, mime: string) {
   if (!TIPOS_VITRINA.includes(mime)) {
-    throw new Error('Tiene que ser una imagen (JPG, PNG, WebP, GIF) o un video MP4.')
+    throw new Error('Tiene que ser una imagen (JPG, PNG, WebP, GIF) o un video MP4 o MOV.')
   }
   const peso = file instanceof Blob ? file.size : file.byteLength
+  if (peso === 0) throw new Error('El archivo elegido está vacío.')
   if (peso > VITRINA_MAX_BYTES) {
     throw new Error('No puede pesar más de 25 MB.')
   }
@@ -661,8 +665,11 @@ function validarIlustracion(file: Blob | ArrayBuffer, mime: string) {
 
 /** La carpeta es el id de quien sube: la policy del bucket lo exige, y es lo
  *  que impide pisar la ilustración de otro. */
-function rutaDeIlustracion(ownerId: string, fileName: string): string {
-  const ext = fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+function rutaDeIlustracion(ownerId: string, fileName: string, mime: string): string {
+  // El render decide por extensión. Un video con nombre sin extensión, o con
+  // el nombre original anterior a exportar, debe seguir llegando a VideoView.
+  const ext = mime === 'video/mp4' ? 'mp4' : mime === 'video/quicktime' ? 'mov'
+    : fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
   return `${ownerId}/${Date.now()}.${ext}`
 }
 

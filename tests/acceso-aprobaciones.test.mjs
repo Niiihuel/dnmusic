@@ -31,15 +31,17 @@ test('lista y decisiones usan exclusivamente RPC, parámetros exactos y confirma
  const calls=[], row={user_id:'solicitante',status:'pending',requested_at:'2026-09-07T00:00:00Z'}
  const f=service(async(name,args)=>{
   calls.push([name,args])
-  return {data:name==='access_requests'?[row]:{user_id:args.p_user_id,status:args.p_approve?'approved':'rejected',decided_at:'2026-09-07T01:00:00Z'}}
+  return {data:name==='access_requests'?[row]:name==='delete_access_account'?{user_id:args.p_user_id,deleted:true}:{user_id:args.p_user_id,status:args.p_approve?'approved':'rejected',decided_at:'2026-09-07T01:00:00Z'}}
  })
  assert.deepEqual(await f.listAccessRequests(),[row])
  assert.equal((await f.decideAccess('solicitante',true)).status,'approved')
  assert.equal((await f.decideAccess('solicitante',false)).status,'rejected')
- assert.deepEqual(calls,[['access_requests',undefined],['decide_access',{p_user_id:'solicitante',p_approve:true}],['decide_access',{p_user_id:'solicitante',p_approve:false}]])
+ assert.deepEqual(await f.deleteAccessAccount('solicitante'),{user_id:'solicitante',deleted:true})
+ assert.deepEqual(calls,[['access_requests',undefined],['decide_access',{p_user_id:'solicitante',p_approve:true}],['decide_access',{p_user_id:'solicitante',p_approve:false}],['delete_access_account',{p_user_id:'solicitante'}]])
  await assert.rejects(service(async()=>({error:new Error('forbidden')})).listAccessRequests(),/forbidden/)
  await assert.rejects(service(async()=>({data:null})).listAccessRequests(),/leer/)
  await assert.rejects(service(async()=>({data:{user_id:'otra',status:'approved',decided_at:'hoy'}})).decideAccess('solicitante',true),/confirmar/)
+ await assert.rejects(service(async()=>({data:{user_id:'otra',deleted:true}})).deleteAccessAccount('solicitante'),/confirmar/)
 })
 
 function uiFixture(path, mocks={}, name='default') {
@@ -102,22 +104,25 @@ const account=(id,status='pending')=>({user_id:id,email:`${id}@gmail.com`,displa
 
 test('ruta admin no monta la lista sin permiso y cambia su instancia cuando cambia la cuenta', () => {
  let admin=false,uid='owner'
- const f=uiFixture('app/ajustes/accesos.tsx',{session:{useIsAccessAdmin:()=>admin,useAuthUser:()=>({id:uid})}})
- assert.equal(f.render().some(n=>n.type?.name==='ListaSolicitudes'),false)
+ const f=uiFixture('app/ajustes/accesos.tsx',{
+  session:{useIsAccessAdmin:()=>admin,useAuthUser:()=>({id:uid})},
+  'react-native':{useWindowDimensions:()=>({width:390}),Text:'Text',View:'View'},
+ })
+ assert.equal(f.render().some(n=>n.type==='ListaSolicitudes'),false)
  assert.ok(f.render().some(n=>n.props?.accessibilityRole==='alert'))
  admin=true
- const first=f.render().find(n=>n.type?.name==='ListaSolicitudes')
+ const first=f.render().find(n=>n.type==='ListaSolicitudes')
  assert.equal(first.props.administradorId,'owner')
  uid='other'
- assert.equal(f.render().find(n=>n.type?.name==='ListaSolicitudes').props.administradorId,'other')
+ assert.equal(f.render().find(n=>n.type==='ListaSolicitudes').props.administradorId,'other')
  admin=false
- assert.equal(f.render().some(n=>n.type?.name==='ListaSolicitudes'),false)
+ assert.equal(f.render().some(n=>n.type==='ListaSolicitudes'),false)
 })
 
 test('admin recupera lectura fallida, confirma aprobación una vez y conserva rechazo ante fallo remoto', async () => {
  let failLoad=true,failDecision=false
  const decision=deferred(),calls=[]
- const f=uiFixture('app/ajustes/accesos.tsx',{acceso:{
+ const f=uiFixture('src/ui/SolicitudesAcceso.tsx',{acceso:{
   listAccessRequests:async()=>{calls.push('list');if(failLoad)throw Error('offline');return [account('owner','approved'),account('new'),account('denied','rejected')]},
   decideAccess:(id,approve)=>{calls.push([id,approve]);return failDecision?Promise.reject(Error('forbidden')):decision.promise},
  }},'ListaSolicitudes')
@@ -125,9 +130,9 @@ test('admin recupera lectura fallida, confirma aprobación una vez y conserva re
  render();f.effects();await tick()
  let ui=render()
  assert.match(ui.find(n=>n.type==='FormError').props.message,/cargar/)
- assert.equal(ui.find(n=>n.props?.label==='Reintentar lectura').props.busy,false)
+ assert.equal(ui.find(n=>n.props?.label==='Reintentar').props.busy,false)
  failLoad=false
- await ui.find(n=>n.props?.label==='Reintentar lectura').props.onPress()
+ await ui.find(n=>n.props?.label==='Reintentar').props.onPress()
  ui=render()
  assert.equal(ui.filter(n=>n.type==='Menu').length,2,'el owner no tiene acciones contra su propio acceso')
  const menu=ui.find(n=>n.props?.label==='Decidir acceso de new@gmail.com')
@@ -137,19 +142,44 @@ test('admin recupera lectura fallida, confirma aprobación una vez y conserva re
  assert.ok(render().find(n=>n.props?.label==='Actualizar').props.disabled)
  decision.resolve({user_id:'new',status:'approved',decided_at:'2026-09-07T01:00:00Z'});await tick()
  ui=render()
- assert.deepEqual(ui.find(n=>n.props?.label==='Decidir acceso de new@gmail.com').props.items.map(i=>i.label),['Rechazar acceso'])
+ assert.deepEqual(ui.find(n=>n.props?.label==='Decidir acceso de new@gmail.com').props.items.map(i=>i.label),['Rechazar acceso','Eliminar cuenta'])
  failDecision=true
  ui.find(n=>n.props?.label==='Decidir acceso de denied@gmail.com').props.items[0].onPress();await tick()
  ui=render()
  assert.match(ui.find(n=>n.type==='FormError').props.message,/confirmar/)
- assert.deepEqual(ui.find(n=>n.props?.label==='Decidir acceso de denied@gmail.com').props.items.map(i=>i.label),['Aprobar acceso'])
+ assert.deepEqual(ui.find(n=>n.props?.label==='Decidir acceso de denied@gmail.com').props.items.map(i=>i.label),['Aprobar acceso','Eliminar cuenta'])
  assert.equal(ui.find(n=>n.props?.label==='Actualizar').props.disabled,false)
+ f.cleanup()
+})
+
+
+test('el borrado exige confirmación, se ejecuta una sola vez y saca la cuenta de la tabla', async () => {
+ const deletion=deferred(),calls=[]
+ const f=uiFixture('src/ui/SolicitudesAcceso.tsx',{acceso:{
+  listAccessRequests:async()=>[account('owner','approved'),account('target','approved')],
+  deleteAccessAccount:id=>{calls.push(id);return deletion.promise},
+ }},'ListaSolicitudes')
+ const render=()=>f.render({administradorId:'owner'})
+ render();f.effects();await tick()
+ let ui=render()
+ const menu=ui.find(n=>n.props?.label==='Decidir acceso de target@gmail.com')
+ menu.props.items.find(i=>i.label==='Eliminar cuenta').onPress()
+ ui=render()
+ const confirmar=ui.find(n=>n.type==='Confirmar')
+ assert.equal(confirmar.props.visible,true)
+ confirmar.props.onConfirmar()
+ confirmar.props.onConfirmar()
+ assert.deepEqual(calls,['target'])
+ deletion.resolve({user_id:'target',deleted:true});await tick()
+ ui=render()
+ assert.equal(ui.some(n=>n.props?.label==='Decidir acceso de target@gmail.com'),false)
+ assert.equal(ui.some(n=>n.props?.label==='Decidir acceso de owner@gmail.com'),false)
  f.cleanup()
 })
 
 test('una lectura administrativa tardía no actualiza la vista después de salir', async () => {
  const load=deferred()
- const f=uiFixture('app/ajustes/accesos.tsx',{acceso:{listAccessRequests:()=>load.promise}},'ListaSolicitudes')
+ const f=uiFixture('src/ui/SolicitudesAcceso.tsx',{acceso:{listAccessRequests:()=>load.promise}},'ListaSolicitudes')
  f.render({administradorId:'owner'});f.effects();f.cleanup()
  load.resolve([account('private')]);await tick()
  assert.equal(f.render({administradorId:'owner'}).some(n=>n.type==='Menu'),false)
@@ -165,11 +195,16 @@ test('enlace de Ajustes usa exclusivamente el permiso administrativo del servido
  visit(source);assert.ok(category)
  for(const admin of [false,true]) {
   const exports={},navigation=[]
-  new Function('exports','require','esAdmin','GrupoAjustes','FilaAjuste','IconUser','ICON_COLOR','router',transpile(`export const category=${category.getText(source)}`))(exports,()=>({jsx,jsxs:jsx}),admin,'GrupoAjustes','FilaAjuste','IconUser',{muted:'gray'},{push:p=>navigation.push(p)})
+  new Function('exports','require','esAdmin','escritorio','cuentaAuth','ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser','ICON_COLOR','router',transpile(`export const category=${category.getText(source)}`))(exports,()=>({jsx,jsxs:jsx}),admin,false,null,'ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser',{muted:'gray'},{push:p=>navigation.push(p)})
   assert.equal(exports.category.visible,admin)
   flatten(exports.category.bloques).find(n=>n.type==='FilaAjuste').props.onPress()
   assert.deepEqual(navigation,['/ajustes/accesos'])
  }
+ const desktop={},owner={id:'owner'}
+ new Function('exports','require','esAdmin','escritorio','cuentaAuth','ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser','ICON_COLOR','router',transpile(`export const category=${category.getText(source)}`))(desktop,()=>({jsx,jsxs:jsx}),true,true,owner,'ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser',{muted:'gray'},{push:()=>{}})
+ const table=flatten(desktop.category.bloques).find(n=>n.type==='ListaSolicitudes')
+ assert.equal(table.props.administradorId,'owner')
+ assert.equal(table.props.integrada,true)
 })
 
 

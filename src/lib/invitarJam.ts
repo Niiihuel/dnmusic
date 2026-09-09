@@ -1,24 +1,21 @@
-import { Platform, Share } from 'react-native'
-import { avisar } from '../state/aviso'
-import { copiarAlPortapapeles } from './portapapeles'
+import { baseDe, linkDe, ofrecer } from './compartir'
 
 /**
  * El link que se comparte para entrar a un Jam. La misma URL entra por web y
  * por la app.
  *
- * Va cableado y no en una variable de entorno a propósito: es el dominio que
- * está declarado en `associatedDomains` y en el `apple-app-site-association`,
- * y los tres tienen que decir lo mismo o el link deja de abrir la app. Un
- * valor que se puede cambiar por build es justo lo que no queremos acá.
+ * El dominio y la hoja de compartir salieron a `lib/compartir`, que es lo que
+ * comparten los cuatro compartibles. Acá queda lo que es del Jam: que además
+ * del link hay un **código corto**, que se dicta en voz alta y se escribe a
+ * mano, y que por eso necesita perdonar lo que un link no.
  *
  * Vive en su propio módulo porque lo comparten tres pantallas (el sheet del
- * teléfono, el panel de escritorio y la hoja de invitar): antes estaba copiado
- * en dos archivos con un comentario pidiendo mantenerlos iguales a mano.
+ * teléfono, el panel de escritorio y la hoja de invitar).
  */
-export const BASE_INVITACION = 'https://dnmusic-app.vercel.app/jam'
+export const BASE_INVITACION = baseDe('jam')
 
 export function linkDeJam(code: string): string {
-  return `${BASE_INVITACION}/${code}`
+  return linkDe('jam', code)
 }
 
 /**
@@ -38,30 +35,8 @@ export function codigoDeJam(entrada: string): string | null {
   return /^[A-Z0-9]{4,10}$/.test(code) ? code : null
 }
 
-/**
- * Ofrecer el link por el gesto nativo de cada lado: la hoja de compartir en
- * el teléfono, el portapapeles en el navegador — que no tiene hoja. Si ninguno
- * de los dos camina (web sin https, escritorio pelado), el código dicho con
- * palabras alcanza.
- */
+/** Ofrecer el link del Jam por el gesto nativo de cada lado. */
 export async function invitarAlJam(code: string): Promise<void> {
   const url = linkDeJam(code)
-  // El link se copia siempre, en todos lados: era lo que fallaba —en el
-  // escritorio `navigator.clipboard` no está y se caía a la hoja de compartir,
-  // que en web no existe, y el link nunca llegaba a ningún lado—.
-  const copiado = await copiarAlPortapapeles(url)
-  if (Platform.OS !== 'web') {
-    // En el teléfono, además, la hoja nativa para mandarlo por donde sea.
-    try {
-      await Share.share({ message: `Escuchemos juntos en dnmusic: ${url}` })
-      return
-    } catch {
-      // Hoja cancelada: no importa, el link ya quedó en el portapapeles.
-    }
-  }
-  avisar(
-    copiado
-      ? 'Link copiado. Mandáselo a quien quieras.'
-      : `Compartí el código ${code} o el link ${url}`,
-  )
+  await ofrecer(url, `Escuchemos juntos en dnmusic: ${url}`)
 }

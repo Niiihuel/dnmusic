@@ -45,11 +45,26 @@ if (html.includes(MARKER)) {
   process.exit(0)
 }
 
+/*
+ * El bloque de la tarjeta va **entre marcadores** y con el `<title>` adentro.
+ *
+ * `api/tarjeta.ts` reemplaza todo lo que hay entre `dany:tarjeta` y su cierre
+ * por los datos de la canción, la lista, el Jam o el perfil que se compartió.
+ * El título tiene que estar adentro porque si no habría dos —el de Expo y el de
+ * la tarjeta— y gana el primero, que es justo el genérico; por eso más abajo se
+ * borra el que exporta Expo en vez de dejarlo donde está.
+ *
+ * Sin la función, este bloque es exactamente lo que era: la tarjeta genérica de
+ * la app. Un deploy sin `api/` no se rompe, solo previsualiza como antes.
+ */
+const TARJETA_ABRE = '<!-- dany:tarjeta -->'
+const TARJETA_CIERRA = '<!-- /dany:tarjeta -->'
+
 const HEAD_TAGS = `${MARKER}
     <link rel="manifest" href="/manifest.json" />
+    ${TARJETA_ABRE}
+    <title>${TITULO}</title>
     <meta name="description" content="${DESCRIPCION}" />
-    <!-- La tarjeta del link: es lo que se ve en WhatsApp y en Discord cuando
-         alguien pasa una invitación a un Jam. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="${TITULO}" />
     <meta property="og:title" content="${TITULO}" />
@@ -60,6 +75,7 @@ const HEAD_TAGS = `${MARKER}
     <meta name="twitter:title" content="${TITULO}" />
     <meta name="twitter:description" content="${DESCRIPCION}" />
     <meta name="twitter:image" content="${SITIO}/icons/icon-512.png" />
+    ${TARJETA_CIERRA}
     <!-- iOS ignora buena parte del manifest y necesita estos meta propios para
          abrir sin la barra de Safari y usar el ícono correcto. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -81,6 +97,8 @@ html = html.replace(
 )
 
 html = html.replace('<html lang="en">', '<html lang="es-AR" data-theme="dark">')
+// El título de Expo se saca para que el único quede adentro de los marcadores.
+html = html.replace(/\s*<title>[^<]*<\/title>/, '')
 html = html.replace('</head>', HEAD_TAGS)
 
 writeFileSync(INDEX, html)
@@ -92,10 +110,26 @@ const required = [
   'viewport-fit=cover',
   'lang="es-AR"',
   'og:description',
+  TARJETA_ABRE,
+  TARJETA_CIERRA,
 ]
 const missing = required.filter((needle) => !html.includes(needle))
 if (missing.length) {
   console.error(`✗ Faltaron etiquetas tras la inyección: ${missing.join(', ')}`)
+  process.exit(1)
+}
+
+/*
+ * Un solo título, y adentro de los marcadores.
+ *
+ * Es lo único que `api/tarjeta.ts` no puede arreglar desde su lado: si quedaran
+ * dos, el crawler lee el primero —el genérico— y toda la tarjeta por canción se
+ * pierde sin que nada falle a la vista.
+ */
+const titulos = html.match(/<title>/g) ?? []
+const entre = html.slice(html.indexOf(TARJETA_ABRE), html.indexOf(TARJETA_CIERRA))
+if (titulos.length !== 1 || !entre.includes('<title>')) {
+  console.error(`✗ Hay ${titulos.length} <title> y el de la tarjeta tiene que ser el único.`)
   process.exit(1)
 }
 

@@ -162,7 +162,8 @@ export default function MessageStory() {
   useEffect(() => {
     if (!message || !song) return
     player.toggle(message.id, song).catch((e: unknown) => avisar(mensajeError(e), true))
-    return () => player.stop()
+    // useSnippetPlayer cancela sus pendientes; expo-audio libera el audio.
+    // No pausar desde este cleanup: el objeto nativo ya puede estar liberado.
     // Solo al abrir: volver a dispararlo cortaría la reproducción en curso.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [message?.id])

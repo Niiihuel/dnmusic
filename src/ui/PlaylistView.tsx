@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FlatList, Pressable, Text, View } from 'react-native'
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useDerivedValue,
-  withTiming,
-} from 'react-native-reanimated'
 import { artworkSource } from '../lib/artwork'
 import {
   listTracks,
@@ -41,7 +35,7 @@ import { CollectionHeader, Insignia, useAngosto, useCoverSize } from './Collecti
 import { AccionesNombreLista, HojaNombreLista, TituloNombreLista, useNombreInline, useRenombrarLista, type EdicionNombreLista } from './RenombrarLista'
 import { compartirLista } from '../lib/compartirLista'
 import { useColorPortada } from '../lib/colorPortada'
-import { SearchField } from './SearchField'
+import { BuscadorColeccion, CampoBusquedaColeccion, useBusquedaColeccion } from './BusquedaColeccion'
 import { useConTooltip } from './Tooltip'
 import { Menu, type MenuItem } from './Menu'
 import { entradaDeTrack, menuDescarga, menuDescargasLista, type DescargaUI } from './descargasControl'
@@ -384,8 +378,7 @@ export function PlaylistView({
     )
   }
 
-  const [buscando, setBuscando] = useState(false)
-  const [filtro, setFiltro] = useState('')
+  const { abierto: buscando, filtro, setFiltro, alternar: alternarBuscar } = useBusquedaColeccion(playlist.id)
   const q = filtro.trim().toLowerCase()
   /* Buscar adentro de la lista: filtra por título y artista sin pedir nada
      —las canciones ya están—. El índice real se guarda aparte para que tocar
@@ -402,16 +395,6 @@ export function PlaylistView({
     ;(tracks ?? []).forEach((t, i) => m.set(t.id, i))
     return m
   }, [tracks])
-  function alternarBuscar() {
-    /* Los dos setters, uno al lado del otro y ninguno adentro del otro.
-       `setFiltro` vivía dentro del updater de `setBuscando`, y un updater
-       tiene que ser puro: React puede correrlo más de una vez, y cada corrida
-       repetía el efecto. Acá no hace falta el updater —esto es un manejador,
-       `buscando` es el de este render— y React agrupa las dos en un solo
-       re-render igual. */
-    if (buscando) setFiltro('')
-    setBuscando(!buscando)
-  }
 
   /* Bajar la lista entera al disco, solo en la app de PC (`HAY_DESCARGA_ESCRITORIO`).
      null = quieta; el objeto lleva el «12 de 40» para pintar el avance. */
@@ -663,6 +646,8 @@ export function PlaylistView({
           renderScrollComponent={(props) => (
             <ScrollArea {...props} stableIndicator contentKey={`${playlist.id}:${visibles.length}`} />
           )}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           data={visibles}
           keyExtractor={(t) => t.id}
           initialNumToRender={18}
@@ -1000,7 +985,8 @@ function Header({
              * en una lista larga—. Encendido es el blanco de `primary`, apagado
              * el gris de los inactivos (`docs/DESIGN.md`).
              */}
-            <BuscadorDeLista
+            <BuscadorColeccion
+              contexto="lista"
               abierto={buscando}
               filtro={filtro}
               vacia={total === 0}
@@ -1021,86 +1007,16 @@ function Header({
         }
       />
 
+      <CampoBusquedaColeccion
+        contexto="lista"
+        abierto={buscando}
+        filtro={filtro}
+        onFiltro={onFiltro}
+        onCerrar={onBuscar}
+      />
       <HojaNombreLista editor={editorNombre} />
       {children}
     </View>
-  )
-}
-
-/** Lo que mide plegado: el ícono con su aire, como los botones de al lado. */
-const LADO_LUPA = 44
-/** Lo que mide desplegado. Cómodo para escribir sin comerse la fila entera. */
-const ANCHO_LUPA = 300
-const ABRE_LUPA_MS = 240
-
-/**
- * La lupa que **se despliega en su lugar**, dentro de la fila de controles.
- *
- * Antes abría un campo debajo, de golpe: aparecía una fila nueva entre los
- * controles y la tabla, y todo lo de abajo pegaba un salto. Ahora es una sola
- * pieza que cambia de ancho — el ícono no se mueve y el campo crece hacia la
- * derecha, en la misma altura que reproducir, el azar y los tres puntos.
- *
- * El ancho es fijo y no «lo que sobre»: la fila tiene los otros controles a la
- * derecha y estirarse hasta el final los empujaría de lugar en cada apertura.
- * Trescientos alcanzan para el nombre de cualquier canción.
- */
-function BuscadorDeLista({
-  abierto,
-  filtro,
-  vacia,
-  gestos,
-  onAbrir,
-  onFiltro,
-}: {
-  abierto: boolean
-  filtro: string
-  /** La lista no tiene canciones: no hay nada que filtrar. */
-  vacia: boolean
-  /** Los del rótulo al pasar el cursor, mientras está plegada. */
-  gestos: object
-  onAbrir: () => void
-  onFiltro: (v: string) => void
-}) {
-  const p = useDerivedValue(
-    () => withTiming(abierto ? 1 : 0, { duration: ABRE_LUPA_MS, easing: Easing.out(Easing.cubic) }),
-    [abierto],
-  )
-  /* Por `style` y no por `className`: NativeWind no procesa clases en
-     componentes de Reanimated (ver la trampa de `docs/DESIGN.md`). */
-  const ancho = useAnimatedStyle(() => ({
-    width: LADO_LUPA + p.value * (ANCHO_LUPA - LADO_LUPA),
-  }))
-
-  return (
-    <Animated.View
-      style={[{ height: LADO_LUPA, borderRadius: 999, overflow: 'hidden' }, ancho]}
-    >
-      {abierto ? (
-        <SearchField
-          value={filtro}
-          onChangeText={onFiltro}
-          placeholder="Buscar en esta lista"
-          autoFocus
-          /* Al salir sin nada escrito se vuelve a plegar: abierta y vacía solo
-             ocupa lugar. Con algo escrito se queda, que es lo que se mira. */
-          onFocusChange={(enfocado) => {
-            if (!enfocado && !filtro.trim()) onAbrir()
-          }}
-        />
-      ) : (
-        <Pressable
-          {...gestos}
-          accessibilityRole="button"
-          accessibilityLabel="Buscar en la lista"
-          onPress={onAbrir}
-          disabled={vacia}
-          className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-        >
-          <IconSearch size={19} color={vacia ? ICON_COLOR.muted : ICON_COLOR.muted} />
-        </Pressable>
-      )}
-    </Animated.View>
   )
 }
 

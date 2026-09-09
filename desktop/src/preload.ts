@@ -75,6 +75,7 @@ const puente = {
   oauthGoogle: {
     preparar: (): Promise<{ id: string; redirectTo: string }> => ipcRenderer.invoke('oauthGoogle:preparar'),
     abrir: (pedido: { id: string; url: string }): Promise<ResultadoGoogle> => ipcRenderer.invoke('oauthGoogle:abrir', pedido),
+    abrirVinculacion: (pedido: { id: string; url: string; retorno: string }): Promise<ResultadoGoogle> => ipcRenderer.invoke('oauthGoogle:vincular', pedido),
     cancelar: (id: string): Promise<void> => ipcRenderer.invoke('oauthGoogle:cancelar', id),
   },
 
@@ -93,6 +94,22 @@ const puente = {
       const listener = (_: IpcRendererEvent, progreso: ProgresoAudioOffline) => fn(progreso)
       ipcRenderer.on('audioOffline:progreso', listener)
       return () => ipcRenderer.removeListener('audioOffline:progreso', listener)
+    },
+  },
+
+  /**
+   * Los links `dnmusic://` que le llegan al escritorio desde afuera.
+   *
+   * El proceso principal manda la **ruta** ya resuelta (`/cancion/abc`) y no la
+   * URL: quien decide qué es un link nuestro es `desktop/src/enlaces.ts`, del
+   * lado privilegiado, y el renderer solo navega adonde le dicen. Devuelve la
+   * función para dejar de escuchar, como el resto: es un efecto de React.
+   */
+  enlaces: {
+    alAbrir: (escuchar: (ruta: string) => void): (() => void) => {
+      const oyente = (_: IpcRendererEvent, ruta: string) => escuchar(ruta)
+      ipcRenderer.on('enlace:abrir', oyente)
+      return () => ipcRenderer.removeListener('enlace:abrir', oyente)
     },
   },
 

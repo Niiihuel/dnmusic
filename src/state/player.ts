@@ -7,6 +7,7 @@ import { headroomGain, urlDeAudio } from '../services/music'
 import { pauseForSnippet, registerSnippetStopper, useVolume } from './playback'
 import { saltar } from '../lib/seek'
 import { useAppActiva } from '../lib/appActiva'
+import { useAudioLease } from '../lib/useAudioLease'
 
 /** Mínimo entre dos saltos al mismo punto. Ver el loop de reproducción. */
 const SEEK_RETRY_MS = 600
@@ -62,6 +63,7 @@ export function useSnippetPlayer() {
      pantalla bloqueada a la cola. Es literalmente el caso que documenta la
      opción: efectos de sonido que no deben interferir con otro audio. */
   const player = useAudioPlayer(url ? { uri: url } : null, { keepAudioSessionActive: true })
+  const lease = useAudioLease(player)
 
   /*
    * Se atenúa lo justo para que el códec no distorsione al recortar contra el
@@ -119,6 +121,7 @@ export function useSnippetPlayer() {
   )
 
   const stop = useCallback(() => {
+    if (!lease.active) return
     revisionFuente.current++
     player.pause()
     pendingPositionMs.current = null
@@ -126,13 +129,15 @@ export function useSnippetPlayer() {
     setPlaying(false)
     setCurrent(null)
     setUrl(null)
-  }, [player])
+  }, [player, lease])
 
   // La barra de abajo necesita poder frenar esto antes de arrancar una lista.
   useEffect(() => registerSnippetStopper(stop), [stop])
 
   const toggle = useCallback(
     async (id: string, song: SongSnippet) => {
+      if (!lease.active) return
+      const intento = ++revisionFuente.current
       if (current?.id === id) {
         if (playing) {
           player.pause()
@@ -150,6 +155,7 @@ export function useSnippetPlayer() {
           const from = inside ? positionMs : song.startMs
           seekAt.current = performance.now()
           await player.seekTo(from / 1000)
+          if (!lease.active || intento !== revisionFuente.current) return
           marcarPosicion(from)
           pauseForSnippet()
           player.play()
@@ -173,7 +179,7 @@ export function useSnippetPlayer() {
       marcarAudioUsado(song.path)
       setUrl(fuente)
     },
-    [current, playing, player, positionMs, marcarPosicion],
+    [current, playing, player, positionMs, marcarPosicion, lease],
   )
 
   const seek = useCallback(
@@ -184,7 +190,8 @@ export function useSnippetPlayer() {
        * primer cuadro, antes del layout. Sin este corte, el NaN viaja hasta
        * `currentTime` y el navegador tira una excepción que rompe el toque.
        */
-      if (!Number.isFinite(fraction)) return
+      if (!lease.active || !Number.isFinite(fraction)) return
+      const intento = ++revisionFuente.current
       const clampedFraction = Math.max(0, Math.min(1, fraction))
       const targetMs = song.startMs + song.durationMs * clampedFraction
 
@@ -197,6 +204,7 @@ export function useSnippetPlayer() {
          */
         seekAt.current = performance.now()
         await player.seekTo(targetMs / 1000)
+        if (!lease.active || intento !== revisionFuente.current) return
         marcarPosicion(targetMs)
         return
       }
@@ -217,7 +225,7 @@ export function useSnippetPlayer() {
       marcarAudioUsado(song.path)
       setUrl(fuente)
     },
-    [current, player, marcarPosicion],
+    [current, player, marcarPosicion, lease],
   )
 
   // Arrancar cuando la URL firmada ya está cargada en el player, y solo si
@@ -226,21 +234,24 @@ export function useSnippetPlayer() {
     if (!url || !current || !pedido.current) return
     pedido.current = false
     let cancelled = false
+    const revision = revisionFuente.current
     ;(async () => {
       const initialPositionMs = pendingPositionMs.current ?? current.song.startMs
       pendingPositionMs.current = null
       seekAt.current = performance.now()
       await player.seekTo(initialPositionMs / 1000)
-      if (cancelled) return
+      if (cancelled || !lease.active || revision !== revisionFuente.current) return
       // Turno del fragmento: la lista se pausa donde esté.
       pauseForSnippet()
       player.play()
       setPlaying(true)
-    })()
+    })().catch(() => {
+      if (!cancelled && lease.active && revision === revisionFuente.current) setPlaying(false)
+    })
     return () => {
       cancelled = true
     }
-  }, [url, current, player])
+  }, [url, current, player, lease])
 
   useEffect(() => {
     /* Con la app atrás no hay barra de fragmento que mover. Ver `useAppActiva`. */
@@ -251,6 +262,7 @@ export function useSnippetPlayer() {
     }
     const { startMs, durationMs } = current.song
     const tick = () => {
+      if (!lease.active) return
       const ms = player.currentTime * 1000
       // Antes de que el audio esté listo la posición puede no ser un número, y
       // `NaN !== NaN` daba por bueno el salto una y otra vez.
@@ -295,7 +307,7 @@ export function useSnippetPlayer() {
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current)
     }
-  }, [playing, current, player, alaVista, marcarPosicion])
+  }, [playing, current, player, alaVista, marcarPosicion, lease])
 
   return { currentId: current?.id ?? null, playing, positionMs, posicionSV, toggle, seek, stop }
 }

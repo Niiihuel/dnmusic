@@ -14,10 +14,30 @@ OAuth y permitirá completar la prueba real; iOS queda para una entrega separada
 Los binarios móviles anteriores requieren actualización para los canales privados.
 Ver [configuración de Google](../docs/ACCESO-GOOGLE.md).
 
+La migración `20260917000000_delete_access_account.sql` quedó activa en DMusic el
+8 de septiembre de 2026. Añade la eliminación administrativa de cuentas desde
+Solicitudes de acceso. La activación no eliminó usuarios: la verificación remota
+conservó las 9 cuentas y el dueño fijado. También confirmó que sólo
+`authenticated` ejecuta la RPC, que `anon` y `app_pending` no pueden hacerlo y que
+el intento de borrar al dueño falla dentro de una transacción con `ROLLBACK`.
+
 La migración `20260916000000_access_approval.sql` no habilita Google ni elige un
 administrador por nombre. El backfill aprueba todas las cuentas existentes. Las
 altas posteriores sólo aceptan el proveedor Google controlado por Auth y nacen
 pendientes, incluso si `user_metadata` intenta declarar aprobación o privilegios.
+
+La migración `20260920000000_tarjetas_de_enlace.sql` **no está aplicada en
+DMusic**: está escrita, corre entera en el Postgres local y su prueba
+(`supabase/tests/tarjetas_de_enlace.sql`) pasa ahí. Suma una tercera excepción a
+`check_app_access` —`/rpc/tarjeta_enlace`— para que un link compartido muestre
+tapa y título antes de entrar. La excepción no toma sesión, no lee estado de
+cuenta y devuelve cinco campos de presentación de filas que ya eran
+compartibles: una lista `publica`, un perfil `publico`, un Jam `activo` llamado
+por su código de invitación, y una canción que alguien publicó explícitamente en
+`public.canciones_compartidas` (tabla sin grants de cliente, escrita solo por
+`publicar_cancion`, que exige cuenta aprobada). No amplía ninguna policy de
+listas, perfiles, chat, Jam ni Storage, y no expone UUID, email ni dueño. Ver
+[los links compartidos](../docs/COMPARTIR.md).
 
 ## Contrato del cliente
 
@@ -32,6 +52,19 @@ pendientes, incluso si `user_metadata` intenta declarar aprobación o privilegio
 - `decide_access(p_user_id uuid, p_approve boolean)` devuelve objeto JSON
   `{user_id, status: 'approved' | 'rejected', decided_at}`. Permite volver a aprobar
   un rechazado; no permite modificar el dueño ni conceder administración.
+- `tarjeta_enlace(p_tipo text, p_id text)` devuelve **objeto JSON** o `null`:
+  `{tipo, id, titulo, subtitulo, tapa, duracion_ms?}`. Es la única RPC que
+  contesta a `anon`. `tapa` es `bucket/camino` o una URL absoluta; el origen de
+  Storage lo compone el cliente. Un id que no existe, una lista privada, un
+  perfil privado y un Jam terminado devuelven todos `null`, que es la misma
+  respuesta a propósito.
+- `publicar_cancion(...)` no devuelve nada. Sólo `authenticated`; `anon` y
+  `app_pending` no pueden ejecutarla. Re-publicar refresca la tarjeta sin
+  cambiar quién la publicó primero.
+- `delete_access_account(p_user_id uuid)` devuelve
+  `{user_id, deleted: true}`. Sólo el dueño aprobado puede invocarla, nunca acepta
+  el UUID del dueño y elimina la cuenta de Auth junto con sus datos asociados en
+  una única transacción.
 - Recheck no vuelve a crear una solicitud. Después de aprobar hay que refrescar
   la sesión: el hook cambia el rol del próximo JWT de `app_pending` a
   `authenticated`. Rechazar bloquea inmediatamente las siguientes consultas DB y

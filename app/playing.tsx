@@ -51,6 +51,7 @@ import { dejarCancionPendiente } from '../src/state/listas'
 import { LyricsView } from '../src/ui/LyricsView'
 import { Vacio } from '../src/ui/Vacio'
 import { compartirHistoria } from '../src/ui/CompartirHistoria'
+import { compartirCancion } from '../src/lib/compartir'
 import { BotonAleatorio, BotonRepetir } from '../src/ui/Transport'
 import { BotonMeGusta } from '../src/ui/BotonMeGusta'
 import { Menu, type MenuItem } from '../src/ui/Menu'
@@ -72,6 +73,7 @@ import {
   IconPlus,
   IconPrevious,
   IconRepeat,
+  IconImage,
   IconShare,
   IconUser,
   IconUsers,
@@ -370,15 +372,25 @@ export default function Playing() {
       icon: <IconUsers size={15} color={enJam ? ICON_COLOR.foreground : ICON_COLOR.muted} />,
       sfSymbol: enJam ? 'person.2.fill' : 'person.2',
     },
-    /* La tarjeta 1080×1920 de lo que suena: en el teléfono abre la hoja de
-       compartir (Instagram ofrece «Agregar a tu historia»); en la web se
-       descarga el PNG. Ver `CompartirHistoria`. */
+    /*
+     * Las dos formas de pasar lo que suena, en este orden y por lo mismo que en
+     * la pantalla principal: «Compartir» manda el link —que del otro lado se
+     * puede escuchar— y la historia es la imagen de 1080×1920 para Instagram,
+     * que es linda y no lleva a ningún lado. Ver `lib/compartir` y
+     * `CompartirHistoria`.
+     */
     {
       label: 'Compartir',
       rapida: true,
-      onPress: () => compartirHistoria(track),
+      onPress: () => void compartirCancion(track),
       icon: <IconShare size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'square.and.arrow.up',
+    },
+    {
+      label: 'Compartir historia',
+      onPress: () => compartirHistoria(track),
+      icon: <IconImage size={15} color={ICON_COLOR.muted} />,
+      sfSymbol: 'photo',
     },
     {
       label: 'Ir al artista',

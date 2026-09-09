@@ -18,6 +18,7 @@ import type { MenuItem } from './Menu'
 import type { MenuNativoProps } from './MenuNativo.types'
 import { llevaCorte, repartirMenu } from './menuReparto'
 import { ICON_COLOR } from './icons'
+import { HAY_CONTEXTO_COLECCION, MenuContextualColeccion } from './MenuContextualColeccion'
 
 export const HAY_MENU_NATIVO = true
 
@@ -127,6 +128,9 @@ export function MenuNativo({
   fullWidth = false,
 }: MenuNativoProps) {
   const [width, setWidth] = useState(0)
+  if (children && longPress && fullWidth && HAY_CONTEXTO_COLECCION) {
+    return <MenuContextualColeccion items={items}>{children}</MenuContextualColeccion>
+  }
   const trigger = children ? (
     <RNHostView matchContents>
       <View collapsable={false} style={{ minWidth: 44, minHeight: 44, ...(fullWidth ? { width } : {}) }}>
@@ -141,6 +145,7 @@ export function MenuNativo({
   const contenido = (
     <Host
       colorScheme="dark"
+      seedColor={ICON_COLOR.foreground}
       ignoreSafeArea="all"
       matchContents={
         children ? (fullWidth ? { vertical: true } : true) : text ? { horizontal: true } : false
