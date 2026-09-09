@@ -26,9 +26,14 @@ administrador por nombre. El backfill aprueba todas las cuentas existentes. Las
 altas posteriores sólo aceptan el proveedor Google controlado por Auth y nacen
 pendientes, incluso si `user_metadata` intenta declarar aprobación o privilegios.
 
-La migración `20260920000000_tarjetas_de_enlace.sql` **no está aplicada en
-DMusic**: está escrita, corre entera en el Postgres local y su prueba
-(`supabase/tests/tarjetas_de_enlace.sql`) pasa ahí. Suma una tercera excepción a
+La migración `20260920000000_tarjetas_de_enlace.sql` quedó activa en DMusic el
+9 de septiembre de 2026, con autorización explícita del dueño y después de un
+dry-run que confirmó que era la única pendiente en el remoto. Su prueba
+(`supabase/tests/tarjetas_de_enlace.sql`) pasa en local con ROLLBACK. Verificado
+contra producción con la anon key: `tarjeta_enlace` responde HTTP 200 con `null`
+para un id que no existe, `publicar_cancion` responde HTTP 401
+`access_not_approved`, y una lectura cualquiera de `profiles` sigue en HTTP 401.
+Web desplegada en `dpl_8BcB4o24ZDXeVWNNuGFmvv89drMb`. Suma una tercera excepción a
 `check_app_access` —`/rpc/tarjeta_enlace`— para que un link compartido muestre
 tapa y título antes de entrar. La excepción no toma sesión, no lee estado de
 cuenta y devuelve cinco campos de presentación de filas que ya eran
