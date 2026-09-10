@@ -1,77 +1,109 @@
 import { useEffect, useRef, useState } from 'react'
-import { Image, StyleSheet, Text, View } from 'react-native'
+import { View } from 'react-native'
 import { captureRef } from 'react-native-view-shot'
 import * as Sharing from 'expo-sharing'
-import { LinearGradient } from 'expo-linear-gradient'
 import type { PlaylistTrack } from '../services/playlists'
 import { artworkSource } from '../lib/artwork'
 import { proxiedImage } from '../services/music'
 import { avisar } from '../state/aviso'
 import { createStore, useStore } from '../state/store'
-import { formatClock } from './SeekBar'
+import { matrizQR } from '../lib/codigoQR'
+import { linkDe } from '../lib/compartir'
+import { publicarCancion } from '../services/compartidos'
 import { ES_WEB } from './Glass'
+import { TarjetaHistoria, type DatosTarjeta } from './TarjetaHistoria'
+import {
+  ALTO,
+  ANCHO,
+  ARTISTA_SALTO,
+  ARTISTA_TAM,
+  FONDO,
+  FONDO_ESCALA,
+  FONDO_OPACIDAD,
+  LEYENDA,
+  LEYENDA_PIE,
+  LEYENDA_TAM,
+  LEYENDA_TAM_CHICO,
+  MARGEN,
+  NOMBRE_TAM,
+  PLACA,
+  QR_LADO,
+  QR_MARGEN,
+  QR_RADIO,
+  QR_Y,
+  SELLO_LADO,
+  SELLO_RADIO,
+  SELLO_Y,
+  TAPA,
+  TAPA_RADIO,
+  TAPA_Y,
+  TEXTO,
+  TEXTO_SUAVE,
+  TEXTO_TENUE,
+  TITULO_INTERLINEA,
+  TITULO_TAM,
+  TITULO_Y,
+  VELO,
+} from './tarjetaHistoria'
 
 /**
- * La canción que suena, hecha imagen para una historia de Instagram.
+ * La canción que suena, hecha imagen para una historia.
  *
- * Una tarjeta de 1080×1920 —el formato exacto de una historia— con el mismo
- * lenguaje de la pantalla «Sonando»: la carátula pone el único color, estirada
- * y desenfocada de fondo con un velo encima, la tapa entera al medio con su
- * sombra, y debajo el título, el artista y **una barra de reproducción** —el
- * gesto que hace que la tarjeta se lea como música y no como una foto suelta,
- * el mismo recurso de las tarjetas de Spotify y Apple Music—. Abajo firma la
- * app con su sello, chiquito.
- *
- * **En el teléfono** se dibuja una vista fuera de pantalla, se captura y se
+ * **En el teléfono** se dibuja la tarjeta fuera de pantalla, se captura y se
  * abre la hoja de compartir del sistema: Instagram aparece ahí y ofrece
- * «Agregar a tu historia». No hay integración directa con el esquema de
- * `instagram-stories://` a propósito — exige claves de pasteboard que
- * requieren módulo nativo propio; la hoja del sistema hace lo mismo con un
- * toque más.
+ * historia, publicación, reel o mensaje. No hay integración directa con
+ * `instagram-stories://` a propósito — exige claves de pasteboard que requieren
+ * módulo nativo propio; la hoja del sistema hace lo mismo con un toque más.
  *
- * **En la web** no hay hoja que valga: se dibuja la misma tarjeta en un canvas
- * y se descarga como PNG, lista para subir desde el teléfono o el Instagram
- * web.
+ * **En la web** no hay hoja que valga: se pinta la misma tarjeta en un canvas y
+ * se descarga como PNG.
+ *
+ * La tarjeta en sí vive en `TarjetaHistoria.tsx` y sus medidas en
+ * `tarjetaHistoria.ts`, porque la hoja de compartir la muestra como vista
+ * previa antes de mandarla: la previa y lo que sale tienen que ser lo mismo.
  */
 
-const ANCHO = 1080
-const ALTO = 1920
-/** Lado de la tapa central y su posición. */
-const TAPA = 820
-const TAPA_X = (ANCHO - TAPA) / 2
-const TAPA_Y = 300
-/** La barra finge una reproducción a poco más de un tercio: se lee «sonando». */
-const AVANCE = 0.38
-const FONDO = '#0B0B0B'
+type Pedido = { track: PlaylistTrack | null; tinte: string | null }
 
-type Pedido = { track: PlaylistTrack | null }
+const store = createStore<Pedido>({ track: null, tinte: null })
 
-const store = createStore<Pedido>({ track: null })
-
-/** El reloj de la barra, coherente consigo mismo: el transcurrido es una
- *  fracción real de la duración, no un número inventado. */
-function tiempos(durationMs: number): { ido: string; total: string } {
-  return { ido: formatClock(durationMs * AVANCE), total: formatClock(durationMs) }
+/** Los datos de la tarjeta de una canción: lo mismo para la previa y la captura. */
+export function datosDeTarjeta(track: PlaylistTrack, tinte: string | null = null): DatosTarjeta {
+  return {
+    titulo: track.title,
+    artista: track.artist,
+    arte: artworkSource(track.artworkPath, track.artworkUrl, 1000),
+    enlace: linkDe('cancion', track.videoId),
+    tinte,
+  }
 }
 
-/** Compartir esta canción como historia. El camino depende de la plataforma. */
-export function compartirHistoria(track: PlaylistTrack) {
+/**
+ * Compartir esta canción como historia.
+ *
+ * Publica la tarjeta del link **antes** de armar la imagen, y no en paralelo:
+ * el código escaneable lleva a `/cancion/<id>`, y quien lo escanea llega en
+ * segundos. Una tarjeta que se publica después de que alguien llegó no sirve
+ * de nada. Es el mismo orden que `compartirCancion`.
+ */
+export function compartirHistoria(track: PlaylistTrack, tinte: string | null = null) {
+  void publicarCancion(track).catch(() => {})
   if (ES_WEB) {
-    void dibujarYDescargar(track)
+    void dibujarYDescargar(track, tinte)
     return
   }
-  store.set({ track })
+  store.set({ track, tinte })
 }
 
 /* ── Nativo: la vista fuera de pantalla y su captura ──────────────────────── */
 
 /**
  * Va montado una sola vez en el layout, como `MotorAudio`. No dibuja nada
- * visible: cuando alguien pide compartir, arma la tarjeta fuera de la
- * pantalla, espera la carátula, captura y abre la hoja del sistema.
+ * visible: cuando alguien pide compartir, arma la tarjeta fuera de la pantalla,
+ * espera la carátula, captura y abre la hoja del sistema.
  */
 export function CompartirHistoria() {
-  const track = useStore(store, (s) => s.track)
+  const { track, tinte } = useStore(store, (s) => s)
   const ref = useRef<View>(null)
   /*
    * La captura no puede correr antes de que la carátula haya cargado: saldría
@@ -80,11 +112,11 @@ export function CompartirHistoria() {
    * que resetee — mismo criterio que las URLs firmadas del motor.
    */
   const [tapaDe, setTapaDe] = useState<string | null>(null)
+  const datos = track ? datosDeTarjeta(track, tinte) : null
   const tapaLista = track !== null && tapaDe === track.id
-  const arte = track ? artworkSource(track.artworkPath, track.artworkUrl, 1000) : null
 
   useEffect(() => {
-    if (!track || (arte && !tapaLista)) return
+    if (!track || (datos?.arte && !tapaLista)) return
     /* Un respiro para que la vista termine de acomodarse antes de la foto. */
     const t = setTimeout(() => {
       void (async () => {
@@ -103,16 +135,14 @@ export function CompartirHistoria() {
           const texto = e instanceof Error ? e.message : ''
           if (!/cancel/i.test(texto)) avisar('No se pudo armar la historia.', true)
         } finally {
-          store.set({ track: null })
+          store.set({ track: null, tinte: null })
         }
       })()
     }, 80)
     return () => clearTimeout(t)
-  }, [track, arte, tapaLista])
+  }, [track, datos?.arte, tapaLista])
 
-  if (!track) return null
-
-  const { ido, total } = tiempos(track.durationMs)
+  if (!track || !datos) return null
 
   return (
     <View
@@ -120,180 +150,9 @@ export function CompartirHistoria() {
       collapsable={false}
       /* Fuera de la pantalla, no invisible: con `opacity: 0` u `display: none`
          la captura sale negra en iOS. */
-      style={{
-        position: 'absolute',
-        left: -ANCHO * 2,
-        top: 0,
-        width: ANCHO,
-        height: ALTO,
-        backgroundColor: FONDO,
-        overflow: 'hidden',
-      }}
+      style={{ position: 'absolute', left: -ANCHO * 2, top: 0 }}
     >
-      {arte ? (
-        <Image
-          source={{ uri: arte }}
-          onLoad={() => setTapaDe(track.id)}
-          onError={() => setTapaDe(track.id)}
-          style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.35 }], opacity: 0.6 }]}
-          blurRadius={45}
-        />
-      ) : null}
-      {/* Velo pesado abajo: la mitad de arriba deja ver el color de la tapa, la
-          de abajo se oscurece para que el título y la barra se lean. */}
-      <LinearGradient
-        colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.30)', 'rgba(0,0,0,0.78)', 'rgba(0,0,0,0.96)']}
-        locations={[0, 0.42, 0.78, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-
-      {/* El rótulo que enmarca la tarjeta: «esto es lo que suena». */}
-      <Text
-        style={{
-          position: 'absolute',
-          top: 188,
-          alignSelf: 'center',
-          color: 'rgba(255,255,255,0.72)',
-          fontSize: 30,
-          fontWeight: '700',
-          letterSpacing: 7,
-        }}
-      >
-        AHORA SUENA
-      </Text>
-
-      {/* La tapa, con sombra suave. */}
-      <View
-        style={{
-          position: 'absolute',
-          left: TAPA_X,
-          top: TAPA_Y,
-          width: TAPA,
-          height: TAPA,
-          borderRadius: 44,
-          backgroundColor: '#181818',
-          shadowColor: '#000',
-          shadowOpacity: 0.5,
-          shadowRadius: 48,
-          shadowOffset: { width: 0, height: 24 },
-        }}
-      >
-        {arte ? (
-          <Image
-            source={{ uri: arte }}
-            style={{ width: TAPA, height: TAPA, borderRadius: 44 }}
-          />
-        ) : null}
-      </View>
-
-      {/* Título, artista, barra y reloj: un bloque que fluye, así una o dos
-          líneas de título no descolocan la barra. */}
-      <View
-        style={{
-          position: 'absolute',
-          left: TAPA_X,
-          top: TAPA_Y + TAPA + 92,
-          width: TAPA,
-          alignItems: 'center',
-        }}
-      >
-        <Text
-          numberOfLines={2}
-          style={{
-            color: '#FFFFFF',
-            fontSize: 66,
-            fontWeight: '800',
-            textAlign: 'center',
-            lineHeight: 76,
-            letterSpacing: -0.5,
-          }}
-        >
-          {track.title}
-        </Text>
-        <Text
-          numberOfLines={1}
-          style={{ color: '#B8B8B8', fontSize: 42, textAlign: 'center', marginTop: 20 }}
-        >
-          {track.artist}
-        </Text>
-
-        <View style={{ width: TAPA, marginTop: 56 }}>
-          <View style={{ height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.24)' }}>
-            <View
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: TAPA * AVANCE,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: '#FFFFFF',
-              }}
-            />
-            <View
-              style={{
-                position: 'absolute',
-                left: TAPA * AVANCE - 13,
-                top: -9,
-                width: 26,
-                height: 26,
-                borderRadius: 13,
-                backgroundColor: '#FFFFFF',
-                shadowColor: '#000',
-                shadowOpacity: 0.4,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 2 },
-              }}
-            />
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 22 }}>
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 30 }}>{ido}</Text>
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 30 }}>{total}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* El sello: el cuadradito con el play y el nombre, como el ícono de la
-          app. Es la firma que dice de dónde salió la tarjeta. */}
-      <View
-        style={{
-          position: 'absolute',
-          bottom: 104,
-          left: 0,
-          right: 0,
-          flexDirection: 'row',
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}
-      >
-        <View
-          style={{
-            width: 62,
-            height: 62,
-            borderRadius: 17,
-            backgroundColor: '#FFFFFF',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <View
-            style={{
-              width: 0,
-              height: 0,
-              marginLeft: 6,
-              borderTopWidth: 15,
-              borderBottomWidth: 15,
-              borderLeftWidth: 24,
-              borderTopColor: 'transparent',
-              borderBottomColor: 'transparent',
-              borderLeftColor: FONDO,
-            }}
-          />
-        </View>
-        <Text style={{ color: '#FFFFFF', fontSize: 44, fontWeight: '800', marginLeft: 22 }}>
-          dnmusic
-        </Text>
-      </View>
+      <TarjetaHistoria datos={datos} onArteListo={() => setTapaDe(track.id)} />
     </View>
   )
 }
@@ -322,7 +181,33 @@ function caminoRedondo(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   ctx.roundRect(x, y, w, h, r)
 }
 
-async function dibujarYDescargar(track: PlaylistTrack) {
+const FUENTE = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+
+/** Corta con puntos suspensivos lo que no entra en el ancho dado. */
+function acotar(ctx: CanvasRenderingContext2D, texto: string, ancho: number): string {
+  if (ctx.measureText(texto).width <= ancho) return texto
+  let corte = texto
+  while (corte.length > 1 && ctx.measureText(`${corte}…`).width > ancho) corte = corte.slice(0, -1)
+  return `${corte}…`
+}
+
+/** Parte el título en dos líneas como mucho, igual que `numberOfLines={2}`. */
+function enDosLineas(ctx: CanvasRenderingContext2D, texto: string, ancho: number): string[] {
+  if (ctx.measureText(texto).width <= ancho) return [texto]
+  const palabras = texto.split(' ')
+  let primera = ''
+  let i = 0
+  while (i < palabras.length) {
+    const intento = primera ? `${primera} ${palabras[i]}` : palabras[i]
+    if (ctx.measureText(intento).width > ancho) break
+    primera = intento
+    i++
+  }
+  if (!primera) return [acotar(ctx, texto, ancho)]
+  return [primera, acotar(ctx, palabras.slice(i).join(' '), ancho)]
+}
+
+async function dibujarYDescargar(track: PlaylistTrack, tinte: string | null) {
   try {
     const canvas = document.createElement('canvas')
     canvas.width = ANCHO
@@ -338,138 +223,132 @@ async function dibujarYDescargar(track: PlaylistTrack) {
 
     if (arte) {
       /* El ambiente: la tapa estirada a todo el cuadro, desenfocada, con la
-         misma escala 1.35 que la vista nativa para que el desenfoque no deje
-         bordes lavados. */
-      const escala = Math.max(ANCHO / arte.width, ALTO / arte.height) * 1.35
+         misma escala que la vista nativa para que no queden bordes lavados. */
+      const escala = Math.max(ANCHO / arte.width, ALTO / arte.height) * FONDO_ESCALA
       const w = arte.width * escala
       const h = arte.height * escala
       ctx.save()
       ctx.filter = 'blur(80px) saturate(1.35)'
-      ctx.globalAlpha = 0.6
+      ctx.globalAlpha = FONDO_OPACIDAD
       ctx.drawImage(arte, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
       ctx.restore()
     }
 
-    // El velo, pesado abajo, como el nativo.
+    if (tinte) {
+      const bano = ctx.createLinearGradient(0, 0, 0, ALTO)
+      bano.addColorStop(0, conAlfaCanvas(tinte, 0.55))
+      bano.addColorStop(0.5, conAlfaCanvas(tinte, 0.12))
+      bano.addColorStop(1, conAlfaCanvas(tinte, 0.45))
+      ctx.fillStyle = bano
+      ctx.fillRect(0, 0, ANCHO, ALTO)
+    }
+
     const velo = ctx.createLinearGradient(0, 0, 0, ALTO)
-    velo.addColorStop(0, 'rgba(0,0,0,0.55)')
-    velo.addColorStop(0.42, 'rgba(0,0,0,0.30)')
-    velo.addColorStop(0.78, 'rgba(0,0,0,0.78)')
-    velo.addColorStop(1, 'rgba(0,0,0,0.96)')
+    for (const { parada, color } of VELO) velo.addColorStop(parada, color)
     ctx.fillStyle = velo
     ctx.fillRect(0, 0, ANCHO, ALTO)
 
-    // El rótulo de arriba.
-    ctx.save()
-    ctx.textAlign = 'center'
-    ctx.fillStyle = 'rgba(255,255,255,0.72)'
-    ctx.font = '700 30px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
-    ctx.letterSpacing = '7px'
-    ctx.fillText('AHORA SUENA', ANCHO / 2, 210)
-    ctx.restore()
+    // La firma, arriba a la izquierda.
+    dibujarSello(ctx, MARGEN, SELLO_Y, SELLO_LADO)
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    ctx.fillStyle = TEXTO
+    ctx.font = `700 ${NOMBRE_TAM}px ${FUENTE}`
+    ctx.fillText('dnmusic', MARGEN + SELLO_LADO + 22, SELLO_Y + SELLO_LADO / 2 + NOMBRE_TAM * 0.36)
 
     // La tapa, con sombra y esquinas redondeadas.
     ctx.save()
-    ctx.shadowColor = 'rgba(0,0,0,0.5)'
-    ctx.shadowBlur = 56
-    ctx.shadowOffsetY = 24
+    ctx.shadowColor = 'rgba(0,0,0,0.55)'
+    ctx.shadowBlur = 70
+    ctx.shadowOffsetY = 28
     ctx.fillStyle = '#181818'
-    caminoRedondo(ctx, TAPA_X, TAPA_Y, TAPA, TAPA, 44)
+    caminoRedondo(ctx, MARGEN, TAPA_Y, TAPA, TAPA, TAPA_RADIO)
     ctx.fill()
     ctx.restore()
     if (arte) {
       ctx.save()
-      caminoRedondo(ctx, TAPA_X, TAPA_Y, TAPA, TAPA, 44)
+      caminoRedondo(ctx, MARGEN, TAPA_Y, TAPA, TAPA, TAPA_RADIO)
       ctx.clip()
-      ctx.drawImage(arte, TAPA_X, TAPA_Y, TAPA, TAPA)
+      ctx.drawImage(arte, MARGEN, TAPA_Y, TAPA, TAPA)
+      ctx.restore()
+    } else {
+      /* Sin carátula, el sello grande y apagado en vez de un cuadrado negro. */
+      ctx.save()
+      ctx.globalAlpha = 0.14
+      dibujarSello(ctx, MARGEN + TAPA / 2 - TAPA * 0.16, TAPA_Y + TAPA / 2 - TAPA * 0.16, TAPA * 0.32)
       ctx.restore()
     }
 
-    // Título y artista, centrados y recortados por ancho.
-    const tituloY = TAPA_Y + TAPA + 92 + 66
-    ctx.textAlign = 'center'
-    ctx.fillStyle = '#FFFFFF'
-    ctx.font = '800 66px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
-    ctx.fillText(acotar(ctx, track.title, TAPA), ANCHO / 2, tituloY)
-    ctx.fillStyle = '#B8B8B8'
-    ctx.font = '400 42px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
-    ctx.fillText(acotar(ctx, track.artist, TAPA), ANCHO / 2, tituloY + 74)
+    // Título en dos líneas como mucho, y el artista debajo de la última.
+    ctx.fillStyle = TEXTO
+    ctx.font = `800 ${TITULO_TAM}px ${FUENTE}`
+    const lineas = enDosLineas(ctx, track.title, TAPA)
+    lineas.forEach((linea, i) => {
+      ctx.fillText(linea, MARGEN, TITULO_Y + TITULO_TAM + i * TITULO_INTERLINEA)
+    })
+    const baseArtista = TITULO_Y + TITULO_TAM + (lineas.length - 1) * TITULO_INTERLINEA + ARTISTA_SALTO + ARTISTA_TAM
+    ctx.fillStyle = TEXTO_SUAVE
+    ctx.font = `400 ${ARTISTA_TAM}px ${FUENTE}`
+    ctx.fillText(acotar(ctx, track.artist, TAPA), MARGEN, baseArtista)
 
-    // La barra de reproducción: pista, relleno y perilla.
-    const barraY = tituloY + 168
-    ctx.fillStyle = 'rgba(255,255,255,0.24)'
-    caminoRedondo(ctx, TAPA_X, barraY, TAPA, 8, 4)
+    // El código escaneable: la foto vuelve a ser un link.
+    ctx.fillStyle = PLACA
+    caminoRedondo(ctx, MARGEN, QR_Y, QR_LADO, QR_LADO, QR_RADIO)
     ctx.fill()
-    ctx.fillStyle = '#FFFFFF'
-    caminoRedondo(ctx, TAPA_X, barraY, TAPA * AVANCE, 8, 4)
-    ctx.fill()
-    ctx.beginPath()
-    ctx.arc(TAPA_X + TAPA * AVANCE, barraY + 4, 13, 0, Math.PI * 2)
-    ctx.fill()
+    const matriz = matrizQR(linkDe('cancion', track.videoId))
+    if (matriz) {
+      const util = QR_LADO - QR_MARGEN * 2
+      const modulo = util / matriz.lado
+      ctx.fillStyle = FONDO
+      for (let fila = 0; fila < matriz.lado; fila++) {
+        for (let col = 0; col < matriz.lado; col++) {
+          if (!matriz.puntos[fila * matriz.lado + col]) continue
+          ctx.fillRect(
+            MARGEN + QR_MARGEN + col * modulo,
+            QR_Y + QR_MARGEN + fila * modulo,
+            /* Un pelo de más: sin esto quedan hilos del fondo entre módulos. */
+            modulo + 0.5,
+            modulo + 0.5,
+          )
+        }
+      }
+    }
+    ctx.fillStyle = TEXTO
+    ctx.font = `600 ${LEYENDA_TAM}px ${FUENTE}`
+    ctx.fillText(LEYENDA, MARGEN + QR_LADO + 34, QR_Y + QR_LADO / 2 - 4)
+    ctx.fillStyle = TEXTO_TENUE
+    ctx.font = `400 ${LEYENDA_TAM_CHICO}px ${FUENTE}`
+    ctx.fillText(LEYENDA_PIE, MARGEN + QR_LADO + 34, QR_Y + QR_LADO / 2 + LEYENDA_TAM_CHICO + 8)
 
-    // El reloj a los costados de la barra.
-    const { ido, total } = tiempos(track.durationMs)
-    ctx.fillStyle = 'rgba(255,255,255,0.7)'
-    ctx.font = '400 30px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
-    ctx.textAlign = 'left'
-    ctx.fillText(ido, TAPA_X, barraY + 56)
-    ctx.textAlign = 'right'
-    ctx.fillText(total, TAPA_X + TAPA, barraY + 56)
-
-    // El sello de la app: el cuadradito con el play y el nombre, centrados.
-    const selloY = ALTO - 128
-    ctx.textAlign = 'left'
-    ctx.font = '800 44px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
-    const nombre = 'dnmusic'
-    const anchoNombre = ctx.measureText(nombre).width
-    const cuadro = 62
-    const sep = 22
-    const totalAncho = cuadro + sep + anchoNombre
-    const inicio = (ANCHO - totalAncho) / 2
-    // El cuadro blanco redondeado.
-    ctx.fillStyle = '#FFFFFF'
-    caminoRedondo(ctx, inicio, selloY - cuadro / 2, cuadro, cuadro, 17)
-    ctx.fill()
-    // El triángulo de play, negro, centrado en el cuadro.
-    ctx.fillStyle = FONDO
-    const cx = inicio + cuadro / 2 + 4
-    const cy = selloY
-    ctx.beginPath()
-    ctx.moveTo(cx - 12, cy - 15)
-    ctx.lineTo(cx - 12, cy + 15)
-    ctx.lineTo(cx + 14, cy)
-    ctx.closePath()
-    ctx.fill()
-    // El nombre.
-    ctx.fillStyle = '#FFFFFF'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(nombre, inicio + cuadro + sep, selloY)
-    ctx.textBaseline = 'alphabetic'
-
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-    if (!blob) throw new Error('No se pudo exportar')
-    /* La URL se guarda aparte y se revoca en el tick siguiente. Revocarla en
-       la misma vuelta que el click deja al navegador bajando algo que ya no
-       existe —Chrome suele llegar, otros no—, y leerla de vuelta de `a.href`
-       para revocarla es pedirle al DOM el valor que uno ya tenía. */
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `historia-${track.title.replace(/[^\p{L}\p{N} .-]/gu, '').trim() || 'cancion'}.png`
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 0)
-    avisar('Historia descargada: subila a Instagram desde ahí.')
+    const enlace = document.createElement('a')
+    enlace.download = `${track.title} — ${track.artist}.png`.replace(/[/\\?%*:|"<>]/g, '-')
+    enlace.href = canvas.toDataURL('image/png')
+    enlace.click()
   } catch {
     avisar('No se pudo armar la historia.', true)
   }
 }
 
-/** Recorta con «…» para que entre en `max` píxeles de ancho. */
-function acotar(ctx: CanvasRenderingContext2D, texto: string, max: number): string {
-  if (ctx.measureText(texto).width <= max) return texto
-  let corte = texto
-  while (corte.length > 1 && ctx.measureText(`${corte}…`).width > max) {
-    corte = corte.slice(0, -1)
-  }
-  return `${corte.trimEnd()}…`
+/** El sello de la app: el cuadrado blanco con el play. El mismo de la vista. */
+function dibujarSello(ctx: CanvasRenderingContext2D, x: number, y: number, lado: number) {
+  const escala = lado / SELLO_LADO
+  ctx.save()
+  ctx.fillStyle = PLACA
+  caminoRedondo(ctx, x, y, lado, lado, SELLO_RADIO * escala)
+  ctx.fill()
+  ctx.fillStyle = FONDO
+  ctx.beginPath()
+  ctx.moveTo(x + lado / 2 - 11 * escala, y + lado / 2 - 16 * escala)
+  ctx.lineTo(x + lado / 2 + 15 * escala, y + lado / 2)
+  ctx.lineTo(x + lado / 2 - 11 * escala, y + lado / 2 + 16 * escala)
+  ctx.closePath()
+  ctx.fill()
+  ctx.restore()
+}
+
+/** `#rrggbb` con alfa. Igual que `conAlfa`, sin traerse React al canvas. */
+function conAlfaCanvas(hex: string, alfa: number): string {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim())
+  if (!m) return `rgba(31,31,31,${alfa})`
+  return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alfa})`
 }

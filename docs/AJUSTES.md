@@ -19,7 +19,20 @@ plataformas, armada desde **una sola lista de categorías** (`categorias`):
 
 Las piezas (`src/ui/Ajustes.tsx`) tienen las medidas del sistema —fila de 52,
 placa de 30 con radio 8, bloque con radio 22— porque es el único lugar donde la
-app se parece a los Ajustes del teléfono a propósito. La búsqueda ignora acentos
+app se parece a los Ajustes del teléfono a propósito. **Todo lo que pase por
+Configuración se arma con ellas**, incluidas las secciones que antes eran
+formularios: `FilaTexto` es un campo (rótulo a la izquierda, lo escrito a la
+derecha), `FilaDato` un valor que no lleva a ningún lado, `FilaAccion` algo que
+se hace acá mismo, y `GrupoAjustes.error` es donde va lo que salió mal — al pie
+del bloque, en lugar de su pie, no en un cartel suelto entre los campos.
+
+Lo que **no** va acá adentro es el vocabulario del formulario de acceso: el
+campo alto de `Field`, con la etiqueta encima y en versalitas, y los botones
+anchos de `Button`. Ahí son correctos —una sola acción por pantalla, que ocupa
+el ancho porque no compite con nada—; adentro de una lista agrupada cada campo
+mide el doble que una fila, la etiqueta gritada no se parece a nada del sistema
+y el referente no usa versalitas en ningún control. «Actualizaciones» y «Acceso
+con Google» eran así y se pasaron a filas. La búsqueda ignora acentos
 y esconde las categorías que no coinciden; sin coincidencias, un vacío con la
 salida de volver a ver todo.
 

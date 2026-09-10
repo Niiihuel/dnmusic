@@ -30,15 +30,32 @@ function nodos(node, type) {
 const reparto = cargar(readFileSync('src/ui/menuReparto.ts', 'utf8'))
 const modifiers = Object.fromEntries(['accessibilityLabel', 'buttonStyle', 'contentShape', 'disabled', 'frame'].map((k) => [k, (value) => ({ type: k, value })]))
 modifiers.shapes = { rectangle: () => ({ type: 'rectangle' }) }
-const { MenuNativo } = cargar(readFileSync('src/ui/MenuNativo.ios.tsx', 'utf8'), {
-  react: { Fragment: 'Fragment', useState: (v) => [v, () => {}] },
-  'react-native': { View: 'View' },
-  '@expo/ui/swift-ui': { ...Object.fromEntries(['Button', 'ControlGroup', 'Divider', 'Host', 'Image', 'Label', 'Menu', 'RNHostView', 'Text', 'Toggle'].map((k) => [k, k])), ContextMenu: { Trigger: 'Trigger', Items: 'Items' } },
-  '@expo/ui/swift-ui/modifiers': modifiers,
+const contextual = cargar(readFileSync('src/ui/MenuContextualColeccion.tsx', 'utf8'), {
+  react: { useMemo: (fn) => fn(), useRef: (v) => ({ current: v }) },
+  'react-native': { StyleSheet: { absoluteFill: 'absoluteFill' }, View: 'View' },
+  '../../modules/collection-controls': { CollectionContext: null },
   './menuReparto': reparto,
-  './MenuContextualColeccion': { HAY_CONTEXTO_COLECCION: false },
-  './icons': { ICON_COLOR: { foreground: '#fff', muted: '#aaa' } },
 })
+/**
+ * El mismo archivo, con y sin el módulo UIKit.
+ *
+ * Un binario anterior no trae `NativeMenu` y tiene que seguir abriendo el menú
+ * de SwiftUI: las dos rutas se prueban acá para que ninguna se caiga sola.
+ */
+function menuNativo(BotonMenuNativo) {
+  return cargar(readFileSync('src/ui/MenuNativo.ios.tsx', 'utf8'), {
+    react: { Fragment: 'Fragment', useState: (v) => [v, () => {}], useMemo: (fn) => fn(), useRef: (v) => ({ current: v }) },
+    'react-native': { StyleSheet: { absoluteFill: 'absoluteFill' }, View: 'View' },
+    '@expo/ui/swift-ui': { ...Object.fromEntries(['Button', 'ControlGroup', 'Divider', 'Host', 'Image', 'Label', 'Menu', 'RNHostView', 'Text', 'Toggle'].map((k) => [k, k])), ContextMenu: { Trigger: 'Trigger', Items: 'Items' } },
+    '@expo/ui/swift-ui/modifiers': modifiers,
+    './menuReparto': reparto,
+    './MenuContextualColeccion': { HAY_CONTEXTO_COLECCION: false, prepararMenuContextual: contextual.prepararMenuContextual },
+    '../../modules/native-menu': { BotonMenuNativo },
+    './icons': { ICON_COLOR: { foreground: '#fff', muted: '#aaa' } },
+  }).MenuNativo
+}
+const MenuNativo = menuNativo(null)
+const MenuUIKit = menuNativo('BotonMenuNativo')
 
 test('menú iOS conserva las opciones disabled sin callbacks, incluidos submenús y acciones rápidas', () => {
   let clicks = 0
@@ -158,4 +175,55 @@ test('resultados de chat: consultar perfil no dispara escribir ni solicitar', ()
   assert.deepEqual(actions, [['perfil', 'ana']])
   row.onAbrir()
   assert.deepEqual(actions, [['perfil', 'ana'], ['escribir', 'ana']])
+})
+
+
+test('con el módulo UIKit el menú deja de pasar por SwiftUI y arma el mismo reparto', () => {
+  const clics = []
+  const items = [
+    { label: 'Compartir', rapida: true, sfSymbol: 'square.and.arrow.up', onPress: () => clics.push('compartir') },
+    { label: 'Ir al álbum', subtitle: 'Nocturno', onPress: () => clics.push('album') },
+    { label: 'Eliminar', destructive: true, onPress: () => clics.push('eliminar') },
+  ]
+  const ui = expand(MenuUIKit({ items }))
+  assert.equal(nodos(ui, 'Host').length, 0, 'SwiftUI no debería montarse')
+  const lamina = nodos(ui, 'BotonMenuNativo')[0]
+  assert.ok(lamina, 'falta la lámina de UIKit')
+  // La fila de acciones rápidas es un grupo chico; el resto, grupos con corte.
+  const [rapidas, lista, borrar] = lamina.props.items
+  assert.deepEqual([rapidas.inline, rapidas.small, rapidas.children.length], [true, true, 1])
+  assert.equal(lista.children[0].subtitle, 'Nocturno')
+  assert.equal(borrar.children[0].destructive, true)
+  lamina.props.onOpen()
+  lamina.props.onSelect({ nativeEvent: { id: borrar.children[0].id } })
+  assert.deepEqual(clics, ['eliminar'])
+})
+
+test('sin disparador propio, el glifo lo dibuja el sistema en un área de 44', () => {
+  const ui = expand(MenuUIKit({ items: [{ label: 'Opción', onPress: () => {} }], label: 'Opciones de la fila' }))
+  const caja = nodos(ui, 'View')[0]
+  assert.deepEqual({ ...caja.props.style }, { width: 44, height: 44 })
+  const lamina = nodos(ui, 'BotonMenuNativo')[0]
+  assert.equal(lamina.props.symbol, 'ellipsis')
+  assert.equal(lamina.props.menuLabel, 'Opciones de la fila')
+  assert.equal(lamina.props.symbolColor, '#aaa')
+})
+
+test('con disparador propio la lámina no dibuja glifo y se estira encima', () => {
+  const ui = expand(MenuUIKit({ items: [{ label: 'Opción', onPress: () => {} }], children: { type: 'Disparador', props: {} } }))
+  const lamina = nodos(ui, 'BotonMenuNativo')[0]
+  assert.equal(lamina.props.symbol, undefined, 'el glifo ya lo puso React Native')
+  assert.equal(lamina.props.style, 'absoluteFill')
+  assert.equal(nodos(ui, 'Disparador').length, 1)
+})
+
+test('la pulsación larga sigue en su camino y un binario sin el módulo cae a SwiftUI', () => {
+  const items = [{ label: 'Opción', onPress: () => {} }]
+  const larga = expand(MenuUIKit({ items, longPress: true, children: { type: 'Fila', props: {} } }))
+  assert.equal(nodos(larga, 'BotonMenuNativo').length, 0)
+  assert.equal(nodos(larga, 'Trigger').length, 1, 'la pulsación larga la presenta su propia interacción')
+  // Sin el módulo —un binario anterior— el menú que se toca vuelve a SwiftUI.
+  const viejo = expand(MenuNativo({ items }))
+  assert.equal(nodos(viejo, 'BotonMenuNativo').length, 0)
+  assert.equal(nodos(viejo, 'Host').length, 1)
 })

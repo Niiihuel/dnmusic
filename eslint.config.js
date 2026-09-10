@@ -9,6 +9,11 @@ module.exports = defineConfig([
     languageOptions: { globals: { Buffer: 'readonly', __dirname: 'readonly' } },
   },
   {
+    // Las pruebas corren en Node, no en la app: sus globales son las de Node.
+    files: ['tests/**/*.mjs'],
+    languageOptions: { globals: { Buffer: 'readonly', process: 'readonly' } },
+  },
+  {
     // Salida generada: el bundle web, el compilado del servicio de música, la
     // caché de expo-router, lo que Supabase deja al levantar los contenedores y
     // lo que el escritorio copia y empaqueta.

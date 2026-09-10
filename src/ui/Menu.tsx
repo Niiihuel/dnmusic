@@ -286,7 +286,6 @@ type MenuProps = {
    * también se admiten, mediante RNHostView.
    */
   triggerSymbol?: SFSymbol
-  triggerText?: string
   /**
    * Sin botón propio: el menú existe **solo** para abrirse desde el mango.
    *
@@ -315,7 +314,6 @@ export function Menu({
   trigger,
   triggerFullWidth = false,
   triggerSymbol,
-  triggerText,
   sinDisparador = false,
   abiertoEn = null,
   onCerrarPunto,
@@ -401,7 +399,7 @@ export function Menu({
 
   if (HAY_MENU_NATIVO && !sinDisparador) {
     return (
-      <MenuNativo items={usable} label={label} size={size} symbol={triggerSymbol} text={triggerText} fullWidth={triggerFullWidth}>
+      <MenuNativo items={usable} label={label} size={size} symbol={triggerSymbol} fullWidth={triggerFullWidth}>
         {trigger}
       </MenuNativo>
     )

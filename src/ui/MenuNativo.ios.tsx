@@ -1,5 +1,5 @@
-import { Fragment, useState } from 'react'
-import { View } from 'react-native'
+import { Fragment, useMemo, useRef, useState } from 'react'
+import { StyleSheet, View } from 'react-native'
 import {
   Button,
   ContextMenu,
@@ -7,18 +7,20 @@ import {
   Divider,
   Host,
   Image,
-  Label,
   Menu,
   RNHostView,
   Text,
   Toggle,
 } from '@expo/ui/swift-ui'
 import { accessibilityLabel, buttonStyle, contentShape, disabled, frame, shapes } from '@expo/ui/swift-ui/modifiers'
+import type { ReactNode } from 'react'
+import type { SFSymbol } from 'sf-symbols-typescript'
 import type { MenuItem } from './Menu'
 import type { MenuNativoProps } from './MenuNativo.types'
 import { llevaCorte, repartirMenu } from './menuReparto'
 import { ICON_COLOR } from './icons'
-import { HAY_CONTEXTO_COLECCION, MenuContextualColeccion } from './MenuContextualColeccion'
+import { HAY_CONTEXTO_COLECCION, MenuContextualColeccion, prepararMenuContextual } from './MenuContextualColeccion'
+import { BotonMenuNativo } from '../../modules/native-menu'
 
 export const HAY_MENU_NATIVO = true
 
@@ -116,13 +118,64 @@ function Opciones({ items, deshabilitado = false }: { items: MenuItem[]; deshabi
   )
 }
 
+/**
+ * El menú del sistema, en UIKit.
+ *
+ * Es el mismo `UIMenu` que ya presenta la pulsación larga de las filas, con el
+ * mismo traductor: lo único distinto es el disparador. Acá no hay `RNHostView`
+ * ni alturas viajando de SwiftUI a Yoga — la lámina se estira sobre lo que RN
+ * ya dibujó, o dibuja ella sola el glifo del sistema cuando no hay nada debajo.
+ *
+ * `onOpen` congela qué hace cada fila en el momento de abrir: si la pantalla se
+ * vuelve a dibujar con el menú abierto, quien está eligiendo sigue eligiendo
+ * sobre lo que vio.
+ */
+function MenuUIKit({
+  items,
+  label,
+  size,
+  symbol,
+  fullWidth,
+  children,
+}: {
+  items: MenuItem[]
+  label: string
+  size: number
+  symbol?: SFSymbol
+  fullWidth: boolean
+  children?: ReactNode
+}) {
+  const preparado = useMemo(() => prepararMenuContextual(items), [items])
+  const abiertas = useRef(preparado.acciones)
+  if (!BotonMenuNativo) return <>{children}</>
+  return (
+    <View
+      collapsable={false}
+      style={children ? (fullWidth ? { width: '100%' } : undefined) : { width: 44, height: 44 }}
+    >
+      {children}
+      <BotonMenuNativo
+        style={StyleSheet.absoluteFill}
+        items={preparado.items}
+        menuLabel={label}
+        symbol={children ? undefined : symbol}
+        symbolSize={size}
+        symbolColor={ICON_COLOR.muted}
+        onOpen={() => {
+          abiertas.current = preparado.acciones
+        }}
+        onSelect={(event) => abiertas.current.get(event.nativeEvent.id)?.()}
+      />
+    </View>
+  )
+}
+
 /** SwiftUI administra el gesto, la elevación, los submenús y la respuesta háptica. */
 export function MenuNativo({
   items,
   label = 'Opciones',
   size = 17,
   symbol = 'ellipsis',
-  text,
   children,
   longPress = false,
   fullWidth = false,
@@ -131,14 +184,26 @@ export function MenuNativo({
   if (children && longPress && fullWidth && HAY_CONTEXTO_COLECCION) {
     return <MenuContextualColeccion items={items}>{children}</MenuContextualColeccion>
   }
+  /*
+   * El disparador que se toca va por UIKit; SwiftUI queda de respaldo.
+   *
+   * El respaldo es para los binarios que no traen el módulo: una actualización
+   * sólo de JS no lo incorpora. Con el módulo presente, ningún menú que se toca
+   * pasa por SwiftUI.
+   */
+  if (BotonMenuNativo && !longPress) {
+    return (
+      <MenuUIKit items={items} label={label} size={size} symbol={symbol} fullWidth={fullWidth}>
+        {children}
+      </MenuUIKit>
+    )
+  }
   const trigger = children ? (
     <RNHostView matchContents>
       <View collapsable={false} style={{ minWidth: 44, minHeight: 44, ...(fullWidth ? { width } : {}) }}>
         {children}
       </View>
     </RNHostView>
-  ) : text ? (
-    <Label title={text} systemImage={symbol} color={ICON_COLOR.foreground} modifiers={areaTactil} />
   ) : (
     <Image systemName={symbol} size={size} color={ICON_COLOR.muted} modifiers={areaTactil} />
   )
@@ -147,12 +212,8 @@ export function MenuNativo({
       colorScheme="dark"
       seedColor={ICON_COLOR.foreground}
       ignoreSafeArea="all"
-      matchContents={
-        children ? (fullWidth ? { vertical: true } : true) : text ? { horizontal: true } : false
-      }
-      style={
-        children ? (fullWidth ? { width } : undefined) : { height: 44, minWidth: text ? 92 : 44 }
-      }
+      matchContents={children ? (fullWidth ? { vertical: true } : true) : false}
+      style={children ? (fullWidth ? { width } : undefined) : { height: 44, minWidth: 44 }}
     >
       {longPress ? (
         <ContextMenu>

@@ -129,11 +129,61 @@ expo-router, igual que un toque adentro de la app. En Windows y Linux el primer
 link llega en `process.argv`, antes de que exista la ventana, así que
 `EntregaDeEnlaces` lo guarda hasta que haya a quién dárselo.
 
-## Los dos «Compartir» del menú
+## Compartir una canción: una hoja, no dos filas de menú
 
-- **Compartir** manda el link. Es lo que espera cualquiera y lo único que del
-  otro lado se puede escuchar.
-- **Compartir historia** es la tarjeta de 1080×1920 para Instagram, que es otra
-  cosa: una imagen linda que no lleva a ningún lado (`ui/CompartirHistoria`).
+El menú tenía **dos** filas de compartir: «Compartir», que abría la hoja del
+sistema con el link, y «Compartir historia», que se quedaba unos segundos
+pensando y de golpe abría **otra** hoja del sistema con una imagen que nadie
+había visto. Que la imagen saliera linda o rota se descubría recién en
+Instagram, con la historia ya a medio publicar.
 
-Estaba solo la segunda, y sin apellido.
+Ahora hay **una** fila —«Compartir»— y abre `app/compartir.tsx`: una hoja que
+mide su contenido (`fitToContents` en iOS, modal centrado en la compu) con la
+tarjeta a la vista y las tres salidas debajo, como filas de una lista agrupada:
+
+| Fila | Qué hace |
+| --- | --- |
+| Compartir la historia | La imagen de 1080×1920 a la hoja del sistema. En la web la descarga |
+| Compartir el link | `compartirCancion`: publica la tarjeta y ofrece el link |
+| Copiar el link | Al portapapeles, sin pasar por ninguna hoja |
+
+La previa **es el mismo componente** que se fotografía (`ui/TarjetaHistoria`),
+encogido con `transform`: lo que se ve es exactamente lo que sale. La canción
+viaja por `state/compartir` y no por la URL, como en «Agregar a una lista»:
+tiene diez campos y pasarla en la ruta la vuelve ilegible.
+
+## La tarjeta de la historia
+
+Mide 1080×1920 y se dibuja dos veces —una vista de React Native que el teléfono
+fotografía y un canvas en la web—, pero sus medidas viven **una sola vez** en
+`ui/tarjetaHistoria.ts`. Mientras estaban adentro de cada dibujo, cambiar el
+diseño era cambiarlo dos veces y descubrir en la cuarta captura que no
+coincidían.
+
+La regla que la ordena es la de toda la app: **todo apoyado en el mismo margen,
+a la izquierda**. La versión anterior centraba absolutamente todo —rótulo,
+tapa, título, artista, barra, sello— y una columna de seis cosas centradas no
+tiene composición: tiene simetría, que es otra cosa.
+
+Se fueron dos piezas:
+
+- **«AHORA SUENA» en versalitas espaciadas**, por lo mismo que se fueron de los
+  botones (ver [el sistema de diseño](DESIGN.md)): Apple no grita en ningún
+  control, y un rótulo así arriba de todo se lee como una plantilla gratuita.
+- **La barra de reproducción falsa**, con su perilla y sus dos relojes
+  inventados a un 38% de la canción. Decía «esto es música» diciendo una
+  mentira —esa canción no está en ese segundo—, y la app tiene una regla sobre
+  eso: nunca mostrar un estado que no es.
+
+En su lugar entró el **código escaneable**, que es lo que arregla el problema
+que este mismo documento marcaba: la historia era linda y no llevaba a ningún
+lado. El código codifica `/cancion/<videoId>`, así que la foto vuelve a ser un
+link — es para lo que existen los códigos de Spotify. La tarjeta se publica
+antes de armar la imagen, no en paralelo: quien escanea llega en segundos, y
+una tarjeta publicada después de que alguien llegó no sirve de nada.
+
+El fondo es la portada desenfocada, con el color de la tapa por encima cuando
+se lo puede leer (`lib/colorPortada`) y un velo más oscuro arriba y abajo, como
+la viñeta de la portada de un disco. Sin carátula, la tapa muestra el sello de
+la app apagado en vez de un cuadrado negro.
+

@@ -20,18 +20,23 @@ de Supabase, client_id, state y retorno con nonce/flowId. Un binario anterior si
 ese método pide actualizar antes de iniciar. Se necesita distribuir un nuevo
 cliente de PC; los cambios móviles entran en la próxima compilación habitual.
 
-## Activación pendiente
+## Activación aplicada
 
-La lectura de configuración del proyecto vinculado confirmó Google habilitado
-y `security_manual_linking_enabled=false`. El intento de habilitar sólo esa
-opción fue rechazado por revisión automática: requiere autorización específica
-para este cambio de autenticación de alcance global. **No se modificó el remoto.**
-El usuario debe autorizar habilitar vinculación manual en DMusic; después se
-aplica únicamente `{ "security_manual_linking_enabled": true }` y se verifica.
-El control de aprobación de cuentas nuevas sigue siendo independiente.
+Autorizada por el dueño y aplicada el 9 de septiembre de 2026 en el proyecto
+`tdvndpjaxuqhibcpufat`. Se envió únicamente
+`{ "security_manual_linking_enabled": true }` y una lectura posterior de la
+configuración lo confirmó en `true`, con Google habilitado, `disable_signup`
+en `false` y los dos hooks de Auth intactos. Ningún otro campo cambió: la
+aprobación de cuentas nuevas sigue siendo una decisión independiente del dueño.
 
-`supabase/config.toml` declara `enable_manual_linking=true` para futuros arranques
-locales. No se reiniciaron contenedores ni se cambió su entorno en ejecución.
+En local, `supabase/config.toml` ya declaraba `enable_manual_linking=true`, pero
+el contenedor de Auth venía de un arranque anterior y conservaba
+`GOTRUE_SECURITY_MANUAL_LINKING_ENABLED=false`. Se recreó **sólo** ese
+contenedor con el mismo `gotrue:v2.195.0`, sus 73 variables, su alias de red
+`auth` y su healthcheck, con la bandera en `true`; la base de datos no se tocó
+—vive en el volumen `supabase_db_dany`— y el resto del stack siguió corriendo.
+Quedó sano y `/auth/v1/health` responde a través de Kong. El proveedor Google
+sigue apagado en local a propósito: sus credenciales viven sólo en Supabase.
 
 ## Verificación
 

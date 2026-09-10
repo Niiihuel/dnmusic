@@ -73,6 +73,16 @@ function esNuestra(url: string): boolean {
   return url === ORIGEN || url === `${ORIGEN}/` || url.startsWith(`${ORIGEN}/`)
 }
 
+/**
+ * El alto de la franja de arriba, en píxeles.
+ *
+ * Es el alto de la barra de título de Música de Mac: alcanza para los botones
+ * del sistema sin robarle una fila a la barra lateral. Va también en el CSS de
+ * la app como respaldo, para cuando el navegador no publica
+ * `env(titlebar-area-height)`.
+ */
+const BANDA_VENTANA = 38
+
 function crearVentana(): BrowserWindow {
   const ventana = new BrowserWindow({
     icon: join(raizWeb(), 'icons', 'icon-512.png'),
@@ -100,6 +110,31 @@ function crearVentana(): BrowserWindow {
      * único que hay ahí es «buscar actualizaciones» y las herramientas.
      */
     autoHideMenuBar: true,
+    /*
+     * La barra de título del sistema, apagada.
+     *
+     * Es el mismo argumento con el que se fueron los `dialog.showMessageBox`:
+     * una franja gris del sistema encima de una interfaz que se separa por
+     * luminancia y no por bordes se lee como otra app pegada arriba. Música de
+     * Mac no tiene esa franja —los controles flotan sobre la barra lateral— y
+     * eso es lo que se busca acá.
+     *
+     * `titleBarOverlay` conserva los botones **nativos** de minimizar,
+     * maximizar y cerrar, teñidos con la paleta: ahorra reimplementar el
+     * comportamiento de ventana de cada escritorio, que es donde una barra
+     * hecha a mano se equivoca (doble click para maximizar, arrastrar al borde
+     * para acoplar, el menú del sistema con click derecho).
+     *
+     * Los botones los dibuja Chromium, no el gestor de ventanas, así que esto
+     * vale también en Linux: se probó con Electron sobre Wayland y el overlay
+     * quedó activo, con 96px reservados a la derecha y
+     * `env(titlebar-area-height)` en 38. Aun así la app no da por sentado que
+     * esté: se entera por `navigator.windowControlsOverlay` —que sólo existe
+     * cuando el overlay está activo— y reserva la franja únicamente en ese
+     * caso; ver `src/ui/BandaVentana.tsx`.
+     */
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#121212', symbolColor: '#B3B3B3', height: BANDA_VENTANA },
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,

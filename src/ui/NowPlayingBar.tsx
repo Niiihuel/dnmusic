@@ -27,7 +27,7 @@ import { abrirSelectorDispositivos, useEscuchaEspejoNombre } from '../state/escu
 import { BORDE_REFERENTE, ES_WEB, Glass, HAY_VIDRIO } from './Glass'
 import { useConTooltip } from './Tooltip'
 import { useClicDerecho } from './useClicDerecho'
-import { compartirHistoria } from './CompartirHistoria'
+import { dejarCancionACompartir } from '../state/compartir'
 import { Menu, type MenuItem } from './Menu'
 import { SeekBar, formatClock } from './SeekBar'
 import { BotonAleatorio, BotonRepetir, NOMBRE_MODO_REPRODUCCION } from './Transport'
@@ -262,13 +262,15 @@ export function NowPlayingBar({
       icon: <IconCola size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'list.bullet',
     },
-    /* La tarjeta 1080×1920 de lo que suena: en el teléfono abre la hoja de
-       compartir (Instagram ofrece «Agregar a tu historia»); en la web se
-       descarga el PNG. Ver `CompartirHistoria`. */
+    /* Abre la hoja: la tarjeta 1080×1920 a la vista y las dos formas de pasar
+       la canción, la imagen y el link. Ver `app/compartir.tsx`. */
     {
       label: 'Compartir',
       rapida: true,
-      onPress: () => compartirHistoria(current),
+      onPress: () => {
+        dejarCancionACompartir(current)
+        router.push('/compartir')
+      },
       icon: <IconShare size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'square.and.arrow.up',
     },

@@ -134,7 +134,6 @@ import { recordarBusqueda } from '../src/state/recientes'
 import { addShowcase } from '../src/services/showcases'
 import { Menu, type MenuItem } from '../src/ui/Menu'
 import { BarraLateral, CampoBusquedaLateral } from '../src/ui/BarraLateral'
-import { compartirHistoria } from '../src/ui/CompartirHistoria'
 import {
   addTrack,
   createPlaylist,
@@ -185,7 +184,7 @@ import {
   IconUsers,
 } from '../src/ui/icons'
 import { compartirLista } from '../src/lib/compartirLista'
-import { compartirCancion } from '../src/lib/compartir'
+import { dejarCancionACompartir } from '../src/state/compartir'
 import { estadoControlWeb } from '../src/ui/estadoControl'
 
 const SIDEBAR_PX = 780
@@ -1467,28 +1466,21 @@ export default function Home() {
       /*
        * Las dos formas de pasar una canción, en este orden.
        *
-       * «Compartir» manda el **link**, que es lo que espera cualquiera que
-       * toque compartir y lo único que del otro lado se puede escuchar: quien
-       * lo abre ve la tapa y el título aunque no tenga la app, y si tiene
-       * cuenta, suena. Ver `lib/compartir` y `app/cancion/[id]`.
-       *
-       * «Compartir historia» es la tarjeta de 1080×1920 para Instagram, que es
-       * otra cosa: una imagen linda que no lleva a ningún lado. Estaba primera
-       * y sin apellido, y era la única — mandar una canción por WhatsApp
-       * terminaba en una captura de pantalla. Ver `CompartirHistoria`.
+       * Una sola fila: **Compartir** abre la hoja, y ahí se elige. Antes eran
+       * dos —el link y «Compartir historia»— y la segunda armaba una imagen
+       * que nadie había visto: si salía rota, te enterabas en Instagram. La
+       * hoja muestra la tarjeta antes de mandarla y ofrece las dos formas en
+       * el mismo lugar, que es lo que son. Ver `app/compartir.tsx`.
        */
       {
         label: 'Compartir',
         rapida: true,
-        onPress: () => void compartirCancion(track),
+        onPress: () => {
+          dejarCancionACompartir(playlistTrackDeResultado(track))
+          router.push('/compartir')
+        },
         icon: <IconShare size={15} color={ICON_COLOR.muted} />,
         sfSymbol: 'square.and.arrow.up',
-      },
-      {
-        label: 'Compartir historia',
-        onPress: () => compartirHistoria(playlistTrackDeResultado(track)),
-        icon: <IconImage size={15} color={ICON_COLOR.muted} />,
-        sfSymbol: 'photo',
       },
       /*
        * Dónde guardarla. En el teléfono abre **la hoja** de elegir lista —con
@@ -1596,7 +1588,11 @@ export default function Home() {
       artist: track.artist,
       artistId: track.artistId,
       artworkUrl: track.artworkUrl,
-      artworkPath: null,
+      /* La tapa de una canción guardada vive en Storage, no en `artworkUrl`:
+         una fila de lista trae la ruta y el link puede venir vacío. Ponerlo en
+         `null` acá era perder la carátula en el viaje de ida y vuelta, y la
+         tarjeta de compartir salía con el recuadro negro. */
+      artworkPath: track.artworkPath ?? null,
       audioPath: track.audioPath ?? '',
       durationMs: track.durationMs,
       truePeak: undefined,

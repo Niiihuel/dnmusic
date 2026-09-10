@@ -176,7 +176,6 @@ export function LyricsView({
         onChange={setLang}
         display={LYRIC_LANGS.find((l) => l.value === lang)?.short || 'Traducir'}
         accessibilityLabel="Traducir la letra"
-        sfSymbol="globe"
         icon={
           <IconLanguages
             size={15}

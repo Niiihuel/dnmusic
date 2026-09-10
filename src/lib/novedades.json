@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.14.0",
+    "fecha": "9 de septiembre de 2026",
+    "titulo": "Mirá la historia antes de mandarla.",
+    "cambios": [
+      "Compartir una canción abre una hoja con la tarjeta a la vista: ahí elegís si mandás la historia, el link o si lo copiás. Antes la imagen se armaba a ciegas y la veías recién en Instagram, con la historia ya a medio publicar.",
+      "La tarjeta de la historia se rehízo entera: la tapa grande, el título y el artista alineados contra el mismo borde, y un código escaneable abajo que lleva a la canción. Quien ve tu historia ya no tiene que buscarla a mano. Se fueron el rótulo en mayúsculas y la barra de reproducción, que marcaba un segundo inventado.",
+      "Conectar Google desde Configuración → Cuenta ya funciona: faltaba abrir una llave del servidor. Conservás tu perfil, tus listas y tu acceso por usuario.",
+      "En la computadora, la ventana dejó de tener la franja gris del sistema arriba. La app llega hasta el borde y los botones de minimizar, maximizar y cerrar flotan sobre ella; se arrastra desde el encabezado de la barra lateral.",
+      "Actualizaciones y Acceso con Google se ven como el resto de Configuración: filas con su rótulo y su valor, en vez de formularios con campos altos y botones en mayúsculas.",
+      "«Buscar actualizaciones» se mudó a Configuración → La app, y muestra en qué anda: buscando, bajando, lista o al día.",
+      "En iPhone, el menú de los tres puntos lo dibuja el sistema. Volver de Google deja Configuración abierta en Cuenta, en vez de arriba de todo."
+    ]
+  },
+  {
     "version": "1.13.0",
     "fecha": "9 de septiembre de 2026",
     "titulo": "Mandá una canción y que del otro lado se escuche.",

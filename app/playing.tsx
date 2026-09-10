@@ -50,8 +50,7 @@ import { abrirSelectorDispositivos } from '../src/state/escucha'
 import { dejarCancionPendiente } from '../src/state/listas'
 import { LyricsView } from '../src/ui/LyricsView'
 import { Vacio } from '../src/ui/Vacio'
-import { compartirHistoria } from '../src/ui/CompartirHistoria'
-import { compartirCancion } from '../src/lib/compartir'
+import { dejarCancionACompartir } from '../src/state/compartir'
 import { BotonAleatorio, BotonRepetir } from '../src/ui/Transport'
 import { BotonMeGusta } from '../src/ui/BotonMeGusta'
 import { Menu, type MenuItem } from '../src/ui/Menu'
@@ -73,7 +72,6 @@ import {
   IconPlus,
   IconPrevious,
   IconRepeat,
-  IconImage,
   IconShare,
   IconUser,
   IconUsers,
@@ -373,24 +371,19 @@ export default function Playing() {
       sfSymbol: enJam ? 'person.2.fill' : 'person.2',
     },
     /*
-     * Las dos formas de pasar lo que suena, en este orden y por lo mismo que en
-     * la pantalla principal: «Compartir» manda el link —que del otro lado se
-     * puede escuchar— y la historia es la imagen de 1080×1920 para Instagram,
-     * que es linda y no lleva a ningún lado. Ver `lib/compartir` y
-     * `CompartirHistoria`.
+     * Una sola fila, como en la pantalla principal: abre la hoja y ahí se
+     * elige entre la historia y el link, con la tarjeta a la vista antes de
+     * mandarla. Ver `app/compartir.tsx`.
      */
     {
       label: 'Compartir',
       rapida: true,
-      onPress: () => void compartirCancion(track),
+      onPress: () => {
+        dejarCancionACompartir(track)
+        router.push('/compartir')
+      },
       icon: <IconShare size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'square.and.arrow.up',
-    },
-    {
-      label: 'Compartir historia',
-      onPress: () => compartirHistoria(track),
-      icon: <IconImage size={15} color={ICON_COLOR.muted} />,
-      sfSymbol: 'photo',
     },
     {
       label: 'Ir al artista',

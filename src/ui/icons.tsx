@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Clipboard,
   Clock,
   Disc3,
   Download,
@@ -34,6 +35,7 @@ import {
   EyeOff,
   ExternalLink,
   Globe,
+  Link2,
   House,
   Inbox,
   Languages,
@@ -133,6 +135,8 @@ export const IconChevronRight = make(ChevronRight)
 export const IconBack = make(ArrowLeft)
 export const IconForward = make(ArrowRight)
 export const IconExternal = make(ExternalLink)
+export const IconLink = make(Link2)
+export const IconCopiar = make(Clipboard)
 export const IconWave = make(AudioWaveform)
 export const IconDisc = make(Disc3)
 export const IconHeart = make(Heart)

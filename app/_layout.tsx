@@ -1024,6 +1024,22 @@ function SessionGate() {
           cuenta nueva. Pantalla común, como las puertas de entrada. */}
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="compose" options={HOJA_SOCIAL} />
+      {/* Compartir una canción: la previa de la historia y las dos formas de
+          pasarla. Mide su contenido —tres filas y una tapa— y no la pantalla
+          entera. Ver `app/compartir.tsx`. */}
+      <Stack.Screen
+        name="compartir"
+        options={
+          ES_WEB
+            ? HOJA_WEB
+            : {
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                sheetCornerRadius: 24,
+              }
+        }
+      />
       <Stack.Screen name="ajustes/index" />
       <Stack.Screen name="ajustes/descargas" />
       <Stack.Screen name="ajustes/bloqueados" />

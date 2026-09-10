@@ -221,7 +221,7 @@ function Pildora({ texto, activa = false, onPress, pequena = false, discreta = f
   </Pressable>
 }
 function MenuSelector({ label, texto, items }: { label: string; texto: string; items: MenuItem[] }) {
-  return <Menu label={label} triggerText={texto} items={items} trigger={Platform.OS === 'ios' ? undefined :
+  return <Menu label={label} items={items} trigger={
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, backgroundColor: '#242424' }}>
       <Text numberOfLines={1} style={s.texto}>{texto}</Text><IconChevronDown size={14} color="#aaa" />
     </View>} />

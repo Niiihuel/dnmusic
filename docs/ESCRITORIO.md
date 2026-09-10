@@ -222,6 +222,51 @@ y público, el cliente descarga sin credencial ninguna. GitHub además no cobra 
 ancho de banda de los releases, que con ~150 usuarios y ~100 MB por instalador
 no es un detalle.
 
+## La ventana dibuja su propio cromo
+
+La barra de título del sistema está apagada (`titleBarStyle: 'hidden'`). Es el
+mismo argumento con el que se fueron los `dialog.showMessageBox`: una franja
+gris del sistema apoyada encima de una interfaz que se separa por luminancia y
+no por bordes se lee como otra app pegada arriba. Música de Mac no la tiene —los
+controles flotan sobre la barra lateral— y eso es lo que se busca.
+
+Los botones de minimizar, maximizar y cerrar **siguen siendo los del sistema**:
+`titleBarOverlay` los conserva, teñidos con la paleta (`#121212` de fondo,
+`#B3B3B3` los símbolos, 38px de alto). Rehacerlos a mano hubiera significado
+reimplementar el comportamiento de ventana de cada escritorio, que es donde una
+barra casera se equivoca: doble click para maximizar, arrastrar contra el borde
+para acoplar, el menú del sistema con click derecho.
+
+**El cromo va encima del layout, no adentro.** El navegador dibuja esos botones
+sobre la página, así que la app llega hasta el borde de arriba y ellos flotan.
+El primer intento reservaba una fila de 38px como primer hijo del árbol y se veía
+exactamente como lo que era: una banda negra muerta cruzando toda la ventana,
+con la app empezando debajo. Ninguna fila reserva alto.
+
+Lo que sí hay que declarar es **desde dónde se arrastra**, porque sin barra de
+título nadie lo hace y la ventana queda clavada. Eso lo pone `CabeceraLateral`
+—la franja de arriba de la barra lateral, con el título de la sección, el mismo
+lugar del que se arrastra Música para Mac— con la clase `dn-arrastrar`, y sus
+controles se salen con `dn-no-arrastrar`: una zona de arrastre se come el click
+de todo lo que tenga adentro. Las clases viven en `global.css` porque
+`app-region` no existe en React Native, y `src/ui/BandaVentana.tsx` decide si
+corresponden.
+
+**No se da por sentado que el overlay exista.** `navigator.windowControlsOverlay`
+sólo existe cuando está activo, que es exactamente cuando hay botones flotando y
+una ventana sin marco; en el navegador, en la PWA y en el teléfono las dos clases
+quedan vacías. Se probó con Electron sobre Wayland en la app real: overlay
+visible, 96px reservados a la derecha para los botones y `env(titlebar-area-*)`
+publicado.
+
+Con el cromo propio, la barra de menú dejó de estar a la vista. Los atajos de
+sus roles (`Ctrl+R`, `Ctrl+Shift+I`) siguen funcionando porque el menú se
+registra igual, pero **«Buscar actualizaciones» se mudó a Configuración → La
+app**, que además es donde lo pone Apple: Ajustes del Sistema tiene su
+«Actualización de software», no un menú escondido detrás de Alt. La fila muestra
+en qué anda el actualizador —buscando, bajando con su porcentaje, lista, al día—
+y al tocarla dispara la búsqueda.
+
 ## Notificaciones del sistema
 
 Cuando llega un mensaje, el escritorio avisa por fuera de la ventana, como el

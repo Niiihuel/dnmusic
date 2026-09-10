@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Linking, Pressable, Switch, Text, View } from 'react-native'
-import { Field } from './Field'
-import { PrimaryButton, GhostButton } from './Button'
+import { Linking } from 'react-native'
+import { FilaAccion, FilaDato, FilaInterruptor, FilaOpciones, FilaTexto, GrupoAjustes } from './Ajustes'
 import { Confirmar } from './Confirmar'
 import { useAuthUser, useIsAccessAdmin } from '../state/session'
 import { listarPoliticas, guardarPolitica } from '../services/actualizacionesRemotas'
@@ -9,11 +8,31 @@ import { PLATAFORMAS, esDestinoActualizacion, leerPolitica, type PlataformaActua
 import { refrescarPolitica } from '../state/politicaActualizacion'
 
 const NOMBRES: Record<PlataformaActualizacion, string> = { windows: 'Windows', linux: 'Linux', macos: 'macOS', ios: 'iOS', android: 'Android', web: 'Web / PWA' }
+
+/**
+ * La administración de actualizaciones, con la anatomía de Ajustes del Sistema.
+ *
+ * Antes era un formulario: un título propio arriba, una fila de chips para
+ * elegir plataforma, campos altos con la etiqueta **encima y en versalitas** y
+ * botones anchos gritando «RECARGAR POLÍTICAS». Eso viene del formulario de
+ * acceso, donde hay una sola acción y ocupa el ancho porque no compite con
+ * nada; adentro de Configuración choca con todo lo demás —el resto de las
+ * categorías son listas agrupadas— y con el referente, que no usa versalitas
+ * en ningún control.
+ *
+ * Acá es lo mismo que cualquier otra categoría: bloques redondeados de filas,
+ * cada una con su rótulo a la izquierda y su valor a la derecha, las acciones
+ * como filas del bloque al que pertenecen, y lo que hay que explicar al pie del
+ * bloque en vez de suelto entre los campos. El título ya lo pone la pantalla
+ * —la barra en la compu, el título del bloque en el teléfono—, así que el
+ * encabezado propio se fue: repetirlo era decir «Actualizaciones» dos veces.
+ */
 export function AdministrarActualizaciones() {
   const admin = useIsAccessAdmin()
   const user = useAuthUser()
   return admin && user ? <PanelPoliticas key={user.id} /> : null
 }
+
 function PanelPoliticas() {
   const [politicas, setPoliticas] = useState<PoliticaActualizacion[] | null>(null)
   const [plataforma, setPlataforma] = useState<PlataformaActualizacion>('windows')
@@ -43,15 +62,39 @@ function PanelPoliticas() {
     return () => { vigente = false; viva.current = false }
   }, [])
   const actual = politicas?.find(p => p.platform === plataforma)
-  return <View className="gap-4">
-    <Text className="text-foreground text-lg font-bold">Actualizaciones por plataforma</Text>
-    <Text className="text-muted-foreground">Vos decidís desde qué versión es obligatorio actualizar. Publicar una política no crea ni distribuye una versión.</Text>
-    <View className="flex-row flex-wrap gap-2">{PLATAFORMAS.map(p => <Pressable key={p} accessibilityRole="button" accessibilityState={{ selected: p === plataforma }} onPress={() => setPlataforma(p)} className={`rounded-full px-4 py-2 ${p === plataforma ? 'bg-foreground' : 'bg-muted'}`}><Text className={p === plataforma ? 'text-background' : 'text-foreground'}>{NOMBRES[p]}</Text></Pressable>)}</View>
-    {error ? <Text accessibilityRole="alert" className="text-destructive">{error}</Text> : null}
-    <GhostButton label="Recargar políticas" disabled={cargando} onPress={() => void cargar()} />
-    {politicas && !cargando ? <EditorPolitica key={`${plataforma}:${actual?.revision ?? 0}`} plataforma={plataforma} actual={actual} onGuardada={p => setPoliticas(prev => [...(prev ?? []).filter(row => row.platform !== p.platform), p])} /> : null}
-  </View>
+  /* Qué hay publicado hoy para la plataforma elegida. Mientras carga no dice
+     «sin publicar»: todavía no lo sabe, y afirmarlo invita a publicar de más. */
+  const estado = cargando || !politicas
+    ? 'Consultando…'
+    : actual
+      ? `Revisión ${actual.revision} · ${actual.enabled ? 'activa' : 'desactivada'}`
+      : 'Sin publicar'
+  return <>
+    <GrupoAjustes
+      titulo="Actualizaciones por plataforma"
+      pie="Vos decidís desde qué versión es obligatorio actualizar. Publicar una política no crea ni distribuye una versión."
+      error={error}
+    >
+      <FilaOpciones
+        rotulo="Plataforma"
+        valor={plataforma}
+        opciones={PLATAFORMAS.map(p => ({ value: p, label: NOMBRES[p] }))}
+        onElegir={setPlataforma}
+      />
+      <FilaDato rotulo="Publicado" valor={estado} />
+      <FilaAccion rotulo="Recargar políticas" busy={cargando} onPress={() => void cargar()} ultima />
+    </GrupoAjustes>
+    {politicas && !cargando ? (
+      <EditorPolitica
+        key={`${plataforma}:${actual?.revision ?? 0}`}
+        plataforma={plataforma}
+        actual={actual}
+        onGuardada={p => setPoliticas(prev => [...(prev ?? []).filter(row => row.platform !== p.platform), p])}
+      />
+    ) : null}
+  </>
 }
+
 function EditorPolitica({ plataforma, actual, onGuardada }: { plataforma: PlataformaActualizacion; actual?: PoliticaActualizacion; onGuardada: (p: PoliticaActualizacion) => void }) {
   const [ultima, setUltima] = useState(actual?.latest_version ?? '')
   const [minima, setMinima] = useState(actual?.minimum_version ?? '0.0.0')
@@ -79,29 +122,48 @@ function EditorPolitica({ plataforma, actual, onGuardada }: { plataforma: Plataf
     finally { enCurso.current = false; if (viva.current) setGuardando(false) }
   }
   const editable = !guardando && !confirmacion
-  return <View className="gap-3">
-    <Text className="text-muted-foreground">{actual ? `Guardada · revisión ${actual.revision} · ${actual.enabled ? 'activa' : 'desactivada'}` : 'Sin política publicada para esta plataforma.'}</Text>
-    <Field label="Última versión disponible" placeholder="1.12.0" value={ultima} onChangeText={setUltima} editable={editable} autoCapitalize="none" />
-    <Field label="Mínima soportada" hint="0.0.0: todas las versiones pueden continuar; el aviso es opcional." value={minima} onChangeText={setMinima} editable={editable} autoCapitalize="none" />
-    <GhostButton label="Hacer obligatoria la última" disabled={!editable || !ultima} onPress={() => setMinima(ultima)} />
-    <Field label="URL de actualización" placeholder={plataforma === 'web' ? 'https://dnmusic-app.vercel.app/' : plataforma === 'ios' ? 'https://testflight.apple.com/join/…' : 'https://github.com/Niiihuel/dnmusic-releases/releases/latest'} value={url} onChangeText={setUrl} editable={editable} autoCapitalize="none" autoCorrect={false} />
-    <Text className="text-muted-foreground">Abrí el destino y verificá que entregue la versión elegida para {NOMBRES[plataforma]} antes de activarla. Se admiten las tiendas y los releases oficiales de DMusic.</Text>
-    <GhostButton label="Abrir destino para verificar" disabled={!esDestinoActualizacion(plataforma, url.trim())} onPress={() => { void Linking.openURL(url.trim()).catch(() => { if (viva.current) setError('No se pudo abrir el destino.') }) }} />
-    <View className="flex-row items-center justify-between">
-      <Text className="text-foreground">Política activa</Text>
-      {/* Tokens muted, primary, primary-foreground y border; iguales al interruptor de Ajustes. */}
-      <Switch
-        accessibilityLabel="Política activa"
-        value={activa}
-        onValueChange={setActiva}
-        disabled={!editable}
-        trackColor={{ false: '#1F1F1F', true: '#FFFFFF' }}
-        thumbColor={activa ? '#121212' : '#4D4D4D'}
-        ios_backgroundColor="#1F1F1F"
+  const marcadorURL = plataforma === 'web'
+    ? 'https://dnmusic-app.vercel.app/'
+    : plataforma === 'ios'
+      ? 'https://testflight.apple.com/join/…'
+      : 'https://github.com/Niiihuel/dnmusic-releases/releases/latest'
+  return <>
+    <GrupoAjustes titulo="Versiones" pie="Con la mínima en 0.0.0 todas las versiones pueden continuar y el aviso queda opcional.">
+      <FilaTexto rotulo="Última disponible" valor={ultima} onCambiar={setUltima} marcador="1.12.0" editable={editable} />
+      <FilaTexto rotulo="Mínima soportada" valor={minima} onCambiar={setMinima} marcador="0.0.0" editable={editable} />
+      <FilaAccion rotulo="Igualar la mínima a la última" disabled={!editable || !ultima} onPress={() => setMinima(ultima)} ultima />
+    </GrupoAjustes>
+
+    <GrupoAjustes
+      titulo="Destino"
+      pie={`Abrí el destino y verificá que entregue la versión elegida para ${NOMBRES[plataforma]} antes de activarla. Se admiten las tiendas y los releases oficiales de DMusic.`}
+    >
+      <FilaTexto rotulo="Dirección" valor={url} onCambiar={setUrl} marcador={marcadorURL} editable={editable} />
+      <FilaAccion
+        rotulo="Abrir para verificar"
+        disabled={!esDestinoActualizacion(plataforma, url.trim())}
+        onPress={() => { void Linking.openURL(url.trim()).catch(() => { if (viva.current) setError('No se pudo abrir el destino.') }) }}
+        ultima
       />
-    </View>
-    {error ? <Text accessibilityRole="alert" className="text-destructive">{error}</Text> : null}
-    <PrimaryButton label="Revisar y guardar" busy={guardando} disabled={!editable} onPress={preparar} />
-    <Confirmar visible={!!confirmacion} titulo={`Guardar política de ${NOMBRES[plataforma]}`} mensaje={confirmacion ? `${confirmacion.enabled ? `Las versiones menores a ${confirmacion.minimum_version} quedarán bloqueadas. Las demás anteriores a ${confirmacion.latest_version} tendrán un aviso opcional.` : 'La política quedará desactivada; sus avisos y bloqueos se retirarán al volver a consultar.'}\nDestino: ${confirmacion.update_url}` : ''} rotulo="Guardar política" onCancelar={() => setConfirmacion(null)} onConfirmar={() => void guardar()} />
-  </View>
+    </GrupoAjustes>
+
+    <GrupoAjustes
+      pie={activa
+        ? 'Activa, la política empieza a avisar y a bloquear apenas se guarda.'
+        : 'Desactivada, sus avisos y bloqueos se retiran al volver a consultar.'}
+      error={error}
+    >
+      <FilaInterruptor rotulo="Política activa" activo={activa} onCambiar={setActiva} />
+      <FilaAccion rotulo="Revisar y guardar" destacada busy={guardando} disabled={!editable} onPress={preparar} ultima />
+    </GrupoAjustes>
+
+    <Confirmar
+      visible={!!confirmacion}
+      titulo={`Guardar política de ${NOMBRES[plataforma]}`}
+      mensaje={confirmacion ? `${confirmacion.enabled ? `Las versiones menores a ${confirmacion.minimum_version} quedarán bloqueadas. Las demás anteriores a ${confirmacion.latest_version} tendrán un aviso opcional.` : 'La política quedará desactivada; sus avisos y bloqueos se retirarán al volver a consultar.'}\nDestino: ${confirmacion.update_url}`: ''}
+      rotulo="Guardar política"
+      onCancelar={() => setConfirmacion(null)}
+      onConfirmar={() => void guardar()}
+    />
+  </>
 }

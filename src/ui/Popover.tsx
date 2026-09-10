@@ -7,7 +7,6 @@ import {
   View,
   type View as RNView,
 } from 'react-native'
-import type { SFSymbol } from 'sf-symbols-typescript'
 import { HAY_MENU_NATIVO, Menu } from './Menu'
 import { ICON_COLOR, IconCheck, IconChevronDown, IconChevronUp } from './icons'
 
@@ -27,8 +26,6 @@ type Props<T> = {
   display?: string
   /** Necesario cuando el disparador queda solo con el ícono. */
   accessibilityLabel?: string
-  /** El ícono del disparador, en el idioma de iOS. Ver `MenuItem.sfSymbol`. */
-  sfSymbol?: SFSymbol
 }
 
 const MENU_W = 210
@@ -55,7 +52,6 @@ export function Popover<T extends string | number>({
   icon,
   display,
   accessibilityLabel,
-  sfSymbol,
 }: Props<T>) {
   const [open, setOpen] = useState(false)
   const [anchor, setAnchor] = useState({ x: 0, y: 0, w: 0, h: 0 })
@@ -76,12 +72,32 @@ export function Popover<T extends string | number>({
    * estado seleccionado. El menú sí: el ✓ lo pone el sistema, alineado, como en
    * cualquier otra app.
    */
+  /*
+   * El disparador, dibujado una sola vez.
+   *
+   * Antes había dos: éste, y un `Label` de SwiftUI que repetía ícono y texto
+   * en el idioma de iOS. Con el menú en UIKit el disparador ya no lo dibuja
+   * SwiftUI, así que la píldora que se ve en la web y en Android es la misma
+   * que se ve en el teléfono — un solo lugar donde cambiarla.
+   */
+  const disparador = (dirigida: boolean) => (
+    <View className="flex-row items-center gap-2 rounded-full bg-muted px-4 py-2.5">
+      {icon}
+      {label && <Text className="text-muted-foreground text-xs">{label}</Text>}
+      {text !== '' && <Text className="text-foreground text-[13px] font-medium">{text}</Text>}
+      {dirigida ? (
+        <IconChevronUp size={14} color={ICON_COLOR.muted} />
+      ) : (
+        <IconChevronDown size={14} color={ICON_COLOR.muted} />
+      )}
+    </View>
+  )
+
   if (HAY_MENU_NATIVO) {
     return (
       <Menu
         label={accessibilityLabel ?? label ?? 'Elegir'}
-        triggerText={text}
-        triggerSymbol={sfSymbol}
+        trigger={disparador(false)}
         items={options.map((o) => ({
           label: o.label,
           onPress: () => onChange(o.value),
@@ -111,16 +127,9 @@ export function Popover<T extends string | number>({
         accessibilityLabel={accessibilityLabel}
         accessibilityState={{ expanded: open }}
         onPress={openMenu}
-        className="flex-row items-center gap-2 rounded-full bg-muted px-4 py-2.5 active:opacity-80"
+        className="active:opacity-80"
       >
-        {icon}
-        {label && <Text className="text-muted-foreground text-xs">{label}</Text>}
-        {text !== '' && <Text className="text-foreground text-[13px] font-medium">{text}</Text>}
-        {above ? (
-          <IconChevronUp size={14} color={ICON_COLOR.muted} />
-        ) : (
-          <IconChevronDown size={14} color={ICON_COLOR.muted} />
-        )}
+        {disparador(above)}
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>

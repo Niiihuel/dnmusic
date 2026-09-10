@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { Text, View } from 'react-native'
 import type { User } from '@supabase/supabase-js'
 import { conectarGoogle, cancelarGoogle } from '../services/auth'
 import { getSupabase } from '../lib/supabase'
-import { AccionSocial } from './Social'
 import { GoogleIcon } from './GoogleIcon'
-import { GrupoAjustes } from './Ajustes'
-import { GhostButton } from './Button'
+import { FilaAccion, FilaDato, GrupoAjustes } from './Ajustes'
 
 const identidadGoogle = (user: User) => user.identities?.find(i => i.provider === 'google') ?? null
 
-/** Misma sección de Cuenta en iOS y escritorio. No altera datos del perfil. */
+/**
+ * Misma sección de Cuenta en iOS y escritorio. No altera datos del perfil.
+ *
+ * Son filas del bloque y no botones: la píldora ancha de `AccionSocial` es del
+ * formulario de acceso —ahí es la única acción de la pantalla y ocupa el ancho
+ * porque no compite con nada—, pero adentro de una lista agrupada mide el doble
+ * que una fila y grita en versalitas. Acá conectar es una fila más, como
+ * «Agregar cuenta» en Ajustes del Sistema, y el error va al pie de su bloque.
+ */
 export function ConectarGoogle({ user }: { user: User }) {
   const [identidad, setIdentidad] = useState(() => identidadGoogle(user))
   const [busy, setBusy] = useState(false)
@@ -46,17 +51,17 @@ export function ConectarGoogle({ user }: { user: User }) {
     }
   }
   const correo = typeof identidad?.identity_data?.email === 'string' ? identidad.identity_data.email : null
-  return <GrupoAjustes titulo="Acceso con Google" pie="Conectá Google para entrar a esta misma cuenta. Conservás tu perfil, tus listas y tu acceso por usuario.">
-    <View style={{ padding: 16, gap: 10 }}>
-      {identidad ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <GoogleIcon size={18} />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text className="text-foreground text-[15px] font-medium">Google conectado</Text>
-          {correo ? <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>{correo}</Text> : null}
-        </View>
-      </View> : <AccionSocial label="Conectar con Google" icono={<GoogleIcon />} onPress={() => void conectar()} busy={busy} disabled={busy} compacta expandida />}
-      {busy ? <GhostButton label="Cancelar" onPress={() => void cancelarGoogle()} /> : null}
-      {error ? <Text accessibilityRole="alert" className="text-destructive text-[13px]">{error}</Text> : null}
-    </View>
+  return <GrupoAjustes
+    titulo="Acceso con Google"
+    pie="Conectá Google para entrar a esta misma cuenta. Conservás tu perfil, tus listas y tu acceso por usuario."
+    error={error}
+  >
+    {identidad
+      ? <FilaDato rotulo="Google conectado" valor={correo ?? 'Sí'} icono={<GoogleIcon size={17} />} iconoPlano ultima />
+      : <FilaAccion rotulo="Conectar con Google" icono={<GoogleIcon size={17} />} iconoPlano
+          busy={busy} onPress={() => void conectar()} ultima={!busy} />}
+    {/* Mientras espera el navegador, salirse es una fila más — no un botón
+        flotando debajo del bloque, que era lo único ahí abajo. */}
+    {busy ? <FilaAccion rotulo="Cancelar" onPress={() => void cancelarGoogle()} ultima /> : null}
   </GrupoAjustes>
 }

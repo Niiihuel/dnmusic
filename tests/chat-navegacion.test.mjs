@@ -75,11 +75,14 @@ test('el control lateral conserva tooltip, foco, callback y 44px en táctil', ()
       'react-native': { View: 'View', Text: 'Text', Pressable: 'Pressable' },
       '../lib/teclado': { TECLADO_FISICO: fine },
       './Tooltip': { useConTooltip: label => { assert.equal(label, 'Nueva conversación'); return { gestos: { onFocus } } } },
+      // El escritorio arrastra la ventana desde el encabezado; el control se sale de esa zona.
+      './BandaVentana': { ARRASTRE_VENTANA: 'dn-arrastrar', SIN_ARRASTRE: 'dn-no-arrastrar' },
     })
     const button = BotonLateral({ label: 'Nueva conversación', icono: null, onPress: () => presses++ })
     assert.equal(button.props.onFocus, onFocus)
     assert.equal(button.props.accessibilityLabel, 'Nueva conversación')
     assert.equal(button.props.style.height, fine ? 32 : 44)
+    assert.match(button.props.className, /dn-no-arrastrar/)
     button.props.onPress()
     assert.equal(presses, 1)
   }

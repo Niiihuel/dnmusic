@@ -61,6 +61,19 @@ Estas convenciones rigen las pantallas nuevas y sus adaptaciones:
   cambios. Su material usa `Glass`, con reserva de altura y área segura.
   Al salir del editor completo se ofrece conservar o descartar el borrador.
   El toolbar del mosaico agrupa herramientas y agregar piezas; no confirma.
+- **En Configuración todo es una fila.** Campos, valores y acciones se arman
+  con `FilaTexto`, `FilaDato` y `FilaAccion`, y lo que salió mal va al pie de su
+  bloque (`GrupoAjustes.error`). El campo alto con etiqueta en versalitas y el
+  botón ancho son el vocabulario del **formulario de acceso**, donde hay una
+  sola acción por pantalla; adentro de una lista agrupada rompen el ritmo y
+  gritan. Ver [Configuración](AJUSTES.md).
+- **En PC la ventana es de la app, no del sistema.** El escritorio apaga la
+  barra de título y conserva únicamente los botones del sistema, teñidos con la
+  paleta. **El cromo va encima del layout, nunca adentro**: la app llega hasta el
+  borde de arriba y los botones flotan; reservarles una fila deja una banda
+  muerta cruzando la ventana. El arrastre lo declara `CabeceraLateral` con
+  `dn-arrastrar` y sus controles se salen con `dn-no-arrastrar`. Ver
+  [el escritorio](ESCRITORIO.md).
 - **La navegación comparte una convención.** Inicio y Editar perfil usan
   `CabeceraLateral` y filas con iconos sin cajas decorativas. Las columnas
   se pueden plegar independientemente. Atrás y Adelante flotan sobre el

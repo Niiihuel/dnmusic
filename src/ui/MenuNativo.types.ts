@@ -7,7 +7,6 @@ export type MenuNativoProps = {
   label?: string
   size?: number
   symbol?: SFSymbol
-  text?: string
   children?: ReactNode
   longPress?: boolean
   fullWidth?: boolean

@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native'
 import Animated, {
   useAnimatedStyle,
   useDerivedValue,
@@ -69,12 +69,22 @@ export function IconoAjuste({ children }: { children: ReactNode }) {
 export function GrupoAjustes({
   titulo,
   pie,
+  error,
   children,
 }: {
   /** Va arriba del bloque, en gris. Opcional: la raíz de Ajustes no los lleva. */
   titulo?: string
   /** Va debajo, en gris: lo que el bloque necesita explicar. */
   pie?: string
+  /**
+   * Lo que salió mal, en el mismo renglón del pie y en su lugar.
+   *
+   * No en un cartel aparte: el error de un bloque pertenece al bloque, y
+   * empujarlo a otra superficie lo separa de las filas que hay que corregir.
+   * Al ser todo gris, se distingue por redacción y posición —lo dice
+   * `docs/DESIGN.md`— y por el rol de alerta, que es lo que lo anuncia.
+   */
+  error?: string | null
   children: ReactNode
 }) {
   const compacto = useAjustesCompactos()
@@ -84,7 +94,14 @@ export function GrupoAjustes({
         <Text className={`${compacto ? 'px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[1.1px]' : 'px-4 pb-2 text-[13px]'} text-muted-foreground`}>{titulo}</Text>
       ) : null}
       <View className={`overflow-hidden bg-card ${compacto ? 'rounded-[16px]' : 'rounded-[22px]'}`}>{children}</View>
-      {pie ? (
+      {error ? (
+        <Text
+          accessibilityRole="alert"
+          className={`${compacto ? 'px-3 pt-1.5 text-[12px] leading-[17px]' : 'px-4 pt-2 text-[13px] leading-[18px]'} text-destructive`}
+        >
+          {error}
+        </Text>
+      ) : pie ? (
         <Text className={`${compacto ? 'px-3 pt-1.5 text-[12px] leading-[17px]' : 'px-4 pt-2 text-[13px] leading-[18px]'} text-muted-foreground`}>{pie}</Text>
       ) : null}
     </View>
@@ -175,6 +192,179 @@ export function FilaAjuste({
         </Text>
         {globito ? <Globito n={globito} /> : null}
         {destructivo ? null : <IconChevronRight size={15} color={ICON_COLOR.muted} />}
+      </View>
+    </Pressable>
+  )
+}
+
+/**
+ * Una fila que **muestra** un dato, sin llevar a ningún lado.
+ *
+ * Es la fila de «Versión» o «Número de serie»: rótulo a la izquierda, valor en
+ * gris a la derecha y nada más. Sin chevron, porque no abre nada — ponérselo
+ * sería prometer una pantalla que no existe.
+ */
+export function FilaDato({
+  rotulo,
+  valor,
+  icono,
+  iconoPlano = false,
+  ultima = false,
+}: {
+  rotulo: string
+  valor: string
+  icono?: ReactNode
+  iconoPlano?: boolean
+  ultima?: boolean
+}) {
+  const compacto = useAjustesCompactos()
+  return (
+    <View className={`flex-row items-center ${compacto ? 'gap-2.5 pl-3' : 'gap-3 pl-4'}`}>
+      {icono ? compacto || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : null}
+      <View
+        className={`${compacto ? 'min-h-[44px] gap-2.5 py-2 pr-3' : 'min-h-[52px] gap-3 py-2.5 pr-4'} min-w-0 flex-1 flex-row items-center ${
+          ultima ? '' : 'border-b border-muted'
+        }`}
+      >
+        <Text className={`shrink-0 text-foreground ${compacto ? 'text-[15px]' : 'text-[17px]'}`}>{rotulo}</Text>
+        <Text
+          className={`min-w-0 flex-1 text-right text-muted-foreground ${compacto ? 'text-[14px]' : 'text-[17px]'}`}
+          numberOfLines={1}
+        >
+          {valor}
+        </Text>
+      </View>
+    </View>
+  )
+}
+
+/**
+ * Una fila donde se **escribe** un valor: el rótulo a la izquierda, lo escrito
+ * a la derecha.
+ *
+ * Es la forma que tiene un formulario adentro de una lista agrupada, y es la
+ * que usa Ajustes del Sistema para un nombre de equipo o una dirección. Lo que
+ * reemplaza es el campo suelto de `Field`: una caja alta con la etiqueta
+ * **encima y en versalitas**, que viene del formulario de acceso y adentro de
+ * una lista rompe el ritmo —cada campo mide el doble que una fila y la etiqueta
+ * gritada no se parece a nada del sistema.
+ *
+ * Lo que un campo necesita explicar va al `pie` del bloque, no debajo de la
+ * fila: así las filas quedan parejas, que es lo que hace legible la lista.
+ */
+export function FilaTexto({
+  rotulo,
+  valor,
+  onCambiar,
+  marcador,
+  editable = true,
+  icono,
+  iconoPlano = false,
+  ultima = false,
+  autoCapitalize = 'none',
+  autoCorrect = false,
+}: {
+  rotulo: string
+  valor: string
+  onCambiar: (valor: string) => void
+  /** Lo que se ve cuando está vacío: un ejemplo de lo que va acá. */
+  marcador?: string
+  editable?: boolean
+  icono?: ReactNode
+  iconoPlano?: boolean
+  ultima?: boolean
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'
+  autoCorrect?: boolean
+}) {
+  const compacto = useAjustesCompactos()
+  return (
+    <View className={`flex-row items-center ${compacto ? 'gap-2.5 pl-3' : 'gap-3 pl-4'}`}>
+      {icono ? compacto || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : null}
+      <View
+        className={`${compacto ? 'min-h-[44px] gap-2.5 py-2 pr-3' : 'min-h-[52px] gap-3 py-2.5 pr-4'} min-w-0 flex-1 flex-row items-center ${
+          ultima ? '' : 'border-b border-muted'
+        }`}
+      >
+        <Text className={`shrink-0 ${editable ? 'text-foreground' : 'text-muted-foreground'} ${compacto ? 'text-[15px]' : 'text-[17px]'}`}>
+          {rotulo}
+        </Text>
+        <TextInput
+          accessibilityLabel={rotulo}
+          value={valor}
+          editable={editable}
+          onChangeText={onCambiar}
+          placeholder={marcador}
+          /* El gris del valor puesto, a media luz: un ejemplo no puede leerse
+             igual que algo escrito. Es el mismo criterio que `FilaAjuste`. */
+          placeholderTextColor="rgba(179,179,179,0.6)"
+          autoCapitalize={autoCapitalize}
+          autoCorrect={autoCorrect}
+          className={`min-w-0 flex-1 text-right text-foreground ${compacto ? 'text-[14px]' : 'text-[17px]'}`}
+          style={{ minHeight: compacto ? 36 : 44, paddingVertical: 0, paddingHorizontal: 0 }}
+        />
+      </View>
+    </View>
+  )
+}
+
+/**
+ * Una fila que **hace** algo acá mismo: guardar, recargar, abrir el destino.
+ *
+ * En una lista agrupada las acciones son filas, no píldoras: iOS pone «Cerrar
+ * sesión» como una fila más del bloque. Sin chevron —no abre otra pantalla— y
+ * con el rótulo en oración normal. Es lo que reemplaza a los botones anchos en
+ * versalitas: esos son del formulario de acceso, donde hay una sola acción y
+ * ocupa el ancho porque no compite con nada.
+ *
+ * `destacada` es la acción principal del bloque; apagada se atenúa el rótulo en
+ * vez del bloque entero, para que se siga leyendo qué es lo que no se puede
+ * hacer todavía.
+ */
+export function FilaAccion({
+  rotulo,
+  onPress,
+  destacada = false,
+  disabled = false,
+  busy = false,
+  icono,
+  iconoPlano = false,
+  ultima = false,
+}: {
+  rotulo: string
+  onPress: () => void
+  destacada?: boolean
+  disabled?: boolean
+  busy?: boolean
+  icono?: ReactNode
+  iconoPlano?: boolean
+  ultima?: boolean
+}) {
+  const compacto = useAjustesCompactos()
+  const activa = !disabled && !busy
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={rotulo}
+      accessibilityState={{ disabled: !activa, busy }}
+      disabled={!activa}
+      onPress={onPress}
+      className={`flex-row items-center ${activa ? 'active:bg-muted' : ''} ${compacto ? 'gap-2.5 pl-3' : 'gap-3 pl-4'}`}
+    >
+      {icono ? compacto || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : null}
+      <View
+        className={`${compacto ? 'min-h-[44px] gap-2.5 py-2 pr-3' : 'min-h-[52px] gap-3 py-2.5 pr-4'} min-w-0 flex-1 flex-row items-center ${
+          ultima ? '' : 'border-b border-muted'
+        }`}
+      >
+        <Text
+          className={`min-w-0 flex-1 ${compacto ? 'text-[15px]' : 'text-[17px]'} ${
+            activa ? 'text-foreground' : 'text-muted-foreground/60'
+          } ${destacada ? 'font-semibold' : ''}`}
+          numberOfLines={1}
+        >
+          {rotulo}
+        </Text>
+        {busy ? <ActivityIndicator color={ICON_COLOR.muted} /> : null}
       </View>
     </Pressable>
   )

@@ -70,3 +70,59 @@ test('detalle de escritorio usa columna contenida y activa la densidad compacta'
   assert.ok(contenido, 'la lista no debe expandirse como una tabla')
   assert.ok(ui.some(n => n.type === 'AjustesCompactos'))
 })
+
+
+/**
+ * La vuelta de Google en el teléfono.
+ *
+ * `Escritorio` recibe la sección y la muestra sola; `Telefono` dibuja la tirada
+ * entera de iOS, así que la sección tiene que ir a buscarse con el scroll.
+ */
+function fixtureTelefono() {
+  const source = ts.createSourceFile('ajustes.tsx', readFileSync('app/ajustes/index.tsx', 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const node = source.statements.find(n => ts.isFunctionDeclaration(n) && n.name.text === 'Telefono')
+  const code = ts.transpileModule(`export ${node.getText(source)}`, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText
+  const refs = [], exports = {}, jsx = (type, props) => ({ type, props })
+  const saltos = []
+  let cursor = 0
+  vm.runInNewContext(code, {
+    exports, require: () => ({ jsx, jsxs: jsx }),
+    useRef(initial) { const i = cursor++; if (!(i in refs)) refs[i] = { current: initial }; return refs[i] },
+    useCallback: fn => fn,
+    usePiso: () => 24, useKeyboardH: () => 0, useSafeAreaInsets: () => ({ bottom: 34 }),
+    ...Object.fromEntries(['SafeAreaView', 'View', 'Text', 'ScrollView', 'BotonVolver', 'SearchField'].map(k => [k, k])),
+  })
+  const categorias = [{ id: 'music', titulo: 'Reproducción', bloques: { type: 'Music' } }, { id: 'cuenta', titulo: 'Cuenta', bloques: { type: 'Cuenta' } }]
+  return {
+    saltos,
+    render(props = {}) {
+      cursor = 0
+      const ui = nodes(exports.Telefono({ coinciden: categorias, buscando: false, busqueda: '', onBusqueda: () => {}, cuenta: { type: 'BloqueCuenta' }, sinResultados: { type: 'Vacio' }, onVolver: () => {}, ...props }))
+      const lista = ui.find(n => n.type === 'ScrollView')
+      lista.props.ref.current = { scrollTo: destino => saltos.push(destino) }
+      return ui
+    },
+  }
+}
+
+test('volver de Google en el teléfono deja la sección de Cuenta a la vista, una sola vez', () => {
+  const f = fixtureTelefono()
+  const ui = f.render({ initialId: 'cuenta' })
+  const seccion = ui.filter(n => n.props?.onLayout)
+  assert.equal(seccion.length, 2, 'cada categoría avisa dónde quedó')
+  seccion[0].props.onLayout({ nativeEvent: { layout: { y: 0 } } })
+  seccion[1].props.onLayout({ nativeEvent: { layout: { y: 900 } } })
+  // El objeto nace adentro del vm, con otro prototipo: se compara copiado.
+  assert.deepEqual(f.saltos.map(s => ({ ...s })), [{ y: 892, animated: false }])
+  // Medir de nuevo —una rotación, el teclado— no puede robarle el scroll a quien ya está leyendo.
+  seccion[1].props.onLayout({ nativeEvent: { layout: { y: 880 } } })
+  assert.equal(f.saltos.length, 1)
+})
+
+test('buscando no se salta a ninguna sección: la lista ya está filtrada', () => {
+  const f = fixtureTelefono()
+  const ui = f.render({ initialId: 'cuenta', buscando: true, busqueda: 'google' })
+  ui.filter(n => n.props?.onLayout).forEach(n => n.props.onLayout({ nativeEvent: { layout: { y: 900 } } }))
+  assert.deepEqual(f.saltos, [])
+  assert.ok(!ui.some(n => n.type === 'BloqueCuenta'), 'la placa de la cuenta se retira mientras se busca')
+})

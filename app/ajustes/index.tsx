@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react'
-import { Platform, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { Platform, Pressable, Text, useWindowDimensions, View, type ScrollView as RNScrollView } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
@@ -55,7 +55,7 @@ import { mensajeError } from '../../src/lib/mensajeError'
 import { useKeyboardH, usePiso } from '../../src/state/shell'
 import { volver } from '../../src/lib/volver'
 import { NOVEDADES } from '../../src/lib/novedades'
-import { HAY_ACTUALIZADOR } from '../../src/state/actualizacion'
+import { HAY_ACTUALIZADOR, buscarActualizacion, useActualizacion } from '../../src/state/actualizacion'
 import { DETALLE_PRECARGA_SESION, DETALLE_RED_PC, inventarioDescargas } from '../../src/ui/descargasControl'
 import { TECLADO_FISICO } from '../../src/lib/teclado'
 import { ListaSolicitudes } from '../../src/ui/SolicitudesAcceso'
@@ -123,6 +123,18 @@ export default function Configuracion() {
   const descargasManuales = inventario.filter(e => !e.descarga.temporal).length
   const cacheTemporal = inventario.length - descargasManuales
   const pendientes = useNovedadesPendientes()
+  const actualizacion = useActualizacion()
+  /* Lo que dice la fila a la derecha: en qué anda el actualizador. En reposo
+     muestra la versión instalada, que es lo que uno viene a mirar. */
+  const detalleActualizacion =
+    actualizacion.fase === 'buscando' ? 'Buscando…'
+    : actualizacion.fase === 'bajando' ? `Bajando ${actualizacion.porcentaje}%`
+    : actualizacion.fase === 'lista' ? `${actualizacion.version} lista`
+    : actualizacion.fase === 'esperando-silencio' ? `${actualizacion.version} en espera`
+    : actualizacion.fase === 'error' ? 'No se pudo comprobar'
+    : actualizacion.fase === 'apagado' ? actualizacion.motivo
+    : actualizacion.fase === 'sin-novedad' ? `${actualizacion.version} · al día`
+    : actualizacion.version || null
   const [busqueda, setBusqueda] = useState('')
   const { width } = useWindowDimensions()
   const escritorio = width >= ESCRITORIO_PX
@@ -253,6 +265,24 @@ export default function Configuracion() {
               icono={<IconDownload size={17} color={ICON_COLOR.muted} />}
               activo={ajustes.avisosActualizacion}
               onCambiar={(v) => setPreferencia('avisosActualizacion', v)}
+            />
+          ) : null}
+          {/*
+           * Buscar una versión nueva, acá y no en la barra de menú.
+           *
+           * Vivía en «Ayuda → Buscar actualizaciones» del menú del sistema, y
+           * ese menú dejó de estar a la vista cuando la ventana pasó a dibujar
+           * su propio cromo (ver `ui/BandaVentana`). Además es donde lo pone
+           * Apple: Ajustes del Sistema tiene su «Actualización de software»,
+           * no un menú escondido detrás de Alt.
+           */}
+          {HAY_ACTUALIZADOR ? (
+            <FilaAjuste
+              rotulo="Buscar actualizaciones"
+              valor={detalleActualizacion}
+              vacio=""
+              icono={<IconDownload size={17} color={ICON_COLOR.muted} />}
+              onPress={() => buscarActualizacion()}
               ultima
             />
           ) : null}
@@ -425,6 +455,7 @@ export default function Configuracion() {
 
   return (
     <Telefono
+      initialId={typeof seccion === 'string' ? seccion : undefined}
       coinciden={coinciden}
       buscando={buscando}
       busqueda={busqueda}
@@ -441,6 +472,7 @@ export default function Configuracion() {
  * flotando abajo.
  */
 function Telefono({
+  initialId,
   coinciden,
   buscando,
   busqueda,
@@ -449,6 +481,7 @@ function Telefono({
   sinResultados,
   onVolver,
 }: {
+  initialId?: string
   coinciden: Categoria[]
   buscando: boolean
   busqueda: string
@@ -460,6 +493,26 @@ function Telefono({
   const piso = usePiso(24)
   const teclado = useKeyboardH()
   const insets = useSafeAreaInsets()
+  /*
+   * Volver de Google cae en `/ajustes?seccion=cuenta`.
+   *
+   * En la compu esa sección es una categoría elegida y se ve sola; en el
+   * teléfono la lista es una sola tirada larga —así es Configuración de iOS— y
+   * «Acceso con Google» queda cuatro pantallas más abajo. Sin esto, terminar de
+   * conectar la cuenta te deja mirando Reproducción, sin señal de que algo pasó.
+   * Se corre **una sola vez**, cuando esa categoría dice dónde quedó: repetirlo
+   * en cada medición pelearía con el dedo de quien ya se puso a leer otra cosa.
+   */
+  const scroll = useRef<RNScrollView>(null)
+  const ubicado = useRef(false)
+  const enPosicion = useCallback(
+    (id: string, y: number) => {
+      if (ubicado.current || id !== initialId || buscando) return
+      ubicado.current = true
+      scroll.current?.scrollTo({ y: Math.max(0, y - 8), animated: false })
+    },
+    [initialId, buscando],
+  )
   /* El buscador flota sobre el borde de abajo; con el teclado abierto se
      apoya sobre él. La lista reserva su alto para llegar a la última fila. */
   const pieBuscador = Math.max(insets.bottom, 12) + teclado
@@ -472,6 +525,7 @@ function Telefono({
         <BotonVolver label="Volver" onPress={onVolver} />
       </View>
       <ScrollView
+        ref={scroll}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerClassName="px-4"
@@ -483,7 +537,11 @@ function Telefono({
           </Text>
           {!buscando ? cuenta : null}
           {coinciden.map((c) => (
-            <View key={c.id} className="gap-7">
+            <View
+              key={c.id}
+              className="gap-7"
+              onLayout={(e) => enPosicion(c.id, e.nativeEvent.layout.y)}
+            >
               {c.bloques}
             </View>
           ))}

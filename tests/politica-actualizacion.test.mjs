@@ -178,16 +178,16 @@ test('gate: bloqueo sin children ni salida, preferencia desactivada y descarte n
 test('admin: formulario revisable, confirmación explícita, una sola escritura y error sin éxito ficticio', async () => {
   const request = deferred(), saves = []; let saved = false
   const f = uiFixture('src/ui/AdministrarActualizaciones.tsx', {
-    './Field': { Field: 'Field' }, './Confirmar': { Confirmar: 'Confirmar' },
+    './Ajustes': { GrupoAjustes: 'GrupoAjustes', FilaAccion: 'FilaAccion', FilaDato: 'FilaDato', FilaOpciones: 'FilaOpciones', FilaTexto: 'FilaTexto', FilaInterruptor: 'FilaInterruptor' }, './Confirmar': { Confirmar: 'Confirmar' },
     '../state/session': { useAuthUser: () => ({ id: 'owner' }), useIsAccessAdmin: () => true },
     '../services/actualizacionesRemotas': { guardarPolitica: (p, revision) => { saves.push([p, revision]); return request.promise } },
     '../services/politicaActualizacion': core, '../state/politicaActualizacion': { refrescarPolitica: async () => {} },
   }, ['EditorPolitica'])
   const render = () => f.render('EditorPolitica', { plataforma: 'windows', actual: policy(), onGuardada: () => saved = true })
   let ui = render()
-  ui.find(n => n.props?.label === 'Hacer obligatoria la última').props.onPress()
-  ui = render(); assert.equal(ui.find(n => n.props?.label === 'Mínima soportada').props.value, '1.12.0')
-  ui.find(n => n.props?.label === 'Revisar y guardar').props.onPress()
+  ui.find(n => n.props?.rotulo === 'Igualar la mínima a la última').props.onPress()
+  ui = render(); assert.equal(ui.find(n => n.props?.rotulo === 'Mínima soportada').props.valor, '1.12.0')
+  ui.find(n => n.props?.rotulo === 'Revisar y guardar').props.onPress()
   ui = render(); const confirmation = ui.find(n => n.type === 'Confirmar')
   assert.equal(confirmation.props.visible, true); assert.match(confirmation.props.mensaje, /menores a 1.12.0 quedarán bloqueadas/)
   assert.equal(saves.length, 0)
@@ -195,7 +195,8 @@ test('admin: formulario revisable, confirmación explícita, una sola escritura 
   assert.equal(saves.length, 1); assert.equal(saves[0][1], 1)
   request.reject(Error('42501 permiso denegado')); await tick()
   ui = render(); assert.equal(saved, false)
-  assert.ok(ui.some(n => n.props?.accessibilityRole === 'alert' && /42501/.test(n.props.children)))
+  // El error vive al pie de su bloque, no en un cartel suelto entre los campos.
+  assert.ok(ui.some(n => n.type === 'GrupoAjustes' && /42501/.test(n.props.error ?? '')))
 })
 
 test('caché lenta tiene deadline de 1.5s y la red pendiente nunca bloquea el arranque', async t => {
@@ -235,26 +236,30 @@ test('versión instalada móvil procede del binario y escritorio del puente, nun
 test('el panel admin ignora carga inicial tardía tras salir y permite reintentar un fallo', async () => {
   const first = deferred(); let request = first.promise
   const f = uiFixture('src/ui/AdministrarActualizaciones.tsx', {
-    './Field': { Field: 'Field' }, './Confirmar': { Confirmar: 'Confirmar' },
+    './Ajustes': { GrupoAjustes: 'GrupoAjustes', FilaAccion: 'FilaAccion', FilaDato: 'FilaDato', FilaOpciones: 'FilaOpciones', FilaTexto: 'FilaTexto', FilaInterruptor: 'FilaInterruptor' }, './Confirmar': { Confirmar: 'Confirmar' },
     '../state/session': {}, '../services/politicaActualizacion': core,
     '../services/actualizacionesRemotas': { listarPoliticas: () => request },
     '../state/politicaActualizacion': {},
   }, ['PanelPoliticas'])
   let ui = f.render('PanelPoliticas')
-  assert.equal(ui.find(n => n.props?.label === 'Recargar políticas').props.disabled, true)
+  // Mientras consulta, la fila está ocupada —con su rueda— y no dice «sin publicar».
+  assert.equal(ui.find(n => n.props?.rotulo === 'Recargar políticas').props.busy, true)
+  assert.equal(ui.find(n => n.props?.rotulo === 'Publicado').props.valor, 'Consultando…')
   const cleanup = f.effects.shift()()
   first.reject(Error('RPC missing')); await tick()
   ui = f.render('PanelPoliticas')
-  assert.ok(ui.some(n => n.props?.accessibilityRole === 'alert'))
+  assert.ok(ui.some(n => n.type === 'GrupoAjustes' && /RPC missing/.test(n.props.error ?? '')))
   request = Promise.resolve([policy()])
-  await ui.find(n => n.props?.label === 'Recargar políticas').props.onPress()
+  ui.find(n => n.props?.rotulo === 'Recargar políticas').props.onPress()
+  await tick()
   ui = f.render('PanelPoliticas')
+  assert.equal(ui.find(n => n.props?.rotulo === 'Publicado').props.valor, 'Revisión 1 · activa')
   assert.ok(ui.some(n => n.props?.actual?.revision === 1))
   cleanup()
   // Another mount: completion after cleanup cannot reveal private data.
   const late = deferred()
   const g = uiFixture('src/ui/AdministrarActualizaciones.tsx', {
-    './Field': {}, './Confirmar': {}, '../state/session': {},
+    './Ajustes': { GrupoAjustes: 'GrupoAjustes', FilaAccion: 'FilaAccion', FilaDato: 'FilaDato', FilaOpciones: 'FilaOpciones', FilaTexto: 'FilaTexto', FilaInterruptor: 'FilaInterruptor' }, './Confirmar': {}, '../state/session': {},
     '../services/politicaActualizacion': core,
     '../services/actualizacionesRemotas': { listarPoliticas: () => late.promise },
     '../state/politicaActualizacion': {},

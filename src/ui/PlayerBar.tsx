@@ -243,7 +243,7 @@ export function PlayerBar({
         <PlayButton playing={playing} onPress={onToggle} disabled={ocupado} />
         <View pointerEvents={ocupado ? 'none' : 'auto'}>
           <Menu label="Opciones del fragmento" tooltip="Vista, duración y traducción"
-            items={opciones} triggerSymbol="slider.horizontal.3" triggerText={fmt(snippetMs)}
+            items={opciones} triggerSymbol="slider.horizontal.3"
             trigger={<View className={`${compacto ? 'min-h-9 rounded-[10px] px-2.5' : 'min-h-11 rounded-full px-3'} flex-row items-center gap-2 bg-muted`}>
               <IconWave size={17} color={ICON_COLOR.foreground} /><Text className="text-foreground text-[13px] tabular-nums">{fmt(snippetMs)}</Text>
             </View>} />
