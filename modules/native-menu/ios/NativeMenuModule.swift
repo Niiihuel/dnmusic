@@ -64,7 +64,7 @@ enum NativeMenuBuilder {
           options: entry["inline"] as? Bool == true ? .displayInline : [],
           children: elements(children, onSelect: onSelect)
         )
-        group.subtitle = entry["subtitle"] as? String
+        if #available(iOS 15.0, *) { group.subtitle = entry["subtitle"] as? String }
         // La fila de acciones rápidas: iconos chicos, en horizontal.
         if #available(iOS 16.0, *), entry["small"] as? Bool == true {
           group.preferredElementSize = .small
@@ -84,7 +84,9 @@ enum NativeMenuBuilder {
         guard let id = entry["id"] as? String else { return }
         onSelect(id)
       }
-      action.subtitle = entry["subtitle"] as? String
+      // Igual que en `CollectionControls`: el subtítulo de una acción es de iOS
+      // 15, y el pod declara 15.1 — la guarda es por si ese piso baja.
+      if #available(iOS 15.0, *) { action.subtitle = entry["subtitle"] as? String }
       return action
     }
   }
