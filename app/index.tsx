@@ -1,3 +1,4 @@
+import { BordeScrollNativo, HAY_BORDE_SCROLL_NATIVO } from '../src/ui/CollectionScrollEdge'
 import { CabeceraChats, CargaChats, FilaConversacion, FilaSolicitudChat, TituloSeccionChats } from '../src/ui/ContenidoChats'
 import { BotonSuperficie } from '../src/ui/BotonSuperficie'
 import { IconButton } from '../src/ui/IconButton'
@@ -1979,7 +1980,7 @@ export default function Home() {
       /* Y con el encabezado flotando tampoco va el de arriba: el contenido
          tiene que llegar hasta el borde para pasar por detrás del reloj y del
          velo. El margen del reloj lo pone el propio encabezado. */
-      edges={headerFlota ? [] : suelto ? ['top'] : ['top', 'bottom']}
+      edges={headerFlota || (Platform.OS === 'ios' && suelto && music && (view.kind === 'playlist' || view.kind === 'library')) ? [] : suelto ? ['top'] : ['top', 'bottom']}
     >
       {/* Sin margen ni hueco en ningún ancho: las columnas van de borde a
           borde y se separan por luminancia — ver `Panel`. */}
@@ -2005,7 +2006,7 @@ export default function Home() {
          * Los colores literales salen del token `background` (#121212):
          * `LinearGradient` no lee variables CSS.
          */}
-        {headerFlota ? (
+        {headerFlota && !HAY_BORDE_SCROLL_NATIVO ? (
           <LinearGradient
             pointerEvents="none"
             colors={[
@@ -2021,6 +2022,7 @@ export default function Home() {
           />
         ) : null}
         <View
+          collapsable={false}
           /* Flotando, su alto es el techo que cada lista reserva adentro. */
           onLayout={
             headerFlota
@@ -2045,6 +2047,7 @@ export default function Home() {
               : undefined
           }
         >
+          {headerFlota ? <BordeScrollNativo key={music ? view.kind : 'social'} /> : null}
           {/* En el teléfono el ícono no va pegado a la esquina: al abrir el
               panel, la tarjeta redondea justo ahí (radio 44) y la curva se lo
               comía. Corrido a la derecha queda fuera del mordisco. */}

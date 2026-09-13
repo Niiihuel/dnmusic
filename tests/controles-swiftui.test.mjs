@@ -177,11 +177,23 @@ test('barra de cambios: guardar requiere borrador válido y restablecer espera l
   const props = { visible: false, onGuardar: () => calls.push('guardar'), onRestablecer: () => calls.push('restablecer') }
   assert.equal(h.render('BarraCambiosPerfil', props), null)
   function walk(n) { return !n || typeof n !== 'object' ? [] : Array.isArray(n) ? n.flatMap(walk) : [n, ...walk(n.props?.children)] }
-  const button = (ui, label) => walk(ui).find(n => n.type === 'Button' && n.props.label === label)
+  const button = (ui, label) => walk(ui).find(n => n.type === 'Button' && (n.props.label === label || n.props.children?.props?.children === label))
   let ui = h.render('BarraCambiosPerfil', { ...props, visible: true })
   button(ui, 'Guardar').props.onPress()
   assert.deepEqual(calls, ['guardar'])
-  assert.equal(button(ui, 'Restablecer').props.onPress, undefined, 'el disparador no descarta cambios')
+  assert.equal(find(ui, 'ConfirmationDialog').props.isPresented, false)
+  button(ui, 'Restablecer').props.onPress()
+  ui = h.render('BarraCambiosPerfil', { ...props, visible: true })
+  assert.equal(find(ui, 'ConfirmationDialog').props.isPresented, true)
+  assert.deepEqual(calls, ['guardar'], 'abrir la confirmación conserva el borrador')
+  button(ui, 'Cancelar').props.onPress()
+  ui = h.render('BarraCambiosPerfil', { ...props, visible: true })
+  assert.equal(find(ui, 'ConfirmationDialog').props.isPresented, false)
+  assert.deepEqual(calls, ['guardar'])
+  button(ui, 'Restablecer').props.onPress()
+  ui = h.render('BarraCambiosPerfil', { ...props, visible: true })
+  const label = button(ui, 'Guardar').props.children
+  assert.equal(label.props.modifiers.find(m => m.kind === 'foregroundStyle').args[0], '#111111')
   walk(ui).find(n => n.type === 'Button' && n.props.role === 'destructive').props.onPress()
   assert.deepEqual(calls, ['guardar', 'restablecer'])
   for (const patch of [{ ocupado: true }, { puedeGuardar: false }]) {

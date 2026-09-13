@@ -229,6 +229,7 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
   let onSelect = EventDispatcher()
   private let tabBar = UITabBar()
   private let ids = ["inicio", "listas", "chats", "perfil", "buscar"]
+  private var confirmedSelection = "inicio"
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -276,6 +277,7 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
 
   override func layoutSubviews() { super.layoutSubviews(); tabBar.frame = bounds }
   func select(_ id: String) {
+    confirmedSelection = id
     guard let index = ids.firstIndex(of: id), let item = tabBar.items?[index],
       tabBar.selectedItem !== item else { return }
     // A React echo of a native tap must not restart UIKit's selection state.
@@ -288,6 +290,9 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
   }
   func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
     guard ids.indices.contains(item.tag) else { return }
+    // Navigation can be cancelled by the unsaved-profile guard. Keep the
+    // confirmed section until React sends the destination after navigation.
+    if let index = ids.firstIndex(of: confirmedSelection) { tabBar.selectedItem = tabBar.items?[index] }
     onSelect(["id": ids[item.tag]])
   }
 }

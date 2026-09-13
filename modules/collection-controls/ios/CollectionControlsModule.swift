@@ -7,6 +7,8 @@ public final class CollectionControlsModule: Module {
     Constant("contentFadeVersion") { 1 }
 
     View(CollectionFadeView.self) {}
+    Constant("scrollEdgeVersion") { 1 }
+    View(CollectionScrollEdgeView.self) {}
 
     View(CollectionSearchView.self) {
       Events("onChangeText", "onCancel")
@@ -140,8 +142,15 @@ final class CollectionContextView: ExpoView, UIContextMenuInteractionDelegate {
     onOpen([:])
     let info = previewInfo
     let width = min(360, max(240, (interaction.view?.window?.bounds.width ?? 390) - 48))
-    return UIContextMenuConfiguration(identifier: nil, previewProvider: info.map { value in
-      { CollectionPreviewController(info: value, width: width) }
+    // Capture only this row before UIKit lifts it. A separate preview keeps
+    // short chat bubbles from scaling over the neighbouring message.
+    let row = interaction.view
+    let snapshot = info == nil ? row?.snapshotView(afterScreenUpdates: false) : nil
+    let size = row?.bounds.size ?? .zero
+    return UIContextMenuConfiguration(identifier: nil, previewProvider: {
+      if let info { return CollectionPreviewController(info: info, width: width) }
+      guard let snapshot, size.width > 0, size.height > 0 else { return nil }
+      return CollectionSnapshotController(snapshot: snapshot, size: size)
     }) { [weak self] _ in
       UIMenu(children: self?.elements(currentItems) ?? [])
     }
@@ -299,5 +308,82 @@ final class CollectionFadeView: ExpoView {
     gradient.frame = target.bounds
     gradient.locations = [0, NSNumber(value: Double(edge)), NSNumber(value: Double(1 - edge)), 1]
     CATransaction.commit()
+  }
+}
+
+/// The preview owns a snapshot, never the live React Native row or its layout.
+private final class CollectionSnapshotController: UIViewController {
+  init(snapshot: UIView, size: CGSize) {
+    super.init(nibName: nil, bundle: nil)
+    view = UIView(frame: CGRect(origin: .zero, size: size))
+    view.backgroundColor = .clear
+    snapshot.frame = view.bounds
+    snapshot.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    view.addSubview(snapshot)
+    preferredContentSize = size
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
+/// Associates a custom floating toolbar with the nearest content scroll view.
+final class CollectionScrollEdgeView: ExpoView {
+  private var edgeInteraction: UIInteraction?
+  private weak var toolbar: UIView?
+
+  override func willMove(toSuperview newSuperview: UIView?) {
+    if let edgeInteraction { toolbar?.removeInteraction(edgeInteraction) }
+    edgeInteraction = nil
+    toolbar = nil
+    super.willMove(toSuperview: newSuperview)
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    scheduleConnection()
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    scheduleConnection()
+  }
+
+  private func scheduleConnection() {
+    guard #available(iOS 26.0, *), window != nil else { return }
+    DispatchQueue.main.async { [weak self] in self?.connect() }
+  }
+
+  @available(iOS 26.0, *)
+  private func connect() {
+    guard window != nil, let container = superview else { return }
+    var scope = container.superview
+    var scroll: UIScrollView?
+    while let current = scope, scroll == nil {
+      scroll = contentScroll(in: current, excluding: container)
+      scope = current.superview
+    }
+    guard let scroll else { return }
+    let interaction: UIScrollEdgeElementContainerInteraction
+    if let existing = edgeInteraction as? UIScrollEdgeElementContainerInteraction {
+      interaction = existing
+    } else {
+      interaction = UIScrollEdgeElementContainerInteraction()
+      interaction.edge = .top
+      container.addInteraction(interaction)
+      toolbar = container
+      edgeInteraction = interaction
+    }
+    interaction.scrollView = scroll
+    scroll.topEdgeEffect.style = .soft
+    scroll.topEdgeEffect.isHidden = false
+  }
+
+  private func contentScroll(in root: UIView, excluding: UIView) -> UIScrollView? {
+    guard root !== excluding, !root.isHidden, root.alpha > 0 else { return nil }
+    if let scroll = root as? UIScrollView,
+       scroll.bounds.height > 100, scroll.bounds.width > 100 { return scroll }
+    for child in root.subviews {
+      if let scroll = contentScroll(in: child, excluding: excluding) { return scroll }
+    }
+    return nil
   }
 }

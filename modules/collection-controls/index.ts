@@ -39,7 +39,7 @@ type ContextProps = ViewProps & {
 }
 
 // Los clientes anteriores y Expo Go no incluyen este módulo local.
-const nativeModule = Platform.OS === 'ios' ? requireOptionalNativeModule<{ contentFadeVersion?: number }>('CollectionControls') : null
+const nativeModule = Platform.OS === 'ios' ? requireOptionalNativeModule<{ contentFadeVersion?: number; scrollEdgeVersion?: number }>('CollectionControls') : null
 const disponible = nativeModule !== null
 export const CollectionSearch = disponible
   ? requireNativeView<SearchProps>('CollectionControls', 'CollectionSearchView') : null
@@ -48,3 +48,6 @@ export const CollectionContext = disponible
 
 export const CollectionFade = disponible && nativeModule?.contentFadeVersion === 1
   ? requireNativeView<ViewProps>('CollectionControls', 'CollectionFadeView') : null
+
+export const CollectionScrollEdge = disponible && nativeModule?.scrollEdgeVersion === 1 && Number(Platform.Version) >= 26
+  ? requireNativeView<ViewProps>('CollectionControls', 'CollectionScrollEdgeView') : null

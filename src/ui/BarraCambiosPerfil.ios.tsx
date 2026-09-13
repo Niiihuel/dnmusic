@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Platform, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Button, ConfirmationDialog, Host, HStack, ProgressView, Spacer, Text, VStack } from '@expo/ui/swift-ui'
@@ -7,6 +8,7 @@ import type { BarraCambiosPerfilProps } from './BarraCambiosPerfil'
 /** Barra contextual con controles SwiftUI; permanece hasta guardar o descartar. */
 export function BarraCambiosPerfil({ visible, ocupado = false, error, puedeGuardar = true,
   onRestablecer, onGuardar, abajo, onAltura, flotante = true }: BarraCambiosPerfilProps) {
+  const [confirmarRestablecer, setConfirmarRestablecer] = useState(false)
   const insets = useSafeAreaInsets()
   if (!visible && !ocupado && !error) return null
   const puedeConfirmar = visible && !ocupado && puedeGuardar
@@ -26,19 +28,20 @@ export function BarraCambiosPerfil({ visible, ocupado = false, error, puedeGuard
         </HStack>
         {error ? <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle('#FF6961')]}>{error}</Text> : null}
         <HStack spacing={12}>
-          <ConfirmationDialog title="¿Restablecer los cambios?" titleVisibility="visible">
+          <ConfirmationDialog title="¿Restablecer los cambios?" titleVisibility="visible"
+            isPresented={confirmarRestablecer} onIsPresentedChange={setConfirmarRestablecer}>
             <ConfirmationDialog.Trigger>
-              <Button label="Restablecer" systemImage="arrow.counterclockwise" modifiers={[disabled(ocupado), buttonStyle('borderless')]} />
+              <Button label="Restablecer" systemImage="arrow.counterclockwise" onPress={() => { if (!ocupado) setConfirmarRestablecer(true) }} modifiers={[disabled(ocupado), buttonStyle('borderless')]} />
             </ConfirmationDialog.Trigger>
             <ConfirmationDialog.Message><Text>Se recuperará la última versión guardada de tu perfil.</Text></ConfirmationDialog.Message>
             <ConfirmationDialog.Actions>
-              <Button label="Restablecer" role="destructive" onPress={ocupado ? undefined : onRestablecer} modifiers={[disabled(ocupado)]} />
-              <Button label="Cancelar" role="cancel" />
+              <Button label="Restablecer" role="destructive" onPress={() => { setConfirmarRestablecer(false); if (!ocupado) onRestablecer() }} modifiers={[disabled(ocupado)]} />
+              <Button label="Cancelar" role="cancel" onPress={() => setConfirmarRestablecer(false)} />
             </ConfirmationDialog.Actions>
           </ConfirmationDialog>
           <Spacer />
-          <Button label="Guardar" onPress={puedeConfirmar ? onGuardar : undefined} modifiers={[disabled(!puedeConfirmar),
-            accessibilityLabel('Guardar cambios del perfil'), buttonStyle(vidrio ? 'glassProminent' : 'borderedProminent'), controlSize('regular')]} />
+          <Button onPress={puedeConfirmar ? onGuardar : undefined} modifiers={[disabled(!puedeConfirmar),
+            accessibilityLabel('Guardar cambios del perfil'), buttonStyle(vidrio ? 'glassProminent' : 'borderedProminent'), controlSize('regular')]}><Text modifiers={[foregroundStyle('#111111'), font({ textStyle: 'subheadline', weight: 'semibold' })]}>Guardar</Text></Button>
         </HStack>
       </VStack>
     </Host>

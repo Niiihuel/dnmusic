@@ -1,3 +1,5 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { BordeScrollNativo } from './CollectionScrollEdge'
 import { superficieInteractivaWeb } from './estadoControl'
 import { Glass } from './Glass'
 import { BotonSuperficie } from './BotonSuperficie'
@@ -94,6 +96,9 @@ export function PlaylistLibrary({
      escritorio quedan apretadas. Ver `TrackRow`. */
   const suelto = useWindowDimensions().width < 780
   const colapso = useColapso()
+  const safeTop = useSafeAreaInsets().top
+  const toolbarIOS = Platform.OS === 'ios' && suelto
+  const [altoToolbar, setAltoToolbar] = useState(safeTop + 60)
 
   /*
    * Crear no pregunta nada.
@@ -114,7 +119,9 @@ export function PlaylistLibrary({
 
   return (
     <Panel tone="lateral" className="flex-1">
-      {Platform.OS === 'ios' && suelto ? <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, gap: 16 }}>
+      {toolbarIOS ? <View collapsable={false} onLayout={e => setAltoToolbar(e.nativeEvent.layout.height)}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, paddingHorizontal: 20, paddingTop: safeTop + 8, paddingBottom: 12 }}>
+        <BordeScrollNativo />
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <IconButton label="Volver" symbol="chevron.left" onPress={onBack ?? onCollapse} variant="glass" />
           <Glass radius={24}><View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 }}>
@@ -129,7 +136,6 @@ export function PlaylistLibrary({
             ]} />
           </View></Glass>
         </View>
-        <Text accessibilityRole="header" style={{ color: '#FFFFFF', fontSize: 34, fontWeight: '700' }}>Playlists</Text>
       </View> : <View className="flex-row items-center justify-between gap-4 px-4 pb-2" style={{ paddingTop: techo }}>
         <AnimatedSidebarTitle
           visible={showCollapse}
@@ -160,7 +166,7 @@ export function PlaylistLibrary({
       {error ? <Text className="px-4 pb-2 text-destructive text-caption1">{error}</Text> : null}
 
       {playlists === null ? (
-        <View className="px-4">
+        <View className="px-4" style={{ paddingTop: toolbarIOS ? altoToolbar : 0 }}>
           <SkeletonList rows={4} />
         </View>
       ) : (
@@ -170,13 +176,14 @@ export function PlaylistLibrary({
           keyExtractor={(p) => p.id}
           className="min-h-0 flex-1"
           contentContainerClassName="gap-0.5 px-2"
-          contentContainerStyle={{ paddingBottom: piso }}
+          contentContainerStyle={{ paddingTop: toolbarIOS ? altoToolbar : 0, paddingBottom: piso }}
           {...colapso}
           /* «Tus me gusta» va fija arriba, como en Spotify: no es una lista
              tuya —no se renombra ni se borra— pero es de donde más se
              escucha, y enterrarla entre las listas la volvería invisible. */
-          ListHeaderComponent={
-            onOpenGustos ? (
+          ListHeaderComponent={<>
+            {toolbarIOS ? <Text accessibilityRole="header" style={{ color: '#FFFFFF', fontSize: 34, fontWeight: '700', paddingHorizontal: 12, paddingBottom: 16 }}>Playlists</Text> : null}
+            {onOpenGustos ? (
               NativeMediaRow ? <NativeMediaRow title="Tus me gusta" subtitle={`${cuantosGustos} canciones`} symbol="heart.fill" label="Tus me gusta"
                 onActivate={onOpenGustos} style={{ height: 76, width: '100%' }} /> : (
               <BotonSuperficie
@@ -209,7 +216,7 @@ export function PlaylistLibrary({
               </BotonSuperficie>
               )
             ) : null
-          }
+          }</>}
           ListEmptyComponent={
             <Vacio
               icono={<IconMusic size={22} color={ICON_COLOR.muted} />}

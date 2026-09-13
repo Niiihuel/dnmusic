@@ -1,15 +1,17 @@
+import { BordeScrollNativo } from '../../src/ui/CollectionScrollEdge'
 import { BotonSuperficie } from '../../src/ui/BotonSuperficie'
 import { IconButton } from '../../src/ui/IconButton'
 import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  Platform,
   ScrollView,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { artworkSource } from '../../src/lib/artwork'
 import { compartirLista, linkDeLista } from '../../src/lib/compartirLista'
 import { mensajeError } from '../../src/lib/mensajeError'
@@ -72,6 +74,9 @@ export default function ListaPublica() {
   const router = useRouter()
   const piso = usePiso(24)
   const ancho = useWindowDimensions().width >= ANCHO_PX
+  const toolbarIOS = Platform.OS === 'ios' && !ancho
+  const safeTop = useSafeAreaInsets().top
+  const [altoToolbar, setAltoToolbar] = useState(safeTop + 56)
 
   /*
    * Lo cargado se guarda **junto al id que se pidió**, como en el resto de la
@@ -178,13 +183,16 @@ export default function ListaPublica() {
   return (
     <SafeAreaView
       className="flex-1 bg-background"
-      edges={ancho ? ['top', 'bottom'] : ['top']}
+      edges={toolbarIOS ? [] : ancho ? ['top', 'bottom'] : ['top']}
     >
       <View className={`flex-1 ${ancho ? 'gap-2 p-2' : ''}`}>
         {/* En el teléfono la salida va arriba, en el flujo; en escritorio flota
             sobre el contenido. Mismo reparto que el perfil de otra persona. */}
         {ancho ? null : (
-          <View className="flex-row items-center gap-3 px-3 py-1">
+          <View collapsable={false} onLayout={e => setAltoToolbar(e.nativeEvent.layout.height)}
+            style={toolbarIOS ? { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, paddingTop: safeTop + 4 } : undefined}
+            className="flex-row items-center gap-3 px-3 py-1">
+            {toolbarIOS ? <BordeScrollNativo /> : null}
             <BotonVolver onPress={() => volver(router, '/')} />
             <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
               {lista?.playlist.name ?? 'Lista'}
@@ -201,7 +209,7 @@ export default function ListaPublica() {
 
           <ScrollView
             contentContainerClassName="items-center"
-            contentContainerStyle={{ paddingTop: ancho ? 64 : 8, paddingBottom: piso }}
+            contentContainerStyle={{ paddingTop: toolbarIOS ? altoToolbar + 8 : ancho ? 64 : 8, paddingBottom: piso }}
           >
             {lista === undefined ? (
               <View className="py-16">
@@ -222,6 +230,7 @@ export default function ListaPublica() {
             ) : (
               <View className="w-full" style={{ maxWidth: MAX_W }}>
                 <CollectionHeader
+                  bleedTop={toolbarIOS ? altoToolbar + 8 : 0}
                   kind="Lista"
                   insignia={
                     /* Colaborativa gana sobre pública cuando es las dos: lo que

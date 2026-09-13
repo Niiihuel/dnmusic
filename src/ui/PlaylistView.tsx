@@ -1,3 +1,5 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { BordeScrollNativo } from './CollectionScrollEdge'
 import { Glass } from './Glass'
 import { BotonSuperficie } from './BotonSuperficie'
 import { NativeMediaRow } from '../../modules/media-controls'
@@ -465,6 +467,9 @@ export function PlaylistView({
   const techo = useTecho()
   const angosto = useAngosto()
   const toolbarIOS = Platform.OS === 'ios' && angosto
+  const safeTop = useSafeAreaInsets().top
+  const [altoToolbar, setAltoToolbar] = useState(safeTop + 60)
+  const [altoBusqueda, setAltoBusqueda] = useState(64)
   const colapso = useColapso()
   /*
    * De qué imagen sale el color de la cabecera: la portada propia si la hay,
@@ -648,7 +653,9 @@ export function PlaylistView({
 
   return (
     <Panel className="flex-1">
-      {toolbarIOS ? <View style={{ paddingTop: 8, backgroundColor: '#121212' }}>
+      {toolbarIOS ? <View collapsable={false} onLayout={e => setAltoToolbar(e.nativeEvent.layout.height)}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, paddingTop: safeTop + 8, paddingBottom: 8 }}>
+        <BordeScrollNativo />
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 }}>
           <IconButton label="Volver a playlists" symbol="chevron.left" variant="glass" onPress={onClose} />
           <Glass radius={24}><View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 }}>
@@ -676,17 +683,17 @@ export function PlaylistView({
           /* Lo que ocupan el reproductor y las pestañas: la última canción
              tiene que quedar al alcance, aunque las de arriba pasen por
              detrás del material. Arriba, lo mismo con el encabezado. */
-          contentContainerStyle={{ paddingTop: toolbarIOS ? 0 : techo, paddingBottom: piso }}
+          contentContainerStyle={{ paddingTop: toolbarIOS ? altoToolbar : techo, paddingBottom: piso }}
           {...colapso}
           ListHeaderComponent={
             <>
             {/* El scroll nativo oculta progresivamente el campo bajo la barra
                 fija y lo recupera al volver al inicio; no desmonta el filtro. */}
-            {toolbarIOS ? <CampoBusquedaColeccion contexto="lista" abierto={buscando} filtro={filtro} onFiltro={setFiltro} onCerrar={alternarBuscar} siempreVisible /> : null}
+            {toolbarIOS ? <View onLayout={e => setAltoBusqueda(e.nativeEvent.layout.height)}><CampoBusquedaColeccion contexto="lista" abierto={buscando} filtro={filtro} onFiltro={setFiltro} onCerrar={alternarBuscar} siempreVisible /></View> : null}
             <Header
               playlist={playlist}
               tint={tint}
-              bleedTop={techo}
+              bleedTop={toolbarIOS ? altoToolbar + altoBusqueda : techo}
               editorNombre={editorNombre}
               total={total}
               totalMs={tracks?.reduce((sum, t) => sum + t.durationMs, 0) ?? playlist.totalMs}

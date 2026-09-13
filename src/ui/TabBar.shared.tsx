@@ -1,6 +1,6 @@
 import { IconButton } from './IconButton'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter, useSegments } from 'expo-router'
+import { useRouter, usePathname } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { setTab, type Tab } from '../state/shell'
@@ -8,7 +8,6 @@ import { usePendientesChats } from '../state/session'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Glass, HAY_VIDRIO } from './Glass'
 import { ICON_COLOR, IconHome, IconInbox, IconMusic, IconSearch, IconUser } from './icons'
-import { volver } from '../lib/volver'
 
 /** Lado del botón de buscar mientras todavía no se midió la píldora. */
 const LADO_BASE = 52
@@ -25,41 +24,21 @@ const RESORTE = { damping: 22, stiffness: 260, mass: 0.7, overshootClamping: tru
 /** Las que viven en la píldora, en orden. Buscar va aparte, en su redondel. */
 const EN_PILDORA: Tab[] = ['inicio', 'listas', 'chats', 'perfil']
 
-/**
- * Ir a una pestaña. **Cambiar de pestaña también es navegar.**
- *
- * El perfil es una ruta apilada y las otras cuatro son estados de la pantalla
- * principal, así que además de mover el estado hay que desapilar: sin eso, la
- * pantalla de perfil se queda abierta encima con otra pestaña marcada debajo.
- *
- * Vive acá y no adentro de la píldora porque **la lupa está dibujada dos veces**:
- * la de la barra desplegada y la del redondel de la derecha cuando la cáscara se
- * pliega (ver `ui/Cascara`). La segunda solo hacía `setTab('buscar')` — movía la
- * pestaña y nada más—, así que tocándola desde el perfil se abría el campo de
- * búsqueda **sobre el perfil** y los resultados se dibujaban en la pantalla
- * principal, que estaba tapada debajo. Se veía como que buscar no hacía nada.
- *
- * Con las dos llamando acá no pueden volver a separarse.
- */
+/** Abre la raíz de cada sección desde cualquier ruta y conserva los bloqueos
+ * de salida del editor. La lupa desplegada y la plegada comparten este camino. */
 export function useIrATab() {
   const router = useRouter()
-  const segmentos = useSegments()
-  const enPerfil = segmentos[0] === 'profile'
+  const pathname = usePathname()
 
-  return useCallback(
-    (tab: Tab) => {
-      setTab(tab)
-      /* Estando ya en el perfil, volver a tocarlo apilaba **otro** perfil
-         encima: había que volver dos veces para salir de una pantalla a la que
-         se entró una sola. */
-      if (tab === 'perfil') {
-        if (!enPerfil) router.push('/profile')
-        return
-      }
-      if (enPerfil) volver(router, '/')
-    },
-    [enPerfil, router],
-  )
+  return useCallback((tab: Tab) => {
+    // dismissTo reaches the section root even from nested editors or deep links.
+    // It still passes through the editor's unsaved-change navigation guard.
+    setTab(tab)
+    if (tab === 'perfil') {
+      if (pathname.startsWith('/profile/')) router.dismissTo('/profile')
+      else if (pathname !== '/profile') router.navigate('/profile')
+    } else if (pathname !== '/') router.dismissTo('/')
+  }, [pathname, router])
 }
 
 const ETIQUETA: Record<Tab, string> = {
