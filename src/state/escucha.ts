@@ -1,3 +1,4 @@
+import type { EstadoDiscordRemoto, MensajeControlDiscord } from '../services/protocoloDiscordRemoto'
 import { LATIDO_ESCUCHA_MS, VIGENCIA_ESCUCHA_MS } from '../services/lecturaViva'
 import { AppState } from 'react-native'
 import { getSupabase } from '../lib/supabase'
@@ -61,6 +62,7 @@ export type TransferenciaEscucha = { destino: string; estado: 'pendiente' | 'con
 export type ActividadEscucha = { deviceId: string | null; nombre: string | null; estado: 'sonando' | 'pausado' | 'preparando' | 'desconectado' | 'inactivo' }
 type Estado = {
   conexion: ConexionEscucha
+  sesionControl: string | null
   transferencia: TransferenciaEscucha | null
   actividad: ActividadEscucha
   sonandoLocal: boolean
@@ -84,7 +86,7 @@ type Estado = {
 }
 
 const store = createStore<Estado>({
-  conexion: 'desconectado', transferencia: null,
+  conexion: 'desconectado', sesionControl: null, transferencia: null,
   actividad: { deviceId: null, nombre: null, estado: 'inactivo' },
   sonandoLocal: false, ahora: Date.now(),
   escucha: null,
@@ -109,6 +111,10 @@ let desuscribir: Unsubscribe | null = null
 let inicio: Promise<void> | null = null
 /** Enviar el «tomá vos» a un aparato: lo arma el canal en `iniciarEscucha`. */
 let mandarAImpl: ((destino: string, suena?: boolean, revision?: number) => Promise<void>) | null = null
+let mandarControlDiscordImpl: ((mensaje: MensajeControlDiscord) => Promise<void>) | null = null
+let anunciarDiscordImpl: ((estado: EstadoDiscordRemoto | null) => void) | null = null
+let discordAnunciado: { userId: string; estado: EstadoDiscordRemoto } | null = null
+let recibirControlDiscord: ((mensaje: unknown) => void) | null = null
 let soltarPlayback: (() => void) | null = null
 let refetchTimer: ReturnType<typeof setTimeout> | null = null
 let publicarTimer: ReturnType<typeof setTimeout> | null = null
@@ -484,6 +490,8 @@ async function conectarEscucha(v: number): Promise<void> {
   store.set({ deviceId })
   if (v !== version) return
   const sub = suscribirEscucha(userId, deviceId, {
+    onSesionControl: sesionControl => { if (v === version) store.set({ sesionControl }) },
+    onControlDiscord: mensaje => { if (v === version) recibirControlDiscord?.(mensaje) },
     onFila: (fila) => {
       if (v === version) aplicarFila(fila)
     },
@@ -509,6 +517,9 @@ async function conectarEscucha(v: number): Promise<void> {
   })
   desuscribir = sub.desuscribir
   mandarAImpl = sub.mandarA
+  mandarControlDiscordImpl = sub.mandarControlDiscord ?? null
+  anunciarDiscordImpl = sub.anunciarDiscord ?? null
+  if (discordAnunciado?.userId === uid) anunciarDiscordImpl?.(discordAnunciado.estado)
   await sub.listo
   if (v !== version) return
   soltarPlayback = subscribePlayback(() => { actualizarActividad(); alCambiarPlayback() })
@@ -536,6 +547,9 @@ export function desconectarEscucha() {
   desuscribir?.()
   desuscribir = null
   mandarAImpl = null
+  mandarControlDiscordImpl = null
+  anunciarDiscordImpl = null
+  discordAnunciado = null
   soltarPlayback?.()
   soltarPlayback = null
   if (refetchTimer) {
@@ -552,7 +566,7 @@ export function desconectarEscucha() {
   }
   publicado = null
   colaPendiente = false
-  store.set({ escucha: null, presentes: null, espejo: false, pendiente: null, offsetMs: 0, deviceId: null, conexion: 'desconectado', transferencia: null, selectorAbierto: false, sonandoLocal: false })
+  store.set({ escucha: null, presentes: null, espejo: false, pendiente: null, offsetMs: 0, deviceId: null, conexion: 'desconectado', sesionControl: null, transferencia: null, selectorAbierto: false, sonandoLocal: false })
 }
 
 /* La app vuelve al frente: lo que haya pasado mientras tanto, de una vez. */
@@ -927,3 +941,22 @@ export function leerEscuchaParaIntegraciones() {
   return { track: e.track, sonando: true, posicionMs: posicionVisible(e, s.offsetMs), actualizadoEn: e.actualizadoEn - s.offsetMs }
 }
 export const suscribirActividadParaIntegraciones = (fn: () => void) => store.subscribe(fn)
+
+
+/** Transporte efímero sobre el mismo canal privado de la cuenta. */
+export function leerConexionDiscord() {
+  const s = store.get()
+  return { userId: uid, deviceId: s.deviceId, sesion: s.sesionControl, conexion: s.conexion, presentes: s.presentes ?? VACIO }
+}
+export function anunciarDiscordEnDispositivos(userId: string, estado: EstadoDiscordRemoto | null) {
+  discordAnunciado = estado ? { userId, estado } : null
+  if (uid === userId) anunciarDiscordImpl?.(estado)
+}
+export function mandarControlDiscord(mensaje: MensajeControlDiscord): Promise<void> {
+  if (!mandarControlDiscordImpl || store.get().conexion !== 'conectado') return Promise.reject(new Error('Conectate para controlar Discord en tu PC.'))
+  return mandarControlDiscordImpl(mensaje)
+}
+export function suscribirControlDiscord(callback: (mensaje: unknown) => void) {
+  recibirControlDiscord = callback
+  return () => { if (recibirControlDiscord === callback) recibirControlDiscord = null }
+}

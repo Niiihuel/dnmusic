@@ -146,6 +146,9 @@ export default function MessageStory() {
     song ? { desdeMs: song.startMs, durMs: song.durationMs } : undefined,
   )
   const mine = message && user ? isSentBy(message, user.id) : false
+  useEffect(() => {
+    if (message?.deletedAt && player.currentId === message.id) player.stop()
+  }, [message?.deletedAt, message?.id, player])
 
   /*
    * Arranca sola, como una historia.

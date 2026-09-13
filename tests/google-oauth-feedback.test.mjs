@@ -49,8 +49,12 @@ test('iOS dibuja botón y estado con SwiftUI, mientras PC conserva su botón con
 
   for (const source of [buttonIOS, feedbackIOS]) {
     assert.match(source, /@expo\/ui\/swift-ui/)
-    assert.doesNotMatch(source, /from ['"]react-native['"]/)
+    assert.doesNotMatch(source, /Pressable|TouchableOpacity|TextInput/)
+    assert.match(source, /ignoreSafeArea="all"/)
   }
+  assert.match(buttonIOS, /frame\(\{ width: 18, height: 18 \}\)/)
+  assert.match(buttonIOS, /RNHostView/)
+  assert.match(buttonIOS, /GoogleIcon size=\{18\}/)
   assert.match(buttonIOS, /buttonStyle\('borderedProminent'\)/)
   assert.match(buttonIOS, /buttonBorderShape\('capsule'\)/)
   assert.match(feedbackIOS, /ProgressView/)

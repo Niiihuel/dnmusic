@@ -30,6 +30,7 @@ function fixture(service) {
   }).outputText
   new Function('exports', 'require', code)(exports, id => {
     if (id === '../lib/supabase') return { getSupabase: () => client }
+    if (id === './protocoloDiscordRemoto') { const protocol = {}; new Function('exports', ts.transpileModule(readFileSync('src/services/protocoloDiscordRemoto.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(protocol); return protocol }
     if (id === './lecturaViva') return { LATIDO_ESCUCHA_MS:20000, VIGENCIA_ESCUCHA_MS:65000 }
     if (id === '../lib/dispositivo') return { nombreDispositivo: () => 'PC' }
     if (id === '../models/message') return { messageFromRow: row => row }
@@ -95,8 +96,8 @@ test('Mensajes privados conservan hidratación, filtro del par y recarga tras re
   assert.equal(c.topic, 'realtime:messages:pair-id')
   assert.equal(c.events[0].filter.filter, 'pair_id=eq.pair-id')
   assert.equal(f.reads(), 1); assert.equal(renders.at(-1).hydrated, true)
-  c.status('SUBSCRIBED'); assert.equal(f.reads(), 1)
-  c.status('SUBSCRIBED'); await tick(); assert.equal(f.reads(), 2)
+  c.status('SUBSCRIBED'); await tick(); assert.equal(f.reads(), 2) // repairs the SELECT-to-join window
+  c.status('SUBSCRIBED'); await tick(); assert.equal(f.reads(), 3)
   c.status('CHANNEL_ERROR'); assert.equal(errors.length, 1)
   stop(); await tick(); assert.deepEqual(f.removed, [c])
 })

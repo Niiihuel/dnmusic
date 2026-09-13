@@ -7,9 +7,11 @@ let data
 const jsx = (type, props) => ({ type, props })
 const modules = {
   'react/jsx-runtime': { jsx, jsxs: jsx },
-  '../state/discord': { DISCORD_APPLICATION_ID: '1548502947623739552', useDiscord: () => data, configurarDiscord: config => changes.push(config) },
+  '../state/discord': { HAY_DISCORD: true, DISCORD_APPLICATION_ID: '1548502947623739552', useDiscord: () => data, configurarDiscord: config => changes.push(config) },
   './Ajustes': { FilaAccion: 'action', FilaDato: 'data', GrupoAjustes: 'group' },
   './DiscordIcon': { DiscordIcon: 'logo' },
+  './AjustesDiscordRemoto': { AjustesDiscordRemoto: 'remote' },
+  './discordEtiquetas': { ESTADOS_DISCORD: { disabled: 'No conectado', unconfigured: 'Conexión sin configurar', disconnected: 'Discord no está disponible', connecting: 'Buscando Discord…', ready: 'Conectado · esperando música', published: 'Mostrando tu música', error: 'No se pudo conectar' } },
 }
 const exports = {}
 new Function('exports', 'require', ts.transpileModule(readFileSync('src/ui/AjustesDiscord.tsx', 'utf8'), {
@@ -45,4 +47,63 @@ test('connecting can cancel, missing Discord can retry, connected idle differs f
   const action = nodes(render('ready'), 'action')[0]
   assert.equal(action.props.rotulo, 'Desconectar Discord'); action.props.onPress()
   assert.equal(changes.at(-1).enabled, false)
+})
+
+
+test('sin puente de escritorio los ajustes ofrecen el control remoto, sin intentar IPC local', () => {
+  modules['../state/discord'].HAY_DISCORD = false
+  try {
+    const before = changes.length
+    assert.equal(exports.AjustesDiscord().type, 'remote')
+    assert.equal(changes.length, before)
+  } finally { modules['../state/discord'].HAY_DISCORD = true }
+})
+
+const remoto = {}
+const llamadasRemotas = []
+modules['../state/discordRemoto'] = {
+  useDiscordRemoto: () => ({ dispositivos: [], conexion: 'conectado', pendiente: null, error: null }),
+  configurarDiscordRemoto: (...args) => llamadasRemotas.push(args),
+  cancelarDiscordRemoto: () => llamadasRemotas.push('cancelar'),
+}
+new Function('exports', 'require', ts.transpileModule(readFileSync('src/ui/AjustesDiscordRemoto.tsx', 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+}).outputText)(remoto, id => { assert.ok(id in modules, id); return modules[id] })
+const pc = (status, enabled = status !== 'disabled') => ({ deviceId: 'pc-1', nombre: 'Linux', estado: { status, enabled } })
+function vistaRemota(dispositivos, overrides = {}) {
+  return remoto.ContenidoDiscordRemoto({ dispositivos, conexion: 'conectado', pendiente: null, error: null,
+    onCambiar: (...args) => llamadasRemotas.push(args), onCancelar: () => llamadasRemotas.push('cancelar'), ...overrides })
+}
+
+test('iOS sólo conecta la PC elegida mediante una acción explícita', () => {
+  llamadasRemotas.length = 0
+  const ui = vistaRemota([pc('disabled')])
+  assert.equal(llamadasRemotas.length, 0)
+  const action = nodes(ui, 'action').find(n => n.props.rotulo === 'Conectar Discord')
+  assert.ok(action)
+  action.props.onPress()
+  assert.deepEqual(llamadasRemotas, [['pc-1', true]])
+})
+
+test('iOS distingue publicación, reintento y revocación sin aparentar vínculo directo', () => {
+  const ui = vistaRemota([pc('published')])
+  assert.ok(nodes(ui, 'data').some(n => n.props.valor === 'Mostrando tu música'))
+  const action = nodes(ui, 'action').find(n => n.props.rotulo === 'Desconectar Discord')
+  action.props.onPress()
+  assert.deepEqual(llamadasRemotas.at(-1), ['pc-1', false])
+  assert.ok(nodes(ui, 'data').some(n => n.props.valor === 'A través de tu computadora'))
+  nodes(vistaRemota([pc('error')]), 'action').find(n => n.props.rotulo === 'Reintentar conexión').props.onPress()
+  assert.deepEqual(llamadasRemotas.at(-1), ['pc-1', true])
+})
+
+test('iOS no ofrece acciones remotas sin conexión ni PCs disponibles; la espera se puede cancelar', () => {
+  for (const ui of [vistaRemota([]), vistaRemota([pc('published')], { conexion: 'desconectado' })]) {
+    assert.equal(nodes(ui, 'action').length, 0)
+    assert.ok(nodes(ui, 'group').some(n => n.props.pie?.includes('todavía no está disponible')))
+  }
+  const ui = vistaRemota([pc('disabled')], { pendiente: 'pc-1' })
+  const actions = nodes(ui, 'action')
+  assert.ok(actions.find(n => n.props.busy && n.props.disabled))
+  actions.find(n => n.props.rotulo === 'Cancelar solicitud').props.onPress()
+  assert.equal(llamadasRemotas.at(-1), 'cancelar')
 })

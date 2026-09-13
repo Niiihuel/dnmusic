@@ -196,13 +196,13 @@ test('enlace de Ajustes usa exclusivamente el permiso administrativo del servido
  visit(source);assert.ok(category)
  for(const admin of [false,true]) {
   const exports={},navigation=[]
-  new Function('exports','require','esAdmin','escritorio','cuentaAuth','ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser','ICON_COLOR','router',transpile(`export const category=${category.getText(source)}`))(exports,()=>({jsx,jsxs:jsx}),admin,false,null,'ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser',{muted:'gray'},{push:p=>navigation.push(p)})
+  new Function('exports','require','esAdmin','escritorio','cuentaAuth','ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser','IconSliders','ICON_COLOR','router',transpile(`export const category=${category.getText(source)}`))(exports,()=>({jsx,jsxs:jsx}),admin,false,null,'ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser','IconSliders',{muted:'gray'},{push:p=>navigation.push(p)})
   assert.equal(exports.category.visible,admin)
   flatten(exports.category.bloques).find(n=>n.type==='FilaAjuste').props.onPress()
   assert.deepEqual(navigation,['/ajustes/accesos'])
  }
  const desktop={},owner={id:'owner'}
- new Function('exports','require','esAdmin','escritorio','cuentaAuth','ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser','ICON_COLOR','router',transpile(`export const category=${category.getText(source)}`))(desktop,()=>({jsx,jsxs:jsx}),true,true,owner,'ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser',{muted:'gray'},{push:()=>{}})
+ new Function('exports','require','esAdmin','escritorio','cuentaAuth','ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser','IconSliders','ICON_COLOR','router',transpile(`export const category=${category.getText(source)}`))(desktop,()=>({jsx,jsxs:jsx}),true,true,owner,'ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser','IconSliders',{muted:'gray'},{push:()=>{}})
  const table=flatten(desktop.category.bloques).find(n=>n.type==='ListaSolicitudes')
  assert.equal(table.props.administradorId,'owner')
  assert.equal(table.props.integrada,true)

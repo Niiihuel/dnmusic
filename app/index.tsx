@@ -33,6 +33,8 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { formatMessageDate } from '../src/ui/MessageCard'
 import { ChatBubble } from '../src/ui/ChatBubble'
+import { MessageActionDialog } from '../src/ui/MessageActionDialog'
+import { canModifyMessage, type MessageActionTarget } from '../src/ui/messageActions'
 import { SkeletonList } from '../src/ui/Skeleton'
 import { ResizableRegion } from '../src/ui/ResizableRegion'
 import { CollapsedSidebar } from '../src/ui/SidebarMotion'
@@ -278,8 +280,21 @@ export default function Home() {
   const [sending, setSending] = useState(false)
   const [composerError, setComposerError] = useState<string | null>(null)
   const [composerHeight, setComposerHeight] = useState(0)
+  const [messageAction, setMessageAction] = useState<MessageActionTarget | null>(null)
   const draft = useDraft()
   const player = useSnippetPlayer()
+  // Clear a dialog when its account/chat changes, before committing another frame.
+  if (messageAction && (messageAction.pairId !== activePairId || messageAction.userId !== myUid)) {
+    setMessageAction(null)
+  }
+  useEffect(() => {
+    if (player.currentId && messages.some(message => message.id === player.currentId && message.deletedAt)) player.stop()
+  }, [messages, player])
+  const requestMessageAction = (kind: MessageActionTarget['kind'], message: Message) => {
+    if (activePairId && canModifyMessage(message, myUid)) {
+      setMessageAction({ kind, message, pairId: activePairId, userId: myUid })
+    }
+  }
 
   /*
    * El modo música, **prendido por defecto**.
@@ -2803,6 +2818,9 @@ export default function Home() {
                         <ChatBubble
                           message={item}
                           mine={isSentBy(item, myUid)}
+                          userId={myUid}
+                          onEdit={() => requestMessageAction('edit', item)}
+                          onDelete={() => requestMessageAction('delete', item)}
                           selected={showDetail && selected?.id === item.id}
                           playing={player.currentId === item.id && player.playing}
                           sonando={player.currentId === item.id}
@@ -3099,6 +3117,8 @@ export default function Home() {
           ) : null}
         </View>
       </View>
+      {messageAction ? <MessageActionDialog key={`${messageAction.kind}:${messageAction.message.id}`}
+        target={messageAction} onClose={() => setMessageAction(null)} /> : null}
     </SafeAreaView>
   )
 }

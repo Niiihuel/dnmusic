@@ -70,6 +70,10 @@ export type Message = {
   openedAt: Date | null
   /** Cuándo el receptor terminó de leerlo. */
   readAt: Date | null
+  /** Exact server timestamp keeps PostgreSQL microseconds for conflict ordering. */
+  editedRevision?: string | null
+  editedAt?: Date | null
+  deletedAt?: Date | null
   song: SongSnippet | null
   sharedSong?: SharedSong | null
 }
@@ -91,6 +95,8 @@ export type MessageRow = {
   created_at: string
   opened_at: string | null
   read_at: string | null
+  edited_at?: string | null
+  deleted_at?: string | null
 }
 
 export function isSentBy(message: Message, uid: string): boolean {
@@ -153,12 +159,15 @@ export function messageFromRow(row: unknown): Message | null {
   return {
     id: r.id,
     senderUid: r.sender_id,
-    text: r.text,
+    text: r.deleted_at ? 'Mensaje eliminado' : r.text,
     createdAt: toDate(r.created_at),
     openedAt: toDate(r.opened_at),
     readAt: toDate(r.read_at),
-    song: toSong(r.song),
-    sharedSong: sharedSongFrom(r.song),
+    editedAt: toDate(r.edited_at),
+    editedRevision: timestampRevision(r.edited_at),
+    deletedAt: toDate(r.deleted_at),
+    song: r.deleted_at ? null : toSong(r.song),
+    sharedSong: r.deleted_at ? null : sharedSongFrom(r.song),
   }
 }
 
@@ -176,4 +185,22 @@ export function toMessageRow(
     text: message.text.trim(),
     ...(message.sharedSong ? { song: message.sharedSong } : message.song ? { song: message.song } : {}),
   }
+}
+
+
+/** Receipts and edits are monotonic, even if RPC and realtime arrive out of order. */
+export function mergeMessage(current: Message | undefined, incoming: Message): Message {
+  if (!current) return incoming
+  const currentVersion = current.editedRevision ?? timestampRevision(current.editedAt?.toISOString()) ?? ''
+  const incomingVersion = incoming.editedRevision ?? timestampRevision(incoming.editedAt?.toISOString()) ?? ''
+  const content = current.deletedAt || (!incoming.deletedAt && currentVersion > incomingVersion) ? current : incoming
+  return { ...content, openedAt: current.openedAt ?? incoming.openedAt, readAt: current.readAt ?? incoming.readAt }
+}
+
+
+function timestampRevision(value: unknown): string | null {
+  const date = toDate(value)
+  if (!date || typeof value !== 'string') return null
+  const fraction = /\.(\d+)/.exec(value)?.[1] ?? ''
+  return `${date.toISOString().slice(0, 19)}.${fraction.padEnd(6, '0').slice(0, 6)}Z`
 }

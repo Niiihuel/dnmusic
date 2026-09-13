@@ -73,14 +73,13 @@ export function AvisoActualizacion() {
           <IconSparkles size={17} color={ICON_COLOR.foreground} />
 
           {/*
-            El cuerpo lleva a las novedades. Es el enganche natural: lo primero
-            que uno quiere saber antes de reiniciar es qué trae, y esa pantalla
-            ya lo cuenta entero.
+            El detalle del actualizador muestra las notas que llegaron con el
+            paquete descargado y la acción para instalarlo.
           */}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Ver qué trae la versión ${aviso.version}`}
-            onPress={() => router.push('/ajustes/novedades')}
+            onPress={() => router.push('/ajustes?seccion=actualizaciones')}
             className="min-w-0 flex-1 active:opacity-70"
           >
             <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>

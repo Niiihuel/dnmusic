@@ -5,13 +5,9 @@ import { useConTooltip } from './Tooltip'
 import { ARRASTRE_VENTANA, SIN_ARRASTRE } from './BandaVentana'
 
 /**
- * Cabecera compacta de las columnas de navegación e inspección.
- *
- * En el escritorio es además **desde donde se arrastra la ventana**. La app
- * apaga la barra de título del sistema (ver `ui/BandaVentana`), así que hay que
- * decir desde dónde se agarra, y este encabezado es el mismo lugar del que se
- * arrastra Música para Mac: la franja de arriba de la barra lateral, con el
- * título de la sección. Fuera del escritorio la clase queda vacía.
+ * Cabecera compacta de navegación e inspección. Puede arrastrar la ventana,
+ * además de la barra global de BandaVentana; sus botones siguen recibiendo clic.
+ * La reserva del overlay pertenece a la raíz y también protege otras rutas.
  */
 export function CabeceraLateral({ titulo, children }: { titulo: string; children?: ReactNode }) {
   return <View className={`flex-row items-center gap-1 px-2 pb-1 pt-1 ${ARRASTRE_VENTANA}`}>

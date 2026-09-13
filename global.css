@@ -247,36 +247,15 @@ textarea:focus {
   overflow: clip !important;
 }
 
-/*
- * ── La ventana sin barra de título ────────────────────────────────────────
- *
- * Sin barra de título del sistema, la ventana se arrastra desde la app. Estas
- * clases son eso: la barra lateral declara su encabezado como zona de arrastre
- * y los controles que viven ahí adentro se salen a mano, porque una zona de
- * arrastre se come el click de todo lo que tenga adentro.
- *
- * No hay ninguna franja que reserve alto. Los botones de minimizar, maximizar
- * y cerrar los dibuja el navegador **encima** de la página, así que la app
- * llega hasta el borde de arriba y el cromo flota sobre ella; reservarle una
- * fila al layout dejaba una banda negra muerta cruzando toda la ventana.
- *
- * `app-region` no existe en React Native, así que va por CSS y sólo en web.
- */
-.dn-arrastrar {
-  -webkit-app-region: drag;
-  app-region: drag;
+/* El overlay nativo tiene una fila propia en RootLayout, del alto publicado
+   por windowControlsOverlay. El color continúa el fondo de sus botones. */
+.dn-banda-ventana {
+  background-color: #121212;
 }
 
-/*
- * La misma zona, para las pantallas que no tienen barra lateral: el acceso y
- * las de link compartido. Se apoya **encima**, absoluta, sobre la franja donde
- * flotan los botones del sistema —que ahí está vacía— y no ocupa alto: el
- * navegador dice cuánto mide en `env(titlebar-area-height)`.
- */
-.dn-arrastre-superior {
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: env(titlebar-area-height, 38px);
+/* Sólo el rectángulo libre del título y las cabeceras declaradas arrastran.
+   El sistema conserva los eventos de sus botones en ambos extremos. */
+.dn-arrastrar {
   -webkit-app-region: drag;
   app-region: drag;
 }

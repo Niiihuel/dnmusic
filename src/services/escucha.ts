@@ -1,3 +1,4 @@
+import { identidadControlDiscord, presenciaControlDiscord, type EstadoDiscordRemoto, type MensajeControlDiscord, type PresenciaControlDiscord } from './protocoloDiscordRemoto'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { getSupabase } from '../lib/supabase'
 import { nombreDispositivo } from '../lib/dispositivo'
@@ -224,7 +225,7 @@ export type Unsubscribe = () => void
  * corriendo contra un aparato apagado.
  */
 /** Un dispositivo presente: su id y el nombre con que se anunció. */
-export type DispositivoPresente = { deviceId: string; nombre: string }
+export type DispositivoPresente = { deviceId: string; nombre: string; controlDiscord?: PresenciaControlDiscord }
 
 /**
  * Lo que el canal deja mandar a un aparato puntual: «tomá vos la reproducción».
@@ -250,10 +251,12 @@ export function suscribirEscucha(
     /** Otro aparato pidió que **este** tome la reproducción. */
     onTomar: (pedido?: Handoff) => void
     onConexion?: (estado: 'conectando' | 'conectado' | 'desconectado') => void
+    onSesionControl?: (sesion: string | null) => void
+    onControlDiscord?: (mensaje: unknown) => void
     /** El canal quedó suscripto: repedir el estado completo. */
     onListo: () => void
   },
-): { desuscribir: Unsubscribe; mandarA: (destino: string, suena?: boolean, revision?: number) => Promise<void>; listo: Promise<void> } {
+): { desuscribir: Unsubscribe; mandarA: (destino: string, suena?: boolean, revision?: number) => Promise<void>; listo: Promise<void>; mandarControlDiscord: (mensaje: MensajeControlDiscord) => Promise<void>; anunciarDiscord: (estado: EstadoDiscordRemoto | null) => void } {
   const supabase = getSupabase()
   const cliente = supabase as typeof supabase & { [CLAVE_CANALES]?: Map<string, ConexionEscucha> }
   const conexiones = cliente[CLAVE_CANALES] ??= new Map()
@@ -264,6 +267,13 @@ export function suscribirEscucha(
   let channel: RealtimeChannel | null = null
   let cierre: Promise<void> | null = null
   let conectado = false
+  let sesionControl: string | null = null
+  let discord: EstadoDiscordRemoto | null = null
+  const anunciar = () => {
+    if (!vivo || !conectado || !channel || !sesionControl) return
+    void channel.track({ en: Date.now(), nombre: nombreDispositivo(), controlDiscord: { version: 1, sesion: sesionControl, ...(discord ? { discord } : {}) } }).catch(() => {})
+    hooks.onPresentes(leerPresentes(channel))
+  }
   let latido: ReturnType<typeof setInterval> | null = null
   const recibidos = new Set<string>()
   const vistas = new Map<string, { marca: unknown; cuando: number }>()
@@ -275,14 +285,14 @@ export function suscribirEscucha(
      una sola presencia—. */
   const leerPresentes = (ch: RealtimeChannel): DispositivoPresente[] => {
     const presentes: DispositivoPresente[] = []
-    const estado = ch.presenceState<{ nombre?: string; en?: number }>()
+    const estado = ch.presenceState<{ nombre?: string; en?: number; controlDiscord?: unknown }>()
     for (const [id, metas] of Object.entries(estado)) {
       const meta = [...metas].sort((a, b) => (b.en ?? 0) - (a.en ?? 0))[0]
       if (!meta) continue
       const vista = vistas.get(id)
       // Medir edad desde la recepción evita comparar relojes de dos aparatos.
       if (!vista || vista.marca !== meta.en) vistas.set(id, { marca: meta.en, cuando: Date.now() })
-      if (Date.now() - vistas.get(id)!.cuando <= VIGENCIA_ESCUCHA_MS) presentes.push({ deviceId: id, nombre: meta.nombre || 'otro dispositivo' })
+      if (Date.now() - vistas.get(id)!.cuando <= VIGENCIA_ESCUCHA_MS) presentes.push({ deviceId: id, nombre: meta.nombre || 'otro dispositivo', ...(presenciaControlDiscord(meta.controlDiscord) ? { controlDiscord: presenciaControlDiscord(meta.controlDiscord) } : {}) })
     }
     for (const id of vistas.keys()) if (!(id in estado)) vistas.delete(id)
     return presentes
@@ -325,17 +335,17 @@ export function suscribirEscucha(
         }
         hooks.onTomar(pedido)
       })
+      .on('broadcast', { event: 'discord-control-v1' }, ({ payload }) => {
+        if (vivo && conectado) hooks.onControlDiscord?.(payload)
+      })
       .subscribe((status) => {
         if (!vivo) return
         conectado = status === 'SUBSCRIBED'
         detenerLatido()
+        sesionControl = conectado ? identidadControlDiscord() : null
+        hooks.onSesionControl?.(sesionControl)
         hooks.onConexion?.(conectado ? 'conectado' : 'desconectado')
         if (conectado) {
-          const anunciar = () => {
-            if (!vivo || !conectado || !channel) return
-            void channel.track({ en: Date.now(), nombre: nombreDispositivo() }).catch(() => {})
-            hooks.onPresentes(leerPresentes(channel))
-          }
           anunciar()
           latido = setInterval(anunciar, LATIDO_ESCUCHA_MS)
           hooks.onListo()
@@ -360,6 +370,12 @@ export function suscribirEscucha(
 
   return {
     listo,
+    anunciarDiscord: estado => { discord = estado; anunciar() },
+    mandarControlDiscord: async mensaje => {
+      if (!vivo || !conectado || !channel || mensaje.origen !== deviceId || mensaje.origenSesion !== sesionControl) throw new Error('La conexión con tus dispositivos cambió.')
+      const resultado = await channel.send({ type: 'broadcast', event: 'discord-control-v1', payload: mensaje })
+      if (!vivo || !conectado || mensaje.origenSesion !== sesionControl || resultado !== 'ok') throw new Error('No se pudo enviar el pedido a esa computadora.')
+    },
     desuscribir: () => { void conexion.cerrar().catch(() => {}) },
     mandarA: async (destino: string, suena?: boolean, revision?: number) => {
       if (!vivo || !conectado || !channel) throw new Error('La conexión con tus dispositivos no está disponible.')

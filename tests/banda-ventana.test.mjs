@@ -3,80 +3,95 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 
-/**
- * El cromo de la ventana no ocupa layout.
- *
- * El módulo lee `navigator.windowControlsOverlay` **al cargarse**, así que cada
- * caso necesita su propia carga: por eso se transpila el archivo cada vez en
- * vez de importarlo una sola vez.
- */
-function cargar({ overlay = false, web = true } = {}) {
-  const source = readFileSync('src/ui/BandaVentana.tsx', 'utf8')
-  const { outputText } = ts.transpileModule(source, {
+/** Execute the real component with an observable Window Controls Overlay. */
+function cargar({ overlay = true, visible = true, web = true, rect = { x: 138, y: 0, width: 1042, height: 38 } } = {}) {
+  const state = { visible, rect }
+  const listeners = new Set()
+  let snapshot, unsubscribe, updates = 0
+  const native = {
+    get visible() { return state.visible }, getTitlebarAreaRect: () => state.rect,
+    addEventListener(type, fn) { assert.equal(type, 'geometrychange'); listeners.add(fn) },
+    removeEventListener(type, fn) { assert.equal(type, 'geometrychange'); listeners.delete(fn) },
+  }
+  const { outputText } = ts.transpileModule(readFileSync('src/ui/BandaVentana.tsx', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   })
   const exports = {}
-  new Function('exports', 'require', 'navigator', outputText)(
-    exports,
-    (id) => {
-      if (id === './Glass') return { ES_WEB: web }
-      throw Error(id)
-    },
-    overlay ? { windowControlsOverlay: { visible: true } } : {},
-  )
-  return exports
+  new Function('exports', 'require', 'navigator', outputText)(exports, id => {
+    if (id === './Glass') return { ES_WEB: web }
+    if (id === 'react-native') return { View: 'View' }
+    if (id === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }) }
+    if (id === 'react') return { useSyncExternalStore(subscribe, getSnapshot) {
+      snapshot = getSnapshot
+      unsubscribe ??= subscribe(() => updates++)
+      return snapshot()
+    } }
+    throw Error(id)
+  }, overlay ? { windowControlsOverlay: native } : {})
+  return { ...exports, state, render: () => exports.BandaVentana(),
+    change(patch) { Object.assign(state, patch); for (const listener of listeners) listener() },
+    get updates() { return updates }, get listenerCount() { return listeners.size }, stop: () => unsubscribe?.() }
 }
 
-test('sin overlay no hay zona de arrastre: el navegador y la PWA no la necesitan', () => {
-  const sin = cargar({ overlay: false })
-  assert.equal(sin.HAY_BANDA_VENTANA, false)
-  assert.equal(sin.ARRASTRE_VENTANA, '')
-  assert.equal(sin.SIN_ARRASTRE, '')
+test('ordinary browser tabs and native mobile reserve no titlebar, even when the API exists', () => {
+  for (const options of [{ overlay: false }, { visible: false }, { web: false }]) {
+    const f = cargar(options)
+    assert.equal(f.HAY_BANDA_VENTANA, false)
+    assert.equal(f.ARRASTRE_VENTANA, '')
+    assert.equal(f.SIN_ARRASTRE, '')
+    assert.equal(f.render(), null)
+    f.stop()
+  }
 })
 
-test('fuera de la web tampoco: el teléfono no tiene ventana que arrastrar', () => {
-  const movil = cargar({ overlay: true, web: false })
-  assert.equal(movil.HAY_BANDA_VENTANA, false)
-  assert.equal(movil.ARRASTRE_VENTANA, '')
+test('left, right and split native controls leave all app content below their real height', () => {
+  for (const rect of [
+    { x: 138, y: 0, width: 1042, height: 38 }, // Linux controls on the left
+    { x: 0, y: 0, width: 1042, height: 38 }, // Windows controls on the right
+    { x: 46, y: 2, width: 996, height: 36 }, // controls at both edges
+  ]) {
+    const f = cargar({ rect })
+    const row = f.render()
+    assert.equal(row.props.style.height, rect.y + rect.height)
+    assert.equal(row.props.style.flexShrink, 0)
+    assert.equal(row.props.style.position, undefined, 'in-flow reservation protects the logo below it')
+    assert.deepEqual(row.props.children.props.style, { position: 'absolute', left: rect.x, top: rect.y, width: rect.width, height: rect.height })
+    assert.equal(row.props.children.props.className, 'dn-arrastrar')
+    f.stop()
+  }
 })
 
-test('con cromo propio publica las dos clases, la de arrastrar y la de salirse', () => {
-  const escritorio = cargar({ overlay: true })
-  assert.equal(escritorio.HAY_BANDA_VENTANA, true)
-  assert.equal(escritorio.ARRASTRE_VENTANA, 'dn-arrastrar')
-  assert.equal(escritorio.SIN_ARRASTRE, 'dn-no-arrastrar')
+test('geometry/fullscreen changes resize or remove the reserved row and subscription cleans up', () => {
+  const f = cargar()
+  assert.equal(f.render().props.style.height, 38)
+  f.change({ rect: { x: 0, y: 0, width: 1260, height: 32 } })
+  assert.equal(f.render().props.style.height, 32)
+  f.change({ visible: false })
+  assert.equal(f.render(), null)
+  f.change({ visible: true })
+  assert.equal(f.render().props.style.height, 32)
+  assert.equal(f.updates, 3)
+  assert.equal(f.listenerCount, 1)
+  f.stop()
+  assert.equal(f.listenerCount, 0)
 })
 
-test('el cromo va encima del layout, no adentro: nadie reserva una fila arriba', () => {
+test('RootLayout reserves the row once for every route; login no longer overlays another drag area', () => {
   const layout = readFileSync('app/_layout.tsx', 'utf8')
-  assert.doesNotMatch(layout, /BandaVentana/, 'la app no monta ninguna franja que ocupe alto')
-  const componente = readFileSync('src/ui/BandaVentana.tsx', 'utf8')
-  assert.doesNotMatch(componente, /<View/, 'el módulo no dibuja: sólo dice qué clase corresponde')
-  // El `env()` que queda es el de la franja **absoluta** del acceso: no ocupa alto.
-  const css = readFileSync('global.css', 'utf8')
-  assert.match(css, /\.dn-arrastre-superior[\s\S]*?position:\s*absolute/)
+  assert.equal((layout.match(/<BandaVentana\s*\/>/g) ?? []).length, 1)
+  assert.match(layout, /<BandaVentana \/>\s*<View style=\{\{ flex: 1, minHeight: 0 \}\}>\s*<ControlActualizaciones>/)
+  assert.doesNotMatch(readFileSync('src/ui/Acceso.tsx', 'utf8'), /ARRASTRE_SUPERIOR|dn-arrastre-superior/)
 })
 
-test('se arrastra desde el encabezado lateral y sus botones se salen de la zona', () => {
-  const cabecera = readFileSync('src/ui/CabeceraLateral.shared.tsx', 'utf8')
-  assert.match(cabecera, /CabeceraLateral[\s\S]*?\$\{ARRASTRE_VENTANA\}/)
-  assert.match(cabecera, /BotonLateral[\s\S]*?\$\{SIN_ARRASTRE\}/)
-  const css = readFileSync('global.css', 'utf8')
-  assert.match(css, /\.dn-arrastrar[\s\S]*?-webkit-app-region:\s*drag/)
-  assert.match(css, /\.dn-no-arrastrar[\s\S]*?-webkit-app-region:\s*no-drag/)
-})
-
-test('el acceso, que no tiene barra lateral, trae su propia franja de arrastre', () => {
-  const acceso = readFileSync('src/ui/Acceso.tsx', 'utf8')
-  assert.match(acceso, /ARRASTRE_SUPERIOR \? <View className=\{ARRASTRE_SUPERIOR\} \/> : null/)
-  const escritorio = cargar({ overlay: true })
-  assert.equal(escritorio.ARRASTRE_SUPERIOR, 'dn-arrastre-superior')
-  assert.equal(cargar({ overlay: false }).ARRASTRE_SUPERIOR, '')
-})
-
-test('la ventana sigue sin barra de título del sistema, con los botones teñidos', () => {
+test('native window controls and header drag exclusions are retained', () => {
   const main = readFileSync('desktop/src/main.ts', 'utf8')
   assert.match(main, /titleBarStyle: 'hidden'/)
   assert.match(main, /titleBarOverlay: \{ color: '#121212', symbolColor: '#B3B3B3', height: BANDA_VENTANA \}/)
   assert.match(main, /const BANDA_VENTANA = 38/)
+  const header = readFileSync('src/ui/CabeceraLateral.shared.tsx', 'utf8')
+  assert.match(header, /CabeceraLateral[\s\S]*?\$\{ARRASTRE_VENTANA\}/)
+  assert.match(header, /BotonLateral[\s\S]*?\$\{SIN_ARRASTRE\}/)
+  const css = readFileSync('global.css', 'utf8')
+  assert.match(css, /\.dn-arrastrar[\s\S]*?-webkit-app-region:\s*drag/)
+  assert.match(css, /\.dn-no-arrastrar[\s\S]*?-webkit-app-region:\s*no-drag/)
 })

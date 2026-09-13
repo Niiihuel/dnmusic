@@ -1,3 +1,8 @@
+import { Menu, MantenerApretado, type MenuItem } from './Menu'
+import { useClicDerecho } from './useClicDerecho'
+import { canEditMessage, canModifyMessage, messageCopyText } from './messageActions'
+import { copiarAlPortapapeles } from '../lib/portapapeles'
+import { avisar } from '../state/aviso'
 import { IconButton } from './IconButton'
 import { CancionCompartida } from './CancionCompartida'
 import { InvitacionJam } from './InvitacionJam'
@@ -9,7 +14,7 @@ import { artworkSource } from '../lib/artwork'
 import { formatMessageDate } from './MessageCard'
 import { Onda, usePicos } from './Onda'
 import { SeekBar, formatClock } from './SeekBar'
-import { ICON_COLOR, IconMusic, IconPause, IconPlay } from './icons'
+import { ICON_COLOR, IconMusic, IconPause, IconPlay, IconCopiar, IconPencil, IconTrash, IconEye } from './icons'
 import { estadoControlWeb } from './estadoControl'
 
 export function ChatBubble({
@@ -23,9 +28,15 @@ export function ChatBubble({
   onPress,
   onPlay,
   onSeek,
+  userId,
+  onEdit,
+  onDelete,
 }: {
   message: Message
   mine: boolean
+  userId?: string
+  onEdit?: () => void
+  onDelete?: () => void
   selected?: boolean
   playing?: boolean
   /** Es el mensaje cargado en el reproductor, suene o esté en pausa. */
@@ -37,6 +48,17 @@ export function ChatBubble({
   onPlay: () => void
   onSeek: (fraction: number) => void
 }) {
+  const clic = useClicDerecho()
+  const copy = messageCopyText(message)
+  const options: MenuItem[] = message.deletedAt ? [] : [
+    { label: 'Ver mensaje', sfSymbol: 'eye', icon: <IconEye size={18} />, onPress },
+    ...(message.song ? [{ label: playing ? 'Pausar fragmento' : 'Reproducir fragmento', sfSymbol: (playing ? 'pause.fill' : 'play.fill') as 'pause.fill' | 'play.fill', icon: playing ? <IconPause size={18} /> : <IconPlay size={18} />, onPress: onPlay }] : []),
+    ...(copy ? [{ label: 'Copiar', sfSymbol: 'doc.on.doc' as const, icon: <IconCopiar size={18} />, onPress: () => {
+      void copiarAlPortapapeles(copy).then(ok => avisar(ok ? 'Mensaje copiado' : 'No se pudo copiar el mensaje.', !ok)).catch(() => avisar('No se pudo copiar el mensaje.', true))
+    } }] : []),
+    ...(onEdit && canEditMessage(message, userId ?? '') ? [{ label: 'Editar mensaje', sfSymbol: 'pencil' as const, icon: <IconPencil size={18} />, onPress: onEdit }] : []),
+    ...(onDelete && canModifyMessage(message, userId ?? '') ? [{ label: 'Eliminar para todos', sfSymbol: 'trash' as const, icon: <IconTrash size={18} />, destructive: true, onPress: onDelete }] : []),
+  ]
   const song = message.song
   const delivery = message.readAt ? '✓✓' : message.openedAt ? '✓✓' : '✓'
   const picos = usePicos(
@@ -52,13 +74,15 @@ export function ChatBubble({
   return (
     <View className={`w-full ${mine ? 'items-end' : 'items-start'}`}>
       <View style={{ maxWidth: '92%', minWidth: 140, ...(song || message.sharedSong ? { width: 360 } : {}) }}>
+        <MantenerApretado items={options}>
         <View
+          {...(options.length ? clic.gestos : {})}
           style={selected ? { backgroundColor: '#2A2A2C', borderColor: 'rgba(255,255,255,0.18)' } : undefined}
           className={`gap-2 rounded-[20px] border px-3.5 py-2.5 ${
             mine ? 'border-transparent bg-muted' : 'border-white/5 bg-card'
           }`}
         >
-          {invitacionEnTexto(message.text) ? (
+          {message.deletedAt ? <Text className="text-muted-foreground text-subheadline italic">Mensaje eliminado</Text> : invitacionEnTexto(message.text) ? (
             <InvitacionJam texto={message.text} />
           ) : message.text ? (
             <Pressable
@@ -67,6 +91,7 @@ export function ChatBubble({
               accessibilityState={{ selected }}
               accessibilityLabel={`Abrir mensaje: ${message.text}`}
               onPress={onPress}
+              onLongPress={Platform.OS === 'ios' ? () => {} : undefined}
               className="min-h-11 justify-center active:opacity-80"
             >
               <Text className="text-foreground text-subheadline">{message.text}</Text>
@@ -114,6 +139,7 @@ export function ChatBubble({
                   accessibilityRole="button"
                   accessibilityLabel={`Abrir fragmento: ${song.title}, ${song.artist}`}
                   onPress={onPress}
+                  onLongPress={Platform.OS === 'ios' ? () => {} : undefined}
                   className="min-w-0 flex-1 flex-row items-center gap-2.5 active:opacity-80"
                 >
                   {art ? (
@@ -180,14 +206,18 @@ export function ChatBubble({
           ) : null}
 
           <View className="flex-row items-center justify-end gap-1.5">
+            {message.editedAt && !message.deletedAt ? <Text className="text-muted-foreground text-caption1">Editado</Text> : null}
             {message.createdAt ? (
               <Text className="text-muted-foreground text-caption1 tabular-nums">
                 {formatMessageDate(message.createdAt)}
               </Text>
             ) : null}
-            {mine ? <Text accessibilityLabel={message.readAt ? 'Leído' : message.openedAt ? 'Abierto' : 'Enviado'} className="text-muted-foreground text-caption1">{delivery}</Text> : null}
+            {mine && !message.deletedAt ? <Text accessibilityLabel={message.readAt ? 'Leído' : message.openedAt ? 'Abierto' : 'Enviado'} className="text-muted-foreground text-caption1">{delivery}</Text> : null}
+            {options.length ? <Menu items={options} label="Opciones del mensaje" tooltip="Opciones del mensaje" size={16}
+              abiertoEn={clic.punto} onCerrarPunto={clic.cerrar} /> : null}
           </View>
         </View>
+        </MantenerApretado>
       </View>
     </View>
   )

@@ -7,6 +7,7 @@ const flush = async () => { for(let i=0;i<6;i++) await new Promise(r=>setImmedia
 const deferred = () => { let resolve; const promise = new Promise(r=>resolve=r); return {promise,resolve} }
 function fixture({ raw = null, storage, write, configure } = {}) {
   const sent = [], configs = [], written = [], callbacks = new Set(), timers = new Map()
+  let remoto
   let session = {user:{id:'a'},access:{status:'approved'}}, listening = {track:{title:'Tema'},sonando:true,posicionMs:50,actualizadoEn:100}, seq=0
   const initial = {enabled:false,applicationId:'',status:'disabled'}
   const bridge = {
@@ -16,6 +17,7 @@ function fixture({ raw = null, storage, write, configure } = {}) {
   }
   const modules={
     '@react-native-async-storage/async-storage':{__esModule:true,default:{getItem:async key=>storage ? storage(key) : raw,setItem:async(...a)=>{written.push(a);if(write)await write(...a)}}},
+    './discordRemoto': { iniciarDiscordRemoto: (_id, adapter) => { remoto = adapter; return () => {} } },
     react:{useEffect(){}},
     '../services/actividadEscucha':{actividadParaCompartir:a=>a.autorizada?{title:a.track.title}:null},
     './escucha':{leerEscuchaParaIntegraciones:()=>listening,suscribirActividadParaIntegraciones:fn=>{callbacks.add(fn);return()=>callbacks.delete(fn)}},
@@ -25,7 +27,7 @@ function fixture({ raw = null, storage, write, configure } = {}) {
   }
   const exports={}
   new Function('exports','require','globalThis','setTimeout','clearTimeout','setInterval','clearInterval',code)(exports,k=>{assert.ok(k in modules,k);return modules[k]}, {dnmusicEscritorio:{discord:bridge}},(fn)=>{timers.set(++seq,fn);return seq},id=>timers.delete(id),(fn)=>{timers.set(++seq,fn);return seq},id=>timers.delete(id))
-  return {api:exports,sent,configs,written,timers,callbacks,session:s=>session=s,listening:l=>{listening=l;for(const fn of callbacks)fn()},tick:()=>{for(const fn of [...timers.values()])fn()}}
+  return {api:exports,get remoto(){return remoto},sent,configs,written,timers,callbacks,session:s=>session=s,listening:l=>{listening=l;for(const fn of callbacks)fn()},tick:()=>{for(const fn of [...timers.values()])fn()}}
 }
 const enabled = JSON.stringify({enabled:true,applicationId:'123456789012345678'})
 test('Discord queda desactivado por defecto y no entrega canciones sin consentimiento',async()=>{
@@ -83,4 +85,51 @@ test('fallo de disco no restaura consentimiento viejo durante la misma sesión',
  const close=h.api.iniciarDiscord('a');await flush();await h.api.configurarDiscord({enabled:false,applicationId:'123456789012345678'});close()
  const startIndex=h.configs.length;const closeAgain=h.api.iniciarDiscord('a');await flush()
  assert.ok(h.configs.slice(startIndex).every(c=>!c.enabled));assert.equal(h.api.useDiscord().estado.enabled,false);closeAgain()
+})
+
+test('cancel remoto revoca antes del ACK pendiente y la respuesta vieja no habilita después',async()=>{
+ const ack=deferred();const h=fixture({configure:c=>c.enabled?ack.promise:Promise.resolve()})
+ const close=h.api.iniciarDiscord('a');await flush()
+ const operation=h.remoto.cambiar(true);await flush()
+ assert.equal(h.api.useDiscord().guardando,true)
+ operation.cancelar();await flush()
+ assert.equal(h.configs.at(-1).enabled,false)
+ assert.equal(JSON.parse(h.written.at(-1)[1]).enabled,false)
+ ack.resolve();assert.equal(await operation.terminado,false);await flush()
+ assert.equal(h.api.useDiscord().estado.enabled,false);assert.equal(h.api.useDiscord().guardando,false)
+ close()
+})
+
+test('cancel remoto no revoca una decisión local posterior ni reenciende un opt-out',async()=>{
+ const h=fixture(),close=h.api.iniciarDiscord('a');await flush()
+ const operation=h.remoto.cambiar(true);assert.equal(await operation.terminado,true);await flush()
+ await h.api.configurarDiscord({enabled:true,applicationId:'123456789012345678'});await flush()
+ const count=h.configs.length;operation.cancelar();await flush()
+ assert.equal(h.configs.length,count);assert.equal(h.api.useDiscord().estado.enabled,true)
+ const disable=h.remoto.cambiar(false);await disable.terminado;disable.cancelar();await flush()
+ assert.equal(h.api.useDiscord().estado.enabled,false);close()
+})
+
+test('cancel remoto tardío no altera la configuración de otra cuenta',async()=>{
+ const h=fixture(),close=h.api.iniciarDiscord('a');await flush()
+ const operation=h.remoto.cambiar(true);await operation.terminado;close()
+ h.session({user:{id:'b'},access:{status:'approved'}})
+ const closeB=h.api.iniciarDiscord('b');await flush()
+ await h.api.configurarDiscord({enabled:true,applicationId:'123456789012345678'});await flush()
+ const count=h.configs.length;operation.cancelar();await flush()
+ assert.equal(h.configs.length,count);assert.equal(h.api.useDiscord().estado.enabled,true)
+ closeB()
+})
+
+
+test('alta remota provisional no se restaura al reiniciar; sólo confirmar guarda consentimiento',async()=>{
+ const h=fixture(),close=h.api.iniciarDiscord('a');await flush()
+ const operation=h.remoto.cambiar(true);await operation.terminado;await flush()
+ assert.equal(h.api.useDiscord().estado.enabled,true)
+ assert.equal(JSON.parse(h.written.at(-1)[1]).enabled,false)
+ close();const index=h.configs.length;const closeAgain=h.api.iniciarDiscord('a');await flush()
+ assert.ok(h.configs.slice(index).every(c=>!c.enabled))
+ const confirmed=h.remoto.cambiar(true);await confirmed.terminado;confirmed.confirmar();await flush()
+ assert.equal(JSON.parse(h.written.at(-1)[1]).enabled,true)
+ closeAgain()
 })

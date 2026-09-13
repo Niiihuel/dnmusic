@@ -59,6 +59,15 @@ Cambios integrados por área, sujetos a la validación física siguiente:
 - El composer mide su contenido, conserva la carátula del adjunto y presenta una acción de quitar con área táctil suficiente.
 - La búsqueda de fragmentos mantiene el encabezado y cierra el teclado al elegir. El detalle no reserva el espacio de un miniplayer que no está visible; la nota completa es desplazable y las acciones inferiores se redistribuyen.
 
+## Controles y servicios integrados
+
+- El menú contextual de chat incorpora edición del texto y eliminación de mensajes propios, con confirmación del servidor y actualización entre dispositivos. Ver `docs/CHAT-MENSAJES.md`.
+- Discord tiene icono blanco en la navegación y de marca en las acciones. Desde el teléfono se controla explícitamente la PC conectada; la publicación directa desde iOS sigue pendiente del SDK oficial. Ver `docs/DISCORD-MOVIL.md`.
+- Los gráficos de Google tienen dimensiones explícitas al cruzar a SwiftUI; las filas de estado y acción conservan su icono.
+- El aviso de captura ofrece una tarjeta de la canción mediante controles SwiftUI. Sólo compartir abre la hoja nativa; no se lee la fototeca ni se accede al archivo de la captura del sistema. La [notificación de UIKit](https://developer.apple.com/documentation/uikit/uiapplication/userdidtakescreenshotnotification) informa del gesto después de la captura. La oferta se limita a vistas musicales sin teclado y se retira al cambiar de contexto.
+- Actualizaciones muestra la versión obtenida de la instalación y los controles reales de Electron o indicaciones de tienda en móvil. La política de versiones mínimas pertenece a una pantalla administrativa protegida.
+- En escritorio, la raíz reserva la geometría de los controles de ventana. Su posición sigue las preferencias del sistema; el [overlay de Electron](https://www.electronjs.org/docs/latest/tutorial/custom-title-bar) puede colocarlos en cualquiera de los extremos.
+
 ## Validación física pendiente
 
 Usar un iPhone con iOS 26 y el build que contenga esta revisión, además de un dispositivo con la versión mínima soportada cuando esté disponible. Repetir con tamaño de letra normal y de accesibilidad, y con Reducir movimiento/Reducir transparencia. Las capturas reportadas muestran una llamada activa: repetir también en ese estado.
@@ -81,6 +90,11 @@ Usar un iPhone con iOS 26 y el build que contenga esta revisión, además de un 
 | Lista de chats | Con cero, uno y muchos contactos; desplazar hasta el primero y tocar nuevo chat | El listado no tapa la acción superior y conserva avatar, nombre, fecha y no leídos. |
 | Composer | Abrir/cerrar teclado, escribir varias líneas, agregar y quitar fragmento, rotar si la app lo permite | Placeholder y texto dentro del campo, X visible y centrada, adjunto sin cortar; hilo y teclado no invaden la cabecera. |
 | Detalle de fragmento | Recibir y enviar fragmentos y canciones completas; abrir nota larga, letra, traducción y cerrar | Encabezado completo, nota desplazable, tiempos legibles, controles inferiores sin solaparse. |
+| Google | Abrir acceso, vinculación y estado de cuenta con tamaño de texto normal/grande | Marca visible y centrada, sin modificar la autorización OAuth. |
+| Captura y compartir | Capturar en inicio y reproductor/letra; cerrar aviso, compartir, cancelar hoja, cambiar de cuenta y salir durante la preparación | Oferta sin tapar controles; la hoja sólo abre tras tocar Compartir, con la canción seleccionada; archivo temporal liberado. |
+| Chat: acciones | Mantener mensaje propio/ajeno, editar, cancelar, borrar con confirmación y comprobar en otro dispositivo | Opciones acordes al autor, adjunto intacto al editar, borrado sincronizado y sin disparar reproducción por el gesto. |
+| Discord remoto | Con PC actualizada conectada y sin PC, cancelar/reintentar y cortar red | Sólo se muestra conexión confirmada; no se publica por abrir Ajustes ni se confunde la disponibilidad de DMusic con Discord. |
+| Actualizaciones | Navegar como usuario y admin, versión instalada, descarga y reinicio en escritorio | Sin formulario de políticas en la sección personal; permisos mantenidos en administración. |
 | Ciclo de vida | Abrir/cerrar editor, reproductor y fragmentos repetidamente; bloquear/desbloquear durante reproducción | No quedan teclados, menús o vistas superpuestos ni se reproducen animaciones pertenecientes a una pantalla cerrada. |
 
 ## Alcance conservado
@@ -89,9 +103,11 @@ Los archivos compartidos de Android/web y los respaldos necesarios para el port 
 
 Las pruebas automáticas incluyen el store real del borrador, su serialización y eventos de controles nativos conectados a ese store. Los tests de JSX verifican contratos y acciones; no prueban píxeles, áreas seguras reales, animaciones de UIKit, consumo de memoria en el dispositivo ni la interacción de AirPlay. La validación de esos puntos queda registrada en la tabla anterior.
 
-## Verificación automatizada de esta revisión
+## Verificación automatizada de la revisión inicial
 
 - 635 pruebas de la app aprobadas; TypeScript y ESLint sin errores.
 - Exportaciones de producción iOS y Android completas.
 - Compilación y firma iOS en macOS: [GitHub Actions](https://github.com/Niiihuel/dnmusic/actions/runs/34739300812), código `9898f38`. El resultado del compilador debe verificarse antes de distribuir.
 - [PR #2](https://github.com/Niiihuel/dnmusic/pull/2). No se ha comprobado aún la composición visual con este binario en un iPhone.
+
+La integración posterior de mensajes, Discord y ajustes supera 679 pruebas de app y la prueba real de permisos en PostgreSQL 17 ejecutada por separado. TypeScript de app/escritorio/servidor, ESLint y exportaciones de producción iOS/Android/web pasan. La compilación nativa del commit final y su artefacto se registran en el PR #2.

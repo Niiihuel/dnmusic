@@ -46,5 +46,10 @@ jobs:
       - name: Lint
         run: npx eslint .
 
+      - name: Message permissions — PostgreSQL
+        run: |
+          docker pull postgres:17
+          RUN_MESSAGE_DB_TESTS=1 node --test tests/message-actions-db.test.mjs
+
       - name: App tests
         run: node --test tests/*.test.mjs

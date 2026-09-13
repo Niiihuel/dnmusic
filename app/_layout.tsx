@@ -1,3 +1,4 @@
+import { BandaVentana } from '../src/ui/BandaVentana'
 import { useEffect, useRef, useState } from 'react'
 import { Stack, usePathname, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
@@ -141,8 +142,11 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="light" />
-      <ControlActualizaciones><Chrome /></ControlActualizaciones>
-      {splashListo ? null : <SplashAnimado onDone={() => setSplashListo(true)} />}
+      <BandaVentana />
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <ControlActualizaciones><Chrome /></ControlActualizaciones>
+        {splashListo ? null : <SplashAnimado onDone={() => setSplashListo(true)} />}
+      </View>
     </GestureHandlerRootView>
   )
 }
@@ -1068,6 +1072,7 @@ function SessionGate() {
       <Stack.Screen name="vincular-google" options={HOJA_SOCIAL} />
       <Stack.Screen name="ajustes/novedades" />
       <Stack.Screen name="ajustes/accesos" />
+      <Stack.Screen name="ajustes/compatibilidad" />
       {/* El onboarding: géneros y artistas con los que nace la radio de una
           cuenta nueva. Pantalla común, como las puertas de entrada. */}
       <Stack.Screen name="onboarding" />

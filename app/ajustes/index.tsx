@@ -59,15 +59,13 @@ import { mensajeError } from '../../src/lib/mensajeError'
 import { useKeyboardH, usePiso } from '../../src/state/shell'
 import { volver } from '../../src/lib/volver'
 import { NOVEDADES } from '../../src/lib/novedades'
-import { HAY_ACTUALIZADOR, buscarActualizacion, useActualizacion } from '../../src/state/actualizacion'
 import { DETALLE_PRECARGA_SESION, DETALLE_RED_PC, inventarioDescargas } from '../../src/ui/descargasControl'
 import { TECLADO_FISICO } from '../../src/lib/teclado'
 import { ListaSolicitudes } from '../../src/ui/SolicitudesAcceso'
 import { ConectarGoogle } from '../../src/ui/ConectarGoogle'
 import { DiscordIcon } from '../../src/ui/DiscordIcon'
 import { AjustesDiscord } from '../../src/ui/AjustesDiscord'
-import { HAY_DISCORD } from '../../src/state/discord'
-import { AdministrarActualizaciones } from '../../src/ui/AdministrarActualizaciones'
+import { AjustesActualizaciones } from '../../src/ui/AjustesActualizaciones'
 
 /** Desde acá la pantalla es la de macOS: barra lateral con las categorías y el detalle al lado. */
 const ESCRITORIO_PX = 780
@@ -130,18 +128,6 @@ export default function Configuracion() {
   const descargasManuales = inventario.filter(e => !e.descarga.temporal).length
   const cacheTemporal = inventario.length - descargasManuales
   const pendientes = useNovedadesPendientes()
-  const actualizacion = useActualizacion()
-  /* Lo que dice la fila a la derecha: en qué anda el actualizador. En reposo
-     muestra la versión instalada, que es lo que uno viene a mirar. */
-  const detalleActualizacion =
-    actualizacion.fase === 'buscando' ? 'Buscando…'
-    : actualizacion.fase === 'bajando' ? `Bajando ${actualizacion.porcentaje}%`
-    : actualizacion.fase === 'lista' ? `${actualizacion.version} lista`
-    : actualizacion.fase === 'esperando-silencio' ? `${actualizacion.version} en espera`
-    : actualizacion.fase === 'error' ? 'No se pudo comprobar'
-    : actualizacion.fase === 'apagado' ? actualizacion.motivo
-    : actualizacion.fase === 'sin-novedad' ? `${actualizacion.version} · al día`
-    : actualizacion.version || null
   const [busqueda, setBusqueda] = useState('')
   const { width } = useWindowDimensions()
   const escritorio = Platform.OS !== 'ios' && width >= ESCRITORIO_PX
@@ -245,7 +231,7 @@ export default function Configuracion() {
       id: 'app',
       titulo: 'La app',
       icono: IconSparkles,
-      palabras: 'novedades actualizaciones versión avisos ayudas cursor interfaz app rótulos',
+      palabras: 'novedades avisos ayudas cursor interfaz app rótulos',
       visible: true,
       bloques: (
         <GrupoAjustes
@@ -268,35 +254,8 @@ export default function Configuracion() {
             icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
             activo={ajustes.novedadesAlAbrir}
             onCambiar={(v) => setPreferencia('novedadesAlAbrir', v)}
-            ultima={!HAY_ACTUALIZADOR}
+            ultima
           />
-          {HAY_ACTUALIZADOR ? (
-            <FilaInterruptor
-              rotulo="Avisar cuando haya una versión nueva"
-              icono={<IconDownload size={17} color={ICON_COLOR.muted} />}
-              activo={ajustes.avisosActualizacion}
-              onCambiar={(v) => setPreferencia('avisosActualizacion', v)}
-            />
-          ) : null}
-          {/*
-           * Buscar una versión nueva, acá y no en la barra de menú.
-           *
-           * Vivía en «Ayuda → Buscar actualizaciones» del menú del sistema, y
-           * ese menú dejó de estar a la vista cuando la ventana pasó a dibujar
-           * su propio cromo (ver `ui/BandaVentana`). Además es donde lo pone
-           * Apple: Ajustes del Sistema tiene su «Actualización de software»,
-           * no un menú escondido detrás de Alt.
-           */}
-          {HAY_ACTUALIZADOR ? (
-            <FilaAjuste
-              rotulo="Buscar actualizaciones"
-              valor={detalleActualizacion}
-              vacio=""
-              icono={<IconDownload size={17} color={ICON_COLOR.muted} />}
-              onPress={() => buscarActualizacion()}
-              ultima
-            />
-          ) : null}
         </GrupoAjustes>
       ),
     },
@@ -304,9 +263,9 @@ export default function Configuracion() {
       id: 'actualizaciones',
       titulo: 'Actualizaciones',
       icono: IconDownload,
-      palabras: 'actualizaciones versiones mínima obligatoria opcional administración',
-      visible: esAdmin,
-      bloques: <AdministrarActualizaciones />,
+      palabras: 'actualizaciones versión instalada descargar reiniciar novedades TestFlight tienda',
+      visible: true,
+      bloques: <AjustesActualizaciones />,
     },
     {
       id: 'accesos',
@@ -314,7 +273,7 @@ export default function Configuracion() {
       icono: IconUser,
       palabras: 'administración aprobar rechazar solicitudes acceso cuentas google',
       visible: esAdmin,
-      bloques: escritorio && cuentaAuth ? (
+      bloques: <>{escritorio && cuentaAuth ? (
         <ListaSolicitudes key={cuentaAuth.id} administradorId={cuentaAuth.id} integrada />
       ) : (
         <GrupoAjustes pie="Revisá quién puede entrar a DMusic.">
@@ -327,14 +286,18 @@ export default function Configuracion() {
             ultima
           />
         </GrupoAjustes>
-      ),
+      )}
+        <GrupoAjustes titulo="Administración" pie="Controlá qué versiones siguen siendo compatibles. Esta herramienta no sube ni compila la app.">
+          <FilaAjuste rotulo="Compatibilidad de versiones" vacio="" icono={<IconSliders size={17} color={ICON_COLOR.muted} />} onPress={() => router.push('/ajustes/compatibilidad')} ultima />
+        </GrupoAjustes>
+      </>,
     },
     {
       id: 'discord',
       titulo: 'Discord',
       icono: DiscordIcon,
       palabras: 'discord presencia compartir canción escuchando actividad',
-      visible: HAY_DISCORD,
+      visible: true,
       bloques: <AjustesDiscord />,
     },
     {
@@ -664,7 +627,7 @@ function Escritorio({
                     activa ? 'bg-muted' : 'hover:bg-white/5 active:bg-muted'
                   }`}
                 >
-                  <Icono size={16} color={activa ? ICON_COLOR.foreground : ICON_COLOR.muted} />
+                  <Icono size={16} color={c.id === 'discord' || activa ? ICON_COLOR.foreground : ICON_COLOR.muted} />
                   <Text className={`min-w-0 flex-1 text-footnote ${activa ? 'text-foreground font-medium' : 'text-foreground'}`} numberOfLines={1}>{c.titulo}</Text>
                 </Pressable>
               )

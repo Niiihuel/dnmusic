@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { View } from 'react-native'
-import { captureRef } from 'react-native-view-shot'
+import { AppState, View } from 'react-native'
+import { captureRef, releaseCapture } from 'react-native-view-shot'
 import * as Sharing from 'expo-sharing'
 import type { PlaylistTrack } from '../services/playlists'
 import { artworkSource } from '../lib/artwork'
 import { proxiedImage } from '../services/music'
 import { avisar } from '../state/aviso'
 import { createStore, useStore } from '../state/store'
+import { getSession, useUser } from '../state/session'
 import { matrizQR } from '../lib/codigoQR'
 import { linkDe } from '../lib/compartir'
 import { publicarCancion } from '../services/compartidos'
@@ -50,10 +51,9 @@ import {
  * La canción que suena, hecha imagen para una historia.
  *
  * **En el teléfono** se dibuja la tarjeta fuera de pantalla, se captura y se
- * abre la hoja de compartir del sistema: Instagram aparece ahí y ofrece
- * historia, publicación, reel o mensaje. No hay integración directa con
+ * abre la hoja de compartir del sistema con los destinos instalados compatibles. No hay integración directa con
  * `instagram-stories://` a propósito — exige claves de pasteboard que requieren
- * módulo nativo propio; la hoja del sistema hace lo mismo con un toque más.
+ * módulo nativo propio. Cada destino decide qué hacer con la imagen recibida.
  *
  * **En la web** no hay hoja que valga: se pinta la misma tarjeta en un canvas y
  * se descarga como PNG.
@@ -63,9 +63,17 @@ import {
  * previa antes de mandarla: la previa y lo que sale tienen que ser lo mismo.
  */
 
-type Pedido = { track: PlaylistTrack | null; tinte: string | null }
+type Pedido = { id: number; ownerId: string | null; track: PlaylistTrack | null; tinte: string | null }
 
-const store = createStore<Pedido>({ track: null, tinte: null })
+const store = createStore<Pedido>({ id: 0, ownerId: null, track: null, tinte: null })
+
+/** La preparación y la hoja del sistema comparten una única solicitud. */
+export function historiaEnCurso() { return store.get().track !== null }
+
+function cuentaVigente(ownerId: string | null) {
+  const session = getSession()
+  return !!ownerId && session.user?.id === ownerId && session.access?.status === 'approved'
+}
 
 /** Los datos de la tarjeta de una canción: lo mismo para la previa y la captura. */
 export function datosDeTarjeta(track: PlaylistTrack, tinte: string | null = null): DatosTarjeta {
@@ -78,21 +86,17 @@ export function datosDeTarjeta(track: PlaylistTrack, tinte: string | null = null
   }
 }
 
-/**
- * Compartir esta canción como historia.
- *
- * Publica la tarjeta del link **antes** de armar la imagen, y no en paralelo:
- * el código escaneable lleva a `/cancion/<id>`, y quien lo escanea llega en
- * segundos. Una tarjeta que se publica después de que alguien llegó no sirve
- * de nada. Es el mismo orden que `compartirCancion`.
- */
+/** Comparte una tarjeta propia; los destinos disponibles los determina iOS o Android. */
 export function compartirHistoria(track: PlaylistTrack, tinte: string | null = null) {
+  const ownerId = getSession().user?.id ?? null
+  if (!ES_WEB && (historiaEnCurso() || AppState.currentState !== 'active' || !cuentaVigente(ownerId))) return false
   void publicarCancion(track).catch(() => {})
   if (ES_WEB) {
     void dibujarYDescargar(track, tinte)
-    return
+    return true
   }
-  store.set({ track, tinte })
+  store.set({ id: store.get().id + 1, ownerId, track: { ...track }, tinte })
+  return true
 }
 
 /* ── Nativo: la vista fuera de pantalla y su captura ──────────────────────── */
@@ -103,56 +107,74 @@ export function compartirHistoria(track: PlaylistTrack, tinte: string | null = n
  * espera la carátula, captura y abre la hoja del sistema.
  */
 export function CompartirHistoria() {
-  const { track, tinte } = useStore(store, (s) => s)
+  const { id, ownerId, track, tinte } = useStore(store, (s) => s)
+  const userId = useUser()?.id
   const ref = useRef<View>(null)
-  /*
-   * La captura no puede correr antes de que la carátula haya cargado: saldría
-   * la tarjeta con el recuadro vacío. Se guarda **de qué canción** cargó la
-   * tapa: «todavía no está» es «lo cargado no es de esta», sin ningún efecto
-   * que resetee — mismo criterio que las URLs firmadas del motor.
-   */
-  const [tapaDe, setTapaDe] = useState<string | null>(null)
+  const procesando = useRef<number | null>(null)
+  // Una tapa nueva de la misma canción también debe esperar su propia carga.
+  const [tapaDe, setTapaDe] = useState<number | null>(null)
   const datos = track ? datosDeTarjeta(track, tinte) : null
-  const tapaLista = track !== null && tapaDe === track.id
+  const tapaLista = track !== null && tapaDe === id
 
   useEffect(() => {
-    if (!track || (datos?.arte && !tapaLista)) return
-    /* Un respiro para que la vista termine de acomodarse antes de la foto. */
+    if (!track) return
+    const cancelarPendiente = () => {
+      if (procesando.current !== id && store.get().id === id) store.set({ track: null, tinte: null })
+    }
+    if (ownerId !== userId || !cuentaVigente(ownerId)) { cancelarPendiente(); return }
+    const sub = AppState.addEventListener('change', estado => { if (estado !== 'active') cancelarPendiente() })
+    const limite = setTimeout(() => {
+      if (procesando.current !== id && store.get().id === id) {
+        cancelarPendiente()
+        avisar('No se pudo preparar la imagen. Intentá de nuevo.', true)
+      }
+    }, 12000)
+    return () => { sub.remove(); clearTimeout(limite); cancelarPendiente() }
+  }, [id, ownerId, track, userId])
+
+  useEffect(() => {
+    if (!track || ownerId !== userId || (datos?.arte && !tapaLista)) return
+    let vigente = true
     const t = setTimeout(() => {
+      if (procesando.current === id) return
+      procesando.current = id
       void (async () => {
+        let uri: string | undefined
         try {
-          const uri = await captureRef(ref, { format: 'png', quality: 1, result: 'tmpfile' })
           if (!(await Sharing.isAvailableAsync())) {
             avisar('Este aparato no deja compartir imágenes.')
             return
           }
+          if (!vigente || AppState.currentState !== 'active' || !cuentaVigente(ownerId)) return
+          uri = await captureRef(ref, { format: 'png', quality: 1, result: 'tmpfile' })
+          if (!vigente || AppState.currentState !== 'active' || !cuentaVigente(ownerId)) return
           await Sharing.shareAsync(uri, {
-            mimeType: 'image/png',
+            mimeType: 'image/png', UTI: 'public.png',
             dialogTitle: `${track.title} — ${track.artist}`,
           })
         } catch (e) {
-          /* Cerrar la hoja sin elegir nada también rechaza: eso no es un error. */
           const texto = e instanceof Error ? e.message : ''
-          if (!/cancel/i.test(texto)) avisar('No se pudo armar la historia.', true)
+          if (vigente && !/cancel/i.test(texto)) avisar('No se pudo armar la historia.', true)
         } finally {
-          store.set({ track: null, tinte: null })
+          if (uri) releaseCapture(uri)
+          if (store.get().id === id) store.set({ track: null, tinte: null })
+          if (procesando.current === id) procesando.current = null
         }
       })()
     }, 80)
-    return () => clearTimeout(t)
-  }, [track, datos?.arte, tapaLista])
+    return () => { vigente = false; clearTimeout(t) }
+  }, [id, ownerId, track, datos?.arte, tapaLista, userId])
 
-  if (!track || !datos) return null
+  if (!track || !datos || ownerId !== userId) return null
 
   return (
     <View
       ref={ref}
       collapsable={false}
-      /* Fuera de la pantalla, no invisible: con `opacity: 0` u `display: none`
-         la captura sale negra en iOS. */
+      /* Sólo se captura esta tarjeta; nunca la pantalla, el aviso ni los chats. */
       style={{ position: 'absolute', left: -ANCHO * 2, top: 0 }}
     >
-      <TarjetaHistoria datos={datos} onArteListo={() => setTapaDe(track.id)} />
+      <TarjetaHistoria key={id} datos={datos} onArteListo={() => setTapaDe(id)} />
     </View>
   )
 }

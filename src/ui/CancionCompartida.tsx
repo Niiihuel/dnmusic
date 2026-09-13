@@ -34,7 +34,7 @@ export function CancionCompartida({ song }: { song: SharedSong }) {
     <View className="flex-row items-center gap-2.5">
       <Pressable {...estadoControlWeb('none')} accessibilityRole="button"
         accessibilityLabel={`${playing ? 'Pausar' : 'Reproducir'} ${song.title}, ${song.artist}`}
-        onPress={reproducir} className="min-w-0 flex-1 flex-row items-center gap-2.5 active:opacity-80">
+        onPress={reproducir} onLongPress={Platform.OS === 'ios' ? () => {} : undefined} className="min-w-0 flex-1 flex-row items-center gap-2.5 active:opacity-80">
         {art ? <Image source={{ uri: art }} className="h-11 w-11 rounded-lg bg-card" /> :
           <View className="h-11 w-11 items-center justify-center rounded-lg bg-card">
             <IconMusic size={17} color={ICON_COLOR.muted} />
@@ -51,6 +51,7 @@ export function CancionCompartida({ song }: { song: SharedSong }) {
     </View>
     <View className="min-h-11 flex-row items-center justify-between gap-2">
       {sounding ? <Pressable {...estadoControlWeb('none')} accessibilityRole="button" onPress={() => router.push('/playing')}
+        onLongPress={Platform.OS === 'ios' ? () => {} : undefined}
         className="min-h-11 min-w-0 flex-1 justify-center active:opacity-70">
         <Text className="text-foreground text-caption1" numberOfLines={1}>Abrir reproductor</Text>
       </Pressable> : <Text className="min-w-0 flex-1 text-muted-foreground text-caption1">Canción completa</Text>}

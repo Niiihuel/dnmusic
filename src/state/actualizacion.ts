@@ -6,8 +6,8 @@ import { createStore, useStore } from './store'
  *
  * Vive en un store por lo mismo que el aviso de abajo: el estado lo publica el
  * proceso principal de Electron, y lo miran **dos** lugares que no se conocen
- * entre sí —la píldora de «hay una nueva» que dibuja el layout y la pantalla de
- * Novedades—. Suscribirse dos veces al mismo puente daría dos verdades y una de
+ * entre sí —la píldora de «hay una nueva» que dibuja el layout y los ajustes de
+ * Actualizaciones—. Suscribirse dos veces al mismo puente daría dos verdades y una de
  * ellas siempre estaría un evento atrás.
  *
  * En la web y en el teléfono el puente no existe: `hayActualizador` es falso,

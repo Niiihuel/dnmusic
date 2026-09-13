@@ -78,3 +78,18 @@ test('acciones de Ajustes nativas no ejecutan ocupado; borrar exige elección en
   alerts[0][2][1].onPress()
   assert.deepEqual(calls, ['borrar'])
 })
+
+test('Google conserva su logo en las filas conectada y de vinculación con tamaño nativo explícito', () => {
+  const h = harness('src/ui/Ajustes.ios.tsx'), icono = { type: 'GoogleIcon', props: { size: 17 } }
+  const dato = h.render('FilaDato', { rotulo: 'Google conectado', valor: 'correo@example.test', icono }).find(n => n.type === 'LabeledContent')
+  const label = nodes(dato.props.label)
+  assert.ok(label.some(n => n.type === 'Text' && n.props.children === 'Google conectado'))
+  const puente = label.find(n => typeof n.type === 'function' && n.props.children === icono)
+  assert.ok(puente, 'FilaDato entrega el logo al puente en vez de descartarlo')
+  const ui = nodes(puente.type(puente.props))
+  assert.deepEqual(mod(ui.find(n => n.type === 'HStack'), 'frame'), [{ width: 24, height: 24 }])
+  assert.equal(ui.find(n => n.type === 'View').props.collapsable, false)
+  assert.ok(ui.some(n => n.type === 'GoogleIcon'))
+  const accion = h.render('FilaAccion', { rotulo: 'Conectar con Google', icono })
+  assert.ok(accion.some(n => typeof n.type === 'function' && n.props.children === icono))
+})

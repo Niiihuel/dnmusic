@@ -9,24 +9,7 @@ import { refrescarPolitica } from '../state/politicaActualizacion'
 
 const NOMBRES: Record<PlataformaActualizacion, string> = { windows: 'Windows', linux: 'Linux', macos: 'macOS', ios: 'iOS', android: 'Android', web: 'Web / PWA' }
 
-/**
- * La administración de actualizaciones, con la anatomía de Ajustes del Sistema.
- *
- * Antes era un formulario: un título propio arriba, una fila de chips para
- * elegir plataforma, campos altos con la etiqueta **encima y en versalitas** y
- * botones anchos gritando «RECARGAR POLÍTICAS». Eso viene del formulario de
- * acceso, donde hay una sola acción y ocupa el ancho porque no compite con
- * nada; adentro de Configuración choca con todo lo demás —el resto de las
- * categorías son listas agrupadas— y con el referente, que no usa versalitas
- * en ningún control.
- *
- * Acá es lo mismo que cualquier otra categoría: bloques redondeados de filas,
- * cada una con su rótulo a la izquierda y su valor a la derecha, las acciones
- * como filas del bloque al que pertenecen, y lo que hay que explicar al pie del
- * bloque en vez de suelto entre los campos. El título ya lo pone la pantalla
- * —la barra en la compu, el título del bloque en el teléfono—, así que el
- * encabezado propio se fue: repetirlo era decir «Actualizaciones» dos veces.
- */
+/** Edición administrativa de compatibilidad, separada del actualizador de usuario. */
 export function AdministrarActualizaciones() {
   const admin = useIsAccessAdmin()
   const user = useAuthUser()
@@ -71,7 +54,7 @@ function PanelPoliticas() {
       : 'Sin publicar'
   return <>
     <GrupoAjustes
-      titulo="Actualizaciones por plataforma"
+      titulo="Compatibilidad por plataforma"
       pie="Vos decidís desde qué versión es obligatorio actualizar. Publicar una política no crea ni distribuye una versión."
       error={error}
     >

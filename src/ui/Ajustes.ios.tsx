@@ -38,7 +38,7 @@ function Fila({ children }: { children: ReactNode }) {
 function ImagenExistente({ children, size = 24 }: { children: ReactNode; size?: number }) {
   if (!children) return null
   // Sólo gráficos con dimensiones fijas cruzan el puente; la fila y su alto son SwiftUI.
-  return <RNHostView matchContents><View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>{children}</View></RNHostView>
+  return <HStack modifiers={[frame({ width: size, height: size })]}><RNHostView matchContents><View collapsable={false} style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>{children}</View></RNHostView></HStack>
 }
 function Rotulo({ rotulo, detalle }: { rotulo: string; detalle?: string }) {
   return <VStack alignment="leading" spacing={3}>
@@ -59,8 +59,9 @@ export function FilaAjuste({ rotulo, detalle, valor, vacio = 'Sin poner', icono,
     </HStack>
   </Button></Fila>
 }
-export function FilaDato({ rotulo, valor }: ComponentProps<typeof Shared.FilaDato>) {
-  return <Fila><LabeledContent label={rotulo} modifiers={fondo()}><Text modifiers={[foregroundStyle(SECUNDARIO)]}>{valor}</Text></LabeledContent></Fila>
+export function FilaDato({ rotulo, valor, icono }: ComponentProps<typeof Shared.FilaDato>) {
+  const label = icono ? <HStack spacing={10}><ImagenExistente>{icono}</ImagenExistente><Text modifiers={[foregroundStyle(TEXTO)]}>{rotulo}</Text></HStack> : rotulo
+  return <Fila><LabeledContent label={label} modifiers={fondo()}><Text modifiers={[foregroundStyle(SECUNDARIO)]}>{valor}</Text></LabeledContent></Fila>
 }
 export function FilaTexto({ rotulo, valor, onCambiar, marcador, editable = true, autoCapitalize = 'none', autoCorrect = false }: ComponentProps<typeof Shared.FilaTexto>) {
   const texto = useNativeState(valor)
@@ -70,10 +71,10 @@ export function FilaTexto({ rotulo, valor, onCambiar, marcador, editable = true,
       modifiers={[disabled(!editable), accessibilityLabel(rotulo), autocorrectionDisabled(!autoCorrect), textInputAutocapitalization(autoCapitalize === 'none' ? 'never' : autoCapitalize)]} />
   </LabeledContent></Fila>
 }
-export function FilaAccion({ rotulo, onPress, destacada, disabled: apagada, busy }: ComponentProps<typeof Shared.FilaAccion>) {
+export function FilaAccion({ rotulo, onPress, icono, destacada, disabled: apagada, busy }: ComponentProps<typeof Shared.FilaAccion>) {
   const activa = !apagada && !busy
   return <Fila><Button onPress={activa ? onPress : undefined} modifiers={[...fondo(), disabled(!activa), buttonStyle('plain')]}>
-    <HStack><Text modifiers={[foregroundStyle(activa ? TEXTO : SECUNDARIO), font({ textStyle: 'body', weight: destacada ? 'semibold' : 'regular' })]}>{rotulo}</Text><Spacer />{busy ? <ProgressView /> : null}</HStack>
+    <HStack spacing={10}><ImagenExistente>{icono}</ImagenExistente><Text modifiers={[foregroundStyle(activa ? TEXTO : SECUNDARIO), font({ textStyle: 'body', weight: destacada ? 'semibold' : 'regular' })]}>{rotulo}</Text><Spacer />{busy ? <ProgressView /> : null}</HStack>
   </Button></Fila>
 }
 export function FilaCuenta({ nombre, detalle, onPress, avatar }: ComponentProps<typeof Shared.FilaCuenta>) {

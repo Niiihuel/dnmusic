@@ -46,7 +46,7 @@ function describir(estado: EstadoActualizacion): { titulo: string; detalle: stri
       return { titulo: 'Actualización manual', detalle: `En esta instalación ${estado.motivo}.` }
     default:
       return {
-        titulo: 'Tu app, al día',
+        titulo: 'Buscar una versión nueva',
         detalle: estado.version
           ? `Versión instalada · ${estado.version}`
           : 'Buscá si hay una versión nueva disponible.',
