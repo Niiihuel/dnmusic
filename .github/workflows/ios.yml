@@ -1,0 +1,147 @@
+name: iOS — compilar
+run-name: iOS · ${{ inputs.profile }} · ${{ github.run_number }}
+
+# Compila en el Mac de GitHub con EAS local, sin consumir builds de EAS Cloud.
+# Instrucciones y secretos: docs/BUILD-IOS-GITHUB.md
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'production: TestFlight/App Store; preview: iPhones registrados'
+        type: choice
+        options: [production, preview]
+        default: production
+        required: true
+      testflight:
+        description: 'Subir a TestFlight al terminar (sólo production)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-build-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  CI: '1'
+  EXPO_NO_DOTENV: '1'
+
+jobs:
+  validar:
+    name: Comprobar configuración
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Probar validación de credenciales
+        run: node --test tests/ios-ci.test.mjs
+      - name: Validar secretos antes de gastar minutos de macOS
+        env:
+          IOS_PROFILE: ${{ inputs.profile }}
+          SUBMIT_TESTFLIGHT: ${{ inputs.testflight }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_KEY_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+        run: node scripts/ci/ios.mjs check
+
+  compilar:
+    name: Compilar IPA en macOS
+    needs: validar
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      # Los certificados y capacidades se preparan una vez con eas credentials.
+      EXPO_NO_CAPABILITY_SYNC: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
+        with:
+          eas-version: '24.3.0'
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Verificar herramientas nativas
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          pod --version
+          fastlane --version
+      - name: Instalar dependencias y parches nativos
+        run: npm ci
+      - name: Compilar en este runner
+        env:
+          IOS_PROFILE: ${{ inputs.profile }}
+        run: |
+          eas build --platform ios --profile "$IOS_PROFILE" --local \
+            --non-interactive --freeze-credentials --output "$RUNNER_TEMP/dnmusic.ipa"
+          test -s "$RUNNER_TEMP/dnmusic.ipa"
+      - name: Guardar IPA descargable
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dnmusic-ios-${{ inputs.profile }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/dnmusic.ipa
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Resumen
+        env:
+          IOS_PROFILE: ${{ inputs.profile }}
+        run: |
+          echo "### IPA generado" >> "$GITHUB_STEP_SUMMARY"
+          echo "Perfil: $IOS_PROFILE. Descargalo desde Artifacts de esta ejecución." >> "$GITHUB_STEP_SUMMARY"
+          echo "La compilación corrió en GitHub macOS con EAS local." >> "$GITHUB_STEP_SUMMARY"
+          echo "Un IPA production requiere TestFlight/App Store; preview sólo funciona en los iPhones del perfil de firma." >> "$GITHUB_STEP_SUMMARY"
+
+  testflight:
+    name: Enviar a TestFlight
+    needs: compilar
+    if: ${{ inputs.testflight && inputs.profile == 'production' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
+        with:
+          eas-version: '24.3.0'
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Instalar dependencias
+        run: npm ci
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dnmusic-ios-${{ inputs.profile }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/ipa
+      - name: Preparar autenticación de App Store Connect
+        env:
+          IOS_PROFILE: ${{ inputs.profile }}
+          SUBMIT_TESTFLIGHT: 'true'
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_KEY_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+        run: node scripts/ci/ios.mjs prepare-submit
+      - name: Subir el IPA con EAS Submit
+        run: eas submit --platform ios --profile github --path "$RUNNER_TEMP/ipa/dnmusic.ipa" --non-interactive --wait
+      - name: Borrar clave temporal
+        if: ${{ always() }}
+        run: rm -rf "$RUNNER_TEMP/dnmusic-apple"
