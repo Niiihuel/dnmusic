@@ -21,6 +21,13 @@ files:
 extraResources:
   - from: web
     to: app
+  # Recursos propios de la ventana: no reutilizar el PNG opaco de la PWA.
+  - from: build/icon.png
+    to: icons/icon.png
+  - from: build/icon.ico
+    to: icons/icon.ico
+  - from: build/logo.png
+    to: icons/logo.png
 
 # El esquema propio, para que «Abrir en la app» desde la web abra ésta.
 # Lo declara el instalador —NSIS lo escribe en el registro de Windows, y en
@@ -54,6 +61,8 @@ win:
   artifactName: dnmusic-${version}-instalador.${ext}
 
 nsis:
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
   # Instalador con pasos, no de un solo clic: deja elegir la carpeta y no
   # sorprende con una app que aparece instalada sin haber preguntado nada.
   oneClick: false
@@ -63,6 +72,14 @@ nsis:
   shortcutName: dnmusic
   # Junto al instalador se publica un .blockmap; con él, la actualización baja
   # solo los bloques que cambiaron en vez de los ~100 MB enteros.
+  #
+  # Un pedazo de script propio dentro del instalador: ahí se vacía el comentario
+  # del acceso directo, que si no aparece como globito al pasar el mouse por el
+  # ícono. Va acá afuera y no en `build/` —que es donde electron-builder lo
+  # buscaría solo— porque esa carpeta es salida: la llena `traer-web.mjs` con
+  # los íconos y `.gitignore` la ignora entera, así que el archivo no llegaría
+  # nunca al CI y el instalador publicado saldría con el globito puesto.
+  include: installer.nsh
 
 linux:
   icon: build/icon.png

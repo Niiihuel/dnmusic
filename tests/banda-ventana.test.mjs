@@ -58,7 +58,7 @@ test('el cromo va encima del layout, no adentro: nadie reserva una fila arriba',
 })
 
 test('se arrastra desde el encabezado lateral y sus botones se salen de la zona', () => {
-  const cabecera = readFileSync('src/ui/CabeceraLateral.tsx', 'utf8')
+  const cabecera = readFileSync('src/ui/CabeceraLateral.shared.tsx', 'utf8')
   assert.match(cabecera, /CabeceraLateral[\s\S]*?\$\{ARRASTRE_VENTANA\}/)
   assert.match(cabecera, /BotonLateral[\s\S]*?\$\{SIN_ARRASTRE\}/)
   const css = readFileSync('global.css', 'utf8')

@@ -127,7 +127,7 @@ export default function BuscarParaPerfil() {
       <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
         <View className="flex-row items-center gap-3 px-3 py-1">
           <BotonVolver onPress={() => volver(router, '/profile/editar')} />
-          <Text className="text-foreground text-[15px] font-semibold">
+          <Text className="text-foreground text-subheadline font-semibold">
             Agregar música
           </Text>
         </View>
@@ -198,14 +198,14 @@ export default function BuscarParaPerfil() {
                   style={{ paddingBottom: piso + teclado }}
                 >
                   <IconMusic size={28} color={ICON_COLOR.muted} />
-                  <Text className="text-foreground text-center text-[17px] font-semibold">
+                  <Text className="text-foreground text-center text-body font-semibold">
                     Buscá algo para fijar
                   </Text>
                   {/* El botón de «recortar un fragmento» que estaba acá se fue
                       con el «+»: ahora tocar cualquier resultado lleva
                       exactamente ahí, así que era una segunda puerta al mismo
                       lugar puesta donde todavía no hay nada que elegir. */}
-                  <Text className="text-muted-foreground text-center text-[13px] leading-5">
+                  <Text className="text-muted-foreground text-center text-footnote leading-5">
                     Tocá un resultado y elegís qué parte va en tu perfil.
                   </Text>
                 </View>

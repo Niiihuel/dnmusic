@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { ActivityIndicator, Pressable, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { ICON_COLOR } from './icons'
 import { Glass } from './Glass'
+import { AccionSocial } from './Social'
 
 export type BarraCambiosPerfilProps = {
   visible: boolean
@@ -52,31 +52,8 @@ export function BarraCambiosPerfil({
               {ocupado ? 'Guardando tus cambios…' : 'Tenés cambios sin guardar'}
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 }}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Restablecer cambios del perfil"
-                accessibilityState={{ disabled: ocupado }}
-                disabled={ocupado}
-                onPress={onRestablecer}
-                className="min-h-11 items-center justify-center rounded-xl px-4 active:opacity-70"
-                style={{ minHeight: 44, flexGrow: compacto ? 1 : 0 }}
-              >
-                <Text style={{ color: ocupado ? '#aaa' : '#fff', fontSize: 15 }}>Restablecer</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={ocupado ? 'Guardando cambios' : 'Guardar cambios'}
-                accessibilityState={{ disabled: !habilitado, busy: ocupado }}
-                disabled={!habilitado}
-                onPress={onGuardar}
-                className="min-h-11 flex-row items-center justify-center gap-2 rounded-xl px-4 active:opacity-80"
-                style={{ minHeight: 44, flexGrow: compacto ? 1 : 0, backgroundColor: habilitado ? '#fff' : '#393939' }}
-              >
-                {ocupado ? <ActivityIndicator size="small" color={ICON_COLOR.foreground} /> : null}
-                <Text style={{ color: habilitado ? '#121212' : '#bbb', fontSize: 15, fontWeight: '600' }}>
-                  {ocupado ? 'Guardando…' : 'Guardar cambios'}
-                </Text>
-              </Pressable>
+              <View style={{ flex: 1 }}><AccionSocial label="Restablecer" secundaria disabled={ocupado} onPress={onRestablecer} /></View>
+              <View style={{ flex: 1 }}><AccionSocial label={ocupado ? 'Guardando…' : 'Guardar cambios'} busy={ocupado} disabled={!habilitado} onPress={onGuardar} /></View>
             </View>
           </View>
           {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ color: '#fff', fontSize: 14, lineHeight: 20 }}>{error}</Text> : null}

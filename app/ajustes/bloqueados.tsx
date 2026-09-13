@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -9,6 +10,7 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { ListaAgrupada } from '../../src/ui/ListaAgrupada'
 import { Panel } from '../../src/ui/Panel'
 import { Avatar } from '../../src/ui/Avatar'
 import { Vacio } from '../../src/ui/Vacio'
@@ -67,6 +69,7 @@ export default function Bloqueados() {
   }, [])
 
   async function desbloquear(cuenta: Contact) {
+    if (ocupado) return
     setOcupado(cuenta.id)
     try {
       await unblockUser(cuenta.id)
@@ -89,10 +92,15 @@ export default function Bloqueados() {
       <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
         <View className="flex-row items-center gap-3 px-3 py-1">
           <BotonVolver onPress={() => volver(router, '/ajustes')} />
-          <Text className="text-foreground text-[15px] font-semibold">Bloqueados</Text>
+          <Text className="text-foreground text-subheadline font-semibold">Bloqueados</Text>
         </View>
 
-        <Panel className="flex-1">
+        {Platform.OS === 'ios' ? <ListaAgrupada label="Cuentas bloqueadas" piso={piso} secciones={[{
+          id: 'bloqueados', pie: bloqueados?.length === 0 ? 'Las cuentas que bloquees desde su perfil van a aparecer acá.' : 'Tocá una cuenta para desbloquearla.',
+          filas: bloqueados === undefined ? [{ tipo: 'accion', id: 'carga', rotulo: 'Cargando cuentas', busy: true, onPress: () => {} }]
+            : !bloqueados.length ? [{ tipo: 'dato', id: 'vacio', rotulo: 'No bloqueaste a nadie', valor: '' }]
+            : bloqueados.map(cuenta => ({ tipo: 'accion', id: cuenta.id, rotulo: contactTitle(cuenta), detalle: `@${cuenta.username}`, valor: 'Desbloquear', disabled: ocupado !== null, busy: ocupado === cuenta.id, onPress: () => { void desbloquear(cuenta) } })),
+        }]} /> : <Panel className="flex-1">
           <ScrollView
             contentContainerClassName={`items-center ${suelto ? 'px-3 pt-3' : 'p-5'}`}
             contentContainerStyle={{ paddingBottom: piso }}
@@ -120,13 +128,13 @@ export default function Bloqueados() {
                       >
                         <View className="min-w-0 flex-1 gap-0.5">
                           <Text
-                            className="text-foreground text-[15px] font-semibold"
+                            className="text-foreground text-subheadline font-semibold"
                             numberOfLines={1}
                           >
                             {contactTitle(cuenta)}
                           </Text>
                           {cuenta.displayName?.trim() ? (
-                            <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+                            <Text className="text-muted-foreground text-caption2" numberOfLines={1}>
                               @{cuenta.username}
                             </Text>
                           ) : null}
@@ -141,7 +149,7 @@ export default function Bloqueados() {
                           {ocupado === cuenta.id ? (
                             <ActivityIndicator size="small" color={ICON_COLOR.muted} />
                           ) : (
-                            <Text className="text-foreground text-xs font-semibold">
+                            <Text className="text-foreground text-caption1 font-semibold">
                               Desbloquear
                             </Text>
                           )}
@@ -153,7 +161,7 @@ export default function Bloqueados() {
               )}
             </View>
           </ScrollView>
-        </Panel>
+        </Panel>}
       </View>
     </SafeAreaView>
   )

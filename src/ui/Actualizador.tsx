@@ -99,11 +99,11 @@ export function Actualizador() {
         <View className="min-w-0 flex-1 gap-1">
           <Text
             accessibilityLiveRegion="polite"
-            className="text-foreground text-[15px] font-semibold"
+            className="text-foreground text-subheadline font-semibold"
           >
             {titulo}
           </Text>
-          <Text className="text-muted-foreground text-[12px] leading-5">{detalle}</Text>
+          <Text className="text-muted-foreground text-caption1 leading-5">{detalle}</Text>
         </View>
       </View>
       {estado.fase === 'bajando' ? (
@@ -118,7 +118,7 @@ export function Actualizador() {
           >
             <View className="h-full rounded-full bg-primary" style={{ width: `${porcentaje}%` }} />
           </View>
-          <Text className="text-right text-muted-foreground text-[11px] tabular-nums">
+          <Text className="text-right text-muted-foreground text-caption2 tabular-nums">
             {porcentaje}%
           </Text>
         </View>
@@ -131,7 +131,7 @@ export function Actualizador() {
             className={`min-h-11 items-center justify-center rounded-full px-4 active:opacity-80 ${lista ? 'bg-primary' : 'bg-muted'}`}
           >
             <Text
-              className={`text-[13px] font-semibold ${lista ? 'text-primary-foreground' : 'text-foreground'}`}
+              className={`text-footnote font-semibold ${lista ? 'text-primary-foreground' : 'text-foreground'}`}
             >
               {rotulo}
             </Text>
@@ -144,7 +144,7 @@ export function Actualizador() {
             onPress={() => setNotasAbiertas((v) => !v)}
             className="min-h-11 items-center justify-center rounded-full px-3 active:bg-muted"
           >
-            <Text className="text-muted-foreground text-[13px]">
+            <Text className="text-muted-foreground text-footnote">
               {notasAbiertas ? 'Ocultar cambios' : 'Qué trae esta versión'}
             </Text>
           </Pressable>
@@ -153,10 +153,10 @@ export function Actualizador() {
       {notasAbiertas && notas ? (
         <View className="gap-3">
           {notas.titulo ? (
-            <Text className="text-foreground text-[13px] font-semibold">{notas.titulo}</Text>
+            <Text className="text-foreground text-footnote font-semibold">{notas.titulo}</Text>
           ) : null}
           {notas.cambios.map((cambio, i) => (
-            <Text key={i} className="text-muted-foreground text-[13px] leading-5">
+            <Text key={i} className="text-muted-foreground text-footnote leading-5">
               · {cambio}
             </Text>
           ))}

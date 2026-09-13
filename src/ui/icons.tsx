@@ -1,82 +1,4 @@
-import {
-  Album,
-  AlignJustify,
-  Camera,
-  Heading,
-  LayoutGrid,
-  Minus,
-  MoveDiagonal2,
-  Palette,
-  Quote,
-  SeparatorHorizontal,
-  Type,
-  ArrowLeft,
-  ArrowRight,
-  AtSign,
-  AudioWaveform,
-  Ban,
-  Check,
-  CircleCheck,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  Clipboard,
-  Clock,
-  Disc3,
-  Download,
-  HardDrive,
-  Heart,
-  SlidersHorizontal,
-  Eye,
-  Focus,
-  RotateCcw,
-  RotateCw,
-  EyeOff,
-  ExternalLink,
-  Globe,
-  Link2,
-  House,
-  Inbox,
-  Languages,
-  ListMusic,
-  LockKeyhole,
-  LogOut,
-  MessageSquareText,
-  MessageCirclePlus,
-  Scissors,
-  MicVocal,
-  Ellipsis,
-  ImagePlus,
-  MonitorSmartphone,
-  Music,
-  Pause,
-  Pencil,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-  Play,
-  Plus,
-  ListPlus,
-  Repeat,
-  Repeat1,
-  Search,
-  Send,
-  Share2,
-  Shuffle,
-  Trash2,
-  UsersRound,
-  Volume2,
-  VolumeX,
-  Wifi,
-  WifiOff,
-  SkipBack,
-  SkipForward,
-  Sparkles,
-  UserRound,
-  X,
-} from 'lucide-react-native'
+import { Album, AlignJustify, Camera, Heading, LayoutGrid, Minus, MoveDiagonal2, Palette, SeparatorHorizontal, Type, AtSign, AudioWaveform, Ban, Check, CircleCheck, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, Clock, Disc3, Download, HardDrive, Heart, SlidersHorizontal, Eye, Focus, RotateCcw, RotateCw, EyeOff, ExternalLink, Globe, House, Inbox, Languages, ListMusic, LockKeyhole, LogOut, MessageSquareText, MessageCirclePlus, MicVocal, Ellipsis, ImagePlus, MonitorSmartphone, Music, Pause, Pencil, PanelLeftClose, PanelRightClose, PanelRightOpen, Play, Plus, ListPlus, Repeat, Repeat1, Search, Send, Share2, Shuffle, Trash2, UsersRound, Volume2, VolumeX, Wifi, WifiOff, SkipBack, SkipForward, Sparkles, UserRound, X } from 'lucide-react-native'
 
 /**
  * Los íconos de la app, en un solo lugar.
@@ -132,10 +54,10 @@ export const IconChevronUp = make(ChevronUp)
 export const IconChevronDown = make(ChevronDown)
 export const IconChevronLeft = make(ChevronLeft)
 export const IconChevronRight = make(ChevronRight)
-export const IconBack = make(ArrowLeft)
-export const IconForward = make(ArrowRight)
+export const IconBack = make(ChevronLeft)
+export const IconForward = make(ChevronRight)
 export const IconExternal = make(ExternalLink)
-export const IconLink = make(Link2)
+
 export const IconCopiar = make(Clipboard)
 export const IconWave = make(AudioWaveform)
 export const IconDisc = make(Disc3)
@@ -146,8 +68,7 @@ export const IconHeartFilled = makeFilled(Heart)
 export const IconLyrics = make(MicVocal)
 export const IconMessage = make(MessageSquareText)
 export const IconNewConversation = make(MessageCirclePlus)
-/** Recortar un fragmento de una canción. */
-export const IconScissors = make(Scissors)
+
 export const IconLanguages = make(Languages)
 export const IconLogOut = make(LogOut)
 export const IconPlus = make(Plus)
@@ -198,7 +119,7 @@ export const IconType = make(Type)
 export const IconCamera = make(Camera)
 export const IconEspacio = make(SeparatorHorizontal)
 export const IconAlbum = make(Album)
-export const IconQuote = make(Quote)
+
 export const IconGrilla = make(LayoutGrid)
 export const IconRedimensionar = make(MoveDiagonal2)
 /* Encuadrar: el visor con las esquinas, no una tijera — no se recorta nada. */
@@ -206,7 +127,7 @@ export const IconEncuadre = make(Focus)
 export const IconGirarIzq = make(RotateCcw)
 export const IconGirarDer = make(RotateCw)
 export const IconCollapseLeft = make(PanelLeftClose)
-export const IconExpandLeft = make(PanelLeftOpen)
+
 export const IconCollapseRight = make(PanelRightClose)
 export const IconExpandRight = make(PanelRightOpen)
 

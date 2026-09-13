@@ -100,7 +100,7 @@ test('una cuenta sin relación conserva el flujo de solicitud, sin enviar conten
 
 test('visitar un perfil desde resultados y volver conserva texto, canción y selector sin enviar', async () => {
   const f = fixture()
-  f.get(f.render(), 'accessibilityLabel', 'Cambiar destinatario').onPress()
+  f.get(f.render(), 'label', 'Cambiar destinatario').onPress()
   f.render()
   await f.loadResults()
   const list = f.render().find(n => typeof n.props?.renderItem === 'function').props

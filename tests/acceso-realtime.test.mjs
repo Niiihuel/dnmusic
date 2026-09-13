@@ -19,7 +19,7 @@ function fixture(service) {
         subscribe(fn) { this.status = fn; return this },
         track: async data => channel.tracked.push(data),
         presenceState: () => ({ owner: [{ nombre: 'PC' }] }),
-        send: async data => channel.sent.push(data),
+        send: async data => { channel.sent.push(data); return 'ok' },
       }
       channels.push(channel); return channel
     },
@@ -30,6 +30,7 @@ function fixture(service) {
   }).outputText
   new Function('exports', 'require', code)(exports, id => {
     if (id === '../lib/supabase') return { getSupabase: () => client }
+    if (id === './lecturaViva') return { LATIDO_ESCUCHA_MS:20000, VIGENCIA_ESCUCHA_MS:65000 }
     if (id === '../lib/dispositivo') return { nombreDispositivo: () => 'PC' }
     if (id === '../models/message') return { messageFromRow: row => row }
     throw Error(`Unexpected dependency ${id}`)
@@ -67,7 +68,7 @@ test('Escucha privada conserva entrega dirigida y cierra el canal al desmontar',
   const delivery = c.events.find(e => e.type === 'broadcast').fn
   delivery({ payload: { destino: 'other' } }); assert.equal(taken, 0)
   delivery({ payload: { destino: 'device' } }); assert.equal(taken, 1)
-  sub.mandarA('other'); assert.deepEqual(c.sent[0].payload, { destino: 'other' })
+  await sub.mandarA('other'); assert.equal(c.sent[0].payload.destino, 'other'); assert.equal(typeof c.sent[0].payload.requestId, 'string')
   sub.desuscribir(); await tick(); await tick(); assert.deepEqual(f.removed, [c])
   delivery({ payload: { destino: 'device' } }); assert.equal(taken, 1)
 })

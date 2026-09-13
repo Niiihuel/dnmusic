@@ -1,5 +1,7 @@
+import { BotonSuperficie } from './BotonSuperficie'
+import { IconButton } from './IconButton'
 import { useEffect, useState } from 'react'
-import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { Image, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { artworkSource, artworkUrlAtSize } from '../lib/artwork'
 import {
@@ -111,7 +113,7 @@ export function ArtistPage({
     return (
       <View className="items-center gap-3 px-8 py-10">
         <IconUser size={22} color={ICON_COLOR.muted} />
-        <Text className="text-muted-foreground text-center text-[13px] leading-5">
+        <Text className="text-muted-foreground text-center text-footnote leading-5">
           No pude traer este artista. Puede que YouTube no lo esté publicando.
         </Text>
       </View>
@@ -179,26 +181,16 @@ export function ArtistPage({
   const meta = artist.subscribers ? `${artist.subscribers} de oyentes` : undefined
   const acciones = (
     <>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={
+      <IconButton label={
           mine && soundingPlay ? 'Pausar' : `Reproducir lo más escuchado de ${artist.name}`
-        }
-        onPress={() => {
+        } symbol={mine && soundingPlay ? 'pause.fill' : 'play.fill'} onPress={() => {
           if (mine) togglePlayback()
           else if (top[0]) onPlaySong(top[0])
-        }}
-        disabled={top.length === 0}
-        className={`h-14 w-14 items-center justify-center rounded-full ${
-          top.length === 0 ? 'bg-muted' : 'bg-primary active:opacity-80'
-        }`}
-      >
-        {mine && soundingPlay ? (
+        }} disabled={top.length === 0} lado={56} size={20} variant="primary" icon={mine && soundingPlay ? (
           <IconPause size={20} color={top.length === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary} />
         ) : (
           <IconPlay size={20} color={top.length === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary} />
-        )}
-      </Pressable>
+        )} />
 
       {menu.length ? <Menu items={menu} label={`Opciones de ${artist.name}`} size={17} /> : null}
     </>
@@ -350,12 +342,12 @@ function Banner({
           style={StyleSheet.absoluteFill}
         />
         <View className="gap-1 px-6 pb-4">
-          <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.4px]">
+          <Text className="text-muted-foreground text-footnote uppercase">
             Artista
           </Text>
           <CollectionTitle>{nombre}</CollectionTitle>
           {meta ? (
-            <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+            <Text className="text-muted-foreground text-footnote" numberOfLines={1}>
               {meta}
             </Text>
           ) : null}
@@ -367,7 +359,7 @@ function Banner({
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <Text className="text-foreground px-6 text-[18px] font-bold">{children}</Text>
+  return <Text className="text-foreground px-6 text-title3 font-bold">{children}</Text>
 }
 
 /**
@@ -415,7 +407,7 @@ function Releases({
 function Tile({ item, lado, onPress }: { item: HomeItem; lado: number; onPress: () => void }) {
   const [over, setOver] = useState(false)
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="button"
       accessibilityLabel={item.title}
       onPress={onPress}
@@ -437,11 +429,11 @@ function Tile({ item, lado, onPress }: { item: HomeItem; lado: number; onPress: 
         )}
       </View>
       <View className="gap-0.5">
-        <Text className="text-foreground text-[13px] font-semibold" numberOfLines={2}>
+        <Text className="text-foreground text-footnote font-semibold" numberOfLines={2}>
           {item.title}
         </Text>
-        {item.year ? <Text className="text-muted-foreground text-[12px]">{item.year}</Text> : null}
+        {item.year ? <Text className="text-muted-foreground text-caption1">{item.year}</Text> : null}
       </View>
-    </Pressable>
+    </BotonSuperficie>
   )
 }

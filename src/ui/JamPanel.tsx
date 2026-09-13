@@ -12,6 +12,9 @@ import { useHojaModal } from './Hoja'
 import { AccionSocial } from './Social'
 import { ICON_COLOR, IconChevronRight, IconUsers, IconShare, IconSliders } from './icons'
 
+/** El alineado de las acciones del estado vacío. Ver el comentario de abajo. */
+const CENTRADA = { alignSelf: 'center' } as const
+
 /** Panel y hoja comparten jerarquía, acciones y estados. Abrir no crea un Jam. */
 export function JamBody({ enHoja = false }: { enHoja?: boolean }) {
   const router = useRouter()
@@ -46,9 +49,19 @@ export function JamBody({ enHoja = false }: { enHoja?: boolean }) {
         <Text style={{ fontSize: escritorio ? 20 : 22 }} className="text-foreground text-center font-semibold">{conexion === 'conectando' ? 'Conectando…' : 'La música, en compañía'}</Text>
         <Text style={{ fontSize: escritorio ? 14 : 15, lineHeight: escritorio ? 20 : 24 }} className="text-muted-foreground text-center">Escuchen lo mismo y armen una cola entre todos, desde sus dispositivos.</Text>
       </View>
-      {conexion === 'conectando' ? <ActivityIndicator color={ICON_COLOR.foreground} /> : <View style={{ gap: escritorio ? 8 : 12 }}>
-        <AccionSocial label="Iniciar un Jam" onPress={() => void iniciar()} busy={creando} compacta />
-        <EntrarConCodigo compacta />
+      {/* Centradas, como el ícono y el texto de arriba.
+          `AccionSocial` va `flex-start` en PC —la regla de docs/DESIGN.md: una
+          acción ocupa su contenido— y acá eso las dejaba pegadas a la
+          izquierda debajo de un bloque centrado, que se leía como un error de
+          maquetado. Centrarlas conserva la regla y las alinea con lo que
+          explican; es lo que hace el `ContentUnavailableView` de iOS.
+
+          El centrado va en **cada** botón y no en el contenedor: `AccionSocial`
+          se pone su propio `alignSelf`, y el del hijo le gana al `alignItems`
+          del padre. */}
+      {conexion === 'conectando' ? <ActivityIndicator color={ICON_COLOR.foreground} /> : <View style={{ gap: escritorio ? 8 : 12 }} className="items-center">
+        <AccionSocial label="Iniciar un Jam" onPress={() => void iniciar()} busy={creando} compacta style={CENTRADA} />
+        <EntrarConCodigo compacta style={CENTRADA} />
       </View>}
     </View>
   </ScrollView>
@@ -65,8 +78,8 @@ export function JamBody({ enHoja = false }: { enHoja?: boolean }) {
             </View>)}
           </View>
           <View className="min-w-0 flex-1 gap-1">
-            <Text className="text-foreground text-[16px] font-semibold" numberOfLines={1}>{host ? `Jam de ${host.displayName?.trim() || host.username}` : 'Tu Jam'}</Text>
-            <Text className="text-muted-foreground text-[13px]">{presentes.length} en línea · {miembros.length} participantes</Text>
+            <Text className="text-foreground text-callout font-semibold" numberOfLines={1}>{host ? `Jam de ${host.displayName?.trim() || host.username}` : 'Tu Jam'}</Text>
+            <Text className="text-muted-foreground text-footnote">{presentes.length} en línea · {miembros.length} participantes</Text>
           </View><IconChevronRight size={16} color={ICON_COLOR.muted} />
         </Pressable>
         <View className="flex-row gap-3">
@@ -75,7 +88,7 @@ export function JamBody({ enHoja = false }: { enHoja?: boolean }) {
         </View>
       </View>
       <View className="gap-3">
-        <Text accessibilityRole="header" className="text-foreground text-[17px] font-semibold">Cola compartida</Text>
+        <Text accessibilityRole="header" className="text-foreground text-body font-semibold">Cola compartida</Text>
         <ColaJam onArrastre={setArrastrando} />
       </View>
     </ScrollView>

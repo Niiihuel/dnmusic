@@ -1,5 +1,6 @@
+import type { FilaCuentaProps } from './FilaCuenta.types'
 import { ActivityIndicator, Pressable, Text, View } from 'react-native'
-import { contactLabel, contactTitle, type ContactResult } from '../services/contacts'
+import { contactLabel, contactTitle } from '../services/contacts'
 import { TECLADO_FISICO } from '../lib/teclado'
 import { Avatar } from './Avatar'
 import { ICON_COLOR, IconCheck, IconPlus } from './icons'
@@ -32,21 +33,7 @@ export function FilaCuenta({
   rotuloAbrir = 'Elegir',
   onSolicitar,
   onAceptar,
-}: {
-  cuenta: ContactResult
-  /** La solicitud de esta cuenta está saliendo: el redondel muestra la espera. */
-  busy?: boolean
-  density?: 'regular' | 'compact'
-  /** Tocar la fila: abrir la conversación, o el flujo de redactar si no hay. */
-  onAbrir: () => void
-  /** Avatar y nombre abren el perfil; la elección queda en una acción hermana. */
-  onVerPerfil?: () => void
-  rotuloAbrir?: 'Elegir' | 'Escribir'
-  /** Sin estos dos, la fila no dibuja botones: es una fila de **elegir** — la
-   *  usa así el redactar, donde la acción es el botón grande de abajo. */
-  onSolicitar?: () => void
-  onAceptar?: () => void
-}) {
+}: FilaCuentaProps) {
   const compacto = density === 'compact' && TECLADO_FISICO
   const accion = compacto ? 32 : 44
   const nombre = contactLabel(cuenta)
@@ -72,7 +59,7 @@ export function FilaCuenta({
           <Text className="text-foreground font-semibold" style={{ fontSize: compacto ? 13 : 14 }} numberOfLines={1}>
             {contactTitle(cuenta)}
           </Text>
-          <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+          <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
             {cuenta.displayName?.trim() ? `@${cuenta.username} · ` : ''}
             {subtitulo}
           </Text>
@@ -109,7 +96,7 @@ export function FilaCuenta({
           style={{ minHeight: 44, minWidth: 44, flexShrink: 0 }}
           className="items-center justify-center rounded-xl bg-muted px-3 active:opacity-80"
         >
-          <Text className="text-foreground text-[15px] font-medium">{rotuloAbrir}</Text>
+          <Text className="text-foreground text-subheadline font-medium">{rotuloAbrir}</Text>
         </Pressable>
       ) : null}
     </View>

@@ -19,6 +19,7 @@ function montar({ os = 'web', width = 1440, guardar = async () => {} } = {}) {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     './CollectionHeader': { CollectionTitle: 'CollectionTitle', useAngosto: () => width < 640 },
     './ScrollArea': { ScrollArea: 'ScrollArea' }, './Hoja': { Hoja: 'Hoja' }, './Social': { AccionSocial: 'AccionSocial', CabeceraSocial: 'CabeceraSocial' },
+    './EntradaTexto': { EntradaTexto: 'TextInput' },
     './Button': { FormError: 'FormError' }, './estadoControl': { estadoControlWeb: mode => ({ dataSet: { dnHover: mode } }) },
     './icons': { ICON_COLOR: {}, IconPencil: 'IconPencil' },
   }

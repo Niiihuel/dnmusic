@@ -71,7 +71,7 @@ test('el control lateral conserva tooltip, foco, callback y 44px en táctil', ()
   for (const fine of [true, false]) {
     let presses = 0
     const onFocus = () => {}
-    const { BotonLateral } = compile(readFileSync('src/ui/CabeceraLateral.tsx', 'utf8'), {
+    const { BotonLateral } = compile(readFileSync('src/ui/CabeceraLateral.shared.tsx', 'utf8'), {
       'react-native': { View: 'View', Text: 'Text', Pressable: 'Pressable' },
       '../lib/teclado': { TECLADO_FISICO: fine },
       './Tooltip': { useConTooltip: label => { assert.equal(label, 'Nueva conversación'); return { gestos: { onFocus } } } },

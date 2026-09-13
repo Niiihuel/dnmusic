@@ -81,9 +81,9 @@ function Opciones({ items, deshabilitado = false }: { items: MenuItem[]; deshabi
       {rapidas.length ? (
         <>
           <ControlGroup>
-            {rapidas.map((item) => (
+            {rapidas.map((item, index) => (
               <Button
-                key={item.label}
+                key={`${index}:${item.label}`}
                 label={item.label}
                 systemImage={item.sfSymbol}
                 onPress={item.disabled ? undefined : item.onPress}
@@ -95,7 +95,7 @@ function Opciones({ items, deshabilitado = false }: { items: MenuItem[]; deshabi
         </>
       ) : null}
       {lista.map((item, index) => (
-        <Fragment key={item.label}>
+        <Fragment key={`${index}:${item.label}`}>
           {llevaCorte(lista, index) ? <Divider /> : null}
           {item.items?.length ? (
             <Menu label={item.label} systemImage={item.sfSymbol} modifiers={[disabled(!!item.disabled)]}>
@@ -137,6 +137,7 @@ function MenuUIKit({
   symbol,
   fullWidth,
   children,
+  disabled: estaDeshabilitado,
 }: {
   items: MenuItem[]
   label: string
@@ -144,6 +145,7 @@ function MenuUIKit({
   symbol?: SFSymbol
   fullWidth: boolean
   children?: ReactNode
+  disabled: boolean
 }) {
   const preparado = useMemo(() => prepararMenuContextual(items), [items])
   const abiertas = useRef(preparado.acciones)
@@ -161,6 +163,7 @@ function MenuUIKit({
         symbol={children ? undefined : symbol}
         symbolSize={size}
         symbolColor={ICON_COLOR.muted}
+        disabled={estaDeshabilitado}
         onOpen={() => {
           abiertas.current = preparado.acciones
         }}
@@ -179,8 +182,10 @@ export function MenuNativo({
   children,
   longPress = false,
   fullWidth = false,
+  disabled: estaDeshabilitado = false,
 }: MenuNativoProps) {
   const [width, setWidth] = useState(0)
+  if (estaDeshabilitado && longPress) return <>{children}</>
   if (children && longPress && fullWidth && HAY_CONTEXTO_COLECCION) {
     return <MenuContextualColeccion items={items}>{children}</MenuContextualColeccion>
   }
@@ -193,7 +198,7 @@ export function MenuNativo({
    */
   if (BotonMenuNativo && !longPress) {
     return (
-      <MenuUIKit items={items} label={label} size={size} symbol={symbol} fullWidth={fullWidth}>
+      <MenuUIKit items={items} label={label} size={size} symbol={symbol} fullWidth={fullWidth} disabled={estaDeshabilitado}>
         {children}
       </MenuUIKit>
     )
@@ -223,7 +228,7 @@ export function MenuNativo({
           </ContextMenu.Items>
         </ContextMenu>
       ) : (
-        <Menu label={trigger} modifiers={[buttonStyle('plain'), accessibilityLabel(label)]}>
+        <Menu label={trigger} modifiers={[buttonStyle('plain'), accessibilityLabel(label), disabled(estaDeshabilitado)]}>
           <Opciones items={items} />
         </Menu>
       )}

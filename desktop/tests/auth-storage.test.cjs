@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { mkdtemp, readFile, writeFile } = require('node:fs/promises')
+const { chmod, mkdtemp, readFile, writeFile } = require('node:fs/promises')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const { AlmacenAuth } = require('../dist/auth-storage.js')
@@ -42,4 +42,51 @@ test('un archivo dañado no bloquea un login nuevo y las claves arbitrarias se r
   await reparado.setItem('sb-proyecto-auth-token', 'nueva')
   assert.equal(await new AlmacenAuth(h.ruta, codec).getItem('sb-proyecto-auth-token'), 'nueva')
   assert.throws(() => reparado.setItem('../archivo sorteado', 'valor'), /Clave/)
+})
+
+test('un guardado que falla deja la sesión nueva en pie, no la anterior', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dnmusic-auth-'))
+  const ruta = join(dir, 'auth.bin')
+  const avisos = []
+  let disco = true
+  const fragil = {
+    codificar: texto => {
+      if (!disco) throw Object.assign(new Error('ocupado'), { code: 'EPERM' })
+      return codec.codificar(texto)
+    },
+    decodificar: codec.decodificar,
+  }
+  const almacen = new AlmacenAuth(ruta, fragil, (motivo) => avisos.push(motivo))
+
+  await almacen.setItem('sb-proyecto-auth-token', 'sesion-vieja')
+  disco = false
+  await assert.rejects(almacen.setItem('sb-proyecto-auth-token', 'sesion-nueva'))
+
+  /* Lo que no se pudo guardar no vuelve para atrás: servir la sesión anterior
+     era lo que hacía que Supabase la renovara con un refresh token gastado y
+     cerrara la sesión a los segundos de entrar. */
+  assert.equal(await almacen.getItem('sb-proyecto-auth-token'), 'sesion-nueva')
+  assert.deepEqual(avisos, ['no se pudo guardar la sesión'])
+})
+
+test('reintenta el reemplazo del archivo mientras el sistema lo tiene ocupado', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dnmusic-auth-'))
+  const ruta = join(dir, 'auth.bin')
+  const avisos = []
+  const almacen = new AlmacenAuth(ruta, codec, (motivo) => avisos.push(motivo))
+
+  /* La carpeta sin permiso de escritura es lo más parecido que hay acá al
+     antivirus de Windows agarrando el archivo justo cuando se lo reemplaza:
+     falla, y un instante después deja de fallar. */
+  await chmod(dir, 0o500)
+  const suelta = setTimeout(() => void chmod(dir, 0o700), 30)
+  try {
+    await almacen.setItem('sb-proyecto-auth-token', 'sesion')
+  } finally {
+    clearTimeout(suelta)
+    await chmod(dir, 0o700)
+  }
+
+  assert.equal(await new AlmacenAuth(ruta, codec).getItem('sb-proyecto-auth-token'), 'sesion')
+  assert.deepEqual(avisos, [])
 })

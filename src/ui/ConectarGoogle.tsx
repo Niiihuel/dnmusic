@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js'
 import { conectarGoogle, cancelarGoogle } from '../services/auth'
 import { getSupabase } from '../lib/supabase'
 import { GoogleIcon } from './GoogleIcon'
+import { mensajeErrorGoogle, textoEsperaGoogle } from './GoogleOAuthFeedback'
 import { FilaAccion, FilaDato, GrupoAjustes } from './Ajustes'
 
 const identidadGoogle = (user: User) => user.identities?.find(i => i.provider === 'google') ?? null
@@ -16,7 +17,7 @@ const identidadGoogle = (user: User) => user.identities?.find(i => i.provider ==
  * que una fila y grita en versalitas. Acá conectar es una fila más, como
  * «Agregar cuenta» en Ajustes del Sistema, y el error va al pie de su bloque.
  */
-export function ConectarGoogle({ user }: { user: User }) {
+export function ConectarGoogle({ user, onConectado }: { user: User; onConectado?: () => void }) {
   const [identidad, setIdentidad] = useState(() => identidadGoogle(user))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,13 +38,14 @@ export function ConectarGoogle({ user }: { user: User }) {
     enCurso.current = true; setBusy(true); setError(null)
     try {
       const result = await conectarGoogle(user.id)
-      if (vigente.current && result?.id === user.id) setIdentidad(identidadGoogle(result))
+      if (vigente.current && result?.id === user.id) {
+        const conectada = identidadGoogle(result)
+        setIdentidad(conectada)
+        if (conectada) onConectado?.()
+      }
     } catch (e) {
       if (vigente.current) {
-        const code = (e as { code?: string })?.code
-        setError(code === 'manual_linking_disabled' ? 'La vinculación con Google todavía no está habilitada. Intentá más tarde.'
-          : code === 'identity_already_exists' ? 'Ese Google ya está conectado a otra cuenta de DMusic. Elegí otro.'
-          : e instanceof Error ? e.message : 'No se pudo conectar Google. Volvé a intentarlo.')
+        setError(mensajeErrorGoogle(e, 'No se pudo conectar Google. Volvé a intentarlo.'))
       }
     } finally {
       enCurso.current = false
@@ -53,12 +55,12 @@ export function ConectarGoogle({ user }: { user: User }) {
   const correo = typeof identidad?.identity_data?.email === 'string' ? identidad.identity_data.email : null
   return <GrupoAjustes
     titulo="Acceso con Google"
-    pie="Conectá Google para entrar a esta misma cuenta. Conservás tu perfil, tus listas y tu acceso por usuario."
+    pie={busy ? textoEsperaGoogle('vinculacion') : 'Conectá Google para volver a entrar a esta misma cuenta. Conservás tu perfil y tus listas.'}
     error={error}
   >
     {identidad
       ? <FilaDato rotulo="Google conectado" valor={correo ?? 'Sí'} icono={<GoogleIcon size={17} />} iconoPlano ultima />
-      : <FilaAccion rotulo="Conectar con Google" icono={<GoogleIcon size={17} />} iconoPlano
+      : <FilaAccion rotulo={busy ? 'Esperando a Google…' : 'Conectar con Google'} icono={<GoogleIcon size={17} />} iconoPlano
           busy={busy} onPress={() => void conectar()} ultima={!busy} />}
     {/* Mientras espera el navegador, salirse es una fila más — no un botón
         flotando debajo del bloque, que era lo único ahí abajo. */}

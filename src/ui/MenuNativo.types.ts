@@ -10,4 +10,5 @@ export type MenuNativoProps = {
   children?: ReactNode
   longPress?: boolean
   fullWidth?: boolean
+  disabled?: boolean
 }

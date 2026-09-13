@@ -266,7 +266,7 @@ export default function SongPicker() {
                       <View className="h-12 w-12 items-center justify-center rounded-full bg-card">
                         <IconMusic size={21} color={ICON_COLOR.muted} />
                       </View>
-                      <Text className="text-muted-foreground text-center text-sm">
+                      <Text className="text-muted-foreground text-center text-subheadline">
                         Empezá escribiendo el nombre de una canción o artista.
                       </Text>
                     </View>
@@ -632,10 +632,10 @@ function SnippetEditor({
         size={wide ? 220 : 184}
       />
       <View className="items-center gap-1">
-        <Text className="text-foreground text-lg font-semibold" numberOfLines={1}>
+        <Text className="text-foreground text-title3 font-semibold" numberOfLines={1}>
           {track.title}
         </Text>
-        <Text className="text-muted-foreground text-sm" numberOfLines={1}>
+        <Text className="text-muted-foreground text-subheadline" numberOfLines={1}>
           {track.artist}
         </Text>
       </View>
@@ -659,11 +659,11 @@ function SnippetEditor({
         playing={playing}
         height={wide ? 72 : 64}
       />
-      <Text className="text-muted-foreground text-center text-[13px] tabular-nums">
+      <Text className="text-muted-foreground text-center text-footnote tabular-nums">
         {fmt(startMs)} – {fmt(startMs + snippetMs)} de {fmt(songMs)}
       </Text>
 
-      <Text className="text-muted-foreground text-center text-[14px] leading-5">
+      <Text className="text-muted-foreground text-center text-subheadline">
         Arrastrá el recorte hasta la parte que querés compartir.
       </Text>
     </ScrollView>
@@ -680,10 +680,10 @@ function SnippetEditor({
             className="h-11 w-11 rounded-[10px] bg-background"
           />
           <View className="flex-1">
-            <Text className="text-foreground text-[15px] font-medium" numberOfLines={1}>
+            <Text className="text-foreground text-subheadline font-medium" numberOfLines={1}>
               {track.title}
             </Text>
-            <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+            <Text className="text-muted-foreground text-footnote" numberOfLines={1}>
               {track.artist}
             </Text>
           </View>
@@ -692,13 +692,13 @@ function SnippetEditor({
 
       {stage === 'error' ? (
         <View className="gap-3 p-5">
-          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="text-destructive text-[15px] leading-6">{error}</Text>
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="text-destructive text-subheadline leading-6">{error}</Text>
           <AccionSocial label="Elegir otra canción" secundaria compacta expandida={false} onPress={onCambiarCancion} />
         </View>
       ) : stage !== 'ready' ? (
         <View accessibilityLiveRegion="polite" className="flex-1 items-center justify-center gap-3">
           <ActivityIndicator color="#FFFFFF" />
-          <Text className="text-muted-foreground text-[15px]">
+          <Text className="text-muted-foreground text-subheadline">
             {stage === 'resolving' ? 'Trayendo la canción…' : 'Analizando el audio…'}
           </Text>
         </View>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Modal, Platform, Pressable, Text, TextInput, useWindowDimensions, View } from 'react-native'
+import { EntradaTexto } from './EntradaTexto'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { CollectionTitle, useAngosto } from './CollectionHeader'
 import { Hoja } from './Hoja'
@@ -85,12 +86,12 @@ export function CampoNombreLista({ editor, inline = false }: { editor: EdicionNo
   }, [])
   const draft = editor.borrador
   if (!draft) return null
-  return <TextInput ref={campo} accessibilityLabel="Nombre de la lista" value={draft.valor}
+  return <EntradaTexto ref={campo} accessibilityLabel="Nombre de la lista" value={draft.valor}
     editable={!draft.ocupado} onChangeText={editor.cambiar} maxLength={60}
     autoFocus={Platform.OS !== 'web'} autoCorrect={false} returnKeyType="done" submitBehavior="submit"
     multiline={inline} onSubmitEditing={() => { void editor.guardar() }}
     onKeyPress={e => { if (e.nativeEvent.key === 'Escape') editor.cancelar() }}
-    className={inline ? 'text-foreground text-4xl font-bold' : 'text-foreground rounded-2xl bg-card px-4 py-3 text-[16px]'}
+    className={inline ? 'text-foreground text-4xl font-bold' : 'text-foreground rounded-2xl bg-card px-4 py-3 text-callout'}
     style={inline ? { position: 'absolute', inset: 0, padding: 0, margin: 0, borderWidth: 0, backgroundColor: 'transparent', textAlignVertical: 'top' } : { minHeight: 48 }}
   />
 }
@@ -111,7 +112,7 @@ export function HojaNombreLista({ editor }: { editor: EdicionNombreLista }) {
   if (!editor.borrador || inline) return null
   const nativo = Platform.OS !== 'web'
   const campos = <View className="gap-4 px-5 pb-5">
-    <Text className="text-foreground text-[15px]">Nombre de la lista</Text>
+    <Text className="text-foreground text-subheadline">Nombre de la lista</Text>
     <CampoNombreLista editor={editor} />
     {!nativo ? <AccionesNombreLista editor={editor} /> : null}
   </View>

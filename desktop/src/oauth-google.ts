@@ -12,13 +12,23 @@ function igual(a: string, b: string) {
   return x.length === y.length && timingSafeEqual(x, y)
 }
 
+export function paginaRetornoGoogle(cancelado: boolean, logoBase64?: string) {
+  const titulo = cancelado ? 'No se hicieron cambios' : 'Conexión lista'
+  const detalle = cancelado
+    ? 'Google canceló el acceso. Volvé a DMusic para intentarlo otra vez.'
+    : 'Ya podés cerrar esta pestaña y volver a DMusic.'
+  const logo = logoBase64 && /^[A-Za-z0-9+/=]+$/.test(logoBase64)
+    ? `<img class="logo" src="data:image/png;base64,${logoBase64}" alt="DMusic" width="80" height="80">` : ''
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>DMusic · Google</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;min-height:100svh;display:grid;place-items:center;padding:32px 24px;background:linear-gradient(180deg,#242424 0,#151515 48%,#121212 100%);color:#fff;font:16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{width:100%;max-width:560px;text-align:center}.logo{display:block;width:80px;height:80px;object-fit:contain;margin:0 auto 28px}h1{margin:0 0 12px;font-size:clamp(28px,5vw,38px);font-weight:600;line-height:1.2;letter-spacing:-.7px}p{margin:0;color:#b3b3b3;text-wrap:balance}</style></head><body><main>${logo}<h1>${titulo}</h1><p>${detalle}</p></main></body></html>`
+}
+
 /** Sólo escucha loopback durante una transacción. El código vuelve por IPC, nunca por navegación del renderer. */
 export class GoogleOAuthEscritorio {
   private pendiente: Pendiente | null = null
   private preparando = false
   private generacion = 0
   constructor(private readonly opciones: {
-    origen: string | null; abrirExterno: (url: string) => Promise<unknown>; alCompletar?: () => void; timeoutMs?: number
+    origen: string | null; logoBase64?: string; abrirExterno: (url: string) => Promise<unknown>; alCompletar?: () => void; timeoutMs?: number
   }) {}
 
   async preparar(): Promise<{ id: string; redirectTo: string }> {
@@ -97,7 +107,7 @@ export class GoogleOAuthEscritorio {
   private recibir(id: string, req: IncomingMessage, res: ServerResponse) {
     res.setHeader('Connection', 'close')
     res.setHeader('Cache-Control', 'no-store')
-    res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'")
     res.setHeader('Referrer-Policy', 'no-referrer')
     res.setHeader('X-Content-Type-Options', 'nosniff')
     const rechazar = () => { res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Retorno no válido.') }
@@ -112,7 +122,7 @@ export class GoogleOAuthEscritorio {
         [...u.searchParams.keys()].some(k => !permitidos.has(k) || u.searchParams.getAll(k).length !== 1) ||
         (code && error) || (!code && !error) || (code && !/^[A-Za-z0-9._~-]{1,2048}$/.test(code))) { rechazar(); return }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      res.end('<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>DMusic</title><h1>Volvé a DMusic</h1><p>Ya podés cerrar esta pestaña.</p></html>')
+      res.end(paginaRetornoGoogle(Boolean(error), this.opciones.logoBase64))
       this.terminar(p, { type: 'success', url: u.href })
     } catch { rechazar() }
   }

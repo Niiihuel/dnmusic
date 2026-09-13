@@ -78,14 +78,14 @@ export function CollectionHeader({
         {tint ? <Tinte color={tint} bleedTop={bleedTop} /> : null}
         {image}
         <View className="flex-row items-center gap-2">
-          <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.4px]">
+          <Text className="text-muted-foreground text-footnote uppercase">
             {kind}
           </Text>
           {insignia}
         </View>
         <View className="w-full items-center">{title}</View>
         {meta ? (
-          <Text className="text-muted-foreground text-center text-[13px]" numberOfLines={2}>
+          <Text className="text-muted-foreground text-center text-footnote" numberOfLines={2}>
             {meta}
           </Text>
         ) : null}
@@ -103,14 +103,14 @@ export function CollectionHeader({
         {image}
         <View className="min-w-0 flex-1 gap-2 pb-1">
           <View className="flex-row items-center gap-2">
-            <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.4px]">
+            <Text className="text-muted-foreground text-footnote uppercase">
               {kind}
             </Text>
             {insignia}
           </View>
           {title}
           {meta ? (
-            <Text className="text-muted-foreground text-[13px]" numberOfLines={2}>
+            <Text className="text-muted-foreground text-footnote" numberOfLines={2}>
               {meta}
             </Text>
           ) : null}
@@ -153,7 +153,7 @@ export function Insignia({ icono, children }: { icono?: ReactNode; children: str
   return (
     <View className="flex-row items-center gap-1 rounded-full bg-muted px-2 py-0.5">
       {icono}
-      <Text className="text-muted-foreground text-[10px] uppercase tracking-[1.2px]">
+      <Text className="text-muted-foreground text-footnote uppercase">
         {children}
       </Text>
     </View>
@@ -170,7 +170,7 @@ export function CollectionTitle({ children }: { children: string }) {
   const angosto = useAngosto()
   return (
     <Text
-      className={`text-foreground font-bold ${angosto ? 'text-center text-2xl' : 'text-4xl'}`}
+      className={`text-foreground font-bold ${angosto ? 'text-center text-title2' : 'text-4xl'}`}
       numberOfLines={3}
     >
       {children}

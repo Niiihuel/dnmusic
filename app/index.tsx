@@ -1,3 +1,7 @@
+import { CabeceraChats, CargaChats, FilaConversacion, FilaSolicitudChat, TituloSeccionChats } from '../src/ui/ContenidoChats'
+import { BotonSuperficie } from '../src/ui/BotonSuperficie'
+import { IconButton } from '../src/ui/IconButton'
+import type { SearchFieldHandle } from '../src/ui/SearchField.types'
 import { MessageDetailBody as Detail } from '../src/ui/MessageDetailBody'
 import { invitacionEnTexto } from '../src/lib/invitacionJam'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -8,9 +12,7 @@ import {
   FlatList,
   Image,
   Platform,
-  Pressable,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
   type NativeScrollEvent,
@@ -58,6 +60,7 @@ import {
   useUser,
 } from '../src/state/session'
 import { resetDraft, setDraft, useDraft } from '../src/state/draft'
+import { CampoMensaje } from '../src/ui/CampoMensaje'
 import { markThreadRead, sendMessage } from '../src/services/messages'
 import { emailToUsername } from '../src/services/auth'
 import {
@@ -99,6 +102,7 @@ import {
   registerTabHandler,
   setDrawer,
   setEnChat,
+  registerAbrirCara,
   setTab,
   setTechoH,
   usePiso,
@@ -158,7 +162,6 @@ import { NowPlayingPanel } from '../src/ui/NowPlayingPanel'
 import {
   ICON_COLOR,
   IconBack,
-  IconCheck,
   IconForward,
   IconCollapseLeft,
   IconClose,
@@ -259,7 +262,7 @@ export default function Home() {
   const contactName = contact ? contactLabel(contact) : 'contacto'
   /* El buscador de arriba es el único de la app: la lista vacía manda el
      cursor acá en vez de tener uno propio adentro. */
-  const searchRef = useRef<TextInput>(null)
+  const searchRef = useRef<SearchFieldHandle>(null)
   const [searchResults, setSearchResults] = useState<ContactResult[]>([])
   const [searchingContacts, setSearchingContacts] = useState(false)
   /** Cuenta cuya solicitud está saliendo, para mostrar la espera en su fila. */
@@ -677,6 +680,26 @@ export default function Home() {
     })
     return () => registerTabHandler(null)
   }, [loadPlaylists])
+
+  /*
+   * Poner una cara de la música, venga de donde venga.
+   *
+   * La barra del reproductor y el menú de la canción piden por acá en vez de
+   * alternar la vista ellos mismos: estando en conversaciones el panel de la
+   * derecha es el detalle del mensaje, así que la cara no tenía dónde
+   * dibujarse y el botón no hacía nada. Se entra a música —que es donde la
+   * cara se ve— y recién ahí se alterna.
+   *
+   * Alternar y no abrir: volver a tocar «Jam» con el Jam puesto lo cierra,
+   * que es lo que ya hacía el botón y lo que espera cualquiera.
+   */
+  useEffect(() => {
+    registerAbrirCara((cara) => {
+      setMusic(true)
+      toggleView(cara)
+    })
+    return () => registerAbrirCara(null)
+  })
 
   // El panel lateral vive en el layout y no sabe crear listas; esta pantalla sí.
   useEffect(() => {
@@ -2034,7 +2057,7 @@ export default function Home() {
                 tapando la pantalla entera. Un estilo explícito no depende de
                 que NativeWind procese este componente. */}
             {suelto ? (
-              <Pressable
+              <BotonSuperficie
                 accessibilityRole="button"
                 accessibilityLabel="Abrir el menú"
                 onPress={() => setDrawer(true)}
@@ -2044,7 +2067,7 @@ export default function Home() {
                   source={require('../assets/icon.png')}
                   style={{ width: 32, height: 32, borderRadius: 10 }}
                 />
-              </Pressable>
+              </BotonSuperficie>
             ) : (
               /* En ventana grande el ícono es **la marca y nada más**.
                  Abría el panel lateral, que en este ancho ofrece los mismos
@@ -2055,7 +2078,7 @@ export default function Home() {
                 style={{ width: 32, height: 32, borderRadius: 10 }}
               />
             )}
-            {showSidebar ? <Text className="text-foreground text-lg font-bold">dnmusic</Text> : null}
+            {showSidebar ? <Text className="text-foreground text-title3 font-bold">dnmusic</Text> : null}
           </View>
 
           {/*
@@ -2092,32 +2115,14 @@ export default function Home() {
                        encabezado con menos piezas sueltas. */
                     <Glass radius={22}>
                       <View className="flex-row">
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Atrás"
-                          accessibilityState={{ disabled: !canGoBack }}
-                          disabled={!canGoBack}
-                          onPress={goBack}
-                          className="h-11 w-11 items-center justify-center active:opacity-60"
-                        >
-                          <IconBack
+                        <IconButton label="Atrás" symbol="chevron.left" onPress={goBack} disabled={!canGoBack} icon={<IconBack
                             size={19}
                             color={canGoBack ? ICON_COLOR.foreground : ICON_COLOR.muted}
-                          />
-                        </Pressable>
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Adelante"
-                          accessibilityState={{ disabled: !canGoForward }}
-                          disabled={!canGoForward}
-                          onPress={goForward}
-                          className="h-11 w-11 items-center justify-center active:opacity-60"
-                        >
-                          <IconForward
+                          />} />
+                        <IconButton label="Adelante" symbol="chevron.right" onPress={goForward} disabled={!canGoForward} icon={<IconForward
                             size={19}
                             color={canGoForward ? ICON_COLOR.foreground : ICON_COLOR.muted}
-                          />
-                        </Pressable>
+                          />} />
                       </View>
                     </Glass>
                   ) : null}
@@ -2207,7 +2212,7 @@ export default function Home() {
                   <View className="h-full flex-row items-center justify-center gap-2">
                     <Avatar name={myLabel} path={myProfile?.avatarPath} size={32} />
                     {width >= 620 ? (
-                      <Text className="text-muted-foreground text-xs pr-1.5">@{myUsername}</Text>
+                      <Text className="text-muted-foreground text-caption1 pr-1.5">@{myUsername}</Text>
                     ) : null}
                   </View>
                 </Glass>
@@ -2252,7 +2257,7 @@ export default function Home() {
                   pointerEvents="none"
                   className="absolute -right-1.5 -top-1 min-w-[18px] items-center justify-center rounded-full border-2 border-background bg-primary px-1"
                 >
-                  <Text className="text-primary-foreground text-[10px] font-bold leading-[14px]">
+                  <Text className="text-primary-foreground text-caption2 font-bold">
                     {Math.min(pendientesChats, 99)}
                   </Text>
                 </View>
@@ -2735,7 +2740,7 @@ export default function Home() {
                        * aparte para eso competiría con la flecha de volver en
                        * la misma esquina.
                        */}
-                      <Pressable
+                      <BotonSuperficie
                         {...estadoControlWeb('none')}
                         accessibilityRole="button"
                         accessibilityLabel={`Ver el perfil de ${contactName}`}
@@ -2745,22 +2750,22 @@ export default function Home() {
                         <Avatar name={contactName} path={contact.avatarPath} size={40} />
                         <View className="min-w-0 flex-1 gap-0.5">
                           <Text
-                            className="text-foreground text-[15px] font-semibold"
+                            className="text-foreground text-subheadline font-semibold"
                             numberOfLines={1}
                           >
                             {contact ? contactTitle(contact) : contactName}
                           </Text>
-                          <Text className="text-muted-foreground text-xs">
+                          <Text className="text-muted-foreground text-caption1">
                             {cargandoMensajes ? 'Cargando…' : messageCountLabel(messages.length)}
                           </Text>
                         </View>
-                      </Pressable>
+                      </BotonSuperficie>
                     </View>
                   </View>
 
                   {error ? (
                     <View className="p-5">
-                      <Text className="text-destructive text-sm leading-5">{error}</Text>
+                      <Text className="text-destructive text-subheadline">{error}</Text>
                     </View>
                   ) : (
                     <Movible style={[{ flex: 1, minHeight: 0 }, seguirTeclado]}>
@@ -2912,29 +2917,22 @@ export default function Home() {
                         )}
                         <View className="min-w-0 flex-1">
                           <Text
-                            className="text-foreground text-[13px] font-semibold"
+                            className="text-foreground text-footnote font-semibold"
                             numberOfLines={1}
                           >
                             {draft.song.title}
                           </Text>
-                          <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+                          <Text className="text-muted-foreground text-caption2" numberOfLines={1}>
                             {draft.song.artist} · {Math.round(draft.song.durationMs / 1000)} s
                           </Text>
                         </View>
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Quitar canción"
-                          onPress={() => setDraft({ song: null })}
-                          className="h-9 w-9 items-center justify-center rounded-full bg-muted"
-                        >
-                          <IconClose size={16} color={ICON_COLOR.muted} />
-                        </Pressable>
+                        <IconButton label="Quitar canción" symbol="xmark" onPress={() => setDraft({ song: null })} icon={<IconClose size={16} color={ICON_COLOR.muted} />} />
                       </View>
                       </Glass>
                     ) : null}
 
                     {composerError ? (
-                      <Text className="px-5 pb-1 text-destructive text-xs">{composerError}</Text>
+                      <Text className="px-5 pb-1 text-destructive text-caption1">{composerError}</Text>
                     ) : null}
 
                     <View className="flex-row items-end gap-2 px-1 pb-1">
@@ -2953,13 +2951,11 @@ export default function Home() {
                         <IconMusic size={18} color={ICON_COLOR.muted} />
                       </BotonVidrio>
                       <Glass radius={22} style={{ flex: 1 }}>
-                        <TextInput
+                        <CampoMensaje
                           value={draft.text}
                           onChangeText={(text) => setDraft({ text })}
                           placeholder={`Mensaje para @${contactName}`}
-                          placeholderTextColor="#777777"
                           accessibilityLabel="Mensaje"
-                          multiline
                           maxLength={2000}
                           /*
                            * Enter manda, Shift+Enter hace un renglón — como
@@ -2988,7 +2984,7 @@ export default function Home() {
                             if (sending || (!draft.text.trim() && !draft.song)) return
                             void sendChatMessage()
                           }}
-                          className={`max-h-28 min-h-11 min-w-0 flex-1 px-4 py-3 text-foreground text-[15px] ${
+                          className={`max-h-28 min-h-11 min-w-0 flex-1 px-4 py-3 text-foreground text-subheadline ${
                             HAY_VIDRIO ? '' : 'bg-muted'
                           }`}
                         />
@@ -3181,10 +3177,10 @@ function CentroSonando({
             size={340}
           />
           <View className="gap-1">
-            <Text className="text-foreground text-center text-xl font-bold" numberOfLines={2}>
+            <Text className="text-foreground text-center text-title3 font-bold" numberOfLines={2}>
               {pista.title}
             </Text>
-            <Text className="text-muted-foreground text-center text-[14px]" numberOfLines={1}>
+            <Text className="text-muted-foreground text-center text-subheadline" numberOfLines={1}>
               {pista.artist}
             </Text>
           </View>
@@ -3277,7 +3273,7 @@ function ConversationSidebar({
    * lo dibuja la cáscara, abajo, y acá no va otro.
    */
   onBuscar?: (termino: string) => void
-  inputRef?: RefObject<TextInput | null>
+  inputRef?: RefObject<SearchFieldHandle | null>
   buscando?: boolean
 }) {
   /* En el teléfono esto es la pestaña «Chats» y llega hasta el borde. */
@@ -3287,19 +3283,13 @@ function ConversationSidebar({
   const techo = useTecho(16)
   const colapso = useColapso()
   const compacto = !!onBuscar && TECLADO_FISICO
-  const ladoAccion = compacto ? 32 : 44
   const consultaNormalizada = consulta.trim().toLocaleLowerCase('es')
   const solicitudesVisibles = filtered
     ? requests.filter((r) => `${r.username} ${contactTitle(r)}`.toLocaleLowerCase('es').includes(consultaNormalizada))
     : requests
   const solicitudesIds = new Set(solicitudesVisibles.map((r) => r.id))
   const cuentasVisibles = cuentas.filter((c) => !solicitudesIds.has(c.id))
-  const carga = (texto: string) => (
-    <View accessibilityRole="progressbar" accessibilityLabel={texto} className="flex-row items-center gap-2 px-2 py-5">
-      <ActivityIndicator size="small" color={ICON_COLOR.muted} />
-      <Text className="text-muted-foreground text-xs">{texto}</Text>
-    </View>
-  )
+  const carga = (texto: string) => <CargaChats texto={texto} />
 
   return (
     <Panel tone="lateral" className="flex-1">
@@ -3321,25 +3311,7 @@ function ConversationSidebar({
           </View>
         </View>
       ) : (
-        /* El buscador del teléfono lo pone la cáscara. */
-        <View className="flex-row items-end justify-between gap-4 px-4 pb-2" style={{ paddingTop: techo }}>
-          <View className="gap-0.5">
-            <Text className="text-foreground text-[34px] font-bold tracking-[-0.4px]" numberOfLines={1}>
-              Chats
-            </Text>
-            <Text className="text-muted-foreground text-xs" numberOfLines={1}>
-              {conversations.length} {conversations.length === 1 ? 'contacto' : 'contactos'}
-            </Text>
-          </View>
-          <BotonVidrio
-            label="Nueva conversación"
-            onPress={onNew}
-            radius={22}
-            style={{ width: 44, height: 44 }}
-          >
-            <IconNewConversation size={17} color={ICON_COLOR.foreground} />
-          </BotonVidrio>
-        </View>
+        <CabeceraChats cantidad={conversations.length} techo={techo} onNew={onNew} />
       )}
 
       <FlatList
@@ -3356,44 +3328,11 @@ function ConversationSidebar({
         ListHeaderComponent={
           solicitudesVisibles.length ? (
             <View className="gap-1 pb-2">
-              <Text className="px-2.5 pt-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-                Solicitudes
-              </Text>
+              <TituloSeccionChats texto="Solicitudes" />
               {solicitudesVisibles.map((solicitud) => (
-                <View key={solicitud.id} className="flex-row items-center gap-2 rounded-lg px-2 py-2">
-                  <Avatar
-                    name={contactLabel(solicitud)}
-                    path={solicitud.avatarPath}
-                    size={compacto ? 36 : 44}
-                  />
-                  <View className="min-w-0 flex-1 gap-0.5">
-                    <Text
-                      className="text-foreground text-[14px] font-semibold"
-                      numberOfLines={1}
-                    >
-                      {contactTitle(solicitud)}
-                    </Text>
-                    <Text className="text-muted-foreground text-xs" numberOfLines={1}>Quiere ser tu contacto</Text>
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Aceptar la solicitud de ${contactLabel(solicitud)}`}
-                    onPress={() => onRespond(solicitud, true)}
-                    style={{ width: ladoAccion, height: ladoAccion, flexShrink: 0 }}
-                    className="items-center justify-center rounded-full bg-primary active:opacity-80"
-                  >
-                    <IconCheck size={15} color={ICON_COLOR.onPrimary} />
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Rechazar la solicitud de ${contactLabel(solicitud)}`}
-                    onPress={() => onRespond(solicitud, false)}
-                    style={{ width: ladoAccion, height: ladoAccion, flexShrink: 0 }}
-                    className="items-center justify-center rounded-full bg-muted active:opacity-80"
-                  >
-                    <IconClose size={14} color={ICON_COLOR.muted} />
-                  </Pressable>
-                </View>
+                <FilaSolicitudChat key={solicitud.id}
+                  nombre={contactTitle(solicitud)} etiqueta={contactLabel(solicitud)} avatarPath={solicitud.avatarPath}
+                  compacto={compacto} onAceptar={() => onRespond(solicitud, true)} onRechazar={() => onRespond(solicitud, false)} />
               ))}
             </View>
           ) : null
@@ -3419,9 +3358,7 @@ function ConversationSidebar({
         ListFooterComponent={
           filtered && onAbrirCuenta && (cuentasVisibles.length || buscandoCuentas || (errorBusqueda && conversations.length > 0)) ? (
             <View className="gap-1 pt-2">
-              <Text className="px-2.5 pb-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
-                {cuentasVisibles.length ? 'Personas' : 'Búsqueda de contactos'}
-              </Text>
+              <TituloSeccionChats texto={cuentasVisibles.length ? 'Personas' : 'Búsqueda de contactos'} />
               {buscandoCuentas ? (
                 carga('Buscando contactos…')
               ) : (
@@ -3440,50 +3377,17 @@ function ConversationSidebar({
                 ))
               )}
               {!buscandoCuentas && errorBusqueda && !cuentasVisibles.length ? (
-                <Text accessibilityLiveRegion="polite" className="px-2 py-3 text-muted-foreground text-xs">{errorBusqueda}</Text>
+                <Text accessibilityLiveRegion="polite" className="px-2 py-3 text-muted-foreground text-caption1">{errorBusqueda}</Text>
               ) : null}
             </View>
           ) : null
         }
         renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: item.pairId === activePairId }}
-            onPress={() => onSelect(item.pairId)}
-            className={`flex-row items-center gap-2 rounded-lg px-2 py-2 hover:bg-white/5 active:opacity-80 ${
-              item.pairId === activePairId ? 'bg-muted' : ''
-            }`}
-          >
-            <Avatar name={contactLabel(item.contact)} path={item.contact.avatarPath} size={compacto ? 36 : 44} />
-            <View className="min-w-0 flex-1 gap-0.5">
-              <View className="flex-row items-center gap-2">
-                <Text
-                  className="min-w-0 flex-1 text-foreground font-semibold"
-                  style={{ fontSize: compacto ? 13 : 15 }}
-                  numberOfLines={1}
-                >
-                  {contactTitle(item.contact)}
-                </Text>
-                {item.lastMessageAt ? (
-                  <Text className="shrink-0 text-muted-foreground text-[11px]">
-                    {formatMessageDate(item.lastMessageAt)}
-                  </Text>
-                ) : null}
-              </View>
-              <View className="flex-row items-center gap-2">
-                <Text className="min-w-0 flex-1 text-muted-foreground text-[13px]" numberOfLines={1}>
-                  {filtered ? `@${item.contact.username} · Contacto` : invitacionEnTexto(item.lastMessageText) ? 'Invitación a Jam' : item.lastMessageText.trim() || 'Canción compartida'}
-                </Text>
-                {item.unreadCount > 0 ? (
-                  <View className="min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5">
-                    <Text className="text-primary-foreground text-[12px] font-semibold">
-                      {Math.min(item.unreadCount, 99)}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-          </Pressable>
+          <FilaConversacion nombre={contactTitle(item.contact)} nombreAvatar={contactLabel(item.contact)} avatarPath={item.contact.avatarPath}
+            detalle={filtered ? `@${item.contact.username} · Contacto` : invitacionEnTexto(item.lastMessageText) ? 'Invitación a Jam' : item.lastMessageText.trim() || 'Canción compartida'}
+            fecha={item.lastMessageAt ? formatMessageDate(item.lastMessageAt) : undefined}
+            noLeidos={item.unreadCount} selected={item.pairId === activePairId} compacto={compacto}
+            onPress={() => onSelect(item.pairId)} />
         )}
       />
     </Panel>

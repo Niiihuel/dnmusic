@@ -1,3 +1,5 @@
+import { IconButton } from './IconButton'
+import { CancionCompartida } from './CancionCompartida'
 import { InvitacionJam } from './InvitacionJam'
 import { invitacionEnTexto } from '../lib/invitacionJam'
 import { Image, Pressable, Text, View } from 'react-native'
@@ -46,34 +48,35 @@ export function MessageCard({
       <Pressable accessibilityRole={onPress ? "button" : undefined} accessibilityState={{ selected }} onPress={onPress} className="gap-3 active:opacity-70">
         <View className="flex-row items-center gap-3">
           <View className={`h-11 w-11 items-center justify-center rounded-full ${selected ? 'bg-card' : 'bg-muted'}`}>
-            <Text className="text-foreground text-sm font-semibold uppercase">
+            <Text className="text-foreground text-subheadline font-semibold uppercase">
               {contactInitial(contactName)}
             </Text>
           </View>
 
           <View className="min-w-0 flex-1 gap-0.5">
-            <Text className="text-foreground text-sm font-semibold" numberOfLines={1}>
+            <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
               {mine ? `Para @${contactName}` : `De @${contactName}`}
             </Text>
             <View className="flex-row items-center gap-1.5">
               {unread ? <View className="h-1.5 w-1.5 rounded-full bg-primary" /> : null}
-              <Text className="text-muted-foreground text-[13px]">{status}</Text>
+              <Text className="text-muted-foreground text-footnote">{status}</Text>
             </View>
           </View>
 
           {message.createdAt ? (
-            <Text className="text-muted-foreground text-[13px] tabular-nums">
+            <Text className="text-muted-foreground text-footnote tabular-nums">
               {formatDate(message.createdAt)}
             </Text>
           ) : null}
         </View>
 
         {message.text.length > 0 && !invitacionEnTexto(message.text) ? (
-          <Text className="text-card-foreground text-[16px] leading-6">{message.text}</Text>
+          <Text className="text-card-foreground text-callout leading-6">{message.text}</Text>
         ) : null}
       </Pressable>
 
       {invitacionEnTexto(message.text) ? <InvitacionJam texto={message.text} /> : null}
+      {message.sharedSong ? <CancionCompartida song={message.sharedSong} /> : null}
       {song ? (
         <View className={`flex-row items-center gap-3 rounded-lg p-2.5 ${selected ? 'bg-background' : 'bg-muted'}`}>
           <Pressable
@@ -93,34 +96,23 @@ export function MessageCard({
               </View>
             )}
             <View className="min-w-0 flex-1 gap-0.5">
-              <Text className="text-foreground text-[15px] font-semibold" numberOfLines={2}>
+              <Text className="text-foreground text-subheadline font-semibold" numberOfLines={2}>
                 {song.title}
               </Text>
-              <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+              <Text className="text-muted-foreground text-footnote" numberOfLines={1}>
                 {song.artist} · {Math.round(song.durationMs / 1000)} s
               </Text>
             </View>
           </Pressable>
 
-          {onPlay ? <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={playing ? 'Pausar' : 'Reproducir el fragmento'}
-            onPress={onPlay}
-            className="h-11 w-11 items-center justify-center rounded-full bg-primary active:opacity-80"
-          >
-            {playing ? (
-              <IconPause size={15} color={ICON_COLOR.onPrimary} />
-            ) : (
-              <IconPlay size={15} color={ICON_COLOR.onPrimary} />
-            )}
-          </Pressable> : null}
+          {onPlay ? <IconButton label={playing ? 'Pausar' : 'Reproducir el fragmento'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={onPlay} variant="primary" icon={playing ? <IconPause size={18} color={ICON_COLOR.onPrimary} /> : <IconPlay size={18} color={ICON_COLOR.onPrimary} />} /> : null}
         </View>
       ) : null}
     </View>
   )
 }
 
-export function contactInitial(username: string): string {
+function contactInitial(username: string): string {
   return username.trim().charAt(0) || '?'
 }
 

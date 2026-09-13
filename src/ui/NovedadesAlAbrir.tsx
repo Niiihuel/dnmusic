@@ -15,7 +15,7 @@ export function NovedadesAlAbrir() {
   const mostrar = usePreferencia('novedadesAlAbrir')
   const cargados = useAjustesCargados()
   const primera = pendientes?.[0]
-  const visible = !!primera && !!usuario && segmentos[0] !== 'onboarding' && mostrar && cargados
+  const visible = !!primera && !!usuario && segmentos[0] !== 'onboarding' && segmentos[0] !== 'vincular-google' && mostrar && cargados
   if (!visible || !primera) return null
 
   return (
@@ -42,7 +42,7 @@ export function NovedadesAlAbrir() {
           <ScrollView contentContainerClassName="gap-5 p-6" showsVerticalScrollIndicator={false}>
             <View className="flex-row items-center justify-between gap-3">
               <View className="rounded-full bg-muted px-3 py-1.5">
-                <Text className="text-muted-foreground text-[11px] font-semibold">
+                <Text className="text-muted-foreground text-caption2 font-semibold">
                   dnmusic {primera.version}
                 </Text>
               </View>
@@ -58,17 +58,17 @@ export function NovedadesAlAbrir() {
             <View className="gap-2">
               <Text
                 accessibilityRole="header"
-                className="text-foreground text-[24px] font-bold leading-7"
+                className="text-foreground text-title2 font-bold"
               >
                 {primera.titulo}
               </Text>
-              <Text className="text-muted-foreground text-[12px]">Ya está en tu app.</Text>
+              <Text className="text-muted-foreground text-caption1">Ya está en tu app.</Text>
             </View>
             <View className="gap-3">
               {primera.cambios.slice(0, 3).map((cambio, i) => (
                 <View key={i} className="flex-row gap-3">
-                  <Text className="text-muted-foreground text-[13px] leading-5">·</Text>
-                  <Text className="min-w-0 flex-1 text-muted-foreground text-[13px] leading-5">
+                  <Text className="text-muted-foreground text-footnote leading-5">·</Text>
+                  <Text className="min-w-0 flex-1 text-muted-foreground text-footnote leading-5">
                     {cambio}
                   </Text>
                 </View>
@@ -80,7 +80,7 @@ export function NovedadesAlAbrir() {
                 onPress={marcarNovedadesVistas}
                 className="h-12 items-center justify-center rounded-full bg-primary active:opacity-80"
               >
-                <Text className="text-primary-foreground text-[13px] font-semibold">
+                <Text className="text-primary-foreground text-footnote font-semibold">
                   Seguir escuchando
                 </Text>
               </Pressable>
@@ -92,7 +92,7 @@ export function NovedadesAlAbrir() {
                 }}
                 className="min-h-11 items-center justify-center rounded-full active:bg-muted"
               >
-                <Text className="text-muted-foreground text-[13px]">Ver todos los cambios</Text>
+                <Text className="text-muted-foreground text-footnote">Ver todos los cambios</Text>
               </Pressable>
             </View>
           </ScrollView>

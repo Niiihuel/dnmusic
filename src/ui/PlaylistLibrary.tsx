@@ -1,5 +1,9 @@
+import { BotonSuperficie } from './BotonSuperficie'
+import { NativeMediaRow } from '../../modules/media-controls'
+import { artworkSource } from '../lib/artwork'
+import { coverUrl } from '../services/playlists'
 import { useState } from 'react'
-import { ActivityIndicator, FlatList, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { FlatList, Platform, Text, useWindowDimensions, View } from 'react-native'
 import type { Playlist } from '../services/playlists'
 import { useCuantosMeGusta } from '../state/gustos'
 import { useWantPlay } from '../state/playback'
@@ -11,7 +15,7 @@ import { PlayingBars } from './PlayingBars'
 import { PlaylistCover } from './PlaylistCover'
 import { SkeletonList } from './Skeleton'
 import { AnimatedSidebarTitle } from './SidebarMotion'
-import { BotonVidrio } from './Glass'
+import { IconButton } from './IconButton'
 import { Vacio } from './Vacio'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { useClicDerecho } from './useClicDerecho'
@@ -113,10 +117,10 @@ export function PlaylistLibrary({
           alignIconToFirstLine
         >
           <View className="gap-0.5">
-            <Text className="text-foreground text-lg font-bold" numberOfLines={1}>
+            <Text className="text-foreground text-title3 font-bold" numberOfLines={1}>
               Tus listas
             </Text>
-            <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+            <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
               {playlists === null
                 ? 'Cargando…'
                 : `${playlists.length} ${playlists.length === 1 ? 'lista' : 'listas'}`}
@@ -126,23 +130,12 @@ export function PlaylistLibrary({
         <View className="flex-row items-center gap-1">
           {/* En vidrio como los redondeles del encabezado: es un control
               apoyado sobre el panel, y era el único que quedaba gris plano. */}
-          <BotonVidrio
-            label="Nueva lista"
-            onPress={() => void create()}
-            disabled={busy}
-            radius={18}
-            style={{ width: 36, height: 36 }}
-          >
-            {busy ? (
-              <ActivityIndicator size="small" color={ICON_COLOR.muted} />
-            ) : (
-              <IconPlus size={15} color={ICON_COLOR.foreground} />
-            )}
-          </BotonVidrio>
+          <IconButton label="Nueva lista" symbol="plus" onPress={() => void create()} disabled={busy} busy={busy}
+            disableWhileBusy variant="glass" size={15} icon={<IconPlus size={15} color={ICON_COLOR.foreground} />} />
         </View>
       </View>
 
-      {error ? <Text className="px-4 pb-2 text-destructive text-xs">{error}</Text> : null}
+      {error ? <Text className="px-4 pb-2 text-destructive text-caption1">{error}</Text> : null}
 
       {playlists === null ? (
         <View className="px-4">
@@ -162,7 +155,9 @@ export function PlaylistLibrary({
              escucha, y enterrarla entre las listas la volvería invisible. */
           ListHeaderComponent={
             onOpenGustos ? (
-              <Pressable
+              NativeMediaRow ? <NativeMediaRow title="Tus me gusta" subtitle={`${cuantosGustos} canciones`} symbol="heart.fill" label="Tus me gusta"
+                onActivate={onOpenGustos} style={{ height: 76, width: '100%' }} /> : (
+              <BotonSuperficie
                 accessibilityRole="button"
                 onPress={onOpenGustos}
                 className={`flex-row items-center rounded-lg ${
@@ -177,19 +172,20 @@ export function PlaylistLibrary({
                 </View>
                 <View className="min-w-0 flex-1 gap-0.5">
                   <Text
-                    className={`text-foreground ${suelto ? 'text-[16px]' : 'text-[14px]'}`}
+                    className={`text-foreground ${suelto ? 'text-callout' : 'text-subheadline'}`}
                     numberOfLines={1}
                   >
                     Tus me gusta
                   </Text>
                   <Text
-                    className={`text-muted-foreground ${suelto ? 'text-[13px]' : 'text-[12px]'}`}
+                    className={`text-muted-foreground ${suelto ? 'text-footnote' : 'text-caption1'}`}
                     numberOfLines={1}
                   >
                     Colección · {cuantosGustos} {cuantosGustos === 1 ? 'canción' : 'canciones'}
                   </Text>
                 </View>
-              </Pressable>
+              </BotonSuperficie>
+              )
             ) : null
           }
           ListEmptyComponent={
@@ -211,7 +207,9 @@ export function PlaylistLibrary({
            */
           ListFooterComponent={
             onImportar ? (
-              <Pressable
+              NativeMediaRow ? <NativeMediaRow title="Traer de Spotify" subtitle={'Se rearma con tu música'} symbol="square.and.arrow.down" label="Traer de Spotify"
+                onActivate={onImportar} style={{ height: 76, width: '100%' }} /> : (
+              <BotonSuperficie
                 accessibilityRole="button"
                 onPress={onImportar}
                 className={`mt-1 flex-row items-center rounded-lg ${
@@ -226,19 +224,20 @@ export function PlaylistLibrary({
                 </View>
                 <View className="min-w-0 flex-1 gap-0.5">
                   <Text
-                    className={`text-foreground ${suelto ? 'text-[16px]' : 'text-[14px]'}`}
+                    className={`text-foreground ${suelto ? 'text-callout' : 'text-subheadline'}`}
                     numberOfLines={1}
                   >
                     Traer de Spotify
                   </Text>
                   <Text
-                    className={`text-muted-foreground ${suelto ? 'text-[13px]' : 'text-[12px]'}`}
+                    className={`text-muted-foreground ${suelto ? 'text-footnote' : 'text-caption1'}`}
                     numberOfLines={1}
                   >
                     Se rearma con tu música
                   </Text>
                 </View>
-              </Pressable>
+              </BotonSuperficie>
+              )
             ) : null
           }
           renderItem={({ item }) => (
@@ -312,10 +311,22 @@ function FilaLista({
   menu?: MenuItem[]
 }) {
   const clic = useClicDerecho()
+  const { fontScale } = useWindowDimensions()
+  if (NativeMediaRow) {
+    const ownCover = coverUrl(playlist.coverPath)
+    const covers = ownCover ? [ownCover] : playlist.covers.map(c => c.startsWith('http') ? c : (artworkSource(c, null, 240) ?? ''))
+    const row = <NativeMediaRow title={playlist.name}
+      subtitle={`${playlist.visibilidad === 'publica' ? 'Pública · ' : ''}Lista · ${playlist.tracks} ${playlist.tracks === 1 ? 'canción' : 'canciones'}`}
+      artworks={covers} selected={abierta} sounding={sonando} playing={playing}
+      label={`Abrir ${playlist.name}, ${playlist.tracks} canciones${playlist.visibilidad === 'publica' ? ', lista pública' : ''}`}
+      onActivate={() => onOpen(playlist)} style={{ height: Math.max(76, 42 * fontScale + 16), width: '100%' }} />
+    return menu?.length ? <MantenerApretado items={menu}>{row}</MantenerApretado> : row
+  }
+
 
   const fila = (
     <View {...clic.gestos}>
-      <Pressable
+      <BotonSuperficie
         accessibilityRole="button"
         accessibilityState={{ selected: abierta }}
         onPress={() => onOpen(playlist)}
@@ -335,7 +346,7 @@ function FilaLista({
           <Text
             /* El que suena va en blanco, que en este sistema es el
                acento — el equivalente del verde de Spotify. */
-            className={`${suelto ? 'text-[16px]' : 'text-[14px]'} ${
+            className={`${suelto ? 'text-callout' : 'text-subheadline'} ${
               sonando
                 ? 'text-foreground font-semibold'
                 : 'text-foreground'
@@ -354,7 +365,7 @@ function FilaLista({
             ) : null}
             <Text
               className={`text-muted-foreground min-w-0 shrink ${
-                suelto ? 'text-[13px]' : 'text-[12px]'
+                suelto ? 'text-footnote' : 'text-caption1'
               }`}
               numberOfLines={1}
             >
@@ -369,7 +380,7 @@ function FilaLista({
             quedan quietas y bajas, así que sigue diciendo cuál es sin
             mentir que está sonando. Ver `PlayingBars`. */}
         {sonando ? <PlayingBars playing={playing} size={12} /> : null}
-      </Pressable>
+      </BotonSuperficie>
       {clic.punto && menu?.length ? (
         <Menu items={menu} sinDisparador abiertoEn={clic.punto} onCerrarPunto={clic.cerrar} />
       ) : null}

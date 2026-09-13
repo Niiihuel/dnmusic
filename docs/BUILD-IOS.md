@@ -74,8 +74,9 @@ mismo. Para probar en el iPhone, poné la IP de tu máquina en la red local:
 "env": { "EXPO_PUBLIC_MUSIC_API": "http://192.168.0.X:8787" }
 ```
 
-Para `preview` y `production` hay que apuntarlo al servicio publicado. Hoy no
-hay ninguno: el contenedor de `server/` corre solo en tu máquina.
+Los perfiles `preview` y `production` apuntan al servicio publicado definido
+en `eas.json`: `https://dnmusic-api.vercel.app`. También declaran las variables
+públicas de Supabase; no hay que copiar `.env.local` al archivo de build.
 
 ## Cuánto sale
 

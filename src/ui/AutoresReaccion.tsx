@@ -1,3 +1,5 @@
+import { AccionSocial } from './Social'
+import { FilaSocial } from './FilaSocial'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, Text, View, useWindowDimensions, type ViewStyle } from 'react-native'
 import { useRouter } from 'expo-router'
@@ -93,19 +95,9 @@ export function AutoresReaccion({ showcaseId, emoji, cantidad, autores, children
             {TECLADO_FISICO ? <Text className="text-muted-foreground" style={{ fontSize: 11, paddingHorizontal: 12, paddingVertical: 4 }}>{emoji} · {cantidad} {cantidad === 1 ? 'reacción' : 'reacciones'}</Text> : <EncabezadoHoja titulo={`${emoji} Reacciones`} velo={false}
               derecha={<BotonHoja tipo="cerrar" label="Cerrar reacciones" onPress={cerrar} />} />}
             <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-              {!(cargando && pagina === 0) && !error ? lista.map(autor => <Pressable key={autor.id}
-                accessibilityRole="button" accessibilityLabel={`Ver perfil de @${autor.username}`}
-                onPress={() => { cerrar(); router.push(`/perfil/${encodeURIComponent(autor.username)}`) }}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: TECLADO_FISICO ? 38 : 52, paddingHorizontal: 6, borderRadius: 8 }}>
-                <Avatar name={autor.displayName || autor.username} path={autor.avatarPath} size={TECLADO_FISICO ? 24 : 32} />
-                <View style={{ flex: 1 }}><Text className="text-foreground font-semibold" style={{ fontSize: TECLADO_FISICO ? 12 : 14 }} numberOfLines={1}>{autor.displayName || autor.username}</Text>
-                  <Text className="text-muted-foreground" style={{ fontSize: TECLADO_FISICO ? 11 : 12 }} numberOfLines={1}>@{autor.username}</Text></View>
-              </Pressable>) : null}
+              {!(cargando && pagina === 0) && !error ? lista.map(autor => <View key={autor.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Avatar name={autor.displayName || autor.username} path={autor.avatarPath} size={TECLADO_FISICO ? 24 : 32} /><View style={{ flex: 1 }}><FilaSocial titulo={autor.displayName || autor.username} detalle={`@${autor.username}`} label={`Ver perfil de @${autor.username}`} onPress={() => { cerrar(); router.push(`/perfil/${encodeURIComponent(autor.username)}`) }} /></View></View>) : null}
               {cargando ? <ActivityIndicator style={{ padding: 16 }} color="#fff" /> : error ?
-                <Pressable accessibilityRole="button" onPress={() => { setCargando(true); setError(false); setIntento(n => n + 1) }} style={{ padding: 16 }}>
-                  <Text className="text-muted-foreground">No se pudo cargar. Reintentar</Text>
-                </Pressable> : hayMas ? <Pressable accessibilityRole="button" onPress={() => { setCargando(true); setError(false); setPagina(n => n + 1) }} style={{ padding: 16 }}>
-                  <Text className="text-foreground">Ver más</Text></Pressable> : !lista.length ?
+                <AccionSocial label="No se pudo cargar. Reintentar" secundaria onPress={() => { setCargando(true); setError(false); setIntento(n => n + 1) }} /> : hayMas ? <AccionSocial label="Ver más" secundaria onPress={() => { setCargando(true); setError(false); setPagina(n => n + 1) }} /> : !lista.length ?
                 <Text className="text-muted-foreground" style={{ padding: 16 }}>No hay reacciones visibles.</Text> : null}
             </ScrollView>
           </Superficie>

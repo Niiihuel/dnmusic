@@ -33,7 +33,7 @@ function fixture(os = 'web') {
     return [n,...Object.values(n.props??{}).flatMap(flatten)]
   }
   const render = () => { cursor=0; return flatten(exports.EstudioPerfil({perfil:draft,perfilOriginal:original,estilo:exports.estiloDelPerfil(draft),onCambiar(){}})) }
-  const label=(ui,name)=>ui.find(n=>n.props?.accessibilityLabel===name)
+  const label=(ui,name)=>ui.find(n=>n.props?.accessibilityLabel===name || n.props?.label===name)
   const setWidth=width=>render().find(n=>n.props?.onLayout).props.onLayout({nativeEvent:{layout:{width}}})
   return {render,label,setWidth,original,draft}
 }

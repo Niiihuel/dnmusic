@@ -1,7 +1,8 @@
-import { CabeceraSocial } from '../../src/ui/Social'
+import { IconButton } from '../../src/ui/IconButton'
+import { AccionSocial, CabeceraSocial } from '../../src/ui/Social'
 import { fotoDelArtista } from '../../src/lib/fotoArtista'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from 'react-native'
+import { Image, Pressable, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { artworkRemoto, artworkSource, artworkUrlAtSize } from '../../src/lib/artwork'
@@ -359,7 +360,7 @@ export default function ElegirMusica() {
               >
                 {!buscando ? (
                   <>
-                    <Text className="px-2 pb-2 pt-2 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                    <Text className="px-2 pb-2 pt-2 text-muted-foreground text-footnote font-semibold uppercase">
                       Recientemente escuchadas
                     </Text>
                     {recientes === null ? (
@@ -495,7 +496,7 @@ function recienteComoResultado(r: Reciente): TrackResult {
 function Vacio({ texto }: { texto: string }) {
   return (
     <View className="px-6 py-10">
-      <Text className="text-muted-foreground text-center text-[13px] leading-5">{texto}</Text>
+      <Text className="text-muted-foreground text-center text-footnote leading-5">{texto}</Text>
     </View>
   )
 }
@@ -513,7 +514,7 @@ function Chip({ rotulo, activa, onPress }: { rotulo: string; activa: boolean; on
       onPress={onPress}
       className={`rounded-full px-4 py-2 active:opacity-70 ${activa ? 'bg-primary' : 'bg-muted'}`}
     >
-      <Text className={`text-[13px] font-semibold ${activa ? 'text-primary-foreground' : 'text-muted-foreground'}`}>
+      <Text className={`text-footnote font-semibold ${activa ? 'text-primary-foreground' : 'text-muted-foreground'}`}>
         {rotulo}
       </Text>
     </Pressable>
@@ -536,17 +537,9 @@ function Seccion({
   return (
     <View className="pb-2">
       <View className="flex-row items-center justify-between px-2 pb-2 pt-2">
-        <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">{rotulo}</Text>
+        <Text className="text-muted-foreground text-footnote font-semibold uppercase">{rotulo}</Text>
         {verMas ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Ver más ${rotulo.toLowerCase()}`}
-            onPress={verMas}
-            hitSlop={8}
-            className="active:opacity-60"
-          >
-            <Text className="text-muted-foreground text-[12px] font-semibold">Ver más</Text>
-          </Pressable>
+          <AccionSocial label={`Ver más ${rotulo.toLowerCase()}`} secundaria expandida={false} onPress={verMas} />
         ) : null}
       </View>
       {children}
@@ -618,28 +611,16 @@ function FilaCancion({
           <EstadoTapa busy={ocupada} sounding={sonando} playing={suena} />
         </View>
         <View className="min-w-0 flex-1">
-          <Text className="text-foreground text-[14px]" numberOfLines={1}>
+          <Text className="text-foreground text-subheadline" numberOfLines={1}>
             {track.title}
           </Text>
-          <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+          <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
             {track.artist}
           </Text>
         </View>
       </Pressable>
       {onEscuchar ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={sonando && suena ? `Pausar ${track.title}` : `Escuchar ${track.title}`}
-          onPress={onEscuchar}
-          hitSlop={6}
-          className="h-10 w-10 items-center justify-center rounded-full active:bg-muted"
-        >
-          {ocupada ? (
-            <ActivityIndicator size="small" color={ICON_COLOR.muted} />
-          ) : (
-            <IconVolume size={16} color={sonando ? ICON_COLOR.foreground : ICON_COLOR.muted} />
-          )}
-        </Pressable>
+        <IconButton label={sonando && suena ? `Pausar ${track.title}` : `Escuchar ${track.title}`} symbol={sonando && suena ? 'pause.fill' : 'play.fill'} onPress={onEscuchar} busy={ocupada} icon={<IconVolume size={16} color={sonando ? ICON_COLOR.foreground : ICON_COLOR.muted} />} />
       ) : null}
     </View>
   )
@@ -665,11 +646,11 @@ function FilaArtista({
     >
       <Tapa uri={fotoUrl} size={44} redonda />
       <View className="min-w-0 flex-1">
-        <Text className="text-foreground text-[14px]" numberOfLines={1}>
+        <Text className="text-foreground text-subheadline" numberOfLines={1}>
           {nombre}
         </Text>
         {detalle ? (
-          <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+          <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
             {detalle}
           </Text>
         ) : null}
@@ -688,10 +669,10 @@ function FilaAlbum({ album, onPress }: { album: AlbumHallado; onPress: () => voi
     >
       <Tapa uri={album.tapaUrl ? proxiedImage(artworkUrlAtSize(album.tapaUrl, 96)) : null} size={44} />
       <View className="min-w-0 flex-1">
-        <Text className="text-foreground text-[14px]" numberOfLines={1}>
+        <Text className="text-foreground text-subheadline" numberOfLines={1}>
           {album.titulo}
         </Text>
-        <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+        <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
           {album.artista}
         </Text>
       </View>

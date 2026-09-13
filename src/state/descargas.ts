@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { artworkRemoto, registerArteLocal } from '../lib/artwork'
 import { mensajeError } from '../lib/mensajeError'
+import { clasificarRedPrecarga } from '../lib/politicaPrecarga'
 import {
   audioV1, arteGuardado, escritorioAudio, escucharRedAudio, espacioLibreAudio, estadoRedAudio,
   guardarArte, hayAlmacenAudio, limpiarParciales, listarAudio, quitarAudio, quitarPausa, RESERVA_AUDIO,
@@ -227,7 +228,15 @@ export async function prepararCache(track: PlaylistTrack, signal?: AbortSignal):
     const abortar = () => {
       terminar(null)
       const k = buscar(key) ?? buscar(identidad), d = k ? store.get().items[k] : null
-      if (k && d?.temporal && d.estado !== 'lista' && !consumidores.has(identidad) && !protegida(d)) cancelarDescarga(k)
+      // Protección evita evicción de audio en uso, no autoriza red sin consumidor.
+      // La microtarea permite adoptar la petición durante un cambio de canción.
+      queueMicrotask(() => {
+        if (!k || !d?.temporal || consumidores.has(identidad) || cacheExplicita.has(k)) return
+        const actual = store.get().items[k]
+        if (!actual?.temporal || actual.estado === 'lista') return
+        if (activo?.key === k) detenerActivo('prioridad')
+        if (!protegida(actual)) cancelarDescarga(k)
+      })
     }
     const mirar = () => {
       const k = buscar(key) ?? buscar(`video:${track.videoId}`)
@@ -235,7 +244,10 @@ export async function prepararCache(track: PlaylistTrack, signal?: AbortSignal):
       if (!d || d.estado === 'error' || d.estado === 'pausada') terminar(null)
       else if (d.estado === 'lista') terminar(d.uri ?? null)
     }
-    off = store.subscribe(mirar); signal?.addEventListener('abort', abortar, { once: true }); mirar(); impulsar()
+    off = store.subscribe(mirar); signal?.addEventListener('abort', abortar, { once: true }); mirar()
+    const enCurso = activo && store.get().items[activo.key]
+    if (!terminado && enCurso && enCurso.estado !== 'lista' && !consumidores.has(`video:${enCurso.videoId}`)) detenerActivo('prioridad')
+    impulsar()
   })
 }
 /** Cada reproductor reemplaza sólo sus rutas; [] libera únicamente a ese propietario. */
@@ -322,9 +334,12 @@ async function podarCache(reservar: number, excepto?: string) {
 async function redPermitida(temporal = false) {
   const r = await estadoRedAudio()
   const esperandoRed = !r.conectada
-  const esperandoWifi = !esperandoRed && !temporal && leerAjustes().soloWifi && !r.segura
+  const preferencias = leerAjustes()
+  const esperandoWifi = !esperandoRed && (temporal
+    ? clasificarRedPrecarga({ conectada: r.conectada, segura: r.segura, datosPermitidos: preferencias.precargaDatos }) === 'no'
+    : preferencias.soloWifi && !r.segura)
   store.set({ esperandoRed, esperandoWifi })
-  return !esperandoRed && !esperandoWifi
+  return !esperandoRed && !esperandoWifi && (!temporal || leerAjustes().precargaAutomatica)
 }
 async function arrancar() {
   if (corriendo || !HAY_DESCARGAS || !store.get().cargado || reproduccionOcupada) return
@@ -336,7 +351,7 @@ async function arrancar() {
       const pendientes = s.cola.filter(k => s.items[k]?.estado === 'espera' &&
         (!s.items[k].temporal || consumidores.has(`video:${s.items[k].videoId}`) || cacheExplicita.has(k)))
       const elegibles = pendientes.filter(k => (s.items[k].proximoIntento ?? 0) <= ahora)
-      let key = elegibles[0]
+      let key = elegibles.find(k => consumidores.has(`video:${s.items[k].videoId}`)) ?? elegibles[0]
       if (!key) {
         const fechas = pendientes.flatMap(k => s.items[k]?.estado === 'espera' && s.items[k].proximoIntento ? [s.items[k].proximoIntento!] : [])
         if (fechas.length) programar(Math.min(...fechas) - ahora)
@@ -344,11 +359,13 @@ async function arrancar() {
         break
       }
       if (!(await redPermitida(s.items[key].temporal))) {
-        const cache = elegibles.find(k => s.items[k].temporal)
-        if (cache && await redPermitida(true)) key = cache
+        const alternativa = elegibles.find(k => s.items[k].temporal !== s.items[key].temporal)
+        if (alternativa && await redPermitida(s.items[alternativa].temporal)) key = alternativa
         else { programar(15_000); break }
       }
       if (reproduccionOcupada || store.get().items[key]?.estado !== 'espera') continue
+      const candidata = store.get().items[key]
+      if (candidata.temporal && !consumidores.has(`video:${candidata.videoId}`) && !cacheExplicita.has(key)) continue
       const t: Trabajo = { key, controller: new AbortController() }; activo = t
       try { await bajar(t) }
       catch (e) {
@@ -427,7 +444,9 @@ async function bajar(t: Trabajo) {
   if (!vigente(t)) return
   cacheExplicita.delete(t.key)
   store.set({ items: { ...store.get().items, [t.key]: { ...lista, temporal: store.get().items[t.key].temporal } }, cola: store.get().cola.filter(k => k !== t.key), error: null }); persistir()
-  if (d.artworkPath && !reproduccionOcupada && !t.detener) {
+  // Las portadas son accesorias: nunca retienen la cola de precarga o un
+  // lote con más audio pendiente. La última descarga explícita conserva arte.
+  if (d.artworkPath && !store.get().items[t.key].temporal && store.get().cola.length === 0 && !reproduccionOcupada && !t.detener) {
     const remoto = artworkRemoto(d.artworkPath)
     if (remoto) {
       const arteUri = await guardarArte(d.artworkPath, remoto)

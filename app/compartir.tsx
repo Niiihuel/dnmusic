@@ -11,7 +11,7 @@ import { Hoja, usePisoHoja } from '../src/ui/Hoja'
 import { BotonHoja, EncabezadoHoja } from '../src/ui/EncabezadoHoja'
 import { FilaAccion, GrupoAjustes } from '../src/ui/Ajustes'
 import { Vacio } from '../src/ui/Vacio'
-import { ICON_COLOR, IconCopiar, IconImage, IconMusic, IconShare } from '../src/ui/icons'
+import { ICON_COLOR, IconCopiar, IconImage, IconMessage, IconMusic, IconShare } from '../src/ui/icons'
 import { TarjetaHistoria } from '../src/ui/TarjetaHistoria'
 import { compartirHistoria, datosDeTarjeta } from '../src/ui/CompartirHistoria'
 import { ALTO, ANCHO } from '../src/ui/tarjetaHistoria'
@@ -21,12 +21,12 @@ import { ES_WEB } from '../src/ui/Glass'
  * El alto de la previa.
  *
  * Se mide contra la ventana y no con un número fijo: la hoja tiene que entrar
- * entera —previa, leyenda y las tres acciones— sin que la última quede debajo
- * del borde. Un tercio de la altura deja lugar para todo eso en un teléfono
+ * entera —previa, leyenda y las cuatro acciones— sin que la última quede debajo
+ * del borde. Un cuarto de la altura deja lugar para todo eso en un teléfono
  * chico y no desperdicia el de uno grande.
  */
-const PREVIA_MAXIMA = 320
-const PREVIA_PARTE = 0.34
+const PREVIA_MAXIMA = 240
+const PREVIA_PARTE = 0.26
 
 /**
  * Compartir una canción: qué se manda y a dónde.
@@ -128,12 +128,18 @@ export default function Compartir() {
               <TarjetaHistoria datos={datos} />
             </View>
           </View>
-          <Text className="text-muted-foreground pt-3 text-center text-[13px] leading-[18px]">
+          <Text className="text-muted-foreground pt-3 text-center text-footnote leading-[18px]">
             Quien la vea puede escanear el código y escuchar la canción.
           </Text>
         </View>
 
         <GrupoAjustes>
+          <FilaAccion
+            rotulo="Enviar por chat"
+            icono={<IconMessage size={17} color={ICON_COLOR.muted} />}
+            busy={ocupado}
+            onPress={() => router.push('/compartir-contactos')}
+          />
           <FilaAccion
             rotulo={ES_WEB ? 'Descargar la historia' : 'Compartir la historia'}
             icono={<IconImage size={17} color={ICON_COLOR.muted} />}

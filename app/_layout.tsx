@@ -31,10 +31,11 @@ import { cargarAjustes } from '../src/state/ajustes'
 import { cargarDescargas } from '../src/state/descargas'
 import { reconectarJam } from '../src/state/jam'
 import { iniciarEscucha } from '../src/state/escucha'
+import { usePresenciaDiscord } from '../src/state/discord'
 import { cargarMeGusta } from '../src/state/gustos'
 import { Traspaso } from '../src/ui/Traspaso'
 import { SelectorDispositivos } from '../src/ui/SelectorDispositivos'
-import { refrescarAcceso, startSession, useAccessStatus, useAuthUser, useMyProfile, useUser } from '../src/state/session'
+import { refrescarAcceso, startSession, useAccessError, useAccessStatus, useAuthUser, useMyProfile, useUser } from '../src/state/session'
 import { usePush } from '../src/state/push'
 import { emailToUsername } from '../src/services/auth'
 import { esOnboardingPendiente } from '../src/services/semillas'
@@ -63,11 +64,13 @@ import { AvisoCaptura } from '../src/ui/AvisoCaptura'
 import { NowPlayingBar } from '../src/ui/NowPlayingBar'
 import { MotorAudio } from '../src/ui/MotorAudio'
 import { MotorWebView } from '../src/services/motor/MotorWebView'
+import { RADIO } from '../src/ui/tipografia'
 import { esAterrizaje } from '../src/lib/compartir'
 import { useEnlacesDelEscritorio } from '../src/lib/enlacesEscritorio'
 import { CompartirHistoria } from '../src/ui/CompartirHistoria'
 import { AvisoActualizacion } from '../src/ui/AvisoActualizacion'
 import { ControlActualizaciones, AvisoActualizacionSinPolitica } from '../src/ui/ControlActualizaciones'
+import { AvisoVincularGoogle } from '../src/ui/AvisoVincularGoogle'
 import { NovedadesAlAbrir } from '../src/ui/NovedadesAlAbrir'
 import { FilaChat } from '../src/ui/TabBar'
 import { Cascara } from '../src/ui/Cascara'
@@ -88,12 +91,21 @@ const HOJA_WEB = {
   animation: 'none',
   contentStyle: { backgroundColor: 'transparent' },
 } as const
-/** Formularios sociales breves: diálogo web y hoja nativa con teclado. */
+/**
+ * Formularios sociales breves: diálogo web y hoja nativa con teclado.
+ *
+ * El radio no es un número elegido a ojo: son los que mide el kit de iOS 27.
+ * La hoja de detent completo va de borde a borde y redondea 38 arriba
+ * (`RADIO.hojaGrande`); la que se queda en un detent parcial flota como
+ * tarjeta y redondea 34 (`RADIO.hojaMedia`). Estaban todas en 24 —y ésta en
+ * 28—, que es el radio de una hoja de iOS 18: es de los detalles que delatan
+ * una app que no se actualizó, porque la esquina de la hoja se mira de cerca.
+ */
 const HOJA_SOCIAL = ES_WEB ? HOJA_WEB : {
   presentation: 'formSheet' as const,
   sheetAllowedDetents: [1],
   sheetGrabberVisible: true,
-  sheetCornerRadius: 28,
+  sheetCornerRadius: RADIO.hojaGrande,
 }
 /** Cuánto sube el degradado por encima del reproductor. */
 const FADE_PX = 36
@@ -152,6 +164,7 @@ export default function RootLayout() {
  * tarjeta flotante gris opaca solo taparía contenido sin devolver nada.
  */
 function Chrome() {
+  usePresenciaDiscord()
   /*
    * Pantallas donde la tarjeta del reproductor no va.
    *
@@ -225,7 +238,7 @@ function Chrome() {
        así que ya no hay controlador que tape la cáscara por nosotros. */
     segmentos[0] === 'playing' ||
     (ES_WEB &&
-      (segmentos[0] === 'cola' || segmentos[0] === 'message' || segmentos[0] === 'jam'))
+      (segmentos[0] === 'vincular-google' || segmentos[0] === 'cola' || segmentos[0] === 'message' || segmentos[0] === 'jam'))
   const tabGuardada = useTab()
   const tabActiva = segmentos[0] === 'profile' ? 'perfil' : tabGuardada
   const { width } = useWindowDimensions()
@@ -590,6 +603,7 @@ function Chrome() {
       >
       <View className="min-h-0 flex-1">
         <SessionGate />
+        <AvisoVincularGoogle />
       </View>
       {/*
        * El fundido de **arriba**: el borde del reloj, resuelto como el de abajo.
@@ -849,7 +863,23 @@ function Chrome() {
 function SessionGate() {
   const user = useAuthUser()
   const access = useAccessStatus()
+  const accessError = useAccessError()
   const approved = !!user && access?.status === 'approved'
+  /**
+   * Todavía no sabemos si esta cuenta tiene acceso.
+   *
+   * Es el hermano de `user === undefined`, y va por el mismo motivo: `access`
+   * arranca en `null`, que significa «la consulta no volvió», no «tu solicitud
+   * está pendiente». Tratarlos igual mandaba a **todos** —también a quien tiene
+   * acceso desde siempre— a la pantalla de solicitud pendiente durante el
+   * medio segundo que tarda `access_status`, y de ahí de vuelta a la app: al
+   * entrar aparecía un cartel de esperar confirmación y enseguida te largaba
+   * adentro, como si algo hubiera estado a punto de salir mal.
+   *
+   * Si la consulta **falla**, eso sí es un estado que hay que mostrar: la
+   * pantalla de acceso es la única con el botón para volver a consultar.
+   */
+  const accesoIncierto = !!user && access === null && !accessError
   const activa = useAppActiva()
   const segments = useSegments()
   const pathname = usePathname()
@@ -905,6 +935,10 @@ function SessionGate() {
      */
     const enAterrizaje = esAterrizaje(segments)
     if (user && !approved) {
+      /* Sin respuesta todavía no se mueve nada: quedás donde estabas —el login
+         con su botón girando, o la app que ya estaba abierta— hasta que se
+         sepa. Ver `accesoIncierto`. */
+      if (accesoIncierto) return
       if (!onPending && !enAterrizaje) router.replace('/acceso-pendiente')
       return
     }
@@ -939,7 +973,7 @@ function SessionGate() {
          `usePathname`, así que es una ruta de esta misma app. */
       router.replace((guardado ?? '/') as '/')
     }
-  }, [user, approved, segments, pathname, router, onboardingPendiente])
+  }, [user, approved, accesoIncierto, segments, pathname, router, onboardingPendiente])
 
   /*
    * Todo lo que es «de quien escucha» espera a que haya alguien escuchando.
@@ -970,7 +1004,19 @@ function SessionGate() {
     void cargarMeGusta()
   }, [user?.id, approved])
 
-  if (user === undefined) {
+  /*
+   * Mientras no se sepa quién sos —ni si podés entrar— no se dibuja ninguna
+   * pantalla, solo esto.
+   *
+   * `accesoIncierto` va acá junto con `user === undefined` y no es un agregado:
+   * son el mismo estado, «la respuesta no llegó», partido en dos consultas que
+   * salen una detrás de la otra. Separarlos era el bug — apenas Supabase
+   * resolvía la sesión, el único grupo de pantallas habilitado pasaba a ser el
+   * de `acceso-pendiente`, así que entrar mostraba medio segundo de «esperando
+   * la aprobación de @nihuel» antes de largarte adentro. Juntos, es un solo
+   * girito que no se corta hasta que hay app.
+   */
+  if (user === undefined || accesoIncierto) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
         <ActivityIndicator color="#FFFFFF" />
@@ -1018,12 +1064,14 @@ function SessionGate() {
       <Stack.Protected guard={approved}>
       <Stack.Screen name="index" />
       <Stack.Screen name="importar" options={HOJA_SOCIAL} />
+      <Stack.Screen name="vincular-google" options={HOJA_SOCIAL} />
       <Stack.Screen name="ajustes/novedades" />
       <Stack.Screen name="ajustes/accesos" />
       {/* El onboarding: géneros y artistas con los que nace la radio de una
           cuenta nueva. Pantalla común, como las puertas de entrada. */}
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="compose" options={HOJA_SOCIAL} />
+      <Stack.Screen name="compartir-contactos" options={HOJA_SOCIAL} />
       {/* Compartir una canción: la previa de la historia y las dos formas de
           pasarla. Mide su contenido —tres filas y una tapa— y no la pantalla
           entera. Ver `app/compartir.tsx`. */}
@@ -1036,12 +1084,13 @@ function SessionGate() {
                 presentation: 'formSheet',
                 sheetAllowedDetents: 'fitToContents',
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaMedia,
               }
         }
       />
       <Stack.Screen name="ajustes/index" />
       <Stack.Screen name="ajustes/descargas" />
+          <Stack.Screen name="ajustes/diagnostico-audio" />
       <Stack.Screen name="ajustes/bloqueados" />
       {/*
        * Sin animación: el perfil propio es una **pestaña**, aunque viva como
@@ -1075,7 +1124,7 @@ function SessionGate() {
                 presentation: 'formSheet',
                 sheetAllowedDetents: 'fitToContents',
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaMedia,
               }
         }
       />
@@ -1089,7 +1138,7 @@ function SessionGate() {
                 presentation: 'formSheet',
                 sheetAllowedDetents: 'fitToContents',
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaMedia,
               }
         }
       />
@@ -1155,7 +1204,7 @@ function SessionGate() {
                  */
                 sheetInitialDetentIndex: 1,
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaMedia,
               }
         }
       />
@@ -1168,7 +1217,7 @@ function SessionGate() {
                 presentation: 'formSheet',
                 sheetAllowedDetents: [0.85],
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaMedia,
               }
         }
       />
@@ -1181,7 +1230,7 @@ function SessionGate() {
                 presentation: 'formSheet',
                 sheetAllowedDetents: 'fitToContents',
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaMedia,
               }
         }
       />
@@ -1203,7 +1252,7 @@ function SessionGate() {
                 presentation: 'formSheet',
                 sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaGrande,
               }
         }
       />
@@ -1216,7 +1265,7 @@ function SessionGate() {
                 presentation: 'formSheet',
                 sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaGrande,
               }
         }
       />
@@ -1230,7 +1279,7 @@ function SessionGate() {
                 sheetAllowedDetents: [0.85, 1],
                 sheetInitialDetentIndex: 1,
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaMedia,
               }
         }
       />
@@ -1248,7 +1297,7 @@ function SessionGate() {
                 sheetExpandsWhenScrolledToEdge: false,
                 sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaGrande,
               }
         }
       />
@@ -1261,7 +1310,7 @@ function SessionGate() {
                 presentation: 'formSheet',
                 sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaGrande,
               }
         }
       />
@@ -1274,7 +1323,7 @@ function SessionGate() {
                 presentation: 'formSheet',
                 sheetAllowedDetents: [0.85],
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaMedia,
               }
         }
       />
@@ -1293,7 +1342,7 @@ function SessionGate() {
                    iOS 26 flotan con márgenes y la hoja quedaba angosta. */
                 sheetInitialDetentIndex: 1,
                 sheetGrabberVisible: true,
-                sheetCornerRadius: 24,
+                sheetCornerRadius: RADIO.hojaMedia,
               }
         }
       />

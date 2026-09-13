@@ -130,11 +130,11 @@ export function Aterrizaje({ que, id }: { que: Compartible; id: string }) {
           <Text
             accessibilityRole="header"
             numberOfLines={2}
-            className="text-foreground text-center text-[22px] font-semibold leading-7">
+            className="text-foreground text-center text-title2 font-semibold">
             {tarjeta?.titulo ?? (fresco ? sinTarjeta(que) : ' ')}
           </Text>
           {tarjeta?.subtitulo ? (
-            <Text numberOfLines={1} className="text-muted-foreground text-center text-[15px]">
+            <Text numberOfLines={1} className="text-muted-foreground text-center text-subheadline">
               {tarjeta.subtitulo}
             </Text>
           ) : null}
@@ -142,7 +142,7 @@ export function Aterrizaje({ que, id }: { que: Compartible; id: string }) {
 
         <View className="w-full items-center gap-3" style={{ maxWidth: 320 }}>
           {usuario && acceso?.status !== 'approved' ? (
-            <Text className="text-muted-foreground text-center text-[13px] leading-5">
+            <Text className="text-muted-foreground text-center text-footnote leading-5">
               Tu solicitud de acceso todavía está esperando. Cuando la acepten vas a poder abrir
               esto.
             </Text>
@@ -166,7 +166,7 @@ export function Aterrizaje({ que, id }: { que: Compartible; id: string }) {
                   }}
                 />
               ) : null}
-              <Text className="text-muted-foreground text-center text-[13px] leading-5">
+              <Text className="text-muted-foreground text-center text-footnote leading-5">
                 dnmusic es de acceso por invitación: al entrar te vuelve acá.
               </Text>
             </>

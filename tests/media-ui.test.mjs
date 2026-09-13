@@ -26,13 +26,16 @@ const byLabel = (ui, label) => nodes(ui, n => n.props?.accessibilityLabel === la
 
 test('duración/corazón ocupan una sola columna; hover y teclado muestran like sin reproducir', () => {
   let plays = 0, likes = 0
-  const h = harness('src/ui/TrackRow.tsx', { 'react-native': rn, '../state/playback': { usePlaybackCargada: () => true }, './useClicDerecho': { useClicDerecho: () => ({ gestos: {}, punto: null }) }, './SeekBar': { formatClock: () => '3:00' }, './estadoControl': { estadoControlWeb: modo => ({ dataSet: { dnHover: modo } }) } })
+  const h = harness('src/ui/TrackRow.shared.tsx', { 'react-native': rn, '../state/playback': { usePlaybackCargada: () => true }, './useClicDerecho': { useClicDerecho: () => ({ gestos: {}, punto: null }) }, './SeekBar': { formatClock: () => '3:00' }, './estadoControl': { estadoControlWeb: modo => ({ dataSet: { dnHover: modo } }) } })
   const props = { index: 0, title: 'Tema', artist: 'Artista', artwork: null, durationMs: 180000, sounding: false, playing: false,
     onPlay: () => plays++, gusto: jsx('Pressable', { accessibilityLabel: 'Me gusta', onPress: () => likes++ }) }
   let ui = h.render('TrackRow', props)
   const play = byLabel(ui, 'Reproducir Tema')
   assert.equal(play.props.dataSet.dnHover, 'row', 'el hover pertenece a la superficie redondeada')
-  const slot = nodes(ui, n => n.props?.style?.width === 48)[0]
+  /* Por la constante y no por el número: la columna se ensanchó cuando
+     «Duración» dejó de entrar, y un 48 escrito acá hacía fallar esta prueba
+     por un cambio que no tiene nada que ver con lo que mide. */
+  const slot = nodes(ui, n => n.props?.style?.width === h.exports.ANCHO_DURACION)[0]
   assert.equal(slot.props.style.height, 44)
   assert.equal(slot.props.style.alignItems, 'center')
   assert.equal(slot.props.style.justifyContent, 'center')
@@ -78,7 +81,7 @@ test('reproductor: expandir/contraer es explícito; ajustar volumen conserva anc
     'react-native': rn, 'expo-router': { useRouter: () => ({}) }, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '../lib/artwork': { artworkSource: () => null }, '../state/shell': { useTabsVisible: () => false, useColapsada: () => collapsedByScroll },
     '../state/playback': { usePlaybackState: () => ({ tracks: [track], index: 0, manual: null, wantPlay: false, positionMs: 0, durationMs: 180000, volume, cargada: true, shuffle: false, view: null, error: null }), useHaySiguiente: () => true, usePlaybackOriginName: () => '', useModoReproduccion: () => 'orden', canOpenPlaylist: () => false, setVolume: v => volume = v },
-    '../state/jam': { useJamActivo: () => false, useCuantosJam: () => 0 }, '../state/escucha': { useEscuchaEspejoNombre: () => null },
+    '../state/jam': { useJamActivo: () => false, useCuantosJam: () => 0 }, '../state/escucha': {}, '../../modules/media-controls': { NativeMiniPlayer: null }, './Dispositivos.shared': { useDestinoEscucha: () => ({ resumen: 'En pausa en este dispositivo', remoto: false, estado: 'pausado' }) },
     './Glass': { ES_WEB: true, HAY_VIDRIO: true, Glass: 'Glass' }, './useClicDerecho': { useClicDerecho: () => ({ gestos: {}, punto: null }) }, './SeekBar': { formatClock: () => '0:00' },
   }, '\nexport { AnchoPildora, Volume }')
   let ui = h.render('NowPlayingBar', {})
@@ -131,4 +134,35 @@ test('álbum conserva el audio real resuelto y reutiliza el me gusta existente a
   assert.equal(resolved.artworkPath, 'art-real.webp')
   liked = [resolved]
   assert.equal(h.render('GustoAlbum', props).props.track, resolved)
+})
+
+test('minirreproductor iOS nativo muestra el destino real y conserva los mandos sin tocar audio al navegar', () => {
+  const calls = []
+  let preparando = true
+  const destino = { resumen: 'En pausa en Computadora', remoto: true, estado: 'pausado' }
+  const h = harness('src/ui/NowPlayingBar.tsx', {
+    'react-native': { ...rn, Platform: { OS: 'ios' }, useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1.6 }) },
+    'expo-router': { useRouter: () => ({ push: route => calls.push(['route', route]) }) },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
+    '../../modules/media-controls': { NativeMiniPlayer: 'NativeMiniPlayer' },
+    './Dispositivos.shared': { useDestinoEscucha: () => destino },
+    '../lib/artwork': { artworkSource: () => 'https://cover' }, '../state/shell': { useTabsVisible: () => true },
+    '../state/playback': {
+      usePlaybackState: () => ({ tracks: [track], index: 0, manual: null, wantPlay: true, positionMs: 0, durationMs: 180000, volume: .5, cargada: !preparando, view: null, error: null }),
+      useHaySiguiente: () => false, usePlaybackOriginName: () => '', useModoReproduccion: () => 'orden', canOpenPlaylist: () => false,
+      togglePlayback: () => calls.push('toggle'), playNext: () => calls.push('next'), playPrevious: () => calls.push('previous'),
+    },
+    '../state/jam': { useJamActivo: () => false, useCuantosJam: () => 0 },
+    '../state/escucha': { abrirSelectorDispositivos: () => calls.push('devices') },
+    './Glass': { ES_WEB: false, HAY_VIDRIO: true, Glass: 'Glass' }, './useClicDerecho': { useClicDerecho: () => ({ gestos: {}, punto: null }) },
+  })
+  let mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
+  assert.equal(mini.props.subtitle, 'En pausa en Computadora'); assert.equal(mini.props.remote, true)
+  assert.equal(mini.props.deviceLabel, destino.resumen); assert.equal(mini.props.canNext, false)
+  assert.ok(mini.props.style.height >= 76); assert.equal(mini.props.busy, true)
+  mini.props.onOpen(); mini.props.onDevices(); assert.deepEqual(calls, [['route', '/playing'], 'devices'])
+  mini.props.onPlayPause(); assert.equal(calls.at(-1), 'toggle')
+  preparando = false; destino.resumen = 'Sonando en Computadora'; destino.estado = 'sonando'
+  mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
+  assert.equal(mini.props.subtitle, 'Sonando en Computadora'); assert.equal(mini.props.busy, false)
 })

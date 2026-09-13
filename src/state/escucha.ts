@@ -1,4 +1,4 @@
-import { LATIDO_ESCUCHA_MS } from '../services/lecturaViva'
+import { LATIDO_ESCUCHA_MS, VIGENCIA_ESCUCHA_MS } from '../services/lecturaViva'
 import { AppState } from 'react-native'
 import { getSupabase } from '../lib/supabase'
 import { idDispositivo, nombreDispositivo } from '../lib/dispositivo'
@@ -56,7 +56,15 @@ type Pendiente = {
   continuar: () => void
 }
 
+export type ConexionEscucha = 'conectando' | 'conectado' | 'desconectado'
+export type TransferenciaEscucha = { destino: string; estado: 'pendiente' | 'confirmada' | 'error'; error: string | null }
+export type ActividadEscucha = { deviceId: string | null; nombre: string | null; estado: 'sonando' | 'pausado' | 'preparando' | 'desconectado' | 'inactivo' }
 type Estado = {
+  conexion: ConexionEscucha
+  transferencia: TransferenciaEscucha | null
+  actividad: ActividadEscucha
+  sonandoLocal: boolean
+  ahora: number
   escucha: Escucha | null
   /**
    * Dispositivos de la cuenta conectados ahora (presencia). `null` hasta la
@@ -76,6 +84,9 @@ type Estado = {
 }
 
 const store = createStore<Estado>({
+  conexion: 'desconectado', transferencia: null,
+  actividad: { deviceId: null, nombre: null, estado: 'inactivo' },
+  sonandoLocal: false, ahora: Date.now(),
   escucha: null,
   presentes: null,
   offsetMs: 0,
@@ -97,7 +108,7 @@ const SEEK_UMBRAL_MS = 3000
 let desuscribir: Unsubscribe | null = null
 let inicio: Promise<void> | null = null
 /** Enviar el «tomá vos» a un aparato: lo arma el canal en `iniciarEscucha`. */
-let mandarAImpl: ((destino: string) => void) | null = null
+let mandarAImpl: ((destino: string, suena?: boolean, revision?: number) => Promise<void>) | null = null
 let soltarPlayback: (() => void) | null = null
 let refetchTimer: ReturnType<typeof setTimeout> | null = null
 let publicarTimer: ReturnType<typeof setTimeout> | null = null
@@ -118,6 +129,70 @@ let publicado: {
 } | null = null
 /** La próxima publicación tiene que llevar la cola completa. */
 let colaPendiente = false
+let relojActividad: ReturnType<typeof setInterval> | null = null
+let publicacionEnCurso: { version: number; tarea: Promise<void> } | null = null
+let tomaEnCurso: { version: number; tarea: Promise<void> } | null = null
+let esperaTransferencia: { destino: string; revision: number; trackId: string | null; suena: boolean; resolver: (exito: boolean) => void; timer: ReturnType<typeof setTimeout> } | null = null
+const TRANSFERENCIA_MS = 15_000
+
+function filaVigente(s: Estado) {
+  const marca = s.escucha?.actualizadoEn
+  if (typeof marca !== 'number' || !Number.isFinite(marca)) return false
+  const edad = s.ahora + s.offsetMs - marca
+  return edad >= -VIGENCIA_ESCUCHA_MS && edad <= VIGENCIA_ESCUCHA_MS
+}
+
+function actualizarActividad() {
+  const s = store.get(), e = s.escucha, p = getPlaybackState()
+  const local = !s.espejo && (!e || e.deviceId === s.deviceId)
+  const track = local ? p.manual ?? p.tracks[p.index] : e?.track
+  const deviceId = local && track ? s.deviceId : e?.deviceId ?? null
+  const nombre = deviceId === s.deviceId ? nombreDispositivo() : e?.deviceNombre || null
+  let estado: ActividadEscucha['estado'] = 'inactivo'
+  if (track && !hayJam()) {
+    if (local) estado = p.wantPlay ? s.sonandoLocal && !p.error ? 'sonando' : 'preparando' : 'pausado'
+    else if (s.conexion !== 'conectado' || !duenoPresente(s)) estado = 'desconectado'
+    else if (s.presentes === null) estado = 'preparando'
+    else if (!e?.suena) estado = 'pausado'
+    else estado = filaVigente(s) ? 'sonando' : e.actualizadoEn === null ? 'preparando' : 'desconectado'
+  }
+  const a = s.actividad
+  if (a.deviceId !== deviceId || a.nombre !== nombre || a.estado !== estado) store.set({ actividad: { deviceId, nombre, estado } })
+}
+store.subscribe(actualizarActividad)
+
+function terminarTransferencia(exito: boolean, error: string | null = null) {
+  const espera = esperaTransferencia
+  if (!espera) return
+  esperaTransferencia = null
+  clearTimeout(espera.timer)
+  store.set({ transferencia: { destino: espera.destino, estado: exito ? 'confirmada' : 'error', error } })
+  espera.resolver(exito)
+}
+function actualizarIntencionTransferencia(suena: boolean) {
+  if (esperaTransferencia) esperaTransferencia.suena = suena
+}
+function comprobarTransferencia() {
+  const espera = esperaTransferencia, s = store.get(), e = s.escucha
+  if (espera && e?.deviceId === espera.destino && e.revision > espera.revision && e.track?.id === espera.trackId && e.suena === espera.suena && filaVigente(s)) terminarTransferencia(true)
+}
+function esperarTransferencia(destino: string, suena: boolean) {
+  return new Promise<boolean>(resolver => {
+    const timer = setTimeout(() => terminarTransferencia(false, 'El dispositivo no confirmó la reproducción. Verificá que tenga la app abierta y conexión.'), TRANSFERENCIA_MS)
+    esperaTransferencia = { destino, revision: store.get().escucha?.revision ?? 0, trackId: store.get().escucha?.track?.id ?? null, suena, resolver, timer }
+    store.set({ transferencia: { destino, estado: 'pendiente', error: null } })
+  })
+}
+function errorTransferencia(destino: string, error: string): Promise<boolean> {
+  store.set({ transferencia: { destino, estado: 'error', error } })
+  return Promise.resolve(false)
+}
+
+/** El motor informa actividad real; wantPlay por sí solo nunca confirma audio. */
+export function reportarActividadEscucha(sonando: boolean) {
+  if (store.get().sonandoLocal !== sonando) store.set({ sonandoLocal: sonando })
+  alCambiarPlayback()
+}
 
 /* ── El reloj compartido ──────────────────────────────────────────────────── */
 
@@ -147,6 +222,7 @@ function suenaEnOtro(s: Estado): boolean {
     s.escucha !== null &&
     s.escucha.deviceId !== s.deviceId &&
     s.escucha.suena &&
+    s.conexion === 'conectado' && filaVigente(s) &&
     duenoPresente(s)
   )
 }
@@ -184,7 +260,7 @@ function volcar(cola: ColaEscucha | null) {
     return
   }
 
-  const wantPlay = e.suena && duenoPresente(s)
+  const wantPlay = e.suena && duenoPresente(s) && filaVigente(s)
   const posicion = posicionVisible(e, s.offsetMs)
 
   aplicandoRemoto = true
@@ -231,6 +307,7 @@ function ajustarTicker() {
     s.escucha !== null &&
     s.escucha.suena &&
     s.escucha.track !== null &&
+    filaVigente(s) && s.conexion === 'conectado' &&
     duenoPresente(s) &&
     !hayJam()
   if (debe && !ticker) {
@@ -255,11 +332,17 @@ function aplicarEstado(estado: EscuchaEstado | null, medicion?: { t0: number; t1
   const offsetMs = medicion
     ? Math.round(estado.ahora - (medicion.t0 + medicion.t1) / 2)
     : s.offsetMs
-  store.set({ escucha: estado.escucha, offsetMs })
+  store.set({ escucha: estado.escucha, offsetMs, ahora: Date.now() })
+  comprobarTransferencia()
 
   if (estado.escucha.deviceId === s.deviceId) {
     // La fila es de este mismo aparato: lo local ya es la verdad.
-    if (s.espejo) store.set({ espejo: false })
+    if (s.espejo) {
+      aplicandoRemoto = true
+      escuchaTransporte(estado.escucha.suena, posicionVisible(estado.escucha, offsetMs))
+      aplicandoRemoto = false
+      store.set({ espejo: false, sonandoLocal: false })
+    }
     ajustarTicker()
     return
   }
@@ -277,11 +360,19 @@ function aplicarEstado(estado: EscuchaEstado | null, medicion?: { t0: number; t1
 function aplicarFila(fila: Escucha) {
   const s = store.get()
   if (s.escucha && fila.revision <= s.escucha.revision) return
-  store.set({ escucha: fila })
+  store.set({ escucha: fila, ahora: Date.now() })
+  comprobarTransferencia()
 
   if (fila.deviceId === s.deviceId) {
     // El eco de lo nuestro, o un reclamo propio confirmado.
-    if (s.espejo) store.set({ espejo: false })
+    if (s.espejo) {
+      // El ACK tardío de un reclamo en pausa no autoriza reproducir la
+      // intención heredada del espejo, aunque su espera ya haya vencido.
+      aplicandoRemoto = true
+      escuchaTransporte(fila.suena, posicionVisible(fila, s.offsetMs))
+      aplicandoRemoto = false
+      store.set({ espejo: false, sonandoLocal: false })
+    }
     ajustarTicker()
     return
   }
@@ -307,7 +398,7 @@ function aplicarFila(fila: Escucha) {
   if (actual && actual.id === fila.track.id) {
     aplicandoRemoto = true
     escuchaTransporte(
-      fila.suena && duenoPresente(store.get()),
+      fila.suena && duenoPresente(store.get()) && filaVigente(store.get()),
       posicionVisible(fila, s.offsetMs),
     )
     aplicandoRemoto = false
@@ -330,7 +421,7 @@ function aplicarPresencia(dispositivos: DispositivoPresente[]) {
    */
   if (s.espejo && antes !== ahora && s.escucha?.track) {
     aplicandoRemoto = true
-    escuchaTransporte(s.escucha.suena && ahora, posicionVisible(s.escucha, s.offsetMs))
+    escuchaTransporte(s.escucha.suena && ahora && filaVigente(s), posicionVisible(s.escucha, s.offsetMs))
     aplicandoRemoto = false
   }
   ajustarTicker()
@@ -369,6 +460,7 @@ export function iniciarEscucha(): Promise<void> {
   if (inicio) return inicio
   if (desuscribir) return Promise.resolve()
   const v = ++version
+  store.set({ conexion: 'conectando' })
   const tarea = conectarEscucha(v)
     .catch(() => { if (v === version) desconectarEscucha() })
     .finally(() => { if (inicio === tarea) inicio = null })
@@ -401,8 +493,13 @@ async function conectarEscucha(v: number): Promise<void> {
     // Otro aparato eligió que la música se venga a este: se toma sin preguntar.
     // El pedido lo mandó una persona tocando el selector, así que no hay a quién
     // consultar de este lado.
-    onTomar: () => {
-      if (v === version) tomarLocal()
+    onTomar: pedido => {
+      if (v === version) void tomarLocal(pedido?.suena, pedido?.revision)
+    },
+    onConexion: conexion => {
+      if (v !== version) return
+      store.set({ conexion, ahora: Date.now() })
+      if (conexion === 'desconectado') terminarTransferencia(false, 'Se perdió la conexión con tus dispositivos.')
     },
     // Entre que el canal se pidió y quedó suscripto pudo pasar de todo: un
     // estado completo tapa la ventana. Mismo criterio que el Jam y el chat.
@@ -414,13 +511,26 @@ async function conectarEscucha(v: number): Promise<void> {
   mandarAImpl = sub.mandarA
   await sub.listo
   if (v !== version) return
-  soltarPlayback = subscribePlayback(alCambiarPlayback)
+  soltarPlayback = subscribePlayback(() => { actualizarActividad(); alCambiarPlayback() })
+  relojActividad = setInterval(() => {
+    store.set({ ahora: Date.now() })
+    ajustarTicker()
+    const s = store.get()
+    if (s.espejo && s.escucha?.track && getPlaybackState().wantPlay && !suenaEnOtro(s)) {
+      aplicandoRemoto = true
+      escuchaTransporte(false, posicionVisible(s.escucha, s.offsetMs))
+      aplicandoRemoto = false
+    }
+  }, 5000)
   await refrescar()
 }
 
 /** Cierre local, para el logout: la sesión ya no puede firmar nada. */
 export function desconectarEscucha() {
   version++
+  terminarTransferencia(false, 'La sesión de escucha se cerró.')
+  if (relojActividad) clearInterval(relojActividad)
+  relojActividad = null
   inicio = null
   uid = null
   desuscribir?.()
@@ -442,7 +552,7 @@ export function desconectarEscucha() {
   }
   publicado = null
   colaPendiente = false
-  store.set({ escucha: null, presentes: null, espejo: false, pendiente: null, offsetMs: 0 })
+  store.set({ escucha: null, presentes: null, espejo: false, pendiente: null, offsetMs: 0, deviceId: null, conexion: 'desconectado', transferencia: null, selectorAbierto: false, sonandoLocal: false })
 }
 
 /* La app vuelve al frente: lo que haya pasado mientras tanto, de una vez. */
@@ -511,12 +621,13 @@ function alCambiarPlayback() {
   if (!mia && !p.wantPlay) return
 
   const sig = colaSigDe(p)
+  const esperandoOtro = esperaTransferencia && esperaTransferencia.destino !== s.deviceId
   const cambio =
     !mia ||
     !publicado ||
     publicado.trackId !== actual.id ||
-    publicado.suena !== p.wantPlay ||
-    (p.wantPlay && Date.now() - publicado.enviadoEn >= LATIDO_ESCUCHA_MS) ||
+    publicado.suena !== (p.wantPlay && s.sonandoLocal) ||
+    (!esperandoOtro && p.wantPlay && Date.now() - publicado.enviadoEn >= LATIDO_ESCUCHA_MS) ||
     publicado.colaSig !== sig ||
     Math.abs(p.positionMs - posicionEsperada()) > SEEK_UMBRAL_MS
   if (!cambio) return
@@ -533,6 +644,14 @@ function programarPublicacion() {
 }
 
 async function publicarAhora() {
+  if (tomaEnCurso?.version === version) return
+  if (publicacionEnCurso?.version === version) { programarPublicacion(); return publicacionEnCurso.tarea }
+  if (publicarTimer) { clearTimeout(publicarTimer); publicarTimer = null }
+  const operacion = { version, tarea: ejecutarPublicacion() }
+  publicacionEnCurso = operacion
+  try { await operacion.tarea } finally { if (publicacionEnCurso === operacion) publicacionEnCurso = null }
+}
+async function ejecutarPublicacion() {
   if (!uid) return
   const v = version
   const s = store.get()
@@ -544,7 +663,7 @@ async function publicarAhora() {
     ? null
     : (p.manual ?? (p.index >= 0 ? (p.tracks[p.index] ?? null) : null))
   const sig = actual ? colaSigDe(p) : ''
-  const suena = actual !== null && p.wantPlay
+  const suena = actual !== null && p.wantPlay && s.sonandoLocal
   const posicion = actual ? p.positionMs : 0
 
   try {
@@ -560,7 +679,7 @@ async function publicarAhora() {
           ? { tracks: p.tracks, index: p.index, upNext: p.upNext, manual: p.manual, origin: p.origin }
           : null,
     })
-    if (v !== version) return
+    if (v !== version || (store.get().escucha?.revision ?? 0) > revision) return
     publicado = {
       trackId: actual?.id ?? null,
       suena,
@@ -569,7 +688,7 @@ async function publicarAhora() {
       enviadoEn: Date.now(),
     }
     colaPendiente = false
-    // Optimista: la fila es nuestra. El eco del canal trae esta misma
+    // Confirmada por el RPC: la fila es nuestra. El eco trae esta misma
     // revisión y `aplicarFila` lo descarta.
     store.set({
       escucha: {
@@ -580,9 +699,11 @@ async function publicarAhora() {
         posicionMs: posicion,
         arrancadoEn: suena ? Date.now() + store.get().offsetMs : null,
         revision,
+        actualizadoEn: Date.now() + store.get().offsetMs,
       },
       espejo: false,
     })
+    comprobarTransferencia()
     ajustarTicker()
   } catch {
     if (v !== version) return
@@ -612,9 +733,8 @@ function retener(continuar: () => void): boolean {
   const e = s.escucha
   if (!e || e.deviceId === s.deviceId) return false
   if (!suenaEnOtro(s)) {
-    store.set({ espejo: false })
-    ajustarTicker()
-    return false
+    void tomarLocal(false).then(exito => { if (exito) continuar() })
+    return true
   }
   // El nombre va crudo: las comillas las pone quien lo dibuja.
   store.set({
@@ -624,13 +744,15 @@ function retener(continuar: () => void): boolean {
 }
 
 /** «Reproducir acá»: la escucha se viene, en el segundo por el que iba. */
-export function confirmarTraspaso() {
-  const s = store.get()
-  const pendiente = s.pendiente
-  if (!pendiente) return
-  store.set({ pendiente: null, espejo: false })
-  ajustarTicker()
-  pendiente.continuar()
+export async function confirmarTraspaso(): Promise<boolean> {
+  const pendiente = store.get().pendiente
+  if (!pendiente) return false
+  const exito = await tomarLocal(false)
+  if (exito && store.get().pendiente === pendiente) {
+    store.set({ pendiente: null })
+    pendiente.continuar()
+  }
+  return exito
 }
 
 /* ── El selector de dispositivos ──────────────────────────────────────────── */
@@ -646,33 +768,94 @@ export function confirmarTraspaso() {
  * venía sonando pasa a ser el espejo. Es el mismo mecanismo del traspaso a
  * mano, disparado desde afuera.
  */
-function tomarLocal() {
+async function tomarLocal(intencion?: boolean, revisionEsperada?: number): Promise<boolean> {
+  const s = store.get(), destino = s.deviceId ?? ''
+  if (tomaEnCurso?.version === version) return errorTransferencia(destino, 'Todavía hay una operación pendiente. Esperá su respuesta antes de volver a intentar.')
+  if (esperaTransferencia) return false
+  if (!destino || !uid || s.conexion !== 'conectado') return errorTransferencia(destino, 'Conectate para cambiar de dispositivo.')
+  if (hayJam()) return errorTransferencia(destino, 'Salí del Jam para cambiar la escucha personal.')
+  if (!s.escucha?.track) return errorTransferencia(destino, 'Elegí una canción antes de cambiar de dispositivo.')
+  if (s.escucha.deviceId === destino) return true
+  let suena = intencion ?? s.escucha.suena
+  const trackIdEsperado = s.escucha.track.id
+  const resultado = esperarTransferencia(destino, suena), v = version, operacion = esperaTransferencia
+  const tarea = (async () => { try {
+    if (publicacionEnCurso?.version === v) await publicacionEnCurso.tarea
+    if (v !== version || esperaTransferencia !== operacion) return
+    const t0 = Date.now(), fresca = await fetchEscuchaEstado()
+    if (v !== version || esperaTransferencia !== operacion) return
+    if (!fresca?.escucha.track) throw new Error('Ya no hay una canción para transferir.')
+    if (revisionEsperada !== undefined && fresca.escucha.revision !== revisionEsperada) throw new Error('La reproducción cambió después del pedido. Volvé a elegir el dispositivo.')
+    if (fresca.escucha.track.id !== trackIdEsperado) throw new Error('La canción cambió. Volvé a elegir el dispositivo.')
+    if (intencion === undefined) {
+      suena = fresca.escucha.suena
+      actualizarIntencionTransferencia(suena)
+    }
+    aplicarEstado(fresca, { t0, t1: Date.now() })
+    const p = getPlaybackState(), track = fresca.escucha.track
+    const posicion = posicionVisible(fresca.escucha, store.get().offsetMs)
+    const revision = await publicarEscucha({ deviceId: destino, deviceNombre: nombreDispositivo(), revision: fresca.escucha.revision,
+      track, suena: false, posicionMs: posicion,
+      cola: fresca.cola ?? { tracks: p.tracks, index: p.index, upNext: p.upNext, manual: p.manual, origin: p.origin } })
+    if (v !== version || esperaTransferencia !== operacion) return
+    if ((store.get().escucha?.revision ?? 0) > revision && store.get().escucha?.deviceId !== destino) throw new Error('Otro dispositivo tomó la reproducción. Volvé a intentar.')
+    store.set({ escucha: { ...fresca.escucha, deviceId: destino, deviceNombre: nombreDispositivo(), revision,
+      suena: false, posicionMs: posicion, arrancadoEn: null, actualizadoEn: Date.now() + store.get().offsetMs }, espejo: false, sonandoLocal: false })
+    aplicandoRemoto = true
+    escuchaTransporte(suena, posicion)
+    aplicandoRemoto = false
+    if (suena) resumePlayback()
+    comprobarTransferencia()
+    ajustarTicker()
+  } catch (error) {
+    if (v === version && esperaTransferencia === operacion) terminarTransferencia(false, error instanceof Error ? error.message : 'No se pudo traer la reproducción.')
+  } })()
+  const toma = { version: v, tarea }
+  tomaEnCurso = toma
+  void tarea.finally(() => { if (tomaEnCurso === toma) tomaEnCurso = null })
+  return resultado
+}
+
+/** Espera al dueño confirmado; el ACK del broadcast sólo confirma el envío. */
+export async function mandarEscuchaA(deviceId: string): Promise<boolean> {
   const s = store.get()
-  if (!s.escucha || s.escucha.deviceId === s.deviceId) return
-  store.set({ espejo: false, pendiente: null })
-  ajustarTicker()
-  resumePlayback()
+  if (esperaTransferencia) return false
+  if (deviceId === s.deviceId) return traerEscuchaAca()
+  if (!uid || s.conexion !== 'conectado' || !mandarAImpl) return errorTransferencia(deviceId, 'Conectate para cambiar de dispositivo.')
+  if (hayJam()) return errorTransferencia(deviceId, 'Salí del Jam para cambiar la escucha personal.')
+  if (!s.escucha?.track) return errorTransferencia(deviceId, 'Elegí una canción antes de cambiar de dispositivo.')
+  if (!s.presentes?.some(d => d.deviceId === deviceId)) return errorTransferencia(deviceId, 'Ese dispositivo ya no está conectado.')
+  if (s.escucha.deviceId === deviceId) return true
+  const suena = s.escucha.deviceId === s.deviceId ? getPlaybackState().wantPlay : s.escucha.suena
+  const resultado = esperarTransferencia(deviceId, suena), operacion = esperaTransferencia
+  const enviar = mandarAImpl
+  const v = version
+  void (async () => {
+    const p = getPlaybackState(), actual = p.manual ?? p.tracks[p.index]
+    if (s.escucha?.deviceId === s.deviceId && actual) {
+      if (publicacionEnCurso?.version === v) await publicacionEnCurso.tarea
+      if (esperaTransferencia !== operacion || v !== version) return
+      await publicarAhora()
+      if (esperaTransferencia !== operacion || v !== version) return
+      const vigente = store.get().escucha, playback = getPlaybackState()
+      if (vigente?.deviceId !== s.deviceId || vigente.revision <= s.escucha.revision) throw new Error('No se pudo confirmar la canción antes de transferirla.')
+      if ((playback.manual ?? playback.tracks[playback.index])?.id !== s.escucha.track?.id || playback.wantPlay !== suena) throw new Error('La reproducción cambió. Volvé a elegir el dispositivo.')
+    }
+    if (esperaTransferencia !== operacion || v !== version) return
+    await enviar(deviceId, suena, store.get().escucha?.revision)
+    if (esperaTransferencia === operacion) programarRefetch()
+  })().catch(error => {
+    if (esperaTransferencia === operacion) terminarTransferencia(false, error instanceof Error ? error.message : 'No se pudo enviar la reproducción.')
+  })
+  return resultado
 }
 
-/**
- * Mandar la música a otro aparato de la cuenta (Spotify Connect al revés: en
- * vez de traerla, se la pasás). El otro la toma solo (ver `tomarLocal`).
- *
- * No hace nada si el destino es este mismo aparato —para eso está reanudar—, ni
- * si el canal todavía no está armado.
- */
-export function mandarEscuchaA(deviceId: string) {
-  if (deviceId === store.get().deviceId) return
-  mandarAImpl?.(deviceId)
-}
-
-/** «Traer acá» desde el selector: el equivalente local de tocar tu dispositivo. */
-export function traerEscuchaAca() {
-  tomarLocal()
-}
+export function traerEscuchaAca(): Promise<boolean> { return tomarLocal() }
 
 export function abrirSelectorDispositivos() {
-  store.set({ selectorAbierto: true })
+  store.set({ selectorAbierto: true, ...(!esperaTransferencia ? { transferencia: null } : {}) })
+  if (!desuscribir) void iniciarEscucha()
+  else programarRefetch()
 }
 
 export function cerrarSelectorDispositivos() {
@@ -681,6 +864,7 @@ export function cerrarSelectorDispositivos() {
 
 /** «Seguir allá»: no pasa nada — que es exactamente lo que se pidió. */
 export function cancelarTraspaso() {
+  if (esperaTransferencia) return
   store.set({ pendiente: null })
 }
 
@@ -716,7 +900,30 @@ export const useDispositivos = (): DispositivoPresente[] =>
 export const useEsteDispositivo = () => useStore(store, (s) => s.deviceId)
 /** El aparato que reproduce ahora mismo (dueño del lock), o null. */
 export const useDispositivoQueSuena = () =>
-  useStore(store, (s) => s.escucha?.deviceId ?? null)
+  useStore(store, (s) => s.actividad.estado === 'sonando' ? s.actividad.deviceId : null)
+export const useDispositivoSeleccionado = () => useStore(store, s => s.escucha?.deviceId ?? null)
+export const useConexionEscucha = () => useStore(store, s => s.conexion)
+export const useTransferenciaEscucha = () => useStore(store, s => s.transferencia)
+export const useActividadEscucha = () => useStore(store, s => s.actividad)
 
 /** Una lista vacía **estable**: devolver `[]` nuevo cada vez rompería el hook. */
 const VACIO: DispositivoPresente[] = []
+
+
+/** Snapshot privado de la cuenta para adaptadores con consentimiento explícito.
+ * La sesión se verifica en el adaptador; este método no publica nada por sí solo.
+ */
+export function leerEscuchaParaIntegraciones() {
+  const s = store.get(), p = getPlaybackState(), ahora = Date.now()
+  const local = !s.espejo && (!s.escucha || s.escucha.deviceId === s.deviceId)
+  if (hayJam()) return null
+  if (local) {
+    const track = p.manual ?? p.tracks[p.index]
+    if (!track || !p.wantPlay || !s.sonandoLocal || p.error) return null
+    return { track, sonando: true, posicionMs: p.positionMs, actualizadoEn: ahora }
+  }
+  const e = s.escucha
+  if (!e?.track || !e.suena || s.conexion !== 'conectado' || !s.presentes || !duenoPresente(s) || !filaVigente(s) || e.actualizadoEn === null) return null
+  return { track: e.track, sonando: true, posicionMs: posicionVisible(e, s.offsetMs), actualizadoEn: e.actualizadoEn - s.offsetMs }
+}
+export const suscribirActividadParaIntegraciones = (fn: () => void) => store.subscribe(fn)

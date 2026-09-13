@@ -5,6 +5,10 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+/* La escala de Apple de verdad: la prueba mide lo que mide la app. */
+const MEDIDAS = JSON.parse(readFileSync('src/ui/apple.json', 'utf8')).texto
+const texto = e => ({ fontSize: MEDIDAS[e].size, lineHeight: MEDIDAS[e].leading, letterSpacing: MEDIDAS[e].tracking })
+
 
 function cargar(path, deps = {}) {
   const { outputText } = ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: {
@@ -55,6 +59,7 @@ const deps = {
   './Avatar': { Avatar: () => null }, './Marco': { Marco: () => null }, './Placas': { PlacaDeNombre: ({ children }) => children },
   './PerfilPublico': { FondoPerfil: () => null, Identidad: props => React.createElement('header', { 'data-animado': props.animado }, props.nombre) },
   './DecoracionImagen': { EfectoPerfil: () => null },
+  './tipografia': { texto },
   './DiscordCosmeticos': { DiscordEfecto: props => React.createElement('div', { 'data-fit': props.ajuste, 'data-animado': props.animado }), MarcoContenidoDiscord: ({ children }) => React.createElement('section', { 'data-card-frame': true }, children) },
   './DiscordCosmeticos.helpers': helper,
   './FuentePerfil': { FuentePerfil: ({ children }) => children, TextoPerfil: ({ children }) => React.createElement('span', null, children) },
@@ -120,7 +125,7 @@ test('Resumen enmarca sólo cifras, omite biblioteca privada no provista y limit
   const stub = tag => function Stub(props) { nodes.push([tag, props]); return React.createElement('div', null, props.children) }
   vm.runInNewContext(output, { exports, require: () => jsxRuntime, useState: () => [null, () => {}], useEffect: () => {},
     usePiezaDiscord: () => ({ tipo: 'marcoPerfil', disponible: true }), View: stub('View'), Text: stub('Text'),
-    MarcoContenidoDiscord: stub('Marco'), Dato: stub('Dato'), mesYAno: () => 'septiembre 2026' })
+    MarcoContenidoDiscord: stub('Marco'), Dato: stub('Dato'), mesYAno: () => 'septiembre 2026', texto })
   render(exports.Resumen, { ownerId: 'qa', marcoPerfil: 'discord:stats', desde: null })
   assert.equal(nodes.find(([tag]) => tag === 'Marco')[1].id, 'discord:stats')
   assert.equal(nodes[0][1].style.maxWidth, 360)

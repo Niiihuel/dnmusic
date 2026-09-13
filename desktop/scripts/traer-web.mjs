@@ -22,7 +22,7 @@ const RAIZ = resolve(AQUI, '..', '..')
 
 const WEB_ORIGEN = join(RAIZ, 'dist')
 const WEB_DESTINO = resolve(AQUI, '..', 'web')
-const ICONO_ORIGEN = join(RAIZ, 'assets', 'icon.png')
+const ICONO_ORIGEN = join(RAIZ, 'assets', 'desktop-icon.png')
 const ICONO_DESTINO = resolve(AQUI, '..', 'build', 'icon.png')
 const ICO_ORIGEN = join(RAIZ, 'assets', 'icon.ico')
 
@@ -35,7 +35,7 @@ if (!existsSync(join(WEB_ORIGEN, 'index.html'))) {
 }
 
 if (!existsSync(ICONO_ORIGEN) || !existsSync(ICO_ORIGEN)) {
-  console.error(`✗ Falta ${ICONO_ORIGEN}, que es de donde salen los íconos de Windows y Linux.`)
+  console.error(`✗ Faltan recursos de escritorio: ${ICONO_ORIGEN} o ${ICO_ORIGEN}. Ejecutá python scripts/generar-iconos.py --desktop-only.`)
   process.exit(1)
 }
 
@@ -47,6 +47,7 @@ cpSync(WEB_ORIGEN, WEB_DESTINO, { recursive: true })
 mkdirSync(dirname(ICONO_DESTINO), { recursive: true })
 cpSync(ICONO_ORIGEN, ICONO_DESTINO)
 cpSync(ICO_ORIGEN, resolve(AQUI, '..', 'build', 'icon.ico'))
+cpSync(join(RAIZ, 'assets', 'branding', 'splash-dnmusic.png'), resolve(AQUI, '..', 'build', 'logo.png'))
 
 console.log(`✓ web → ${WEB_DESTINO}`)
 console.log(`✓ ícono → ${ICONO_DESTINO}`)

@@ -2,6 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+/* La escala de Apple de verdad: la prueba mide lo que mide la app. */
+const MEDIDAS = JSON.parse(readFileSync('src/ui/apple.json', 'utf8')).texto
+const texto = e => ({ fontSize: MEDIDAS[e].size, lineHeight: MEDIDAS[e].leading, letterSpacing: MEDIDAS[e].tracking })
+
 
 function cargar(path, deps, globals = {}, extra = '') {
   const source = ts.transpileModule(readFileSync(path, 'utf8') + extra, { compilerOptions: {
@@ -199,7 +203,7 @@ function fondo() {
     if (!initialized) { setup(player); initialized = true }
     return player
   }, VideoView: 'VideoView', View: 'View', Text: 'Text', LinearGradient: 'Gradient', EfectoPerfil: 'Efecto', FondoImagen: 'FondoImagen',
-  ilustracionUrl: path => `https://storage.invalid/${path}`, esVideo: storage().esVideo }
+  ilustracionUrl: path => `https://storage.invalid/${path}`, esVideo: storage().esVideo, texto }
   const exports = {}
   new Function('exports', 'require', ...Object.keys(globals), code)(exports, () => ({ jsx, jsxs: jsx }), ...Object.values(globals))
   return { player, listeners, get play() { return play }, get pause() { return pause },

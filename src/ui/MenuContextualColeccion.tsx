@@ -6,14 +6,17 @@ import { llevaCorte, repartirMenu } from './menuReparto'
 
 export const HAY_CONTEXTO_COLECCION = CollectionContext !== null
 
+let revisionMenuContextual = 0
+
 /** Conserva orden, grupos, selección y disabled, incluidos los submenús. */
 export function prepararMenuContextual(items: MenuItem[]) {
   const acciones = new Map<string, () => void>()
+  const revision = ++revisionMenuContextual
   let serial = 0
   function convertir(entries: MenuItem[], disabled = false): NativeMenuEntry[] {
     const { rapidas, lista } = repartirMenu(entries, true)
     function entrada(item: MenuItem): NativeMenuEntry {
-      const id = String(serial++)
+      const id = `${revision}:${serial++}`
       const bloqueada = disabled || !!item.disabled
       if (!bloqueada && item.onPress) acciones.set(id, item.onPress)
       return { id, label: item.label, symbol: item.sfSymbol, subtitle: item.subtitle,

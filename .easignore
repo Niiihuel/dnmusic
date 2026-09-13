@@ -1,0 +1,90 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+*.xcworkspace/xcuserdata/
+.DS_Store
+*.swp
+*.lock
+~$*
+
+# Xcode project (generado por XcodeGen; no se commitea)
+*.xcodeproj
+*.xcworkspace
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Firebase / secretos
+DanyApp/Support/GoogleService-Info.plist
+GoogleService-Info.plist
+*.p8
+*.p12
+*.cer
+*.mobileprovision
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# CocoaPods (si se usara)
+Pods/
+
+# OpenIDE: estado interno del IDE (conservamos planes y skills)
+.openide/memory-indexes/
+
+# ── Node / Expo (app TypeScript) ──
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+npm-debug.*
+*.tsbuildinfo
+.env*.local
+# Config de docker compose: lleva la service_role key, que saltea RLS por
+# completo. Nunca se commitea.
+.env
+/ios
+/android
+# Lo agregó el CLI de Vercel al enlazar el proyecto: adentro va el id del
+# proyecto y el token OIDC que se renueva solo.
+.vercel
+
+# Cualquier .env queda afuera —ahí viven la service_role y las claves— **menos
+# el de ejemplo**, que es documentación y tiene que viajar con el repo. El CLI
+# de Vercel dejó `.env*` a secas, que también lo tapaba.
+.env*
+!.env.example
+
+# ── Escritorio (Electron) ──
+# El compilado y node_modules ya los tapan `dist/` y `node_modules/` de arriba,
+# y `build/` viene de la sección de Xcode. Falta lo que copia y produce
+# electron-builder: la web empaquetada y los instaladores, que pesan ~100 MB
+# cada uno y viven en el repo de releases, no acá.
+desktop/web/
+desktop/release/
+desktop/release-notas.md
+desktop/diagnosticos/
+
+# El build móvil sólo requiere el cliente, sus assets y módulos nativos.
+# Estos directorios no participan en Metro, prebuild ni postinstall.
+/server/
+/desktop/
+/api/
+/supabase/
+/docs/
+/tests/
+/.openide/
+/.agents/
+/.codex/
+/.github/
+/docker-compose.yml
+/vercel.json

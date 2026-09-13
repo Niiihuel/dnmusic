@@ -2,6 +2,11 @@ import type { ReactNode } from 'react'
 import { ActivityIndicator, Pressable, Text, useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native'
 import { BotonHoja, EncabezadoHoja } from './EncabezadoHoja'
 import { ICON_COLOR } from './icons'
+import { texto } from './tipografia'
+
+export type AccionSocialProps = {
+  label: string; accessibilityLabel?: string; onPress: () => void; secundaria?: boolean; selected?: boolean; busy?: boolean; disabled?: boolean; icono?: ReactNode; expandida?: boolean; compacta?: boolean; style?: StyleProp<ViewStyle>
+}
 
 /** Anatomía compartida por chats, detalles, fragmentos y Jam. */
 export function CabeceraSocial({ titulo, detalle, onCerrar, accion, ocupado = false }: {
@@ -12,13 +17,11 @@ export function CabeceraSocial({ titulo, detalle, onCerrar, accion, ocupado = fa
     derecha={accion} />
 }
 
-export function AccionSocial({ label, onPress, secundaria = false, busy = false, disabled = false, icono, expandida, compacta = false, style }: {
-  label: string; onPress: () => void; secundaria?: boolean; busy?: boolean; disabled?: boolean; icono?: ReactNode; expandida?: boolean; compacta?: boolean; style?: StyleProp<ViewStyle>
-}) {
+export function AccionSocial({ label, accessibilityLabel, onPress, secundaria = false, selected, busy = false, disabled = false, icono, expandida, compacta = false, style }: AccionSocialProps) {
   const escritorio = useWindowDimensions().width >= 780
   const inactiva = disabled || busy
   const densa = compacta && escritorio
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: inactiva, busy }}
+  return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label} accessibilityState={{ disabled: inactiva, busy, selected }}
     disabled={inactiva} onPress={onPress}
     style={[{
       alignSelf: (expandida ?? !escritorio) ? 'stretch' : 'flex-start',
@@ -30,14 +33,19 @@ export function AccionSocial({ label, onPress, secundaria = false, busy = false,
     }, style]}
     className={`flex-row items-center justify-center gap-2 ${secundaria || inactiva ? 'bg-muted' : 'bg-primary'} active:opacity-75`}>
     {busy ? <ActivityIndicator size="small" color={ICON_COLOR.foreground} /> : icono}
-    <Text style={{ flexShrink: 1, fontSize: densa ? 14 : 15 }} className={`text-center font-semibold ${inactiva ? 'text-muted-foreground' : secundaria ? 'text-foreground' : 'text-primary-foreground'}`}>{label}</Text>
+    {/* El rótulo mide igual denso que suelto: la densidad vive en la caja
+        —alto, radio, padding, acá arriba— y no en el tamaño de la letra. Antes
+        era `densa ? 14 : 15`, un píxel de diferencia que no separaba nada y
+        que además dejaba el 14 fuera de toda escala. Apple tampoco baja de
+        `subheadline` el rótulo de un botón de 34-36pt. */}
+    <Text style={{ flexShrink: 1, ...texto('subheadline') }} className={`text-center font-semibold ${inactiva ? 'text-muted-foreground' : secundaria ? 'text-foreground' : 'text-primary-foreground'}`}>{label}</Text>
   </Pressable>
 }
 
 export function SeccionSocial({ titulo, detalle, children }: { titulo?: string; detalle?: string; children: ReactNode }) {
   return <View className="gap-2">
-    {titulo ? <Text accessibilityRole="header" className="text-foreground px-1 text-[15px] font-semibold">{titulo}</Text> : null}
+    {titulo ? <Text accessibilityRole="header" className="text-foreground px-1 text-subheadline font-semibold">{titulo}</Text> : null}
     <View className="overflow-hidden rounded-2xl bg-card">{children}</View>
-    {detalle ? <Text className="text-muted-foreground px-1 text-[13px] leading-5">{detalle}</Text> : null}
+    {detalle ? <Text className="text-muted-foreground px-1 text-footnote leading-5">{detalle}</Text> : null}
   </View>
 }

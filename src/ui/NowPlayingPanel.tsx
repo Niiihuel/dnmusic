@@ -85,7 +85,7 @@ export function NowPlayingPanel({
         >
           <View className="min-w-0 flex-row items-center gap-2">
             <View className="min-w-0 gap-0.5">
-              <Text className="text-foreground text-lg font-bold" numberOfLines={1}>
+              <Text className="text-foreground text-title3 font-bold" numberOfLines={1}>
                 {view === 'jam'
                   ? 'Jam'
                   : view === 'cola'
@@ -94,7 +94,7 @@ export function NowPlayingPanel({
                       ? track.title
                       : 'Sonando'}
               </Text>
-              <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+              <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
                 {view === 'jam'
                   ? /* El código a la vista: es lo que se dicta en voz alta
                        cuando el link no llega. */
@@ -160,7 +160,7 @@ export function NowPlayingPanel({
               el me gusta es de la canción, no un control de la cola. */}
           <View className="flex-row items-center gap-3">
             <View className="min-w-0 flex-1 gap-1">
-              <Text className="text-foreground text-xl font-bold" numberOfLines={2}>
+              <Text className="text-foreground text-title3 font-bold" numberOfLines={2}>
                 {track.title}
               </Text>
               <EnlaceArtista id={track.artistId} nombre={track.artist} />

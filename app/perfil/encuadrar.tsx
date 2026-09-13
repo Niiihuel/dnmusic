@@ -1,6 +1,7 @@
+import { IconButton } from '../../src/ui/IconButton'
+import { AccionSocial } from '../../src/ui/Social'
 import { useEffect, useRef, useState } from 'react'
 import {
-  Pressable,
   ScrollView,
   Text,
   useWindowDimensions,
@@ -478,7 +479,7 @@ export default function Encuadrar() {
       titulo={titulo}
       sobre="Encuadrar"
       izquierda={<BotonHoja tipo="cerrar" onPress={cancelar} />}
-      derecha={<Pressable accessibilityRole="button" accessibilityLabel="Usar encuadre" disabled={guardando || !uri || !cambiado} onPress={() => void guardar()} className="min-h-11 justify-center px-3"><Text className={guardando || !cambiado ? "text-muted-foreground" : "text-foreground"}>Listo</Text></Pressable>}
+      derecha={<IconButton label="Usar encuadre" symbol="checkmark" disabled={guardando || !uri || !cambiado} busy={guardando} onPress={() => void guardar()} icon={<Text className="text-foreground">Listo</Text>} />}
     />
   )
 
@@ -489,7 +490,7 @@ export default function Encuadrar() {
         <View className="flex-1 bg-background">
           {encabezado}
           <View className="flex-1 items-center justify-center gap-4 px-8" style={{ minHeight: 240 }}>
-            <Text className="text-muted-foreground text-center text-[13px]">
+            <Text className="text-muted-foreground text-center text-footnote">
               {esVitrina
                 ? 'Todavía no pusiste una imagen.'
                 : que === 'fondo-nuevo'
@@ -522,7 +523,7 @@ export default function Encuadrar() {
           className="flex-1 items-center justify-center gap-6 px-6 pt-2"
           style={{ maxWidth: ANCHO_HOJA, width: '100%', alignSelf: 'center' }}
         >
-          <Text className="text-muted-foreground text-center text-[13px] leading-[18px]">
+          <Text className="text-muted-foreground text-center text-footnote leading-[18px]">
             Arrastrá para mover, pellizcá para acercar y girá con el dial.
           </Text>
 
@@ -557,27 +558,11 @@ export default function Encuadrar() {
 
           {/* Acercar y alejar, para quien no tiene con qué pellizcar. */}
           <View className="flex-row items-center gap-4">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Alejar"
-              disabled={guardando}
-              onPress={() => acercar(-0.25)}
-              className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-70"
-            >
-              <Text className="text-foreground text-[20px] font-bold">−</Text>
-            </Pressable>
-            <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.2px]">
+            <IconButton label="Alejar" symbol="minus" disabled={guardando} onPress={() => acercar(-0.25)} variant="glass" icon={<Text className="text-foreground text-title3 font-bold">−</Text>} />
+            <Text className="text-muted-foreground text-footnote uppercase">
               Acercar
             </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Acercar"
-              disabled={guardando}
-              onPress={() => acercar(0.25)}
-              className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-70"
-            >
-              <Text className="text-foreground text-[20px] font-bold">+</Text>
-            </Pressable>
+            <IconButton label="Acercar" symbol="plus" disabled={guardando} onPress={() => acercar(0.25)} variant="glass" icon={<Text className="text-foreground text-title3 font-bold">+</Text>} />
           </View>
 
           {/*
@@ -587,17 +572,9 @@ export default function Encuadrar() {
            * explicarlo.
            */}
           <View className="flex-row items-center gap-3" style={{ width: lado }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Girar un cuarto a la izquierda"
-              disabled={guardando}
-              onPress={() => girar(-90)}
-              className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-70"
-            >
-              <IconGirarIzq size={18} color={ICON_COLOR.foreground} />
-            </Pressable>
+            <IconButton label="Girar un cuarto a la izquierda" symbol="rotate.left" disabled={guardando} onPress={() => girar(-90)} variant="glass" icon={<IconGirarIzq size={18} color={ICON_COLOR.foreground} />} />
             <View className="min-w-0 flex-1 items-center gap-1.5">
-              <Text className="text-muted-foreground text-[11px] tabular-nums tracking-[1.2px]">
+              <Text className="text-muted-foreground text-caption2 tabular-nums tracking-[1.2px]">
                 {grados}°
               </Text>
               <GestureDetector gesture={girarFino}>
@@ -625,27 +602,11 @@ export default function Encuadrar() {
                 </View>
               </GestureDetector>
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Girar un cuarto a la derecha"
-              disabled={guardando}
-              onPress={() => girar(90)}
-              className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-70"
-            >
-              <IconGirarDer size={18} color={ICON_COLOR.foreground} />
-            </Pressable>
+            <IconButton label="Girar un cuarto a la derecha" symbol="rotate.right" disabled={guardando} onPress={() => girar(90)} variant="glass" icon={<IconGirarDer size={18} color={ICON_COLOR.foreground} />} />
           </View>
 
           {/* Centrar se prueba en pantalla; sólo Guardar cambios lo confirma. */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver al centro"
-            disabled={guardando}
-            onPress={() => void centrar()}
-            className="h-11 items-center justify-center rounded-full bg-muted px-5 active:opacity-80"
-          >
-            <Text className="text-foreground text-[14px] font-semibold">Centrar</Text>
-          </Pressable>
+          <AccionSocial label="Volver al centro" secundaria disabled={guardando} onPress={() => void centrar()} />
         </View>
       </ScrollView>
       {error ? <Text accessibilityRole="alert" className="text-destructive px-5 py-3">{error}</Text> : null}

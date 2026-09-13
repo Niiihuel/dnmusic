@@ -216,6 +216,22 @@ function reforzarConGustos(
 const MAX_POR_ARTISTA = 2
 
 /**
+ * Sortea canciones distintas sin modificar la página de artista cacheada.
+ * Antes sólo se barajaban los relacionados: cada mix nuevo volvía a los dos
+ * primeros topSongs del ancla. Muestrear también sus canciones permite variar
+ * dentro del catálogo; los vetos y el máximo por artista se aplican después.
+ * Duplicados del proveedor cuentan una vez, no como boletos extra del sorteo.
+ */
+function cancionesBarajadas(canciones: readonly TrackResult[] = []): TrackResult[] {
+  const mezcla = [...new Map(canciones.map((song) => [song.videoId, song])).values()]
+  for (let i = mezcla.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[mezcla[i], mezcla[j]] = [mezcla[j], mezcla[i]]
+  }
+  return mezcla
+}
+
+/**
  * El núcleo de las recomendaciones: de unas anclas, una tanda de canciones.
  *
  * Recibe los artistas ancla ya elegidos —de dónde salen es problema de quien
@@ -272,7 +288,7 @@ async function recomendarDesdeAnclas(
         parientes.push({ id: rel.id, nombre: rel.title })
       }
     }
-    for (const song of info?.topSongs ?? []) {
+    for (const song of cancionesBarajadas(info?.topSongs)) {
       if (elegidas.length >= propias) break
       sumar(song)
     }
@@ -290,7 +306,7 @@ async function recomendarDesdeAnclas(
   for (const pariente of parientes) {
     if (elegidas.length >= cuantas) break
     const info = await fetchArtist(pariente.id)
-    for (const song of info?.topSongs ?? []) {
+    for (const song of cancionesBarajadas(info?.topSongs)) {
       if (elegidas.length >= cuantas) break
       sumar(song)
     }
@@ -306,7 +322,7 @@ async function recomendarDesdeAnclas(
     if (!artista) break
     usados.add(artista.artist_id)
     const info = await fetchArtist(artista.artist_id)
-    for (const song of info?.topSongs ?? []) {
+    for (const song of cancionesBarajadas(info?.topSongs)) {
       if (elegidas.length >= cuantas) break
       sumar(song)
     }

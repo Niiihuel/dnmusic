@@ -4,6 +4,7 @@ import { endSession, refrescarAcceso, useAccessError, useAccessStatus, useAuthUs
 import { PantallaAcceso } from '../src/ui/Acceso'
 import { AccionSocial } from '../src/ui/Social'
 import { FormError } from '../src/ui/Button'
+import { isInternalAuthEmail } from '../src/services/auth'
 
 export default function AccesoPendiente() {
   const acceso = useAccessStatus()
@@ -34,7 +35,7 @@ export default function AccesoPendiente() {
   return <PantallaAcceso
     titulo={rechazado ? 'Acceso no aprobado' : aprobado ? 'Acceso aprobado' : acceso ? 'Solicitud pendiente' : 'Verificar acceso'}
     detalle={rechazado ? '@nihuel no aprobó tu solicitud. Podés consultar de nuevo si cambia la decisión.' : aprobado ? 'Tu cuenta ya tiene acceso. Estamos preparando tu entrada.' : acceso ? 'Tu solicitud está esperando la aprobación de @nihuel. Podés volver a consultar su estado cuando quieras.' : 'Necesitamos confirmar el permiso de tu cuenta para entrar.'}>
-    {cuenta?.email ? <Text className="text-muted-foreground text-[13px]">{cuenta.email}</Text> : null}
+    {cuenta?.email && !isInternalAuthEmail(cuenta.email) ? <Text className="text-muted-foreground text-footnote">{cuenta.email}</Text> : null}
     <FormError message={error ?? errorAcceso} />
     <View className="gap-3">
       <AccionSocial label="Volver a consultar" busy={busy === 'recheck'} disabled={busy !== null} onPress={() => ejecutar('recheck')} expandida compacta />

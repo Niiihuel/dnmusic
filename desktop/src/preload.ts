@@ -4,6 +4,7 @@ import type { Aporte } from './resolutor'
 import type { ResultadoDescarga } from './descargas'
 import type { AudioOffline, ProgresoAudioOffline } from './audio-offline'
 import type { ResultadoGoogle } from './oauth-google'
+import type { ConfiguracionDiscord, EstadoDiscord, ListeningActivity } from './discord-presence'
 
 /**
  * Lo único que el bundle web puede ver del escritorio.
@@ -83,6 +84,17 @@ const puente = {
     getItem: (clave: string): Promise<string | null> => ipcRenderer.invoke('authStorage:get', clave),
     setItem: (clave: string, valor: string): Promise<void> => ipcRenderer.invoke('authStorage:set', clave, valor),
     removeItem: (clave: string): Promise<void> => ipcRenderer.invoke('authStorage:remove', clave),
+  },
+
+  discord: {
+    estado: (): Promise<EstadoDiscord> => ipcRenderer.invoke('discord:estado'),
+    configurar: (value: ConfiguracionDiscord): Promise<EstadoDiscord> => ipcRenderer.invoke('discord:configurar', value),
+    publicar: (value: ListeningActivity | null): Promise<EstadoDiscord> => ipcRenderer.invoke('discord:publicar', value),
+    alCambiar: (fn: (state: EstadoDiscord) => void): (() => void) => {
+      const listener = (_: IpcRendererEvent, state: EstadoDiscord) => fn(state)
+      ipcRenderer.on('discord:estado', listener)
+      return () => ipcRenderer.removeListener('discord:estado', listener)
+    },
   },
 
   audioOffline: {

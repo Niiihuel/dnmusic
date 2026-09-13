@@ -1,10 +1,9 @@
 import { useRef, useState } from 'react'
-import { ActivityIndicator, Pressable } from 'react-native'
+import { IconButton } from './IconButton'
 import { avisar } from '../state/aviso'
 import type { PlaylistTrack } from '../services/playlists'
 import { alternarMeGusta, useEsGustada } from '../state/gustos'
 import { ICON_COLOR, IconHeart, IconHeartFilled } from './icons'
-import { useConTooltip } from './Tooltip'
 
 /**
  * El corazón: marcar la canción que suena como me gusta.
@@ -37,7 +36,6 @@ export function BotonMeGusta({
   const [ocupado, setOcupado] = useState(false)
   const guardando = useRef(false)
   /* Antes del `return null`: los hooks no se llaman a medias. */
-  const tip = useConTooltip(gustada ? 'Quitar de tus me gusta' : 'Me gusta')
   if (!track) return null
   async function alternar() {
     if (!track || guardando.current) return
@@ -53,23 +51,8 @@ export function BotonMeGusta({
       setOcupado(false)
     }
   }
-  return (
-    <Pressable
-      {...tip.gestos}
-      accessibilityRole="button"
-      accessibilityLabel={gustada ? 'Quitar de tus me gusta' : 'Me gusta'}
-      accessibilityState={{ selected: gustada, busy: ocupado, disabled: ocupado }}
-      disabled={ocupado}
-      onPress={() => void alternar()}
-      className="items-center justify-center rounded-full active:opacity-60"
-      style={{ width: lado, height: lado }}
-      hitSlop={4}
-    >
-      {ocupado ? <ActivityIndicator size="small" color={ICON_COLOR.muted} /> : gustada ? (
-        <IconHeartFilled size={size} color={ICON_COLOR.foreground} />
-      ) : (
-        <IconHeart size={size} color={ICON_COLOR.muted} />
-      )}
-    </Pressable>
-  )
+  return <IconButton label={gustada ? 'Quitar de tus me gusta' : 'Me gusta'} symbol={gustada ? 'heart.fill' : 'heart'}
+    selected={gustada} disabled={ocupado} busy={ocupado} disableWhileBusy
+    onPress={() => void alternar()} size={size} lado={lado} muted={!gustada}
+    icon={gustada ? <IconHeartFilled size={size} color={ICON_COLOR.foreground} /> : <IconHeart size={size} color={ICON_COLOR.muted} />} />
 }

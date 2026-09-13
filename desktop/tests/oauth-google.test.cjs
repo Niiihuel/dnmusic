@@ -26,13 +26,18 @@ function fixture(t, extras = {}) {
 }
 
 test('loopback real sólo recibe el callback de la transacción y devuelve código por IPC, sin tokens', async t => {
-  const h = fixture(t), inicio = await h.oauth.preparar(), a = armar(h.oauth, inicio)
+  const logo = readFileSync(require.resolve('../../assets/branding/splash-dnmusic.png')).toString('base64')
+  const h = fixture(t, { logoBase64: logo }), inicio = await h.oauth.preparar(), a = armar(h.oauth, inicio)
   assert.match(inicio.redirectTo, /^http:\/\/127\.0\.0\.1:\d+\/auth\/callback\/[a-f0-9]{48}$/)
   const pending = h.oauth.abrir({ id: inicio.id, url: a.url })
   assert.equal(h.opened[0], a.url)
   const cb = a.cb('valid-code'), reply = await get(cb)
   assert.equal(reply.status, 200); assert.equal(reply.headers['cache-control'], 'no-store')
-  assert.ok(!reply.body.includes('valid-code')); assert.match(reply.headers['content-security-policy'], /default-src 'none'/)
+  assert.ok(!reply.body.includes('valid-code')); assert.match(reply.body, /Conexión lista/)
+  assert.match(reply.headers['content-security-policy'], /default-src 'none'/)
+  assert.match(reply.headers['content-security-policy'], /img-src data:/)
+  assert.ok(reply.body.includes(`src="data:image/png;base64,${logo}"`))
+  assert.ok(!reply.body.includes(inicio.id), 'el HTML no refleja el nonce')
   assert.deepEqual(await pending, { type: 'success', url: cb.href }); assert.equal(h.focused.length, 1)
   await assert.rejects(get(cb))
 })
@@ -72,6 +77,7 @@ test('Google denegado vuelve como callback verificado sin reflejar error HTML ar
   const pending = h.oauth.abrir({ id: inicio.id, url: a.url }), cb = new URL(new URL(a.url).searchParams.get('redirect_to'))
   cb.searchParams.set('error', 'access_denied'); cb.searchParams.set('error_description', '<script>ataque</script>')
   const reply = await get(cb); assert.equal(reply.status, 200); assert.ok(!reply.body.includes('<script>'))
+  assert.match(reply.body, /No se hicieron cambios/)
   assert.equal((await pending).url, cb.href)
 })
 

@@ -57,10 +57,11 @@ function fecha(v: unknown): Date | null {
  * base devuelve cero filas en los dos casos, a propósito. Que no se distingan
  * es lo que evita que esto sirva para averiguar quién tiene a quién agregado.
  */
-export async function escuchaDe(userId: string): Promise<EscuchaAjena | null> {
-  const { data, error } = await getSupabase().rpc('escucha_de_contacto', {
-    p_usuario: userId,
-  })
+export async function escuchaDe(userId: string, signal?: AbortSignal): Promise<EscuchaAjena | null> {
+  if (signal?.aborted) throw Object.assign(new Error('Lectura cancelada'), { name: 'AbortError' })
+  const solicitud = getSupabase().rpc('escucha_de_contacto', { p_usuario: userId })
+  const { data, error } = await (signal ? solicitud.abortSignal(signal) : solicitud)
+  if (signal?.aborted) throw Object.assign(new Error('Lectura cancelada'), { name: 'AbortError' })
   if (error) throw error
   const fila = (data ?? [])[0] as Record<string, unknown> | undefined
   if (!fila) return null

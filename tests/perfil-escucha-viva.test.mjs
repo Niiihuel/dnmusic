@@ -48,3 +48,21 @@ test('una escucha antigua, sin fecha o pausada nunca cuenta como escuchando ahor
   assert.equal(f.escuchaVigente(true,new Date(now+120_000),now),false)
   assert.ok(f.LATIDO_ESCUCHA_MS < f.VIGENCIA_ESCUCHA_MS/2)
 })
+
+test('una RPC colgada retira el valor a tiempo, cancela la red y descarta su resultado tardío',async()=>{
+ const f=fixture(),values=[],pending=[];let calls=0
+ const live=f.observarLectura(signal=>++calls===1?Promise.resolve('actual'):new Promise(resolve=>pending.push({signal,resolve})),v=>values.push(v))
+ live.activar(true);await flush();f.tick();await flush();assert.equal(pending.length,1)
+ f.tick();await flush();assert.equal(pending[0].signal.aborted,true);assert.deepEqual(values,['actual',null]);assert.equal(f.timers.size,0)
+ pending[0].resolve('vieja');await flush();assert.deepEqual(values,['actual',null]);assert.equal(f.timers.size,1)
+ live.cerrar()
+})
+
+test('activar rápidamente otro foco no solapa una lectura anterior que ignora abort',async()=>{
+ const f=fixture(),pending=[],values=[]
+ const live=f.observarLectura(signal=>new Promise(resolve=>pending.push({signal,resolve})),v=>values.push(v))
+ live.activar(true);live.activar(false);live.activar(true)
+ assert.equal(pending.length,1);assert.equal(pending[0].signal.aborted,true)
+ pending[0].resolve('viejo');await flush();assert.equal(pending.length,2);assert.deepEqual(values,[])
+ pending[1].resolve('nuevo');await flush();assert.deepEqual(values,['nuevo']);live.cerrar();assert.equal(f.timers.size,0)
+})

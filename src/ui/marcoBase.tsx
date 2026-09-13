@@ -28,7 +28,7 @@ import Svg, { Circle, G, Path } from 'react-native-svg'
 export const DESBORDE = 1.35
 
 /** El anillo clásico vive en el 1,2× de las referencias, no en el borde del lienzo. */
-export const ANILLO = 1.2
+const ANILLO = 1.2
 
 /**
  * Cuánto sobresale el marco de la foto, por lado. Quien apila el marco puede
@@ -180,8 +180,8 @@ export function Radial({
 
 export const Movimiento = createContext(true)
 
-export const SUAVE: EasingFunction = Easing.inOut(Easing.sin)
-export const LINEAL: EasingFunction = Easing.linear
+const SUAVE: EasingFunction = Easing.inOut(Easing.sin)
+const LINEAL: EasingFunction = Easing.linear
 
 /** Un valor que va y vuelve entre 0 y 1, suave, para siempre. */
 export function useVaiven(duracion: number, demora = 0, easing: EasingFunction = SUAVE) {
@@ -227,7 +227,7 @@ export function useCiclo(duracion: number, demora = 0, reposo?: number) {
 }
 
 /** Una vuelta entera, constante. `sentido` -1 gira al revés. */
-export function useGiro(duracion: number, sentido: 1 | -1 = 1) {
+function useGiro(duracion: number, sentido: 1 | -1 = 1) {
   const animado = useContext(Movimiento)
   const reducir = useReducedMotion()
   const g = useSharedValue(0)

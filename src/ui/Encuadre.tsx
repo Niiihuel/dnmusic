@@ -1,4 +1,4 @@
-import { Image, View, type ImageStyle } from 'react-native'
+import { type ImageStyle } from 'react-native'
 import type { Encuadre } from '../services/profile'
 
 /**
@@ -80,37 +80,4 @@ export function escalaQueCubre(rotacion: number, ancho: number, alto: number): n
   const t = (rotacion * Math.PI) / 180
   const razon = Math.max(ancho / alto, alto / ancho)
   return Math.abs(Math.cos(t)) + Math.abs(Math.sin(t)) * razon
-}
-
-/**
- * Una imagen dentro de su recuadro, con el encuadre aplicado.
- *
- * `overflow: hidden` en el contenedor es lo que hace de máscara: la imagen es
- * más grande que el hueco y lo que sobra se recorta al dibujar, sin tocar el
- * archivo.
- */
-export function ImagenEncuadrada({
-  uri,
-  lado,
-  encuadre,
-  redonda = false,
-}: {
-  uri: string
-  /** El lado del recuadro. Cuadrado: es la forma de una foto de perfil. */
-  lado: number
-  encuadre: Encuadre | null
-  redonda?: boolean
-}) {
-  return (
-    <View
-      style={{
-        width: lado,
-        height: lado,
-        overflow: 'hidden',
-        borderRadius: redonda ? lado / 2 : 12,
-      }}
-    >
-      <Image source={{ uri }} style={estiloEncuadrado(lado, encuadre)} resizeMode="cover" />
-    </View>
-  )
 }

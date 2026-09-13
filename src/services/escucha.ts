@@ -1,6 +1,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { getSupabase } from '../lib/supabase'
 import { nombreDispositivo } from '../lib/dispositivo'
+import { LATIDO_ESCUCHA_MS, VIGENCIA_ESCUCHA_MS } from './lecturaViva'
 import type { PlaylistTrack } from './playlists'
 
 export type { PlaylistTrack }
@@ -25,6 +26,7 @@ export type Escucha = {
   arrancadoEn: number | null
   /** Reloj lógico: si llega algo con una revisión menor a la vista, se tira. */
   revision: number
+  actualizadoEn: number | null
 }
 
 /**
@@ -104,6 +106,7 @@ export function escuchaFromRow(row: unknown): Escucha | null {
     posicionMs: numero(r.posicion_ms),
     arrancadoEn: epocaMs(r.arrancado_en),
     revision: numero(r.revision),
+    actualizadoEn: epocaMs(r.updated_at),
   }
 }
 
@@ -194,7 +197,8 @@ export async function publicarEscucha(a: {
         }
       : null,
   })
-  return typeof data === 'number' ? data : 0
+  if (typeof data !== 'number' || !Number.isFinite(data) || data <= 0) throw new Error('El servidor no confirmó la reproducción.')
+  return data
 }
 
 export async function fetchEscuchaEstado(): Promise<EscuchaEstado | null> {
@@ -230,7 +234,7 @@ export type DispositivoPresente = { deviceId: string; nombre: string }
  * del canal alcanza —es efímero y no necesita fila en la base—, y cada
  * dispositivo se queda solo con el mensaje que lo nombra a él.
  */
-export type Handoff = { destino: string }
+export type Handoff = { destino: string; suena?: boolean; revision?: number; requestId?: string }
 
 // Vive en el cliente (no en el módulo): Fast Refresh puede reiniciar este
 // archivo mientras Supabase todavía conserva sus canales por nombre.
@@ -244,11 +248,12 @@ export function suscribirEscucha(
     onFila: (escucha: Escucha) => void
     onPresentes: (dispositivos: DispositivoPresente[]) => void
     /** Otro aparato pidió que **este** tome la reproducción. */
-    onTomar: () => void
+    onTomar: (pedido?: Handoff) => void
+    onConexion?: (estado: 'conectando' | 'conectado' | 'desconectado') => void
     /** El canal quedó suscripto: repedir el estado completo. */
     onListo: () => void
   },
-): { desuscribir: Unsubscribe; mandarA: (destino: string) => void; listo: Promise<void> } {
+): { desuscribir: Unsubscribe; mandarA: (destino: string, suena?: boolean, revision?: number) => Promise<void>; listo: Promise<void> } {
   const supabase = getSupabase()
   const cliente = supabase as typeof supabase & { [CLAVE_CANALES]?: Map<string, ConexionEscucha> }
   const conexiones = cliente[CLAVE_CANALES] ??= new Map()
@@ -258,15 +263,30 @@ export function suscribirEscucha(
   let vivo = true
   let channel: RealtimeChannel | null = null
   let cierre: Promise<void> | null = null
+  let conectado = false
+  let latido: ReturnType<typeof setInterval> | null = null
+  const recibidos = new Set<string>()
+  const vistas = new Map<string, { marca: unknown; cuando: number }>()
+  const detenerLatido = () => { if (latido) clearInterval(latido); latido = null }
+  hooks.onConexion?.('conectando')
 
   /* La presencia de cada key trae la metadata que se publicó con `track`; de
      ahí sale el nombre. Se toma el primer registro de cada key —un aparato es
      una sola presencia—. */
-  const leerPresentes = (ch: RealtimeChannel): DispositivoPresente[] =>
-    Object.entries(ch.presenceState<{ nombre?: string }>()).map(([id, metas]) => ({
-      deviceId: id,
-      nombre: metas[0]?.nombre || 'otro dispositivo',
-    }))
+  const leerPresentes = (ch: RealtimeChannel): DispositivoPresente[] => {
+    const presentes: DispositivoPresente[] = []
+    const estado = ch.presenceState<{ nombre?: string; en?: number }>()
+    for (const [id, metas] of Object.entries(estado)) {
+      const meta = [...metas].sort((a, b) => (b.en ?? 0) - (a.en ?? 0))[0]
+      if (!meta) continue
+      const vista = vistas.get(id)
+      // Medir edad desde la recepción evita comparar relojes de dos aparatos.
+      if (!vista || vista.marca !== meta.en) vistas.set(id, { marca: meta.en, cuando: Date.now() })
+      if (Date.now() - vistas.get(id)!.cuando <= VIGENCIA_ESCUCHA_MS) presentes.push({ deviceId: id, nombre: meta.nombre || 'otro dispositivo' })
+    }
+    for (const id of vistas.keys()) if (!(id in estado)) vistas.delete(id)
+    return presentes
+  }
 
   const listo = Promise.resolve().then(async () => {
     await cierreAnterior
@@ -280,7 +300,7 @@ export function suscribirEscucha(
     if (supabase.getChannels().some((c) => c.topic === `realtime:${topic}`)) {
       throw new Error('No se pudo cerrar el canal anterior de escucha.')
     }
-    channel = supabase.channel(topic, { config: { private: true, presence: { key: deviceId } } })
+    channel = supabase.channel(topic, { config: { private: true, presence: { key: deviceId }, broadcast: { ack: true } } })
     channel
       .on(
         'postgres_changes',
@@ -295,17 +315,37 @@ export function suscribirEscucha(
         if (vivo && channel) hooks.onPresentes(leerPresentes(channel))
       })
       .on('broadcast', { event: 'tomar' }, ({ payload }) => {
-        if (vivo && (payload as Handoff)?.destino === deviceId) hooks.onTomar()
+        const pedido = payload as Handoff
+        if (!vivo || !conectado || pedido?.destino !== deviceId) return
+        if (pedido.revision !== undefined && (!Number.isSafeInteger(pedido.revision) || pedido.revision < 0)) return
+        if (pedido.requestId) {
+          if (recibidos.has(pedido.requestId)) return
+          recibidos.add(pedido.requestId)
+          if (recibidos.size > 64) recibidos.delete(recibidos.values().next().value!)
+        }
+        hooks.onTomar(pedido)
       })
       .subscribe((status) => {
-        if (vivo && status === 'SUBSCRIBED') {
-          void channel?.track({ en: Date.now(), nombre: nombreDispositivo() })
+        if (!vivo) return
+        conectado = status === 'SUBSCRIBED'
+        detenerLatido()
+        hooks.onConexion?.(conectado ? 'conectado' : 'desconectado')
+        if (conectado) {
+          const anunciar = () => {
+            if (!vivo || !conectado || !channel) return
+            void channel.track({ en: Date.now(), nombre: nombreDispositivo() }).catch(() => {})
+            hooks.onPresentes(leerPresentes(channel))
+          }
+          anunciar()
+          latido = setInterval(anunciar, LATIDO_ESCUCHA_MS)
           hooks.onListo()
-        }
+        } else { vistas.clear(); hooks.onPresentes([]) }
       })
   })
   const conexion: ConexionEscucha = {
     cerrar: () => {
+      conectado = false
+      detenerLatido()
       vivo = false // Ignorar eventos tardíos antes de esperar el leave de la red.
       cierre ??= listo.catch(() => {}).then(async () => {
         const viejo = channel
@@ -321,9 +361,10 @@ export function suscribirEscucha(
   return {
     listo,
     desuscribir: () => { void conexion.cerrar().catch(() => {}) },
-    mandarA: (destino: string) => {
-      if (!vivo) return
-      void channel?.send({ type: 'broadcast', event: 'tomar', payload: { destino } })
+    mandarA: async (destino: string, suena?: boolean, revision?: number) => {
+      if (!vivo || !conectado || !channel) throw new Error('La conexión con tus dispositivos no está disponible.')
+      const resultado = await channel.send({ type: 'broadcast', event: 'tomar', payload: { destino, suena, revision, requestId: `${deviceId}:${Date.now()}:${Math.random().toString(36).slice(2)}` } })
+      if (!vivo || !conectado || resultado !== 'ok') throw new Error('No se pudo enviar la reproducción. Volvé a intentar.')
     },
   }
 }

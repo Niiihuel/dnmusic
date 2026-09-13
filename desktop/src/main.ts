@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, safeStorage, session, shell } from 'electron'
+import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
   arrancarActualizador,
@@ -20,6 +21,8 @@ import { GoogleOAuthEscritorio } from './oauth-google'
 import { registrarGoogleOAuth } from './oauth-google-ipc'
 import { AlmacenAuth } from './auth-storage'
 import { registrarAlmacenAuth } from './auth-storage-ipc'
+import { DiscordPresence } from './discord-presence'
+import { registrarDiscord } from './discord-ipc'
 
 /**
  * dnmusic para escritorio.
@@ -85,7 +88,10 @@ const BANDA_VENTANA = 38
 
 function crearVentana(): BrowserWindow {
   const ventana = new BrowserWindow({
-    icon: join(raizWeb(), 'icons', 'icon-512.png'),
+    // Windows elige el frame ICO según el DPI; Linux usa PNG con transparencia.
+    icon: app.isPackaged
+      ? join(process.resourcesPath, 'icons', process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+      : join(__dirname, '..', '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'desktop-icon.png'),
     width: 1180,
     height: 780,
     /*
@@ -246,6 +252,24 @@ function registrar(...partes: unknown[]): void {
 }
 
 /**
+ * Dejar dicho si esta máquina tiene el almacén protegido del sistema.
+ *
+ * Mismo motivo que `registrarGPU`: es lo único que decide dónde termina la
+ * sesión de Supabase, y no se puede ver desde el código. Con él, la sesión
+ * viaja cifrada con DPAPI en Windows o con el llavero en Linux; sin él —una
+ * sesión de escritorio sin llavero, un contenedor— el archivo queda en texto
+ * plano, que sigue siendo mejor que perder la sesión, pero conviene saberlo
+ * cuando alguien reporta que la app le pide entrar todo el tiempo.
+ */
+function registrarAlmacenProtegido(): void {
+  try {
+    registrar('almacén protegido:', safeStorage.isEncryptionAvailable() ? 'sí' : 'NO (la sesión se guarda sin cifrar)')
+  } catch (error) {
+    registrar('no se pudo consultar el almacén protegido:', error)
+  }
+}
+
+/**
  * El resolutor de a bordo (ver resolutor.ts), con lo que llegó por IPC validado.
  *
  * El renderer es nuestro propio bundle, pero corre sandboxeado justamente
@@ -360,21 +384,33 @@ if (!app.requestSingleInstanceLock()) {
     const disco = new DiscoAudioOffline(join(app.getPath('userData'), 'audio-offline'), {
       origen: origenSupabase, desarrollo: !app.isPackaged,
     })
-    const google = new GoogleOAuthEscritorio({ origen: origenSupabase, abrirExterno: url => shell.openExternal(url), alCompletar: traerAlFrente })
+    const logoGoogle = app.isPackaged ? join(process.resourcesPath, 'icons', 'logo.png') : join(__dirname, '..', '..', 'assets', 'branding', 'splash-dnmusic.png')
+    const google = new GoogleOAuthEscritorio({ origen: origenSupabase, logoBase64: readFileSync(logoGoogle).toString('base64'), abrirExterno: url => shell.openExternal(url), alCompletar: traerAlFrente })
     registrarGoogleOAuth(ipcMain, google, () => ventanaPrincipal?.webContents ?? null)
-    const auth = new AlmacenAuth(join(app.getPath('userData'), 'auth-session.bin'), {
-      codificar: (texto) => safeStorage.isEncryptionAvailable()
-        ? Buffer.concat([Buffer.from([1]), safeStorage.encryptString(texto)])
-        : Buffer.concat([Buffer.from([0]), Buffer.from(texto, 'utf8')]),
-      decodificar: (datos) => {
-        if (datos[0] === 1) return safeStorage.decryptString(datos.subarray(1))
-        if (datos[0] === 0) return datos.subarray(1).toString('utf8')
-        throw new Error('Formato de sesión desconocido.')
+    registrarAlmacenProtegido()
+    const auth = new AlmacenAuth(
+      join(app.getPath('userData'), 'auth-session.bin'),
+      {
+        codificar: (texto) => safeStorage.isEncryptionAvailable()
+          ? Buffer.concat([Buffer.from([1]), safeStorage.encryptString(texto)])
+          : Buffer.concat([Buffer.from([0]), Buffer.from(texto, 'utf8')]),
+        decodificar: (datos) => {
+          if (datos[0] === 1) return safeStorage.decryptString(datos.subarray(1))
+          if (datos[0] === 0) return datos.subarray(1).toString('utf8')
+          throw new Error('Formato de sesión desconocido.')
+        },
       },
-    })
+      (motivo, error) => registrar(`sesión: ${motivo} —`, error),
+    )
     registrarAlmacenAuth(ipcMain, auth, () => ventanaPrincipal?.webContents ?? null)
     app.on('will-quit', () => google.cancelar())
     registrarAudioOffline(ipcMain, disco, () => ventanaPrincipal?.webContents ?? null)
+    const discord = new DiscordPresence(state => {
+      const contents = ventanaPrincipal?.webContents
+      if (contents && !contents.isDestroyed() && contents.getURL().startsWith('app://dnmusic/')) contents.send('discord:estado', state)
+    })
+    registrarDiscord(ipcMain, discord, () => ventanaPrincipal?.webContents ?? null)
+    app.on('will-quit', () => discord.limpiar())
     servirWeb(raiz, pedido => disco.servir(pedido))
     permitirNotificaciones()
     registrarGPU()
@@ -399,6 +435,9 @@ if (!app.requestSingleInstanceLock()) {
     enlaces.conectar((ruta) => ventanaPrincipal?.webContents.send('enlace:abrir', ruta))
     ventanaPrincipal.on('closed', () => enlaces.desconectar())
     ventanaPrincipal.webContents.on('destroyed', () => google.cancelar())
+    ventanaPrincipal.webContents.on('destroyed', () => discord.limpiar())
+    ventanaPrincipal.webContents.on('render-process-gone', () => discord.limpiar())
+    ventanaPrincipal.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => { if (isMainFrame && !isInPlace) discord.limpiar() })
     ventanaPrincipal.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => { if (isMainFrame && !isInPlace) google.cancelar() })
     arrancarActualizador()
   })

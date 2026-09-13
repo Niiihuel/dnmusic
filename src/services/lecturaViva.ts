@@ -1,19 +1,36 @@
-/** Lecturas serializadas por RPC: mantienen las mismas reglas de privacidad que
- * la primera carga. No nos suscribimos a las escuchas privadas de otra cuenta. */
-export function observarLectura<T>(leer: () => Promise<T>, recibir: (valor: T | null) => void, intervalo = 3000) {
+/** Lecturas serializadas y cancelables. El timeout retira el último valor;
+ * un lector que ignora AbortSignal no permite acumular solicitudes paralelas. */
+export function observarLectura<T>(leer: (signal?: AbortSignal) => Promise<T>, recibir: (valor: T | null) => void, intervalo = 3000) {
   let vivo = true
   let activo = false
   let version = 0
   let timer: ReturnType<typeof setTimeout> | undefined
+  type LecturaEnCurso = { abort: AbortController; version: number; deadline?: ReturnType<typeof setTimeout> }
+  let ejecutando: LecturaEnCurso | null = null
+  const pausa = Number.isFinite(intervalo) ? Math.max(250, Math.min(60_000, intervalo)) : 3000
   const cargar = async (v: number) => {
-    try {
-      const valor = await leer()
-      if (vivo && activo && v === version) recibir(valor)
-    } catch {
-      // Una lectura fallida no debe seguir afirmando que alguien escucha ahora.
+    if (ejecutando || !vivo || !activo) return
+    const operacion: LecturaEnCurso = { abort: new AbortController(), version: v }
+    ejecutando = operacion
+    let vencida = false
+    const deadline = setTimeout(() => {
+      vencida = true
+      operacion.abort.abort()
       if (vivo && activo && v === version) recibir(null)
+    }, 10_000)
+    operacion.deadline = deadline
+    try {
+      const valor = await leer(operacion.abort.signal)
+      if (!vencida && vivo && activo && v === version) recibir(valor)
+    } catch {
+      if (!vencida && vivo && activo && v === version) recibir(null)
     } finally {
-      if (vivo && activo && v === version) timer = setTimeout(() => void cargar(v), intervalo)
+      clearTimeout(deadline)
+      if (ejecutando === operacion) ejecutando = null
+      if (vivo && activo) {
+        if (v === version) timer = setTimeout(() => void cargar(version), pausa)
+        else void cargar(version)
+      }
     }
   }
   return {
@@ -22,9 +39,11 @@ export function observarLectura<T>(leer: () => Promise<T>, recibir: (valor: T | 
       activo = siguiente
       version++
       clearTimeout(timer)
+      ejecutando?.abort.abort()
+      clearTimeout(ejecutando?.deadline)
       if (activo) void cargar(version)
     },
-    cerrar() { vivo = false; activo = false; version++; clearTimeout(timer) },
+    cerrar() { vivo = false; activo = false; version++; clearTimeout(timer); ejecutando?.abort.abort(); clearTimeout(ejecutando?.deadline) },
   }
 }
 

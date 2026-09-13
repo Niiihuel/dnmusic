@@ -1,5 +1,5 @@
 import { Redirect, useRouter } from 'expo-router'
-import { Text, useWindowDimensions, View } from 'react-native'
+import { Platform, Text, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useAuthUser, useIsAccessAdmin } from '../../src/state/session'
 import { volver } from '../../src/lib/volver'
@@ -15,7 +15,7 @@ export default function Accesos() {
   const escritorio = useWindowDimensions().width >= ESCRITORIO_PX
 
   /* En escritorio forma parte de la navegación lateral de Configuración. */
-  if (escritorio) return <Redirect href="/ajustes?seccion=accesos" />
+  if (Platform.OS !== 'ios' && escritorio) return <Redirect href="/ajustes?seccion=accesos" />
 
   return (
     <SafeAreaView className="min-h-0 flex-1 bg-background" edges={['top', 'bottom']}>
@@ -23,7 +23,7 @@ export default function Accesos() {
         <BotonVolver label="Volver a Ajustes" onPress={() => volver(router, '/ajustes')} />
         <Text
           accessibilityRole="header"
-          className="min-w-0 flex-1 text-foreground text-[17px] font-semibold"
+          className="min-w-0 flex-1 text-foreground text-body font-semibold"
         >
           Solicitudes de acceso
         </Text>
@@ -31,7 +31,7 @@ export default function Accesos() {
       {esAdmin && cuenta ? (
         <ListaSolicitudes key={cuenta.id} administradorId={cuenta.id} />
       ) : (
-        <Text accessibilityRole="alert" className="p-6 text-muted-foreground text-[15px]">
+        <Text accessibilityRole="alert" className="p-6 text-muted-foreground text-subheadline">
           Esta sección está disponible solo para el administrador.
         </Text>
       )}

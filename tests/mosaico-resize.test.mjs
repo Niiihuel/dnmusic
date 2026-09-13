@@ -133,7 +133,7 @@ test('el fondo recibe las nuevas medidas y queda recortado por la superficie del
 test('la barra ofrece herramientas, agregar y editor sin confirmación propia; bloquea acciones ocupadas', () => {
   const llamadas = []
   const Barra = funcion('src/ui/BarraHerramientasMosaico.tsx', 'BarraHerramientasMosaico', {
-    View: 'View', Text: 'Text', Menu: 'Menu', BotonVidrio: 'Boton',
+    View: 'View', Text: 'Text', Menu: 'Menu', BotonVidrio: 'Boton', IconButton: 'Boton',
     IconPalette: 'Icon', IconType: 'Icon', IconMore: 'Icon', IconPlus: 'Icon', IconBack: 'Icon',
     ICON_COLOR: { foreground: 'white', onPrimary: 'black' },
   })

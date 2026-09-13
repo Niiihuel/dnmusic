@@ -37,8 +37,8 @@ import { volver } from '../../src/lib/volver'
    y no en cada render del perfil. */
 const VACIO = (
   <View className="items-center gap-2 rounded-2xl bg-card px-6 py-12">
-    <Text className="text-foreground text-[15px] font-semibold">Tu perfil está vacío</Text>
-    <Text className="text-muted-foreground text-center text-[13px] leading-5">
+    <Text className="text-foreground text-subheadline font-semibold">Tu perfil está vacío</Text>
+    <Text className="text-muted-foreground text-center text-footnote leading-5">
       Fijá una canción desde los tres puntos de cualquier fila y va a aparecer acá.
     </Text>
   </View>
@@ -47,8 +47,8 @@ const VACIO = (
 /* Armando, el hueco dice qué hacer: el «+» está abajo. */
 const VACIO_ARMANDO = (
   <View className="items-center gap-2 rounded-2xl bg-card px-6 py-12">
-    <Text className="text-foreground text-[15px] font-semibold">El mosaico está vacío</Text>
-    <Text className="text-muted-foreground text-center text-[13px] leading-5">
+    <Text className="text-foreground text-subheadline font-semibold">El mosaico está vacío</Text>
+    <Text className="text-muted-foreground text-center text-footnote leading-5">
       Tocá el «+» de abajo para agregar la primera pieza.
     </Text>
   </View>
@@ -188,7 +188,7 @@ export default function ProfileScreen() {
    */
   const chipDeEdicion = (
     <Glass radius={18} style={{ height: 36, paddingHorizontal: 16, justifyContent: 'center' }}>
-      <Text className="text-foreground text-[11px] font-bold uppercase tracking-[1.4px]">
+      <Text className="text-foreground text-footnote font-bold uppercase">
         Modo de edición
       </Text>
     </Glass>
@@ -204,7 +204,7 @@ export default function ProfileScreen() {
     >
       <View className="flex-row items-center gap-2">
         <IconPencil size={15} color={ICON_COLOR.foreground} />
-        <Text className="text-foreground text-[14px] font-semibold">Editar perfil</Text>
+        <Text className="text-foreground text-subheadline font-semibold">Editar perfil</Text>
       </View>
     </BotonVidrio>
   )

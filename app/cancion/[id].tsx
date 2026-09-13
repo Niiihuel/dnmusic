@@ -1,5 +1,6 @@
+import { IconButton } from '../../src/ui/IconButton'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Image, Text, useWindowDimensions, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ScrollArea as ScrollView } from '../../src/ui/ScrollArea'
@@ -125,7 +126,7 @@ export default function CancionCompartida() {
         {ancho ? null : (
           <View className="flex-row items-center gap-3 px-3 py-1">
             <BotonVolver onPress={() => volver(router, '/')} />
-            <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
+            <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
               {tarjeta?.titulo ?? 'Canción'}
             </Text>
           </View>
@@ -186,41 +187,22 @@ export default function CancionCompartida() {
                   }
                   actions={
                     <>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={
+                      <IconButton label={
                           suenaAca && suena ? 'Pausar' : `Reproducir ${tarjeta.titulo}`
-                        }
-                        accessibilityState={{ busy: resolviendo }}
-                        disabled={resolviendo}
-                        onPress={() => void reproducir(tarjeta)}
-                        className="h-14 w-14 items-center justify-center rounded-full bg-primary active:opacity-80"
-                      >
-                        {resolviendo ? (
+                        } symbol={suenaAca && suena ? 'pause.fill' : 'play.fill'} onPress={() => void reproducir(tarjeta)} disabled={resolviendo} lado={56} size={20} variant="primary" busy={resolviendo} icon={resolviendo ? (
                           <ActivityIndicator size="small" color={ICON_COLOR.onPrimary} />
                         ) : suenaAca && suena ? (
                           <IconPause size={20} color={ICON_COLOR.onPrimary} />
                         ) : (
                           <IconPlay size={20} color={ICON_COLOR.onPrimary} />
-                        )}
-                      </Pressable>
+                        )} />
 
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Agregar a una lista"
-                        onPress={() => {
+                      <IconButton label="Agregar a una lista" symbol="plus" onPress={() => {
                           dejarCancionPendiente(resultado(tarjeta))
                           router.push('/lista/elegir')
-                        }}
-                        className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-75"
-                      >
-                        <IconPlus size={18} color={ICON_COLOR.muted} />
-                      </Pressable>
+                        }} lado={44} size={18} icon={<IconPlus size={18} color={ICON_COLOR.muted} />} />
 
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Compartir el link"
-                        onPress={() =>
+                      <IconButton label="Compartir el link" symbol="square.and.arrow.up" onPress={() =>
                           void compartirCancion({
                             videoId: tarjeta.id,
                             title: tarjeta.titulo,
@@ -228,11 +210,7 @@ export default function CancionCompartida() {
                             artworkUrl: tarjeta.tapa ?? '',
                             durationMs: tarjeta.durationMs ?? 0,
                           })
-                        }
-                        className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-75"
-                      >
-                        <IconShare size={18} color={ICON_COLOR.muted} />
-                      </Pressable>
+                        } lado={44} size={18} icon={<IconShare size={18} color={ICON_COLOR.muted} />} />
                     </>
                   }
                 />

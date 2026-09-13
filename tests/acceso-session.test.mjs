@@ -86,6 +86,18 @@ test('cada ruta de enlace tiene su aterrizaje y nada más que eso sin sesión',(
  assert.match(layout,/if \(!onPending && !enAterrizaje\) router\.replace\('\/acceso-pendiente'\)/)
 })
 
+test('entrar no pasa por la pantalla de solicitud pendiente mientras se consulta el acceso',()=>{
+ /* `access === null` es «la consulta no volvió», no «tu solicitud está
+    pendiente». Tratarlos igual hacía que **cualquiera** —también quien tiene
+    acceso desde siempre— viera medio segundo de «esperando la aprobación»
+    justo después de entrar. Un fallo sí tiene que llevar ahí: es la única
+    pantalla con el botón para volver a consultar. */
+ const layout=readFileSync('app/_layout.tsx','utf8')
+ assert.match(layout,/const accesoIncierto = !!user && access === null && !accessError/)
+ assert.match(layout,/if \(user === undefined \|\| accesoIncierto\)/)
+ assert.match(layout,/if \(accesoIncierto\) return/)
+})
+
 test('una carga inicial fallida de bandeja puede reintentarse sin salir de la cuenta',async()=>{
  const f=fixture();f.status({status:'approved',is_admin:false});f.inboxFail(new Error('network'));f.signIn('old');await f.tick()
  assert.ok(!f.calls.includes('subscribe'));f.inboxFail(null);await f.api.refrescarAcceso();assert.ok(f.calls.includes('subscribe'))

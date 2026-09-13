@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useRef, useState, type ReactNode } from 'react'
 import { Platform, Pressable, Text, useWindowDimensions, View, type ScrollView as RNScrollView } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -9,8 +9,11 @@ import {
   FilaInterruptor,
   FilaOpciones,
   GrupoAjustes,
+  ListaAjustes,
+  FilaAccion,
+  FilaDato,
+  FilaConfirmable,
 } from '../../src/ui/Ajustes'
-import { FilaSostener } from '../../src/ui/Mantener'
 import { Avatar } from '../../src/ui/Avatar'
 import { CabeceraLateral, BotonLateral } from '../../src/ui/CabeceraLateral'
 import { BotonVolver } from '../../src/ui/BotonVolver'
@@ -60,6 +63,9 @@ import { DETALLE_PRECARGA_SESION, DETALLE_RED_PC, inventarioDescargas } from '..
 import { TECLADO_FISICO } from '../../src/lib/teclado'
 import { ListaSolicitudes } from '../../src/ui/SolicitudesAcceso'
 import { ConectarGoogle } from '../../src/ui/ConectarGoogle'
+import { DiscordIcon } from '../../src/ui/DiscordIcon'
+import { AjustesDiscord } from '../../src/ui/AjustesDiscord'
+import { HAY_DISCORD } from '../../src/state/discord'
 import { AdministrarActualizaciones } from '../../src/ui/AdministrarActualizaciones'
 
 /** Desde acá la pantalla es la de macOS: barra lateral con las categorías y el detalle al lado. */
@@ -137,7 +143,7 @@ export default function Configuracion() {
     : actualizacion.version || null
   const [busqueda, setBusqueda] = useState('')
   const { width } = useWindowDimensions()
-  const escritorio = width >= ESCRITORIO_PX
+  const escritorio = Platform.OS !== 'ios' && width >= ESCRITORIO_PX
   const consulta = normalizar(busqueda)
   const buscando = consulta.length > 0
 
@@ -156,7 +162,7 @@ export default function Configuracion() {
       titulo: 'Reproducción',
       icono: IconDisc,
       palabras:
-        'reproducción modo orden aleatorio descubrimiento recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música',
+        'reproducción modo orden aleatorio descubrimiento recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música diagnóstico audio errores fallos recuperación',
       visible: true,
       bloques: (
         <>
@@ -192,6 +198,10 @@ export default function Configuracion() {
               onPress={() => router.push('/onboarding?de=ajustes')}
               ultima
             />
+          </GrupoAjustes>
+          <GrupoAjustes pie="Consultá los fallos y recuperaciones recientes del audio en este dispositivo.">
+            <FilaAjuste rotulo="Diagnóstico de audio" vacio="" icono={<IconDisc size={17} color={ICON_COLOR.muted} />}
+              onPress={() => router.push('/ajustes/diagnostico-audio')} ultima />
           </GrupoAjustes>
         </>
       ),
@@ -319,6 +329,14 @@ export default function Configuracion() {
       ),
     },
     {
+      id: 'discord',
+      titulo: 'Discord',
+      icono: DiscordIcon,
+      palabras: 'discord presencia compartir canción escuchando actividad',
+      visible: HAY_DISCORD,
+      bloques: <AjustesDiscord />,
+    },
+    {
       id: 'privacidad',
       titulo: 'Privacidad',
       icono: IconLock,
@@ -332,7 +350,7 @@ export default function Configuracion() {
             icono={<IconBan size={17} color={ICON_COLOR.muted} />}
             onPress={() => router.push('/ajustes/bloqueados')}
           />
-          <FilaSostener
+          <FilaConfirmable
             rotulo="Borrar historial de escucha"
             icono={<IconTrash size={17} color={ICON_COLOR.muted} />}
             onCompletar={() => void borrar()}
@@ -357,7 +375,7 @@ export default function Configuracion() {
             icono={<IconUser size={17} color={ICON_COLOR.muted} />}
             onPress={() => router.push('/profile')}
           />
-          <FilaSostener
+          <FilaConfirmable
             rotulo="Cerrar sesión"
             icono={<IconLogOut size={17} color={ICON_COLOR.muted} />}
             onCompletar={() => void endSession()}
@@ -426,10 +444,10 @@ export default function Configuracion() {
           >
             <Avatar name={nombre} path={perfil?.avatarPath} size={40} />
             <View className="min-w-0 flex-1">
-              <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
+              <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
                 {nombre}
               </Text>
-              <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+              <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
                 {perfil?.username ? `@${perfil.username} · Tu perfil y tu Space` : 'Tu perfil y tu Space'}
               </Text>
             </View>
@@ -517,6 +535,21 @@ function Telefono({
      apoya sobre él. La lista reserva su alto para llegar a la última fila. */
   const pieBuscador = Math.max(insets.bottom, 12) + teclado
 
+  const [mostrarTodas, setMostrarTodas] = useState(false)
+  if (Platform.OS === 'ios') {
+    const enfocada = !mostrarTodas && !buscando ? coinciden.find(c => c.id === initialId) : undefined
+    const visibles = enfocada ? [enfocada] : coinciden
+    return <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+      <View className="flex-row items-center px-3 py-1"><BotonVolver label="Volver" onPress={onVolver} /></View>
+      <ListaAjustes titulo={enfocada?.titulo ?? 'Configuración'} piso={piso + 72}>
+        {enfocada ? <GrupoAjustes><FilaAccion rotulo="Ver toda la configuración" onPress={() => setMostrarTodas(true)} ultima /></GrupoAjustes> : !buscando ? cuenta : null}
+        {visibles.map(c => <Fragment key={c.id}>{c.bloques}</Fragment>)}
+        {!visibles.length ? <GrupoAjustes pie="Probá con otra palabra."><FilaDato rotulo="Sin resultados" valor={busqueda} /><FilaAccion rotulo="Ver todo" onPress={() => onBusqueda('')} ultima /></GrupoAjustes> : null}
+      </ListaAjustes>
+      <View style={{ position: 'absolute', left: 16, right: 16, bottom: pieBuscador }}><SearchField value={busqueda} onChangeText={onBusqueda} placeholder="Buscar" /></View>
+    </SafeAreaView>
+  }
+
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       {/* La barra chica: solo la flecha. Configuración es una pantalla apilada
@@ -532,7 +565,7 @@ function Telefono({
         contentContainerStyle={{ paddingBottom: piso + 72 }}
       >
         <View className="gap-7">
-          <Text className="px-1 pt-1 text-foreground text-[34px] font-bold tracking-[-0.4px]">
+          <Text className="px-1 pt-1 text-foreground text-large-title font-bold tracking-[-0.4px]">
             Configuración
           </Text>
           {!buscando ? cuenta : null}
@@ -631,7 +664,7 @@ function Escritorio({
                   }`}
                 >
                   <Icono size={16} color={activa ? ICON_COLOR.foreground : ICON_COLOR.muted} />
-                  <Text className={`min-w-0 flex-1 text-[13px] ${activa ? 'text-foreground font-medium' : 'text-foreground'}`} numberOfLines={1}>{c.titulo}</Text>
+                  <Text className={`min-w-0 flex-1 text-footnote ${activa ? 'text-foreground font-medium' : 'text-foreground'}`} numberOfLines={1}>{c.titulo}</Text>
                 </Pressable>
               )
             })}
@@ -642,7 +675,7 @@ function Escritorio({
         <Panel className="min-w-0 flex-1">
           <View className="flex-row items-center gap-1 px-2 py-1">
             <BotonVolver label="Volver" onPress={onVolver} />
-            <Text className="min-w-0 flex-1 text-foreground text-[15px] font-semibold" numberOfLines={1}>
+            <Text className="min-w-0 flex-1 text-foreground text-subheadline font-semibold" numberOfLines={1}>
               {buscando ? `Resultados de «${busqueda.trim()}»` : actual?.titulo}
             </Text>
           </View>
@@ -655,7 +688,7 @@ function Escritorio({
               {mostradas.map((c) => (
                 <View key={c.id} className="gap-4">
                   {buscando ? (
-                    <Text className="px-1 text-muted-foreground text-[13px] font-semibold uppercase tracking-[1.2px]">
+                    <Text className="px-1 text-muted-foreground text-footnote font-semibold uppercase tracking-[1.2px]">
                       {c.titulo}
                     </Text>
                   ) : null}

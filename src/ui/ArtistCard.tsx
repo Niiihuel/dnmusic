@@ -1,8 +1,9 @@
-import { Image, Linking, Pressable, Text, View } from 'react-native'
+import { BotonSuperficie } from './BotonSuperficie'
+import { Image, Linking, Text, View } from 'react-native'
 import { Skeleton } from './Skeleton'
 import { artworkSource } from '../lib/artwork'
 import { ICON_COLOR, IconExternal } from './icons'
-import type { ArtistInfo, TrackResult } from '../services/music'
+import { ArtistInfo } from '../services/music'
 
 /** Padding interno de las tarjetas del sidebar. */
 const PAD = 12
@@ -13,10 +14,10 @@ const PAD = 12
  * Todas comparten envoltorio y encabezado para que la columna se lea como una
  * pila y no como piezas sueltas — el mismo recurso que usa Spotify.
  */
-export function SidebarCard({ title, children }: { title: string; children: React.ReactNode }) {
+function SidebarCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View className="overflow-hidden rounded-xl bg-card" style={{ padding: PAD }}>
-      <Text className="text-foreground pb-2 text-[15px] font-semibold">{title}</Text>
+      <Text className="text-foreground pb-2 text-subheadline font-semibold">{title}</Text>
       {children}
     </View>
   )
@@ -57,14 +58,14 @@ export function ArtistCard({ artist, loading }: { artist: ArtistInfo | null; loa
 
   const details = (
     <>
-      <Text className="text-foreground text-[17px] font-semibold" numberOfLines={2}>
+      <Text className="text-foreground text-body font-semibold" numberOfLines={2}>
         {artist.name}
       </Text>
       {artist.subscribers && (
-        <Text className="text-muted-foreground text-[13px]">{artist.subscribers} de oyentes</Text>
+        <Text className="text-muted-foreground text-footnote">{artist.subscribers} de oyentes</Text>
       )}
       {body.length > 0 && (
-        <Text className="text-muted-foreground mt-2 text-[13px] leading-5">{body}</Text>
+        <Text className="text-muted-foreground mt-2 text-footnote leading-5">{body}</Text>
       )}
       {links.length > 0 && (
         <View className="mt-3 gap-1.5">
@@ -99,7 +100,7 @@ export function ArtistCard({ artist, loading }: { artist: ArtistInfo | null; loa
         />
         <TopScrim />
         <Text
-          className="text-foreground absolute left-3 top-3 text-[15px] font-semibold"
+          className="text-foreground absolute left-3 top-3 text-subheadline font-semibold"
           style={{ textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6 }}
         >
           Sobre el artista
@@ -150,17 +151,17 @@ function TopScrim() {
  */
 function LinkRow({ label, url }: { label: string; url: string }) {
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="link"
       accessibilityLabel={`${label} (se abre en el navegador)`}
       onPress={() => void Linking.openURL(url)}
       className="flex-row items-center gap-1.5 active:opacity-70"
     >
-      <Text className="text-foreground text-[13px] underline" numberOfLines={1}>
+      <Text className="text-foreground text-footnote underline" numberOfLines={1}>
         {label}
       </Text>
       <IconExternal size={12} color={ICON_COLOR.muted} />
-    </Pressable>
+    </BotonSuperficie>
   )
 }
 
@@ -203,34 +204,4 @@ function labelFor(url: string): string {
   } catch {
     return url
   }
-}
-
-/** Datos de la canción elegida. */
-export function TrackDetailsCard({ track }: { track: TrackResult }) {
-  const rows: [string, string][] = [
-    ['Artista', track.artist],
-    ...(track.album ? ([['Álbum', track.album]] as [string, string][]) : []),
-    ['Duración', fmt(track.durationMs)],
-    ['Fuente', 'YouTube Music · Opus'],
-  ]
-
-  return (
-    <SidebarCard title="Detalles">
-      <View className="gap-2.5">
-        {rows.map(([label, value]) => (
-          <View key={label} className="flex-row items-start gap-3">
-            <Text className="text-muted-foreground w-20 text-[13px]">{label}</Text>
-            <Text className="text-foreground flex-1 text-[13px]" numberOfLines={2}>
-              {value}
-            </Text>
-          </View>
-        ))}
-      </View>
-    </SidebarCard>
-  )
-}
-
-function fmt(ms: number): string {
-  const s = Math.round(ms / 1000)
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }

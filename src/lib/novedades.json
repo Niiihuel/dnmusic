@@ -1,5 +1,28 @@
 [
   {
+    "version": "1.15.0",
+    "fecha": "13 de septiembre de 2026",
+    "titulo": "Tu música, más cerca.",
+    "cambios": [
+      "En iPhone, los chats, las pestañas y muchos controles usan componentes nativos de SwiftUI, con las animaciones y los materiales del sistema.",
+      "Compartí canciones dentro del chat con su portada, artista y botón para escucharlas. Las canciones completas tienen una tarjeta propia, sin la onda de los fragmentos.",
+      "Mejoramos la precarga de la cola y el paso a la siguiente canción con el iPhone bloqueado. También sumamos un diagnóstico de audio para investigar cortes.",
+      "Escuchar en muestra qué dispositivo está reproduciendo y permite continuar allí conservando la canción y su posición. Las listas publicadas se muestran en el perfil.",
+      "El acceso se unificó con Google. Si tu cuenta anterior todavía no está vinculada, la app te lo propone para conservar tu perfil y tus listas.",
+      "En la app de escritorio podés conectar Discord para mostrar lo que escuchás, con su estado de conexión visible. También corregimos los tooltips sobre modales, los botones de navegación y el icono de Windows."
+    ]
+  },
+  {
+    "version": "1.14.1",
+    "fecha": "10 de septiembre de 2026",
+    "titulo": "Entrás una vez y te quedás adentro.",
+    "cambios": [
+      "En Windows, iniciar sesión y volver al login a los pocos segundos se terminó. Pasaba cuando el sistema —el antivirus, OneDrive— tenía agarrado el archivo donde se guarda la sesión justo en el momento de reemplazarlo: la app seguía usando la sesión anterior, ya vencida, y el servidor la daba por muerta. Ahora ese reemplazo se reintenta, y la sesión que vale es siempre la última, no la que quedó en el disco.",
+      "Al entrar ya no aparece por medio segundo el cartel de «esperando la aprobación de @nihuel». Ese cartel es para quien de verdad está esperando; mientras se consulta el permiso, ahora se ve el mismo girito del arranque.",
+      "El acceso directo del escritorio dejó de mostrar un globito con la descripción del programa al pasarle el mouse por encima."
+    ]
+  },
+  {
     "version": "1.14.0",
     "fecha": "9 de septiembre de 2026",
     "titulo": "Mirá la historia antes de mandarla.",

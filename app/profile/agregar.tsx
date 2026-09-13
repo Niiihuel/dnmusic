@@ -194,7 +194,7 @@ export default function AgregarVitrina() {
           <Text
             accessibilityRole="button"
             onPress={() => volver(router, '/profile')}
-            className="text-muted-foreground text-center text-[13px] font-semibold"
+            className="text-muted-foreground text-center text-footnote font-semibold"
           >
             Cancelar
           </Text>

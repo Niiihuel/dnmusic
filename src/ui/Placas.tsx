@@ -43,7 +43,7 @@ type Patron = 'pixeles' | 'niebla' | 'estrellas' | 'rayas' | 'puntos' | 'luces' 
 
 export type PlacaId = (typeof PLACAS)[number]['id']
 
-export function placaDe(id: string | null | undefined) {
+function placaDe(id: string | null | undefined) {
   return PLACAS.find((p) => p.id === id) ?? null
 }
 

@@ -1,5 +1,7 @@
+import { BotonSuperficie } from './BotonSuperficie'
+import { IconButton } from './IconButton'
 import { useEffect, useRef, useState } from 'react'
-import { Image, Pressable, Text, View } from 'react-native'
+import { Image, Text, View } from 'react-native'
 import { sugerenciasParaLista } from '../services/recomendaciones'
 import type { PlaylistTrack } from '../services/playlists'
 import { proxiedImage, type TrackResult } from '../services/music'
@@ -93,8 +95,8 @@ export function Sugerencias({
   return (
     <View className="gap-3 pb-2 pt-10">
       <View className="gap-0.5 px-6">
-        <Text className="text-foreground text-[19px] font-bold">Canciones recomendadas</Text>
-        <Text className="text-muted-foreground text-[12px]">
+        <Text className="text-foreground text-title3 font-bold">Canciones recomendadas</Text>
+        <Text className="text-muted-foreground text-caption1">
           Sugerencias según las canciones de esta lista
         </Text>
       </View>
@@ -119,15 +121,15 @@ export function Sugerencias({
 
       {/* La píldora de la casa, en gris: el blanco es el acento y acá la
           acción principal es la lista, no traer más sugerencias. */}
-      <Pressable
+      <BotonSuperficie
         accessibilityRole="button"
         accessibilityLabel="Traer otras sugerencias"
         onPress={() => void cargar()}
         disabled={cargando}
         className="h-10 items-center justify-center self-center rounded-full bg-muted px-6 active:opacity-70"
       >
-        <Text className="text-foreground text-[13px] font-semibold">Actualizar</Text>
-      </Pressable>
+        <Text className="text-foreground text-footnote font-semibold">Actualizar</Text>
+      </BotonSuperficie>
     </View>
   )
 }
@@ -155,7 +157,7 @@ function Fila({
 
   return (
     <View className="flex-row items-center gap-1 rounded-lg pr-1">
-      <Pressable
+      <BotonSuperficie
         {...estadoControlWeb('row')}
         accessibilityRole="button"
         accessibilityLabel={`Escuchar ${track.title}`}
@@ -181,31 +183,23 @@ function Fila({
           <EstadoTapa busy={busy} sounding={isCurrent} playing={wantPlay} hovered={over} />
         </View>
         <View className="min-w-0 flex-1">
-          <Text className="text-foreground text-[14px]" numberOfLines={1}>
+          <Text className="text-foreground text-subheadline" numberOfLines={1}>
             {track.title}
           </Text>
-          <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+          <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
             {track.artist}
           </Text>
         </View>
-      </Pressable>
+      </BotonSuperficie>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Agregar ${track.title} a la lista`}
-        onPress={onAdd}
-        disabled={busy}
-        className="h-11 w-11 items-center justify-center rounded-full active:opacity-60"
-      >
-        {/*
+      {/*
          * La espera se dice sobre la tapa (`EstadoTapa`) y acá el «+» solo se
          * apaga. Antes este botón se convertía en spinner también cuando lo que
          * estaba ocupado era **escuchar** la sugerencia —`busy` no distingue
          * cuál de las dos acciones se pidió— y tocar «escuchar» se veía como si
          * la app estuviera agregando la canción a la lista.
          */}
-        <IconPlus size={17} color={busy ? ICON_COLOR.muted : ICON_COLOR.foreground} />
-      </Pressable>
+      <IconButton label={`Agregar ${track.title} a la lista`} symbol="plus" onPress={onAdd} disabled={busy} lado={44} size={17} icon={<IconPlus size={17} color={busy ? ICON_COLOR.muted : ICON_COLOR.foreground} />} />
     </View>
   )
 }

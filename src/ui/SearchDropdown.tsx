@@ -144,7 +144,7 @@ export function SearchDropdown({
         </View>
       ) : error ? (
         <View className="p-5" style={{ marginTop: embedded ? topInset : 0 }}>
-          <Text className="text-muted-foreground text-center text-sm">{error}</Text>
+          <Text className="text-muted-foreground text-center text-subheadline">{error}</Text>
         </View>
       ) : (
         <ScrollArea
@@ -297,14 +297,14 @@ function ResultadoFila({
             <EstadoTapa busy={busy} sounding={sounding} playing={playing} hovered={over} />
           </View>
           <View className="min-w-0 flex-1">
-            <Text className="text-foreground text-[14px]" numberOfLines={1}>
+            <Text className="text-foreground text-subheadline" numberOfLines={1}>
               {track.title}
             </Text>
-            <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+            <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
               {track.artist}
             </Text>
           </View>
-          <Text className="text-muted-foreground text-[11px] tabular-nums">
+          <Text className="text-muted-foreground text-caption2 tabular-nums">
             {fmtDur(track.durationMs)}
           </Text>
         </Pressable>
@@ -377,10 +377,10 @@ function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => v
         </View>
       )}
       <View className="min-w-0 flex-1">
-        <Text className="text-foreground text-[14px]" numberOfLines={1}>
+        <Text className="text-foreground text-subheadline" numberOfLines={1}>
           {artist.name}
         </Text>
-        <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+        <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
           Artista
         </Text>
       </View>

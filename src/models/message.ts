@@ -1,3 +1,5 @@
+import { sharedSongFrom, type SharedSong } from './sharedSong'
+
 /**
  * Fragmento de canción adjunto a un mensaje, al estilo de Instagram.
  *
@@ -69,12 +71,14 @@ export type Message = {
   /** Cuándo el receptor terminó de leerlo. */
   readAt: Date | null
   song: SongSnippet | null
+  sharedSong?: SharedSong | null
 }
 
 /** Lo que se pasa para enviar; `id` y `created_at` los pone Postgres. */
 export type NewMessage = {
   text: string
   song?: SongSnippet
+  sharedSong?: SharedSong
 }
 
 /** La fila tal como vive en public.messages (snake_case). */
@@ -83,7 +87,7 @@ export type MessageRow = {
   pair_id: string
   sender_id: string
   text: string
-  song: SongSnippet | null
+  song: SongSnippet | SharedSong | null
   created_at: string
   opened_at: string | null
   read_at: string | null
@@ -106,6 +110,7 @@ function toDate(value: unknown): Date | null {
 function toSong(value: unknown): SongSnippet | null {
   if (!value || typeof value !== 'object') return null
   const s = value as Record<string, unknown>
+  if (s.kind === 'track') return null
   if (typeof s.path !== 'string' || typeof s.title !== 'string') return null
   return {
     videoId: typeof s.videoId === 'string' ? s.videoId : '',
@@ -153,6 +158,7 @@ export function messageFromRow(row: unknown): Message | null {
     openedAt: toDate(r.opened_at),
     readAt: toDate(r.read_at),
     song: toSong(r.song),
+    sharedSong: sharedSongFrom(r.song),
   }
 }
 
@@ -162,12 +168,12 @@ export function toMessageRow(
   senderUid: string,
   message: NewMessage,
 ): Pick<MessageRow, 'pair_id' | 'sender_id' | 'text'> & {
-  song?: SongSnippet
+  song?: SongSnippet | SharedSong
 } {
   return {
     pair_id: pairId,
     sender_id: senderUid,
     text: message.text.trim(),
-    ...(message.song ? { song: message.song } : {}),
+    ...(message.sharedSong ? { song: message.sharedSong } : message.song ? { song: message.song } : {}),
   }
 }

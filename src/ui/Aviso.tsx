@@ -1,7 +1,9 @@
+import { useAppActiva } from '../lib/appActiva'
 import { useEffect } from 'react'
 import { Text, View } from 'react-native'
 import {
   Easing,
+  cancelAnimation,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -43,6 +45,7 @@ const SALIDA_MS = 180
  * golpe se lee como un error de dibujado.
  */
 export function Aviso() {
+  const activa = useAppActiva()
   const { texto, turno, malo } = useAviso()
   /* Un booleano y no el objeto: al toast solo le importa si la píldora está
      abajo para correrse. Suscrito al estado crudo, se redibujaría en cada tick
@@ -53,7 +56,7 @@ export function Aviso() {
   const p = useSharedValue(0)
 
   useEffect(() => {
-    if (!texto) return
+    if (!texto || !activa) { cancelAnimation(p); p.value = 0; return }
     /*
      * Entrar, esperar, salir — en una sola secuencia.
      *
@@ -72,7 +75,8 @@ export function Aviso() {
         }),
       ),
     )
-  }, [texto, turno, malo, p])
+    return () => cancelAnimation(p)
+  }, [texto, turno, malo, p, activa])
 
   const animado = useAnimatedStyle(() => ({
     opacity: p.value,
@@ -110,7 +114,7 @@ export function Aviso() {
               propósito, ver `docs/DESIGN.md`— sino por el peso del texto y por
               cuánto se queda en pantalla. */}
           <Text
-            className={`text-center text-[14px] ${
+            className={`text-center text-subheadline ${
               malo ? 'text-foreground font-semibold' : 'text-foreground'
             }`}
           >

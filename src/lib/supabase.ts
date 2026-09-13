@@ -36,6 +36,27 @@ type StorageAuth = {
   removeItem: (clave: string) => Promise<void>
 }
 
+/**
+ * Los dos lugares donde puede estar la sesión en el escritorio, y cuál gana.
+ *
+ * El lugar bueno es el archivo protegido del proceso principal
+ * (`desktop/src/auth-storage.ts`). El de Chromium queda como **copia de
+ * respaldo, y solo se escribe cuando el otro no pudo guardar** — en Windows
+ * pasa: el antivirus o OneDrive agarran el archivo de `%APPDATA%` justo cuando
+ * se lo reemplaza.
+ *
+ * De esa regla sale la precedencia, que antes estaba al revés y era el bug:
+ * **si hay copia de respaldo, esa es la sesión más nueva**, porque su sola
+ * existencia significa que el archivo se quedó atrás. Leyendo primero el
+ * archivo se servía una sesión vieja; Supabase la encontraba vencida, la
+ * intentaba renovar con un refresh token ya gastado, recibía un 400 y la
+ * borraba por muerta. Entrabas, y a los segundos estabas de vuelta en el login.
+ *
+ * Al leer se aprovecha para reintentar el guardado protegido: cuando sale bien,
+ * la copia desaparece y vuelve a haber un solo lugar. Se intenta una vez por
+ * clave y por corrida, porque `getSession()` se llama en cada pedido y esto no
+ * puede convertirse en una escritura por lectura.
+ */
 function storageAuthEscritorio(): StorageAuth | undefined {
   if (Platform.OS !== 'web') return undefined
   const puente = (globalThis as { dnmusicEscritorio?: { authStorage?: StorageAuth } }).dnmusicEscritorio
@@ -45,26 +66,31 @@ function storageAuthEscritorio(): StorageAuth | undefined {
   const local = () => {
     try { return globalThis.localStorage } catch { return undefined }
   }
+  const leerRespaldo = (clave: string) => {
+    try { return local()?.getItem(clave) ?? null } catch { return null }
+  }
+  const borrarRespaldo = (clave: string) => {
+    try { local()?.removeItem(clave) } catch {}
+  }
+  const rescatadas = new Set<string>()
 
   return {
     async getItem(clave) {
-      try {
-        const nativo = await puente.getItem(clave)
-        if (nativo !== null) return nativo
-      } catch {
-        // Una versión vieja o un almacén dañado todavía puede migrar desde Chromium.
-      }
-      try {
-        const anterior = local()?.getItem(clave) ?? null
-        if (anterior !== null) {
+      const respaldo = leerRespaldo(clave)
+      if (respaldo !== null) {
+        if (!rescatadas.has(clave)) {
+          rescatadas.add(clave)
           try {
-            await puente.setItem(clave, anterior)
-            local()?.removeItem(clave)
+            await puente.setItem(clave, respaldo)
+            borrarRespaldo(clave)
           } catch {
-            // Se conserva la copia anterior si el proceso principal no pudo escribir.
+            // Sigue vigente la copia: el archivo protegido todavía no acepta escrituras.
           }
         }
-        return anterior
+        return respaldo
+      }
+      try {
+        return await puente.getItem(clave)
       } catch {
         return null
       }
@@ -72,13 +98,17 @@ function storageAuthEscritorio(): StorageAuth | undefined {
     async setItem(clave, valor) {
       try {
         await puente.setItem(clave, valor)
-        try { local()?.removeItem(clave) } catch {}
+        borrarRespaldo(clave)
+        rescatadas.delete(clave)
         return
       } catch (errorNativo) {
         try {
           const respaldo = local()
           if (!respaldo) throw errorNativo
           respaldo.setItem(clave, valor)
+          /* Guardada de nuevo la copia, vuelve a tener sentido reintentar el
+             rescate la próxima vez que alguien la lea. */
+          rescatadas.delete(clave)
           return
         } catch {
           throw errorNativo
@@ -88,6 +118,7 @@ function storageAuthEscritorio(): StorageAuth | undefined {
     async removeItem(clave) {
       let errorNativo: unknown = null
       try { await puente.removeItem(clave) } catch (error) { errorNativo = error }
+      rescatadas.delete(clave)
       try {
         const respaldo = local()
         if (!respaldo && errorNativo) throw errorNativo
@@ -119,6 +150,9 @@ export function getSupabase(): SupabaseClient {
         persistSession: true,
         autoRefreshToken: true,
         flowType: 'pkce',
+        // La validación del callback exige el flowId que selecciona su verificador.
+        // auth-js lo devuelve, pero sólo lo transporta en la URL con esta opción.
+        experimental: { appendPkceFlowIdToRedirects: true },
         // El callback validado intercambia sólo el código de una transacción iniciada acá.
         detectSessionInUrl: false,
       },

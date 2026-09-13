@@ -46,7 +46,7 @@ export function BotonVolver({
       disabled={disabled}
       onPress={onPress}
       hitSlop={6}
-      {...estadoControlWeb('none')}
+      {...estadoControlWeb('normal')}
       style={{ width: 44, height: 44, borderRadius: 22, opacity: disabled ? 0.4 : 1 }}
       className="items-center justify-center active:bg-muted"
     >

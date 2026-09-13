@@ -1,5 +1,7 @@
+import { BotonSuperficie } from '../../src/ui/BotonSuperficie'
+import { IconButton } from '../../src/ui/IconButton'
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { invitarAColaborar } from '../../src/lib/compartirLista'
 import { mensajeError } from '../../src/lib/mensajeError'
@@ -153,7 +155,7 @@ export default function PersonasDeLista() {
     return (
       <Hoja>
         <View className="flex-1 items-center justify-center bg-background">
-          <Text className="text-muted-foreground text-[13px]">No se encontró la lista.</Text>
+          <Text className="text-muted-foreground text-footnote">No se encontró la lista.</Text>
         </View>
       </Hoja>
     )
@@ -185,10 +187,10 @@ export default function PersonasDeLista() {
               <View className="h-14 w-14 items-center justify-center rounded-full bg-muted">
                 <IconUsers size={24} color={ICON_COLOR.foreground} />
               </View>
-              <Text className="pt-1 text-foreground text-center text-[19px] font-bold">
+              <Text className="pt-1 text-foreground text-center text-title3 font-bold">
                 Invitá a participar
               </Text>
-              <Text className="max-w-sm text-muted-foreground text-center text-[13px] leading-5">
+              <Text className="max-w-sm text-muted-foreground text-center text-footnote leading-5">
                 Cualquier persona con el link va a poder sumar canciones y sacar las que
                 sobren. Tu nombre y tu foto se van a ver junto a la lista.
               </Text>
@@ -203,41 +205,41 @@ export default function PersonasDeLista() {
             <View className="flex-row items-center gap-3 rounded-2xl bg-card px-4 py-3">
               <Avatar name={miNombre} path={perfil?.avatarPath} size={40} />
               <View className="min-w-0 flex-1">
-                <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
+                <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
                   {miNombre}
                 </Text>
                 {perfil?.username ? (
-                  <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+                  <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
                     @{perfil.username}
                   </Text>
                 ) : null}
               </View>
-              <Pressable
+              <BotonSuperficie
                 accessibilityRole="button"
                 accessibilityLabel="Editar tu perfil"
                 onPress={() => router.push('/profile/editar')}
                 className="min-h-9 justify-center rounded-full px-3 active:bg-muted"
               >
-                <Text className="text-foreground text-[13px] font-semibold">Editar</Text>
-              </Pressable>
+                <Text className="text-foreground text-footnote font-semibold">Editar</Text>
+              </BotonSuperficie>
             </View>
 
-            <Pressable
+            <BotonSuperficie
               accessibilityRole="button"
               accessibilityLabel="Compartir el link para sumarse"
               onPress={() => void invitarAColaborar(id, nombre || 'la lista')}
               className="h-12 flex-row items-center justify-center gap-2 rounded-full bg-primary px-6 active:opacity-80"
             >
               <IconShare size={16} color={ICON_COLOR.onPrimary} />
-              <Text className="text-primary-foreground text-[14px] font-semibold">
+              <Text className="text-primary-foreground text-subheadline font-semibold">
                 {ES_WEB ? 'Copiar el link' : 'Compartir el link'}
               </Text>
-            </Pressable>
+            </BotonSuperficie>
 
             {/* Buscar por nombre es solo del dueño, como sumar a mano en la base. */}
             {soyDueño ? (
               <View className="gap-2">
-                <Text className="px-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                <Text className="px-1 text-muted-foreground text-footnote font-semibold uppercase">
                   O sumalos por nombre
                 </Text>
                 <SearchField
@@ -252,7 +254,7 @@ export default function PersonasDeLista() {
                     {resultados.map((c) => {
                       const dentro = yaEstan.has(c.id)
                       return (
-                        <Pressable
+                        <BotonSuperficie
                           key={c.id}
                           accessibilityRole="button"
                           accessibilityLabel={dentro ? `${c.username} ya está` : `Sumar a ${c.username}`}
@@ -262,10 +264,10 @@ export default function PersonasDeLista() {
                         >
                           <Avatar name={c.displayName || c.username} path={c.avatarPath} size={36} />
                           <View className="min-w-0 flex-1">
-                            <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
+                            <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
                               {c.displayName?.trim() || `@${c.username}`}
                             </Text>
-                            <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+                            <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
                               @{c.username}
                             </Text>
                           </View>
@@ -273,10 +275,10 @@ export default function PersonasDeLista() {
                             <IconCheck size={16} color={ICON_COLOR.muted} />
                           ) : (
                             <View className="rounded-full bg-muted px-3 py-1.5">
-                              <Text className="text-foreground text-[12px] font-semibold">Sumar</Text>
+                              <Text className="text-foreground text-caption1 font-semibold">Sumar</Text>
                             </View>
                           )}
-                        </Pressable>
+                        </BotonSuperficie>
                       )
                     })}
                   </View>
@@ -285,7 +287,7 @@ export default function PersonasDeLista() {
             ) : null}
 
             <View className="gap-2">
-              <Text className="px-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+              <Text className="px-1 text-muted-foreground text-footnote font-semibold uppercase">
                 En la lista · {gente?.length ?? 0}
               </Text>
               {gente === null ? (
@@ -304,23 +306,16 @@ export default function PersonasDeLista() {
                       <View key={g.id} className="flex-row items-center gap-3 px-4 py-3">
                         <Avatar name={g.displayName || g.username} path={g.avatarPath} size={36} />
                         <View className="min-w-0 flex-1">
-                          <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
+                          <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
                             {g.displayName?.trim() || `@${g.username}`}
                             {soyYo ? ' (vos)' : ''}
                           </Text>
-                          <Text className="text-muted-foreground text-[12px]">
+                          <Text className="text-muted-foreground text-caption1">
                             {g.esDueño ? 'Armó la lista' : 'Colabora'}
                           </Text>
                         </View>
                         {puedoSacar ? (
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={soyYo ? 'Salir de la lista' : `Sacar a ${g.username}`}
-                            onPress={() => void sacar(g)}
-                            className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
-                          >
-                            <IconClose size={15} color={ICON_COLOR.muted} />
-                          </Pressable>
+                          <IconButton label={soyYo ? 'Salir de la lista' : `Sacar a ${g.username}`} symbol="xmark" onPress={() => void sacar(g)} lado={36} size={15} icon={<IconClose size={15} color={ICON_COLOR.muted} />} />
                         ) : null}
                       </View>
                     )

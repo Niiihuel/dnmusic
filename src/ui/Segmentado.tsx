@@ -31,7 +31,7 @@ export function Segmentado<T extends string>({ value, options, onChange, label }
             }`}
           >
             <Text
-              className={`text-[13px] font-semibold ${
+              className={`text-footnote font-semibold ${
                 activo ? 'text-primary-foreground' : 'text-muted-foreground'
               }`}
             >

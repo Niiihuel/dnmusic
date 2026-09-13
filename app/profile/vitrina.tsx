@@ -1,13 +1,13 @@
+import { EntradaTexto } from '../../src/ui/EntradaTexto'
+import { AccionSocial } from '../../src/ui/Social'
 import { FuentePerfil } from '../../src/ui/FuentePerfil'
 import { useEffect, useRef, useState } from 'react'
 import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from 'react-native'
 import { useRouter } from 'expo-router'
@@ -127,14 +127,8 @@ export default function EditarVitrina() {
     /* Se entró sin nada armado —una recarga en la web—: no hay qué editar. */
     return (
       <SafeAreaView className="flex-1 bg-background items-center justify-center gap-4 px-8" edges={['top']}>
-        <Text className="text-muted-foreground text-center text-[13px]">No hay ninguna pieza a medio armar.</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => volver(router, '/profile')}
-          className="rounded-full bg-muted px-5 py-2.5 active:opacity-80"
-        >
-          <Text className="text-foreground text-[13px] font-semibold">Volver al perfil</Text>
-        </Pressable>
+        <Text className="text-muted-foreground text-center text-footnote">No hay ninguna pieza a medio armar.</Text>
+        <AccionSocial label="Volver al perfil" secundaria onPress={() => volver(router, '/profile')} />
       </SafeAreaView>
     )
   }
@@ -273,7 +267,7 @@ export default function EditarVitrina() {
             <EncabezadoHoja
               titulo={titulo}
               izquierda={<BotonHoja tipo="cerrar" label="Cerrar editor" onPress={global ? listo : () => volver(router, '/profile')} />}
-              derecha={global ? <Pressable accessibilityRole="button" onPress={listo} disabled={subiendo || edicion.ocupado}><Text className="text-foreground text-[15px] font-semibold">Listo</Text></Pressable> : undefined}
+              derecha={global ? <AccionSocial label="Listo" secundaria expandida={false} onPress={listo} disabled={subiendo || edicion.ocupado} /> : undefined}
             />
 
             <Panel className="flex-1">
@@ -340,27 +334,14 @@ export default function EditarVitrina() {
                             />
                           </View>
                         ) : (
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`Elegir ${ROTULO_TIPO[kind].toLowerCase()}`}
-                            onPress={() =>
-                              router.push({
-                                pathname: '/profile/elegir',
-                                params: { que: kind, desde: 'editor' },
-                              })
-                            }
-                            className="aspect-square items-center justify-center gap-2 rounded-2xl bg-card active:opacity-80"
-                          >
-                            <IconMusic size={24} color={ICON_COLOR.muted} />
-                            <Text className="text-muted-foreground text-[12px]">Elegir</Text>
-                          </Pressable>
+                          <AccionSocial label={`Elegir ${ROTULO_TIPO[kind].toLowerCase()}`} secundaria onPress={() => router.push({ pathname: '/profile/elegir', params: { que: kind, desde: 'editor' } })} />
                         )}
                       </View>
                     </View>
 
                     {kind === 'cancion' || kind === 'fragmento' ? (
                       <View className="gap-2">
-                        <Text className="px-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                        <Text className="px-1 text-muted-foreground text-footnote font-semibold uppercase">
                           Cómo se muestra
                         </Text>
                         <Segmentado
@@ -510,23 +491,23 @@ function PrevioDeTexto({
             <GrillaDeMiniaturas tapas={miniaturas?.tapas ?? []} c={c} lado={grande ? 132 : 84} />
           </View>
           <View className="gap-0.5">
-            <Text className="text-[10px] font-semibold uppercase tracking-[1.2px]" style={{ color: c.secundario }}>
+            <Text className="text-footnote font-semibold uppercase" style={{ color: c.secundario }}>
               Sub-space
             </Text>
-            <TextInput
+            <EntradaTexto
               value={texto}
               onChangeText={onTexto}
               placeholder="Título"
               placeholderTextColor={PLACEHOLDER_COLOR}
               maxLength={40}
               autoFocus
-              className="text-[15px] font-bold"
+              className="text-subheadline font-bold"
               style={[
                 { color: c.texto, minHeight: 24, paddingVertical: 2 },
                 estiloDeFuente(fuentePerfil, 15),
               ]}
             />
-            <Text className="text-[12px]" style={{ color: c.secundario }}>
+            <Text className="text-caption1" style={{ color: c.secundario }}>
               {/* Vacío y nuevo, la tarjeta dice qué viene: adentro se ponen
                   canciones, artistas, textos, lo mismo que en el mosaico. */}
               {miniaturas?.cuantas
@@ -552,7 +533,7 @@ function PrevioDeTexto({
             <IconLyrics size={15} color={c.secundario} />
           </View>
         ) : null}
-        <TextInput
+        <EntradaTexto
           value={texto}
           onChangeText={onTexto}
           placeholder={encabezado ? 'Título' : letra ? 'Tus letras' : 'Tu texto'}
@@ -563,14 +544,14 @@ function PrevioDeTexto({
           textAlign={encabezado ? 'center' : 'left'}
           className={
             encabezado
-              ? 'text-[15px] font-bold'
+              ? 'text-subheadline font-bold'
               : letra
                 ? grande
-                  ? 'text-[24px] font-semibold italic leading-9'
-                  : 'text-[17px] font-semibold italic leading-6'
+                  ? 'text-title2 font-semibold italic'
+                  : 'text-body font-semibold italic leading-6'
                 : grande
-                  ? 'text-[19px] leading-7'
-                  : 'text-[15px] leading-6'
+                  ? 'text-title3'
+                  : 'text-subheadline leading-6'
           }
           style={[
             { color: c.texto, minHeight: encabezado ? 24 : 72, paddingVertical: 4 },
@@ -581,7 +562,7 @@ function PrevioDeTexto({
           ]}
         />
         {letra ? (
-          <Text className="text-[11px]" numberOfLines={1} style={{ color: c.secundario }}>
+          <Text className="text-caption2" numberOfLines={1} style={{ color: c.secundario }}>
             {firma ?? 'Elegí de qué canción es'}
           </Text>
         ) : null}
@@ -653,8 +634,8 @@ function FilaImagen({
               ultima ? '' : 'border-b border-muted'
             }`}
           >
-            <Text className="shrink-0 text-foreground text-[15px]">{rotulo}</Text>
-            <Text className="min-w-0 flex-1 text-right text-[15px] text-muted-foreground" numberOfLines={1}>
+            <Text className="shrink-0 text-foreground text-subheadline">{rotulo}</Text>
+            <Text className="min-w-0 flex-1 text-right text-subheadline text-muted-foreground" numberOfLines={1}>
               {subiendo ? 'Subiendo…' : puesta ? 'Puesta' : 'Ninguna'}
             </Text>
             <IconChevronRight size={16} color={ICON_COLOR.muted} />

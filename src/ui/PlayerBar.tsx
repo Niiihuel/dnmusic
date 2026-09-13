@@ -1,6 +1,7 @@
+import { IconButton } from './IconButton'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAppActiva } from '../lib/appActiva'
-import { Pressable, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
@@ -234,7 +235,7 @@ export function PlayerBar({
             />
           </View>
         </GestureDetector>
-        <Text className="text-muted-foreground w-10 text-right text-[12px] tabular-nums">
+        <Text className="text-muted-foreground w-10 text-right text-caption1 tabular-nums">
           {fmt(startMs + snippetMs)}
         </Text>
       </View> : null}
@@ -245,7 +246,7 @@ export function PlayerBar({
           <Menu label="Opciones del fragmento" tooltip="Vista, duración y traducción"
             items={opciones} triggerSymbol="slider.horizontal.3"
             trigger={<View className={`${compacto ? 'min-h-9 rounded-[10px] px-2.5' : 'min-h-11 rounded-full px-3'} flex-row items-center gap-2 bg-muted`}>
-              <IconWave size={17} color={ICON_COLOR.foreground} /><Text className="text-foreground text-[13px] tabular-nums">{fmt(snippetMs)}</Text>
+              <IconWave size={17} color={ICON_COLOR.foreground} /><Text className="text-foreground text-footnote tabular-nums">{fmt(snippetMs)}</Text>
             </View>} />
         </View>
         <View className="min-w-0 flex-1 items-end">{accion}</View>
@@ -287,25 +288,16 @@ function Elapsed({
 
   const shown = Math.max(startMs, Math.min(startMs + snippetMs, Number.isFinite(ms) ? ms : startMs))
 
-  return <Text className="text-muted-foreground w-10 text-[12px] tabular-nums">{fmt(shown)}</Text>
+  return <Text className="text-muted-foreground w-10 text-caption1 tabular-nums">{fmt(shown)}</Text>
 }
 
 function PlayButton({ playing, onPress, disabled }: { playing: boolean; onPress: () => void; disabled?: boolean }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityState={{ disabled }}
-      className={`${TECLADO_FISICO ? 'h-9 w-9' : 'h-11 w-11'} items-center justify-center rounded-full bg-primary active:opacity-80`}
-    >
-      {playing ? (
+    <IconButton label={playing ? 'Pausar' : 'Reproducir'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={onPress} disabled={disabled} lado={44} size={18} variant="primary" icon={playing ? (
         <IconPause size={18} color={ICON_COLOR.onPrimary} />
       ) : (
         <IconPlay size={18} color={ICON_COLOR.onPrimary} />
-      )}
-    </Pressable>
+      )} />
   )
 }
 

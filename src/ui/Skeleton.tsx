@@ -53,7 +53,7 @@ export function Skeleton({ width = '100%', height, radius = 999 }: BlockProps) {
 }
 
 /** Una fila de resultado: carátula, título y artista. */
-export function SkeletonRow() {
+function SkeletonRow() {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8 }}>
       <Skeleton width={44} height={44} radius={6} />

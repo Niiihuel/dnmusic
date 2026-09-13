@@ -2,12 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import { createClient } from '@supabase/supabase-js'
 import { createHash, randomFillSync } from 'node:crypto'
 const tick = () => new Promise(r => setImmediate(r))
 const code = (path) => ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
 const origen = 'https://test-auth.supabase.co'
 const user = { id: 'local-google-user', email: 'persona@example.test' }
-function montar({ linkUser = { id: 'legacy' }, linkedUser = { id: 'legacy', identities: [{ provider: 'google' }] }, linkError, linkURL, currentSession, os = 'web', oauthError, result, exchange, desktop, signedURL, plain = false, memory = new Map(), leerStorage } = {}) {
+function montar({ linkUser = { id: 'legacy' }, linkedUser = { id: 'legacy', identities: [{ provider: 'google' }] }, linkError, linkURL, currentSession, os = 'web', oauthError, result, exchange, desktop, signedURL, oauthImplementation, plain = false, memory = new Map(), leerStorage } = {}) {
   const calls = [], browsed = [], replaced = [], assigned = []
   let pendingResult, closed = 0, signups = 0, exchangeCount = 0
   const storage = { getItem: async k => leerStorage ? leerStorage(k, memory.get(k) ?? null) : memory.get(k) ?? null, setItem: async (k, v) => { memory.set(k, v) }, removeItem: async k => { memory.delete(k) } }
@@ -15,7 +16,7 @@ function montar({ linkUser = { id: 'legacy' }, linkedUser = { id: 'legacy', iden
   const ventana = { location, sessionStorage: { getItem: k => memory.get(k) ?? null, setItem: (k, v) => memory.set(k, v), removeItem: k => memory.delete(k) }, history: { replaceState(_, __, path) { replaced.push(path); location.href = location.origin + path } } }
   const supabase = { rpc: async (_, params) => ({ data: params.p_username === 'renombrado' ? 'antiguo@flora.local' : null, error: null }), auth: {
     async signInWithOAuth({ provider, options }) {
-      calls.push(['oauth', provider, options]); if (oauthError) return { data: {}, error: oauthError }
+      calls.push(['oauth', provider, options]); if (oauthImplementation) return oauthImplementation({ provider, options }); if (oauthError) return { data: {}, error: oauthError }
       const redirect = new URL(options.redirectTo); redirect.searchParams.set('sb_flow_id', 'flow-local-0123456789')
       const u = new URL(origen + '/auth/v1/authorize'); u.searchParams.set('provider', provider); u.searchParams.set('redirect_to', redirect.href)
       u.searchParams.set('code_challenge', 'a'.repeat(plain ? 112 : 43)); u.searchParams.set('code_challenge_method', plain ? 'plain' : 's256')
@@ -110,11 +111,14 @@ test('Electron usa IPC y callback loopback exacto; nunca abre Google dentro del 
   assert.equal(h.assigned.length, 0); assert.equal(h.browsed.length, 0); assert.equal(h.exchanges, 1)
 })
 
-test('contraseña legacy conserva resolución por usuario y altas nuevas están bloqueadas', async () => {
-  const h = montar(); assert.deepEqual(await h.api.signIn('renombrado', 'password-local'), { id: 'legacy' })
-  assert.deepEqual(h.calls[0], ['password', { email: 'antiguo@flora.local', password: 'password-local' }])
+test('contraseñas legacy y altas nuevas están bloqueadas sin invocar Auth', async () => {
+  const h = montar(); await assert.rejects(h.api.signIn('renombrado', 'password-local'), /Google/)
+  assert.deepEqual(h.calls, [])
   await assert.rejects(h.api.signUp('nuevo', 'password-local'), /Google/); assert.equal(h.signups, 0)
-  assert.equal(h.api.emailToUsername('antes@flora.local'), 'antes'); assert.equal(h.api.emailToUsername('persona@example.test'), '')
+  assert.equal(h.api.emailToUsername('antes@flora.local'), ''); assert.equal(h.api.emailToUsername('persona@example.test'), '')
+  assert.equal(h.api.isInternalAuthEmail('antes@flora.local'), true)
+  assert.equal(h.api.isInternalAuthEmail('legacy-id@auth.dnmusic.invalid'), true)
+  assert.equal(h.api.isInternalAuthEmail('persona@example.test'), false)
 })
 
 test('cliente Supabase usa PKCE sin detección automática de sesiones por URL', () => {
@@ -270,3 +274,39 @@ test('Electron vincula mediante navegador externo y exige puente compatible', as
   h = montar({ desktop }); assert.equal((await h.api.conectarGoogle('legacy')).id, 'legacy'); assert.equal(h.assigned.length, 0);
   const old = montar({ desktop: { ...desktop, abrirVinculacion: undefined } }); await assert.rejects(old.api.conectarGoogle('legacy'), /Actualizá/);
 });
+
+// El SDK real devuelve flowId aunque no lo añada al redirect por defecto.
+// Los dobles anteriores siempre lo agregaban y ocultaban este fallo.
+test('el cliente real de Supabase prepara un retorno que DMusic acepta en web y escritorio', async () => {
+  const exports = {}, deps = {
+    'react-native-url-polyfill/auto': {}, 'expo-crypto': {},
+    '@react-native-async-storage/async-storage': {},
+    '@supabase/supabase-js': { createClient }, 'react-native': { Platform: { OS: 'web' } },
+  }
+  new Function('exports', 'require', 'process', code('src/lib/supabase.ts'))(exports, k => deps[k], { env: { EXPO_PUBLIC_SUPABASE_URL: origen, EXPO_PUBLIC_SUPABASE_ANON_KEY: 'public-test-key' } })
+  const client = exports.getSupabase()
+  try {
+    for (const desktop of [undefined, {
+      preparar: async () => ({ id: 'desktop-test', redirectTo: 'http://127.0.0.1:32123/auth/callback/desktop-test' }),
+      abrir: async ({ url }) => {
+        const u = new URL(url), retorno = new URL(u.searchParams.get('redirect_to'))
+        assert.ok(retorno.searchParams.get('sb_flow_id'))
+        assert.ok(retorno.searchParams.get('dn_state'))
+        assert.equal(u.searchParams.get('code_challenge_method'), 's256')
+        return { type: 'cancel' }
+      },
+      cancelar: async () => {},
+    }]) {
+      let generado
+      const h = montar({ desktop, oauthImplementation: async credentials => {
+        generado = await client.auth.signInWithOAuth(credentials)
+        return generado
+      } })
+      assert.equal(await h.api.signInWithGoogle(), null)
+      assert.equal(generado.error, null)
+      const retorno = new URL(new URL(generado.data.url).searchParams.get('redirect_to'))
+      assert.equal(retorno.searchParams.get('sb_flow_id'), generado.data.flowId)
+      if (!desktop) assert.equal(h.assigned.length, 1)
+    }
+  } finally { await client.auth.stopAutoRefresh() }
+})

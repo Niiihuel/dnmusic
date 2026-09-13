@@ -200,7 +200,7 @@ export function Vitrina({
           }}
         >
           {editando ? (
-            <Text className="text-muted-foreground text-[10px] font-semibold uppercase tracking-[1.2px]">
+            <Text className="text-muted-foreground text-footnote font-semibold uppercase">
               Espacio
             </Text>
           ) : null}
@@ -238,14 +238,14 @@ export function Vitrina({
         >
           {showcase.kind === 'texto' ? (
             <Text
-              className={grande ? 'text-[19px] leading-7' : 'text-[15px] leading-6'}
+              className={grande ? 'text-title3' : 'text-subheadline leading-6'}
               style={{ color: colores.texto }}
             >
               {showcase.texto}
             </Text>
           ) : esEncabezado ? (
             <Text
-              className="text-center text-[15px] font-bold"
+              className="text-center text-subheadline font-bold"
               numberOfLines={1}
               style={{ color: colores.texto }}
             >
@@ -807,18 +807,18 @@ function VitrinaSubspace({
     <View className={mitad ? 'gap-0.5' : 'min-w-0 flex-1 gap-0.5'}>
       <View className="flex-row items-center gap-1.5">
         <IconGrilla size={11} color={c.secundario} />
-        <Text className="text-[10px] font-semibold uppercase tracking-[1.2px]" style={{ color: c.secundario }}>
+        <Text className="text-footnote font-semibold uppercase" style={{ color: c.secundario }}>
           Sub-space
         </Text>
       </View>
       <Text
-        className="text-[15px] font-bold"
+        className="text-subheadline font-bold"
         numberOfLines={mitad ? 2 : 1}
         style={{ color: c.texto }}
       >
         {showcase.titulo}
       </Text>
-      <Text className="text-[12px]" numberOfLines={1} style={{ color: c.secundario }}>
+      <Text className="text-caption1" numberOfLines={1} style={{ color: c.secundario }}>
         {miniaturas ? rotuloDePiezas(cuantas) : ' '}
       </Text>
     </View>
@@ -886,13 +886,13 @@ function VitrinaLetra({
         <IconLyrics size={15} color={c.secundario} />
       </View>
       <Text
-        className={`font-semibold italic ${grande ? 'text-[24px] leading-9' : 'text-[17px] leading-6'}`}
+        className={`font-semibold italic ${grande ? 'text-title2' : 'text-body leading-6'}`}
         style={{ color: c.texto }}
       >
         “{letra.texto}”
       </Text>
       {letra.title || letra.artist ? (
-        <Text className="text-[11px]" numberOfLines={1} style={{ color: c.secundario }}>
+        <Text className="text-caption2" numberOfLines={1} style={{ color: c.secundario }}>
           {[letra.artist, letra.title].filter(Boolean).join(' — ')}
         </Text>
       ) : null}
@@ -1034,10 +1034,10 @@ function VitrinaCancion({
           <Image source={{ uri: tapa }} style={{ width: '100%', height: '100%' }} />
           <View style={{ position: 'absolute', bottom: 12, right: 12 }}>{play}</View>
         </View>
-        <Text style={{ color: c.texto }} className="text-[15px] font-bold" numberOfLines={2}>
+        <Text style={{ color: c.texto }} className="text-subheadline font-bold" numberOfLines={2}>
           {cancion.title}
         </Text>
-        <Text style={{ color: c.secundario }} className="text-[12px]" numberOfLines={1}>
+        <Text style={{ color: c.secundario }} className="text-caption1" numberOfLines={1}>
           {cancion.artist}
         </Text>
       </View>
@@ -1059,10 +1059,10 @@ function VitrinaCancion({
         </View>
         <View className="flex-row items-end gap-2">
           <View className="min-w-0 flex-1 gap-0.5">
-            <Text className="text-[15px] font-bold" numberOfLines={2} style={{ color: c.texto }}>
+            <Text className="text-subheadline font-bold" numberOfLines={2} style={{ color: c.texto }}>
               {cancion.title}
             </Text>
-            <Text className="text-[12px]" numberOfLines={1} style={{ color: c.secundario }}>
+            <Text className="text-caption1" numberOfLines={1} style={{ color: c.secundario }}>
               {cancion.artist}
             </Text>
           </View>
@@ -1074,7 +1074,7 @@ function VitrinaCancion({
 
   return (
     <View className="gap-3">
-      <Text className="text-[11px] font-semibold uppercase tracking-[1.2px]" style={{ color: c.secundario }}>
+      <Text className="text-footnote font-semibold uppercase" style={{ color: c.secundario }}>
         {esFragmento ? 'Un fragmento' : 'En repeat'}
       </Text>
 
@@ -1086,10 +1086,10 @@ function VitrinaCancion({
         )}
 
         <View className="min-w-0 flex-1 gap-1">
-          <Text className="text-[17px] font-semibold" numberOfLines={1} style={{ color: c.texto }}>
+          <Text className="text-body font-semibold" numberOfLines={1} style={{ color: c.texto }}>
             {cancion.title}
           </Text>
-          <Text className="text-[13px]" numberOfLines={1} style={{ color: c.secundario }}>
+          <Text className="text-footnote" numberOfLines={1} style={{ color: c.secundario }}>
             {cancion.artist}
           </Text>
         </View>
@@ -1121,10 +1121,10 @@ function VitrinaCancion({
 
       {/* El reloj, debajo de la onda: lo que va sonando sobre el total. */}
       <View className="-mt-1 flex-row justify-end gap-1">
-        <Text className="text-[11px] tabular-nums" style={{ color: c.texto }}>
+        <Text className="text-caption2 tabular-nums" style={{ color: c.texto }}>
           {formatClock(transcurrido)}
         </Text>
-        <Text className="text-[11px] tabular-nums" style={{ color: c.secundario }}>
+        <Text className="text-caption2 tabular-nums" style={{ color: c.secundario }}>
           / {formatClock(song.durationMs)}
         </Text>
       </View>
@@ -1166,7 +1166,7 @@ function VitrinaLista({
   if (!lista) {
     if (!esMio) return null
     return (
-      <Text className="text-[13px]" style={{ color: c.secundario }}>
+      <Text className="text-footnote" style={{ color: c.secundario }}>
         Esta lista ya no existe.
       </Text>
     )

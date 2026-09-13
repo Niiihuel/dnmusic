@@ -152,6 +152,37 @@ export function abrirArtista(id: string, nombre: string) {
 }
 
 /*
+ * Abrir una cara de la música —el Jam, la cola, la letra, el disco— desde
+ * afuera del panel que sabe dibujarlas.
+ *
+ * Existe porque esas caras viven en el panel de la música, y estando en
+ * conversaciones ese panel es el hilo con el detalle del mensaje al lado: la
+ * cara no tiene dónde aparecer. Tocar «Jam» desde un chat **no hacía nada** y
+ * el botón quedaba muerto sin decir por qué.
+ *
+ * La barra del reproductor no puede resolverlo sola —no sabe de paneles, ni de
+ * historial, ni de en qué pestaña estás—, así que pide y la pantalla principal
+ * decide: trae la música al medio y recién ahí pone la cara. Es el mismo
+ * puente que `abrirLista` y `abrirArtista`, por el mismo motivo.
+ *
+ * Sin nadie escuchando —el teléfono, donde estas caras son la pantalla del
+ * reproductor— se cae al alternar de siempre, que es lo que corresponde ahí.
+ */
+let onAbrirCara: ((cara: 'disc' | 'lyrics' | 'jam' | 'cola') => void) | null = null
+
+export function registerAbrirCara(handler: ((cara: 'disc' | 'lyrics' | 'jam' | 'cola') => void) | null) {
+  onAbrirCara = handler
+}
+
+export function hayQuienAbraCaras() {
+  return onAbrirCara !== null
+}
+
+export function abrirCara(cara: 'disc' | 'lyrics' | 'jam' | 'cola') {
+  onAbrirCara?.(cara)
+}
+
+/*
  * Abrir una conversación por pairId, desde afuera de la pantalla principal.
  *
  * Lo usa el toque de una notificación push. Es el mismo puente que

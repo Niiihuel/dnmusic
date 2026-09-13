@@ -95,8 +95,8 @@ export default function PerfilAjeno() {
     }
   }, [usuario, fresco, aprobado])
 
-  /* Sube al mandar una reacción: es lo que hace que la pared se relea sin
-     recargar el perfil entero. */
+  /* Sube al reaccionar o volver al perfil: relee la pared y sus publicaciones
+     sin vaciar el perfil entero. */
   const [reaccion, setReaccion] = useState(0)
 
   /* La pestaña elegida con el dedo; `null` deja mandar a `pestanaInicial`:
@@ -122,6 +122,8 @@ export default function PerfilAjeno() {
         return
       }
       if (!usuario) return
+      // También releer publicaciones: pudieron cambiar en otra pantalla o dispositivo.
+      setReaccion(n => n + 1)
       let vivo = true
       fetchProfile(usuario)
         .then((p) => vivo && setCargado({ usuario, perfil: p }))
@@ -176,7 +178,7 @@ export default function PerfilAjeno() {
       }
       vacio={
         <View className="items-center px-6 py-8">
-          <Text className="text-muted-foreground text-center text-[13px] leading-5">
+          <Text className="text-muted-foreground text-center text-footnote leading-5">
             {soyYo ? 'Todavía no fijaste nada en tu perfil.' : `${nombre} todavía no fijó nada.`}
           </Text>
         </View>

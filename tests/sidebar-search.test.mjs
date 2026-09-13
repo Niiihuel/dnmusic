@@ -24,7 +24,7 @@ function nodos(node, type) {
 }
 function search(fine) {
   return cargar('src/ui/SearchField.tsx', {
-    react: { useState: (initial) => [initial, () => {}] },
+    react: { useState: (initial) => [initial, () => {}], useRef: (current) => ({ current }), useImperativeHandle: (ref, create) => { if (ref) ref.current = create() } },
     'react-native': Object.fromEntries(['View', 'TextInput', 'Pressable', 'ActivityIndicator'].map((k) => [k, k])),
     '../lib/teclado': { TECLADO_FISICO: fine }, './Glass': { ES_WEB: true, HAY_VIDRIO: true, Glass: 'Glass' },
     './icons': { ICON_COLOR: { muted: '#aaa' }, IconSearch: 'IconSearch', IconClose: 'IconClose' },
@@ -37,7 +37,11 @@ test('búsqueda compacta conserva texto, submit, ref y limpiar sin expulsar el b
   assert.equal(ui.props.radius, 17)
   assert.equal(ui.props.children.props.style.height, 34)
   const campo = nodos(ui, 'TextInput')[0]
-  assert.equal(campo.props.ref, inputRef)
+  const focos = []
+  campo.props.ref.current = { focus: () => focos.push('focus'), blur: () => focos.push('blur') }
+  inputRef.current.focus()
+  inputRef.current.blur()
+  assert.deepEqual(focos, ['focus', 'blur'])
   assert.equal(campo.props.onSubmitEditing, onSubmit)
   assert.equal(campo.props.accessibilityLabel, 'Buscar canciones y artistas')
   assert.equal(campo.props.style.minWidth, 0)

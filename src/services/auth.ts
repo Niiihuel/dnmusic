@@ -8,37 +8,30 @@ import type { User } from '@supabase/supabase-js'
 import { getSupabase } from '../lib/supabase'
 
 /**
- * Auth.
- *
- * Las cuentas anteriores entran por usuario y contraseña; las nuevas usan Google.
- * Supabase Auth solo hace password
- * auth contra un email o un teléfono, así que cada cuenta lleva uno interno con
- * un dominio reservado (RFC 6761): `nihuel@flora.local`. Nunca sale un mail, y
- * por eso tampoco hay recuperación de contraseña por correo.
- *
- * Ese email se arma al registrarse y **no se toca nunca más**: es un
- * identificador interno, no el nombre de la persona. El usuario visible vive en
- * `profiles` y se puede cambiar; para entrar, `auth_email_for_username` traduce
- * el usuario actual al email interno.
- *
- * Antes la traducción era una regla fija en el cliente (`dany` →
- * `dany@flora.local`) y no hacía falta consultar nada. Se cambió porque hacía
- * imposible renombrarse: mover el email deja en GoTrue un cambio pendiente de
- * confirmación, y a un dominio que no recibe correo esa confirmación no llega
- * nunca — la cuenta quedaba inaccesible con su nombre nuevo.
+ * Google OAuth es la única entrada de la app. Los identificadores internos de
+ * las cuentas anteriores se siguen reconociendo para no mostrarlos en el perfil.
+ * Conectar Google a una sesión existente usa linkIdentity y conserva su uid.
  */
-const AUTH_DOMAIN = 'flora.local'
+const AUTH_DOMAIN = 'auth.dnmusic.invalid'
+const INTERNAL_AUTH_DOMAINS = ['flora.local', AUTH_DOMAIN] as const
 
-/** `nihuel` → `nihuel@flora.local`. Si ya viene con @, se respeta tal cual. */
+/** Fallback indistinguible para intentos de login inexistentes. */
 export function usernameToEmail(username: string): string {
   const clean = username.trim().toLowerCase()
   return clean.includes('@') ? clean : `${clean}@${AUTH_DOMAIN}`
 }
 
-/** Sólo nombres internos legacy: nunca revelar un correo externo como fallback visible. */
+/** Los identificadores técnicos de Auth nunca son información de presentación. */
+export function isInternalAuthEmail(email: string | undefined): boolean {
+  if (!email) return false
+  const domain = email.toLowerCase().split('@').at(-1)
+  return INTERNAL_AUTH_DOMAINS.some(candidate => domain === candidate)
+}
+
+/** Nunca derivar un nombre visible de un identificador técnico o correo externo. */
 export function emailToUsername(email: string | undefined): string {
-  if (!email) return ''
-  return email.endsWith(`@${AUTH_DOMAIN}`) ? email.slice(0, -`@${AUTH_DOMAIN}`.length) : ''
+  void email
+  return ''
 }
 
 export function subscribeToAuth(onChange: (user: User | null) => void): () => void {
@@ -51,29 +44,13 @@ export function subscribeToAuth(onChange: (user: User | null) => void): () => vo
   return () => data.subscription.unsubscribe()
 }
 
-export async function signIn(username: string, password: string): Promise<User> {
-  /*
-   * Si la consulta no encuentra el usuario se sigue igual con la regla vieja:
-   * la respuesta tiene que ser "usuario o contraseña incorrectos" y no "esa
-   * cuenta no existe". Cortar acá convertiría el login en un detector de
-   * usuarios más preciso que el propio intento de entrar.
-   */
-  const email = (await authEmailFor(username)) ?? usernameToEmail(username)
-  const { data, error } = await getSupabase().auth.signInWithPassword({ email, password })
-  if (error) throw error
-  return data.user
+/** Compatibilidad con consumidores anteriores: nunca intenta autenticar por contraseña. */
+export async function signIn(...credenciales: [username: string, password: string]): Promise<User> {
+  void credenciales
+  throw new Error('Para iniciar sesión, continuá con Google.')
 }
 
-/** Email interno de una cuenta, a partir de su usuario actual. */
-async function authEmailFor(username: string): Promise<string | null> {
-  const { data, error } = await getSupabase().rpc('auth_email_for_username', {
-    p_username: username.trim().toLowerCase(),
-  })
-  if (error) return null
-  return typeof data === 'string' && data.length > 0 ? data : null
-}
-
-/** Las cuentas nuevas usan Google. El acceso por contraseña existente sigue en signIn. */
+/** El alta por contraseña también está deshabilitada en el cliente. */
 export async function signUp(...credenciales: [username: string, password: string]): Promise<User> {
   void credenciales
   throw new Error('Para crear una cuenta nueva, continuá con Google.')
@@ -280,7 +257,8 @@ async function iniciarGoogle(intento: NonNullable<typeof intentoGoogle>, userId?
       redirigido = true
       return null
     }
-    const result = await WebBrowser.openAuthSessionAsync(authURL, redirectTo)
+    const result = await WebBrowser.openAuthSessionAsync(authURL, redirectTo,
+      Platform.OS === 'ios' ? { preferEphemeralSession: false } : undefined)
     return result.type === 'success' && !intento.cancelado ? await completarGoogleCallback(result.url) : null
   } finally {
     if (intento.desktopId) await desktop?.oauthGoogle?.cancelar(intento.desktopId).catch(() => {})

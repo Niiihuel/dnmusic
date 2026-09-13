@@ -5,6 +5,7 @@ import { completarGoogleCallback, destinoTrasGoogle } from '../../src/services/a
 import { PantallaAcceso } from '../../src/ui/Acceso'
 import { AccionSocial } from '../../src/ui/Social'
 import { ICON_COLOR } from '../../src/ui/icons'
+import { mensajeErrorGoogle } from '../../src/ui/GoogleOAuthFeedback'
 
 export default function GoogleCallback() {
   const params = useLocalSearchParams()
@@ -24,14 +25,14 @@ export default function GoogleCallback() {
       if (vigente) setDestino(target)
       const user = await completarGoogleCallback(url)
       if (vigente) router.replace(target !== '/' ? target : user ? '/' : '/sign-in')
-    }).catch(() => { if (vigente) setError('No se pudo completar la conexión con Google. Volvé a intentarlo.') })
+    }).catch(e => { if (vigente) setError(mensajeErrorGoogle(e, 'No se pudo completar la conexión con Google. Volvé a intentarlo.')) })
     return () => { vigente = false }
   }, [router, url])
   return <PantallaAcceso titulo="Continuar con Google" detalle={error ?? 'Estamos completando tu acceso.'}>
     <View accessibilityLiveRegion="polite" className="items-center gap-4">
       {error ? <AccionSocial label={destino === '/ajustes?seccion=cuenta' ? "Volver a Configuración" : "Volver al acceso"} onPress={() => router.replace(destino === '/ajustes?seccion=cuenta' ? destino : '/sign-in')} /> : <>
         <ActivityIndicator color={ICON_COLOR.foreground} accessibilityLabel="Completando acceso" />
-        <Text className="text-muted-foreground text-[15px]">Un momento…</Text>
+        <Text className="text-muted-foreground text-subheadline">Un momento…</Text>
       </>}
     </View>
   </PantallaAcceso>

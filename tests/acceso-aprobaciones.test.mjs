@@ -61,6 +61,7 @@ function uiFixture(path, mocks={}, name='default') {
   if(id==='expo-router')return {useRouter:()=>({})}
   if(id.endsWith('/shell'))return {usePiso:()=>40}
   if(id.endsWith('/icons'))return {ICON_COLOR:{foreground:'white',muted:'gray'},IconBack:'IconBack'}
+  if(id.endsWith('/auth'))return {isInternalAuthEmail:email=>/@(?:flora\.local|auth\.dnmusic\.invalid)$/i.test(email??'')}
   return mocks[id.split('/').at(-1)]??stub
  })
  return {
@@ -106,7 +107,7 @@ test('ruta admin no monta la lista sin permiso y cambia su instancia cuando camb
  let admin=false,uid='owner'
  const f=uiFixture('app/ajustes/accesos.tsx',{
   session:{useIsAccessAdmin:()=>admin,useAuthUser:()=>({id:uid})},
-  'react-native':{useWindowDimensions:()=>({width:390}),Text:'Text',View:'View'},
+  'react-native':{Platform:{OS:'ios'},useWindowDimensions:()=>({width:390}),Text:'Text',View:'View'},
  })
  assert.equal(f.render().some(n=>n.type==='ListaSolicitudes'),false)
  assert.ok(f.render().some(n=>n.props?.accessibilityRole==='alert'))
@@ -255,4 +256,28 @@ test('un JWT ilegible provoca una renovación limitada; el rol no sustituye la a
   refreshSession:async()=>({data:{session:{access_token:'broken'}},error:null}),
  })
  await assert.rejects(f.ensureApprovedSession(),/todavía no se actualizó/)
+})
+
+test('iOS conserva permisos por cuenta, decisiones y borrado confirmado dentro de List nativo', async () => {
+ const calls=[]
+ const f=uiFixture('src/ui/SolicitudesAcceso.tsx',{
+  'react-native':{Platform:{OS:'ios'},View:'View'},
+  acceso:{listAccessRequests:async()=>[account('owner','approved'),account('ana')],decideAccess:async(id,aprobar)=>{calls.push([id,aprobar]);return {user_id:id,status:aprobar?'approved':'rejected',decided_at:'hoy'}},deleteAccessAccount:async id=>calls.push(['eliminar',id])},
+ },'ListaSolicitudes')
+ const render=()=>f.render({administradorId:'owner'})
+ render();f.effects();await new Promise(resolve=>setImmediate(resolve))
+ let ui=render(),secciones=ui.find(n=>n.type==='ListaAgrupada').props.secciones
+ const owner=secciones.flatMap(s=>s.filas).find(s=>s.id==='owner')
+ assert.equal(owner.tipo,'dato','el administrador no expone menú de autoeliminación')
+ let ana=secciones.flatMap(s=>s.filas).find(s=>s.id==='ana')
+ ana.onElegir('aprobar');await new Promise(resolve=>setImmediate(resolve))
+ assert.deepEqual(calls,[['ana',true]])
+ ui=render();ana=ui.find(n=>n.type==='ListaAgrupada').props.secciones.flatMap(s=>s.filas).find(s=>s.id==='ana')
+ assert.equal(ana.opciones.some(o=>o.id==='aprobar'),false)
+ ana.onElegir('eliminar');ui=render()
+ assert.deepEqual(calls,[['ana',true]],'elegir Eliminar sólo abre la confirmación')
+ ui.find(n=>n.type==='Confirmar').props.onConfirmar();await new Promise(resolve=>setImmediate(resolve))
+ assert.deepEqual(calls,[['ana',true],['eliminar','ana']])
+ assert.equal(render().find(n=>n.type==='ListaAgrupada').props.secciones.flatMap(s=>s.filas).some(s=>s.id==='ana'),false)
+ assert.equal(ui.some(n=>n.type==='ScrollArea'),false)
 })

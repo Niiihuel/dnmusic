@@ -1,5 +1,7 @@
+import { BotonSuperficie } from '../../src/ui/BotonSuperficie'
+import { EntradaTexto } from '../../src/ui/EntradaTexto'
 import { useState } from 'react'
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Image, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { pickImage, type PickedImage } from '../../src/lib/pickImage'
@@ -126,7 +128,7 @@ export default function NuevaLista() {
              * acento adentro —«acá va una imagen»—; con una elegida, la
              * imagen. Cambiarla después sigue siendo un toque sobre la tapa.
              */}
-            <Pressable
+            <BotonSuperficie
               accessibilityRole="button"
               accessibilityLabel={portada ? 'Cambiar la portada' : 'Elegir una portada'}
               onPress={() => void elegirPortada()}
@@ -143,10 +145,10 @@ export default function NuevaLista() {
                   <IconImage size={22} color={ICON_COLOR.onPrimary} />
                 </View>
               )}
-            </Pressable>
+            </BotonSuperficie>
 
             <View className="w-full items-center">
-              <TextInput
+              <EntradaTexto
                 value={nombre}
                 onChangeText={setNombre}
                 autoFocus
@@ -157,7 +159,7 @@ export default function NuevaLista() {
                 accessibilityLabel="Nombre de la lista"
                 placeholder="Nombre de la lista"
                 placeholderTextColor="#6A6A6A"
-                className="w-full text-center text-[22px] font-semibold text-foreground"
+                className="w-full text-center text-title2 font-semibold text-foreground"
               />
               {/* La única línea de la hoja: el subrayado del campo, como en el
                   referente. Es un campo de texto y esa es su forma; no separa
@@ -180,7 +182,7 @@ export default function NuevaLista() {
             {creando ? (
               <View className="flex-row items-center gap-2">
                 <ActivityIndicator size="small" color={ICON_COLOR.muted} />
-                <Text className="text-muted-foreground text-[12px]">
+                <Text className="text-muted-foreground text-caption1">
                   {portada ? 'Creando la lista y subiendo la portada…' : 'Creando la lista…'}
                 </Text>
               </View>

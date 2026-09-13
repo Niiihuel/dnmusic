@@ -150,7 +150,7 @@ export function LyricsView({
   if (!fresh) {
     return (
       <View className="flex-1 items-center justify-center px-8">
-        <Text className="text-muted-foreground text-center text-[13px]">Buscando la letra…</Text>
+        <Text className="text-muted-foreground text-center text-footnote">Buscando la letra…</Text>
       </View>
     )
   }
@@ -159,7 +159,7 @@ export function LyricsView({
     return (
       <View className="flex-1 items-center justify-center gap-3 px-8">
         <IconMusic size={22} color={ICON_COLOR.muted} />
-        <Text className="text-muted-foreground text-center text-[13px] leading-5">
+        <Text className="text-muted-foreground text-center text-footnote leading-5">
           No encontré la letra sincronizada de este tema.
         </Text>
       </View>

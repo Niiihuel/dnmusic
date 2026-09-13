@@ -5,7 +5,7 @@ import { observarLectura } from '../services/lecturaViva'
 
 /** El lector debe ser estable (useCallback). Al volver al perfil pide datos
  * nuevos; al dejarlo o mandar la app al fondo deja de consultar. */
-export function useLecturaViva<T>(clave: string, leer: () => Promise<T>, intervalo = 3000): T | null {
+export function useLecturaViva<T>(clave: string, leer: (signal?: AbortSignal) => Promise<T>, intervalo = 3000): T | null {
   const [resultado, setResultado] = useState<{ clave: string; valor: T | null } | null>(null)
   useFocusEffect(useCallback(() => {
     const lectura = observarLectura(leer, valor => setResultado({ clave, valor }), intervalo)

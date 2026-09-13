@@ -179,12 +179,27 @@ todas las máquinas, y es exactamente el mismo motor contra el que ya se verific
 la web. El precio es el tamaño —~100 MB contra ~8 MB— y no compra nada frente a
 "a alguien no le anda".
 
-**`app://dnmusic` y no `file://`.** En `file://` el origen es opaco y
-localStorage no persiste; la sesión de Supabase en web vive justo ahí (ver
-`src/lib/supabase.ts`, donde en web se deja el storage por defecto). Con
-`file://` habría que iniciar sesión en cada arranque. El esquema propio,
-registrado como `standard` + `secure`, es un origen real y estable, y de paso da
-contexto seguro para `crypto.subtle` y para la History API que usa expo-router.
+**`app://dnmusic` y no `file://`.** En `file://` el origen es opaco y el
+almacenamiento del navegador no persiste, así que habría que iniciar sesión en
+cada arranque y no habría dónde guardar nada más. El esquema propio, registrado
+como `standard` + `secure`, es un origen real y estable, y de paso da contexto
+seguro para `crypto.subtle` y para la History API que usa expo-router.
+
+**La sesión no vive en localStorage: vive en un archivo del proceso principal.**
+`auth-session.bin`, en la carpeta de datos de la app, cifrado con el almacén
+protegido del sistema —DPAPI en Windows, el llavero en Linux— y expuesto al
+bundle solo por IPC (`desktop/src/auth-storage.ts`). El de Chromium quedó como
+**copia de respaldo, y solo se escribe cuando el archivo no se pudo guardar**;
+de ahí sale la regla de precedencia al leer: *si hay copia, esa es la sesión más
+nueva*, porque su sola existencia significa que el archivo quedó atrás.
+
+Las dos mitades de esa regla son lo que arregla el cierre de sesión de Windows,
+donde reemplazar un archivo de `%APPDATA%` choca de rutina con el antivirus o
+con OneDrive: el almacén ya no sirve la sesión anterior cuando un guardado falla
+—hacerlo terminaba en Supabase renovando con un refresh token gastado, un 400 y
+la sesión borrada a los segundos de entrar—, y el reemplazo se reintenta antes
+de resignarse. Cuando algo de esto falla queda dicho en el log del proceso
+principal, que en Windows se ve con `dnmusic.exe --enable-logging`.
 
 **Un chunk que falta devuelve 404, no index.html.** El fallback de SPA es el
 mismo que hace `vercel.json` en la web, con el mismo corte: una ruta cae en
@@ -398,3 +413,30 @@ El workflow ahora ejecuta `desktop/scripts/verificar-servicio.mjs` antes de
 compilar. Exige salud 200 y respuesta de autenticación 401 JSON en búsqueda y
 las dos rutas de aporte, sin iniciar sesión ni subir archivos. Si una ruta
 apunta a un despliegue inexistente o un rewrite falta, la publicación se corta.
+
+### Ícono de Windows y Linux
+
+El escritorio usa `assets/desktop-icon.png` (marca con fondo transparente) y
+`assets/icon.ico`, con frames de 16, 20, 24, 32, 40, 48, 64, 128 y 256 píxeles.
+Windows no aplica la máscara de iOS: reutilizar su PNG opaco dejaba un cuadrado
+visible en accesos directos y la barra de tareas. El recurso de Apple sigue siendo
+`assets/icon.png`; las dos variantes salen de la misma marca original.
+
+Para regenerar sólo escritorio con Python y Pillow:
+
+```sh
+python scripts/generar-iconos.py --desktop-only
+```
+
+`traer-web.mjs` copia ambos recursos a `desktop/build/`. Electron Builder incrusta
+el ICO en Windows/NSIS y usa el PNG en Linux; también los copia a `resources/icons`
+para que `BrowserWindow` use la misma variante al ejecutar la app. En desarrollo,
+la ventana lee directamente los archivos de `assets/`.
+
+La validación local comprueba el canal alfa de los nueve frames y los archivos
+copiados, y la compilación/pruebas de escritorio. La apariencia instalada en
+Windows requiere generar e instalar el nuevo instalador. Si Windows conserva un
+acceso anclado con el ícono anterior, desanclarlo y volver a anclar la app actual.
+
+Referencias: [diseño de íconos de Windows](https://learn.microsoft.com/en-us/windows/apps/design/iconography/app-icon-design)
+y [formatos/tamaños de Electron](https://www.electronjs.org/docs/latest/api/native-image#supported-formats).

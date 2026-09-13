@@ -3,6 +3,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
+/* La escala de Apple de verdad: la prueba mide lo que mide la app. */
+const MEDIDAS = JSON.parse(readFileSync('src/ui/apple.json', 'utf8')).texto
+const TIPOGRAFIA = { texto: e => ({ fontSize: MEDIDAS[e].size, lineHeight: MEDIDAS[e].leading, letterSpacing: MEDIDAS[e].tracking }) }
 
 const jsx = (type, props) => ({ type, props })
 const runtime = { jsx, jsxs: jsx }
@@ -34,6 +37,7 @@ const social = cargar('src/ui/Social.tsx', {
   'react/jsx-runtime': runtime, 'react-native': rn,
   './EncabezadoHoja': cabecera,
   './icons': { ICON_COLOR: {} },
+  './tipografia': TIPOGRAFIA,
 })
 
 function nodos(node) {
@@ -92,6 +96,7 @@ function montar({ width = 390, jamInicial = null } = {}) {
     '../../src/state/playback': { abrirVista: vista => paneles.push(vista) },
     '../../src/state/shell': { usePiso: () => 24 },
     '../../src/ui/Social': social,
+    '../../src/ui/FilaSocial': { FilaSocial: 'FilaSocial' },
     '../../src/ui/Avatar': { Avatar: 'Avatar' },
     '../../src/ui/NowPlayingBar': { PANEL_PX: 1100 },
     '../../src/ui/icons': { ICON_COLOR: {}, IconCheck: 'IconCheck', IconUsers: 'IconUsers' },

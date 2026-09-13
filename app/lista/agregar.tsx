@@ -1,5 +1,7 @@
+import { BotonSuperficie } from '../../src/ui/BotonSuperficie'
+import { NativeMediaRow } from '../../modules/media-controls'
 import { useEffect, useMemo, useState } from 'react'
-import { Image, Pressable, ScrollView, Text, View } from 'react-native'
+import { Image, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { artworkSource } from '../../src/lib/artwork'
 import { volver } from '../../src/lib/volver'
@@ -209,12 +211,12 @@ export default function AgregarMusica() {
     if (!visibles.length) {
       if (!vacio) return null
       return (
-        <Text className="px-5 py-2 text-muted-foreground text-[13px]">{vacio}</Text>
+        <Text className="px-5 py-2 text-muted-foreground text-footnote">{vacio}</Text>
       )
     }
     return (
       <View className="pb-2">
-        <Text className="px-5 pb-1 pt-4 text-[17px] font-bold text-foreground">{titulo}</Text>
+        <Text className="px-5 pb-1 pt-4 text-body font-bold text-foreground">{titulo}</Text>
         {visibles.map((t) => (
           <FilaCancion
             key={t.videoId}
@@ -231,7 +233,7 @@ export default function AgregarMusica() {
     return (
       <Hoja>
         <View className="flex-1 items-center justify-center bg-background">
-          <Text className="text-muted-foreground text-[13px]">No se encontró la lista.</Text>
+          <Text className="text-muted-foreground text-footnote">No se encontró la lista.</Text>
         </View>
       </Hoja>
     )
@@ -358,8 +360,13 @@ function FilaCancion({
   onToggle: () => void
 }) {
   const tapa = artworkSource(track.artworkPath ?? null, track.artworkUrl, 96)
+  if (NativeMediaRow) return <NativeMediaRow title={track.title} subtitle={yaEsta ? 'Ya está en la lista' : track.artist}
+    artwork={tapa} selected={elegida || yaEsta} disabled={yaEsta}
+    label={`${track.title}, ${track.artist}${yaEsta ? ', ya está en la lista' : elegida ? ', seleccionada' : ''}`}
+    onActivate={() => { if (!yaEsta) onToggle() }} style={{ height: 76, width: '100%' }} />
+
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="checkbox"
       accessibilityLabel={`${track.title}, ${track.artist}`}
       accessibilityState={{ checked: elegida || yaEsta, disabled: yaEsta }}
@@ -376,10 +383,10 @@ function FilaCancion({
         </View>
       )}
       <View className="min-w-0 flex-1">
-        <Text className="text-foreground text-[15px]" numberOfLines={1}>
+        <Text className="text-foreground text-subheadline" numberOfLines={1}>
           {track.title}
         </Text>
-        <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+        <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
           {yaEsta ? 'Ya está en la lista' : track.artist}
         </Text>
       </View>
@@ -394,6 +401,6 @@ function FilaCancion({
           <IconPlus size={15} color={ICON_COLOR.foreground} />
         )}
       </View>
-    </Pressable>
+    </BotonSuperficie>
   )
 }
