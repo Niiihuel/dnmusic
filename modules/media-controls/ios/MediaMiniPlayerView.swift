@@ -181,7 +181,7 @@ final class MediaMiniPlayerView: ExpoView {
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
-    if window != nil, let parent = reactViewController() {
+    if window != nil, let parent = owningViewController() {
       guard hostingController.parent !== parent else { return }
       detachController()
       hostingController.view.removeFromSuperview()
@@ -190,6 +190,16 @@ final class MediaMiniPlayerView: ExpoView {
       hostingController.view.frame = bounds
       hostingController.didMove(toParent: parent)
     } else { detachController() }
+  }
+
+  // UIKit's responder chain works with Fabric and with native containers.
+  private func owningViewController() -> UIViewController? {
+    var responder: UIResponder? = next
+    while let current = responder {
+      if let controller = current as? UIViewController { return controller }
+      responder = current.next
+    }
+    return nil
   }
 
   private func detachController() {
