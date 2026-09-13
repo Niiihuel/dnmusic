@@ -741,6 +741,27 @@ export function enqueue(track: PlaylistTrack) {
   store.set({ upNext })
 }
 
+/** El servidor del Jam no expone todavía inserción prioritaria. */
+export function canEnqueueNext(): boolean {
+  return !enJam()
+}
+
+/** Coloca primero en la cola manual sin interrumpir ni reordenar la playlist. */
+export function enqueueNext(track: PlaylistTrack) {
+  if (!canEnqueueNext()) {
+    avisar('En un Jam podés agregar a la cola compartida, pero no cambiar qué sigue.')
+    return
+  }
+  if (escucha?.retener(() => enqueueNext(track))) return
+  const state = store.get()
+  if (state.index < 0 && !state.manual) {
+    playQueue([track], 0, null)
+    return
+  }
+  store.set({ upNext: [track, ...state.upNext] })
+  guardar(true)
+}
+
 /**
  * Saca una canción de la cola manual, por posición.
  *

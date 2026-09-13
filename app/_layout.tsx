@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ActivityIndicator,
   Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   useWindowDimensions,
@@ -1144,37 +1145,14 @@ function SessionGate() {
       />
       {/* Elegir una canción y recortarla son pasos del mismo formulario. */}
       <Stack.Screen name="song" options={HOJA_SOCIAL} />
-      {/*
-       * Lo que suena, a pantalla completa. **Sin animación del sistema.**
-       *
-       * Era `presentation: 'modal'`, y de ahí venía el problema: un sheet de
-       * iOS sube siempre desde el borde inferior de la pantalla, y no hay forma
-       * de darle otro origen. Pero esta pantalla no se abre desde el borde: se
-       * abre tocando la tarjeta del reproductor, que está más arriba. La
-       * expansión tiene que arrancar **ahí**, como en Apple Music, o el
-       * movimiento no cuenta de dónde salió.
-       *
-       * Así que la animación —y el gesto para bajarla— los hace la pantalla,
-       * que es la única que puede saber desde dónde crecer. Ver `app/playing.tsx`.
-       *
-       * Sigue siendo una presentación por encima, pero **transparente**: la
-       * pantalla de abajo tiene que quedar montada y a la vista, porque mientras
-       * esto crece se ve la app detrás. Una ruta común la habría escondido y el
-       * hueco de arriba quedaría negro durante todo el movimiento.
-       */}
-      <Stack.Screen
-        name="playing"
-        options={{
-          presentation: 'transparentModal',
-          animation: 'none',
-          /* La transparencia hay que pedirla dos veces: la presentación pone
-             la escena encima sin taparla, pero el `contentStyle` global le
-             pinta el #121212 opaco de fondo — y con eso el crecimiento subía
-             como una lámina negra desde el borde de abajo, tapando la app y
-             la tarjeta de la que se supone que nace. */
-          contentStyle: { backgroundColor: 'transparent' },
-        }}
-      />
+      {/* iOS presenta una pantalla completa; el gesto de letras no cierra el player. */}
+      <Stack.Screen name="playing" options={Platform.OS === 'ios' ? {
+        presentation: 'fullScreenModal', animation: 'slide_from_bottom', gestureEnabled: false,
+        contentStyle: { backgroundColor: '#121212' },
+      } : {
+        presentation: 'transparentModal', animation: 'none',
+        contentStyle: { backgroundColor: 'transparent' },
+      }} />
       {/*
        * El Jam es una **pila de drawers nativos**, como el referente: la hoja
        * principal sube a tres cuartos y se estira a todo con el dedo; invitar
@@ -1347,7 +1325,7 @@ function SessionGate() {
         }
       />
       {/* El mensaje a pantalla completa, al modo de una historia. */}
-      <Stack.Screen name="message/[id]" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="message/[id]" options={{ presentation: Platform.OS === 'ios' ? 'fullScreenModal' : 'modal' }} />
       </Stack.Protected>
 
       {/*

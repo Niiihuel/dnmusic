@@ -25,6 +25,7 @@ function harness(path, imports = {}) {
     if (id === '@expo/ui/swift-ui/modifiers') return new Proxy({}, { get: (_, k) => (...args) => ({ kind: k, args }) })
     if (id === './tiempos') return { formatClock: String }
     if (id in imports) return imports[id]
+    if (id === 'react-native') return { View: 'View', Text: 'Text' }
     throw Error(id)
   })
   return { render(name, props) { index = 0; return exports[name](props) }, effects }

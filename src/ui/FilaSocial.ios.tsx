@@ -4,7 +4,7 @@ import type { FilaSocialProps } from './FilaSocial.types'
 
 /** Content-sized native row for an existing scroll surface; deliberately has no nested List. */
 export function FilaSocial({ titulo, detalle, fontFamily, valor, label, selected = false, busy = false, disabled = false, onPress }: FilaSocialProps) {
-  return <Host matchContents={{ vertical: true }} colorScheme="dark" seedColor="#FFFFFF" style={{ width: '100%', minHeight: 44 }}>
+  return <Host ignoreSafeArea="all" matchContents={{ vertical: true }} colorScheme="dark" seedColor="#FFFFFF" style={{ width: '100%', minHeight: 44 }}>
     <Button onPress={disabled || busy ? undefined : onPress} modifiers={[
       buttonStyle('plain'), deshabilitado(disabled || busy),
       accessibilityLabel(label ?? [titulo, detalle, valor, busy ? 'En curso' : null].filter(Boolean).join(', ')),

@@ -1,12 +1,5 @@
 import type { ReactNode } from 'react'
-import { Button, Host } from '@expo/ui/swift-ui'
-import {
-  accessibilityLabel,
-  buttonBorderShape,
-  buttonStyle,
-  disabled as deshabilitado,
-  frame,
-} from '@expo/ui/swift-ui/modifiers'
+import { IconButton } from './IconButton'
 
 /**
  * El botón de navegación de iOS lo dibuja SwiftUI.
@@ -31,20 +24,6 @@ export function BotonVolver({
      volver a introducir RNHostView. La navegación iOS usa siempre el SF Symbol
      del sistema; `icono` se conserva en el contrato para las otras plataformas. */
   void icono
-  return (
-    <Host matchContents colorScheme="dark" seedColor="#FFFFFF">
-      <Button
-        label={label}
-        systemImage="chevron.left"
-        onPress={onPress}
-        modifiers={[
-          accessibilityLabel(label),
-          frame({ width: 44, height: 44 }),
-          buttonBorderShape('circle'),
-          buttonStyle('glass'),
-          deshabilitado(disabled),
-        ]}
-      />
-    </Host>
-  )
+  return <IconButton label={label} symbol="chevron.left" onPress={onPress}
+    disabled={disabled} variant="glass" size={18} />
 }

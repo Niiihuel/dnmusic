@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import type { SharedValue } from 'react-native-reanimated'
-import { Host, Slider, Text } from '@expo/ui/swift-ui'
-import { accessibilityLabel, accessibilityValue, font, foregroundStyle, frame, tint } from '@expo/ui/swift-ui/modifiers'
+import { Host, Slider } from '@expo/ui/swift-ui'
+import { Text, View } from 'react-native'
+import { accessibilityLabel, accessibilityValue, frame, tint } from '@expo/ui/swift-ui/modifiers'
 import { formatClock } from './tiempos'
 export { formatClock, formatLength } from './tiempos'
 
@@ -21,13 +22,11 @@ export function SeekBar({ label, progress, elapsedMs, totalMs, onSeek, compact =
   const ultimo = useRef<number | null>(null)
   const fraccion = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0
   const valor = arrastre ?? fraccion
-  const tiempo = (ms: number) => <Text modifiers={[font({ textStyle: 'caption2' }), foregroundStyle('#B3B3B3')]}>{formatClock(ms)}</Text>
 
-  return <Host style={{ minHeight: 44, width: '100%' }} colorScheme="dark" seedColor="#FFFFFF">
+  return <View style={{ width: '100%' }}>
+    <Host ignoreSafeArea="all" style={{ height: 44, width: '100%' }} colorScheme="dark" seedColor="#FFFFFF">
     <Slider min={0} max={1} value={valor}
-      minimumValueLabel={compact ? undefined : tiempo(arrastre === null ? elapsedMs : arrastre * totalMs)}
-      maximumValueLabel={compact ? undefined : tiempo(totalMs)}
-      modifiers={[frame({ minHeight: 44 }), tint('#FFFFFF'), accessibilityLabel(`Posición de ${label}`), accessibilityValue(`${Math.round(valor * 100)} %`)]}
+      modifiers={[frame({ height: 44 }), tint('#FFFFFF'), accessibilityLabel(`Posición de ${label}`), accessibilityValue(`${Math.round(valor * 100)} %`)]}
       onEditingChanged={(activo) => {
         editando.current = activo
         if (activo) ultimo.current = null
@@ -46,5 +45,10 @@ export function SeekBar({ label, progress, elapsedMs, totalMs, onSeek, compact =
         // VoiceOver ajusta sin comenzar un arrastre.
         if (envivo || !editando.current) onSeek(v)
       }} />
-  </Host>
+    </Host>
+    {!compact ? <View pointerEvents="none" style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: -2 }}>
+      <Text style={{ fontSize: 11, color: '#B3B3B3', fontVariant: ['tabular-nums'] }}>{formatClock(arrastre === null ? elapsedMs : arrastre * totalMs)}</Text>
+      <Text style={{ fontSize: 11, color: '#B3B3B3', fontVariant: ['tabular-nums'] }}>{formatClock(totalMs)}</Text>
+    </View> : null}
+  </View>
 }

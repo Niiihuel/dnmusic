@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Text, useWindowDimensions, View } from 'react-native'
+import { Platform, Text, useWindowDimensions, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { conAlfa } from '../lib/colorPortada'
 
@@ -39,6 +39,7 @@ export function CollectionHeader({
   actions,
   tint,
   bleedTop = 0,
+  search,
 }: {
   /** La tapa o la foto, ya con su forma y su tamaño resueltos. */
   image: ReactNode
@@ -69,13 +70,16 @@ export function CollectionHeader({
    * como en Spotify; en escritorio, 0.
    */
   bleedTop?: number
+  /** Búsqueda dentro de la colección, antes de la portada. */
+  search?: ReactNode
 }) {
   const angosto = useAngosto()
 
   if (angosto) {
     return (
       <View className="items-center gap-3 px-6 pb-5 pt-4">
-        {tint ? <Tinte color={tint} bleedTop={bleedTop} /> : null}
+        {tint || Platform.OS === 'ios' ? <Tinte color={tint ?? '#57575C'} bleedTop={bleedTop} /> : null}
+        {search ? <View style={{ width: '100%', marginHorizontal: -12 }}>{search}</View> : null}
         {image}
         <View className="flex-row items-center gap-2">
           <Text className="text-muted-foreground text-footnote uppercase">
@@ -90,7 +94,8 @@ export function CollectionHeader({
           </Text>
         ) : null}
         {actions ? (
-          <View className="flex-row flex-wrap items-center gap-3 pt-1">{actions}</View>
+          <View style={Platform.OS === 'ios' ? { width: '100%', flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 4 } : undefined}
+            className={Platform.OS === 'ios' ? undefined : 'flex-row flex-wrap items-center gap-3 pt-1'}>{actions}</View>
         ) : null}
       </View>
     )
@@ -99,6 +104,7 @@ export function CollectionHeader({
   return (
     <View>
       {tint ? <Tinte color={tint} bleedTop={bleedTop} /> : null}
+      {search}
       <View className="flex-row items-end gap-5 px-6 pb-5 pt-6">
         {image}
         <View className="min-w-0 flex-1 gap-2 pb-1">
@@ -134,9 +140,10 @@ function Tinte({ color, bleedTop }: { color: string; bleedTop: number }) {
   return (
     <LinearGradient
       pointerEvents="none"
-      colors={[conAlfa(color, 0.55), conAlfa(color, 0.14), 'transparent']}
+      colors={[conAlfa(color, Platform.OS === 'ios' ? 0.82 : 0.55), conAlfa(color, 0.14), 'transparent']}
       locations={[0, 0.6, 1]}
-      style={{ position: 'absolute', left: 0, right: 0, top: -bleedTop, height: 360 + bleedTop }}
+      style={{ position: 'absolute', left: 0, right: 0, top: -bleedTop,
+        ...(Platform.OS === 'ios' ? { bottom: 0 } : { height: 360 + bleedTop }) }}
     />
   )
 }
@@ -182,6 +189,7 @@ export function CollectionTitle({ children }: { children: string }) {
 export function useCoverSize() {
   const { width } = useWindowDimensions()
   if (width >= ANGOSTO_PX) return 152
+  if (Platform.OS === 'ios') return Math.max(160, Math.min(248, Math.round(width * 0.6)))
   // Un tercio del ancho: se luce sin comerse la pantalla antes del contenido.
   return Math.max(120, Math.min(180, Math.round(width * 0.42)))
 }

@@ -98,17 +98,16 @@ test('previa móvil plegada no monta cosméticos; expandir conserva el contenido
 })
 
 
-test('iOS abre Identidad desde el menú y vuelve sin perder la barra ni los cambios recibidos', () => {
-  const f = fixture('Movil', 'ios')
+test('Android conserva sus secciones y vuelve sin perder la barra ni los cambios recibidos', () => {
+  const f = fixture('Movil', 'android')
   const barra = { type: 'BarraCambiosPerfil', props: { visible: true } }
   const render = () => f.render({ pisoVisible: 80, children: barra })
   let ui = render()
   assert.equal(ui.some(n => n.type === 'CamposIdentidad'), false, 'el formulario no se monta sobre el menú')
   for (const label of ['Identidad', 'Mosaico']) {
     const fila = f.control(ui, label)
-    assert.equal(fila.type, 'FilaSocial', 'el toque de navegación lo maneja la fila nativa')
-    const contenedor = ui.find(n => n.type === 'View' && n.props?.children?.[0]?.props?.size === 16 && nodes(n).includes(fila))
-    assert.ok(contenedor, 'el icono se conserva fuera del control de texto')
+    assert.equal(fila.type, 'Pressable', 'Android mantiene el control compartido')
+    assert.equal(fila.props.children[0].props.size, 16)
   }
   f.control(ui, 'Identidad').props.onPress()
   ui = render()

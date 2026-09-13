@@ -92,7 +92,7 @@ function fixtureTelefono(os = 'android') {
     Platform: { OS: os }, Fragment: 'Fragment',
     useState(initial) { const i = cursor++; if (!(i in refs)) refs[i] = initial; return [refs[i], v => { refs[i] = v }] },
     usePiso: () => 24, useKeyboardH: () => 0, useSafeAreaInsets: () => ({ bottom: 34 }),
-    ...Object.fromEntries(['SafeAreaView', 'View', 'Text', 'ScrollView', 'BotonVolver', 'SearchField', 'ListaAjustes', 'GrupoAjustes', 'FilaAccion', 'FilaDato'].map(k => [k, k])),
+    ...Object.fromEntries(['SafeAreaView', 'View', 'Text', 'ScrollView', 'BotonVolver', 'EncabezadoHoja', 'SearchField', 'ListaAjustes', 'GrupoAjustes', 'FilaAccion', 'FilaDato'].map(k => [k, k])),
   })
   const categorias = [{ id: 'music', titulo: 'Reproducción', bloques: { type: 'Music' } }, { id: 'cuenta', titulo: 'Cuenta', bloques: { type: 'Cuenta' } }]
   return {
@@ -134,7 +134,7 @@ test('iOS abre Cuenta tras Google, permite ver todas las categorías y conserva 
   const f = fixtureTelefono('ios')
   let ui = f.render({ initialId: 'cuenta' })
   assert.equal(ui.some(n => n.type === 'ScrollView'), false)
-  assert.equal(ui.find(n => n.type === 'ListaAjustes').props.titulo, 'Cuenta')
+  assert.equal(ui.find(n => n.type === 'EncabezadoHoja').props.titulo, 'Cuenta')
   assert.equal(ui.some(n => n.type === 'Music'), false)
   ui.find(n => n.props?.rotulo === 'Ver toda la configuración').props.onPress()
   ui = f.render({ initialId: 'cuenta' })

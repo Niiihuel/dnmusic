@@ -118,6 +118,8 @@ import {
 import {
   detachOrigin,
   enqueue,
+  enqueueNext,
+  canEnqueueNext,
   getPlaybackState,
   playQueue,
   registerPlaylistOpener,
@@ -275,6 +277,7 @@ export default function Home() {
   const [rightPlegado, setRightPlegado] = useState(false)
   const [sending, setSending] = useState(false)
   const [composerError, setComposerError] = useState<string | null>(null)
+  const [composerHeight, setComposerHeight] = useState(0)
   const draft = useDraft()
   const player = useSnippetPlayer()
 
@@ -408,39 +411,10 @@ export default function Home() {
    */
   const cascara = usePiso()
   const colapsoPantalla = useColapso()
-  /*
-   * Lo que hay que dejar libre abajo del hilo.
-   *
-   * **No depende del teclado.** Antes valía el alto del teclado cuando estaba
-   * abierto, así que al cerrarlo el hueco se desplomaba de golpe mientras todo
-   * lo demás bajaba suave: ese era el parpadeo. Ahora el teclado lo resuelve el
-   * traslado del bloque entero, y este número solo tiene que despejar la
-   * cáscara y el campo — que no cambian.
-   */
   const pisoChat = cascara
-
-  /*
-   * El campo de escribir va pegado al teclado real, no a una imitación.
-   *
-   * Mismo criterio que la cáscara: `useAnimatedKeyboard` da el alto en el hilo
-   * de la interfaz cuadro a cuadro, así que los dos copian el mismo número y no
-   * pueden desincronizarse — ni siquiera cuando arrastrás el teclado con el
-   * dedo, que es donde cualquier animación propia se queda atrás.
-   */
+  // El composer sigue al teclado en UI. El hilo iOS reduce su viewport,
+  // conservando la cabecera fija en vez de trasladar mensajes sobre ella.
   const tecladoVivo = useAnimatedKeyboard()
-  /*
-   * Lo que se levanta al abrir el teclado: **el hilo entero y el campo**, en
-   * bloque, como en WhatsApp.
-   *
-   * Se descuenta la cáscara porque el campo ya estaba apoyado sobre ella: sin
-   * ese descuento, con el teclado abierto quedaría flotando el alto del
-   * reproductor por encima del teclado en vez de apoyado sobre él. Y como la
-   * cáscara se corre hacia abajo con el mismo teclado (ver `app/_layout.tsx`),
-   * los dos movimientos se cancelan justo.
-   *
-   * El hilo y el campo comparten este estilo a propósito: es el mismo número,
-   * así que no hay forma de que uno llegue antes que el otro.
-   */
   const sobreTeclado = useAnimatedStyle(() => ({
     transform: [{ translateY: -Math.max(0, tecladoVivo.height.value - cascara) }],
   }))
@@ -458,17 +432,18 @@ export default function Home() {
    */
   const Movible = TECLADO_FISICO ? View : Animated.View
   const seguirTeclado = TECLADO_FISICO ? null : sobreTeclado
+  const espacioTeclado = useAnimatedStyle(() => ({
+    marginBottom: Math.max(0, tecladoVivo.height.value - cascara),
+  }))
+  const ajusteHilo = Platform.OS === 'ios' ? espacioTeclado : seguirTeclado
+  const espacioComposer = Platform.OS === 'ios' && composerHeight > 0
+    ? composerHeight + 12
+    : (draft.song ? 168 : 92)
 
-  /*
-   * Al abrir una conversación, el hilo arranca en el último mensaje.
-   *
-   * Ya no hace falta empujarlo al aparecer el teclado: el hilo **se traslada
-   * entero** junto al campo, así que lo que estabas leyendo sigue exactamente
-   * donde estaba, un teclado más arriba. Antes se reacomodaba el hueco de abajo
-   * y había que corregir el desplazamiento a mano, con un `setTimeout` que se
-   * veía llegar tarde.
-   */
+  // Cuando el teclado cambia el viewport, sólo seguimos el último mensaje
+  // si la persona ya estaba allí; leer mensajes anteriores conserva su lugar.
   const hilo = useRef<FlatList<Message>>(null)
+  const altoContenidoHilo = useRef(0)
   /**
    * El hilo que ya se llevó al final.
    *
@@ -502,6 +477,7 @@ export default function Home() {
    */
   const ubicarHiloAlFinal = useCallback(
     (_ancho: number, alto: number) => {
+      altoContenidoHilo.current = alto
       if (!pegadoAlFinal.current || messages.length === 0) return
       /*
        * `scrollToOffset` con el alto que trae el evento, y no `scrollToEnd`.
@@ -1151,10 +1127,12 @@ export default function Home() {
   }
 
   /** Sumar a la cola: suena cuando termine lo de ahora, sin tocar ninguna lista. */
-  async function enqueueSearchResult(track: TrackResult) {
+  async function enqueueSearchResult(track: TrackResult, siguiente = false) {
     setAddingTrack(track.videoId)
     try {
-      enqueue(await resolveForPlayback(track))
+      const resolved = await resolveForPlayback(track)
+      if (siguiente) enqueueNext(resolved)
+      else enqueue(resolved)
     } catch (e) {
       // Solo por aviso, por lo mismo que `playSearchResult`.
       avisar(`No se pudo encolar: ${mensajeError(e)}`, true)
@@ -1478,6 +1456,14 @@ export default function Home() {
           <IconHeart size={15} color={ICON_COLOR.muted} />
         ),
         sfSymbol: gustada ? 'heart.fill' : 'heart',
+      },
+      {
+        label: 'Poner a continuación',
+        onPress: () => void enqueueSearchResult(track, true),
+        disabled: !canEnqueueNext(),
+        subtitle: canEnqueueNext() ? undefined : 'El orden del Jam es compartido',
+        icon: <IconQueue size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'text.line.first.and.arrowtriangle.forward',
       },
       {
         label: 'Agregar a la cola',
@@ -2768,9 +2754,14 @@ export default function Home() {
                       <Text className="text-destructive text-subheadline">{error}</Text>
                     </View>
                   ) : (
-                    <Movible style={[{ flex: 1, minHeight: 0 }, seguirTeclado]}>
+                    <Movible style={[{ flex: 1, minHeight: 0, overflow: 'hidden' }, ajusteHilo]}>
                     <FlatList
                       ref={hilo}
+                      onLayout={Platform.OS === 'ios' ? () => {
+                        if (pegadoAlFinal.current && altoContenidoHilo.current > 0) {
+                          hilo.current?.scrollToOffset({ offset: altoContenidoHilo.current, animated: false })
+                        }
+                      } : undefined}
                       data={messages}
                       keyExtractor={(message) => message.id}
                       /* Cada vez que la lista cambia de alto: es donde se
@@ -2793,7 +2784,7 @@ export default function Home() {
                            campo y un respiro. Sin el respiro, el último mensaje
                            queda pegado al campo y parece cortado; con más, se
                            abre un hueco muerto. */
-                        paddingBottom: pisoChat + (draft.song ? 168 : 92),
+                        paddingBottom: pisoChat + espacioComposer,
                       }}
                       ListEmptyComponent={
                         /* Cargando no es lo mismo que vacío: mientras el hilo
@@ -2865,7 +2856,7 @@ export default function Home() {
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      height: pisoChat + (draft.song ? 220 : 145),
+                      height: pisoChat + espacioComposer + 52,
                     }}
                   />
                   )}
@@ -2886,6 +2877,10 @@ export default function Home() {
                    * izquierda.
                    */}
                   <Movible
+                    onLayout={Platform.OS === 'ios' ? (event) => {
+                      const height = Math.ceil(event.nativeEvent.layout.height)
+                      setComposerHeight(previous => previous === height ? previous : height)
+                    } : undefined}
                     style={[
                       {
                         position: 'absolute',
@@ -2900,8 +2895,8 @@ export default function Home() {
                   >
                     {draft.song ? (
                       <Glass radius={14} style={HAY_VIDRIO ? {} : { backgroundColor: 'rgb(24,24,24)' }}>
-                      <View className="flex-row items-center gap-3 p-2.5">
-                        {draft.song.artworkUrl ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, minHeight: 64 }}>
+                        {draft.song.artworkPath || draft.song.artworkUrl ? (
                           <Image
                             source={{
                               uri:
@@ -2926,7 +2921,7 @@ export default function Home() {
                             {draft.song.artist} · {Math.round(draft.song.durationMs / 1000)} s
                           </Text>
                         </View>
-                        <IconButton label="Quitar canción" symbol="xmark" onPress={() => setDraft({ song: null })} icon={<IconClose size={16} color={ICON_COLOR.muted} />} />
+                        <IconButton label="Quitar canción" symbol="xmark" lado={44} size={17} onPress={() => setDraft({ song: null })} icon={<IconClose size={16} color={ICON_COLOR.muted} />} />
                       </View>
                       </Glass>
                     ) : null}

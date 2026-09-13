@@ -13,7 +13,7 @@ export function FilaCuenta({ cuenta, busy = false, onAbrir, onVerPerfil, rotuloA
   const solicitar = !cuenta.pairId && cuenta.solicitud === null && onSolicitar
   const accion = aceptar || solicitar || (onVerPerfil ? onAbrir : undefined)
   const rotulo = aceptar ? `Aceptar la solicitud de ${nombre}` : solicitar ? `Enviarle una solicitud a ${nombre}` : `${rotuloAbrir} a ${nombre}`
-  return <Host colorScheme="dark" seedColor="#FFFFFF" matchContents={{ vertical: true }} style={{ width: '100%' }}>
+  return <Host ignoreSafeArea="all" colorScheme="dark" seedColor="#FFFFFF" matchContents={{ vertical: true }} style={{ width: '100%' }}>
     <HStack spacing={8} modifiers={[padding({ horizontal: 8, vertical: 8 })]}>
       <Button onPress={busy ? undefined : onVerPerfil ?? onAbrir} modifiers={[buttonStyle('plain'), disabled(busy), accessibilityLabel(`${onVerPerfil ? 'Ver perfil de' : 'Abrir a'} ${nombre}, ${detalle}`)]}>
         <HStack spacing={8} modifiers={[frame({ minHeight: 44 })]}>

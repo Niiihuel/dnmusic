@@ -11,7 +11,7 @@ import type { SegmentadoProps } from './Segmentado.types'
  */
 export function Segmentado<T extends string>({ value, options, onChange, label }: SegmentadoProps<T>) {
   return (
-    <Host colorScheme="dark" matchContents={{ vertical: true }} style={{ width: '100%' }}>
+    <Host colorScheme="dark" ignoreSafeArea="all" matchContents={{ vertical: true }} style={{ width: '100%', minHeight: 32, flexShrink: 0 }}>
       <Picker
         selection={value}
         onSelectionChange={(v) => onChange(v as T)}

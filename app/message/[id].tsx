@@ -23,6 +23,8 @@ import { SongDisc } from '../../src/ui/SongDisc'
 import { Lyrics } from '../../src/ui/Lyrics'
 import { Onda, usePicos } from '../../src/ui/Onda'
 import { Popover } from '../../src/ui/Popover'
+import { Segmentado } from '../../src/ui/Segmentado'
+import { Menu } from '../../src/ui/Menu'
 import { isSentBy } from '../../src/models/message'
 import { markOpened, markRead } from '../../src/services/messages'
 import { getSession, useContact, useMessages, useUser } from '../../src/state/session'
@@ -42,9 +44,7 @@ import { contactLabel } from '../../src/services/contacts'
 import { formatMessageDate } from '../../src/ui/MessageCard'
 import {
   ICON_COLOR,
-  IconDisc,
   IconLanguages,
-  IconLyrics,
   IconMessage,
   IconPause,
   IconPlay,
@@ -107,7 +107,8 @@ export default function MessageStory() {
   const contact = useContact()
   const router = useRouter()
   const player = useSnippetPlayer()
-  const piso = usePiso(16)
+  const pisoShell = usePiso(16)
+  const piso = Platform.OS === 'ios' ? 16 : pisoShell
   /*
    * Arranca en el estilo que eligió quien lo mandó.
    *
@@ -133,17 +134,9 @@ export default function MessageStory() {
    * instantáneo.
    */
   const [lang, setLang] = useState<LyricLang>('off')
-  /**
-   * La frase, que puede ser larga.
-   *
-   * Se puede ocultar, y mostrarla nunca mueve la letra ni el disco: en PC vive
-   * en una columna al costado —ahí sobra ancho— y en el teléfono en una tarjeta
-   * de tres líneas que se despliega con su propio desplazamiento. Antes iba en
-   * la misma columna centrada, debajo de la letra: cuanto más escribías, más
-   * empujaba y aplastaba todo lo demás.
-   */
+  // La nota se lee en el mismo scroll del disco, sin un segundo viewport
+  // que pueda quedar oculto debajo de los controles.
   const [verFrase, setVerFrase] = useState(true)
-  const [fraseAbierta, setFraseAbierta] = useState(false)
   const [versions, setVersions] = useState<Partial<Record<LyricLang, LyricLine[]>>>({})
 
   const message = messages.find((m) => m.id === id)
@@ -287,7 +280,7 @@ export default function MessageStory() {
           detalle={message.createdAt ? formatMessageDate(message.createdAt, true) : undefined}
           onCerrar={() => volver(router, '/')} />
 
-        <ScrollView className="min-h-0 flex-1" contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 24, paddingBottom: song ? 24 : piso }}>
+        <ScrollView className="min-h-0 flex-1" contentInsetAdjustmentBehavior="never" contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 24, paddingBottom: song ? 24 : piso }}>
           <View
             className="w-full flex-row items-center justify-center gap-8 px-5"
             style={{ maxWidth: ANCHO_MAX }}
@@ -339,25 +332,15 @@ export default function MessageStory() {
                 </>
               ) : null}
 
-              {/* En el teléfono, una tarjeta de tres líneas debajo del contenido.
-              Desplegada crece hasta un tope y se desplaza adentro: lo que no
-              puede pasar es que empuje la letra fuera de la pantalla. */}
               {(!wide || !song) && verFrase && message.text ? (
                 <View className={`w-full max-w-xl ${invitacionEnTexto(message.text) ? '' : 'rounded-2xl bg-card/80 p-4'}`}>
                   {invitacionEnTexto(message.text) ? (
                     <InvitacionJam texto={message.text} />
-                  ) : fraseAbierta ? (
-                    <ScrollView className="max-h-[180px]" showsVerticalScrollIndicator={false}>
-                      <InvitacionJam texto={message.text} />
-                    </ScrollView>
                   ) : (
-                    <Text className="text-foreground text-subheadline leading-6" numberOfLines={3}>
+                    <Text selectable className="text-foreground text-subheadline leading-6">
                       {message.text}
                     </Text>
                   )}
-                  {!invitacionEnTexto(message.text) ? (
-                    <AccionSocial label={fraseAbierta ? 'Ver menos' : 'Ver más'} secundaria expandida={false} onPress={() => setFraseAbierta(v => !v)} />
-                  ) : null}
                 </View>
               ) : null}
             </View>
@@ -370,7 +353,7 @@ export default function MessageStory() {
              ancho de la ventana, la onda y el segmentado quedaban a metros de
              lo que están controlando. Y con aire abajo: pegado al borde se
              cortaba contra el filo de la ventana. */
-          <View className="items-center px-5 pt-3" style={{ paddingBottom: piso }}>
+          <View className="items-center px-5 pt-3" style={{ paddingBottom: piso, flexShrink: 0 }}>
             <View className="w-full items-center gap-4" style={{ maxWidth: ANCHO_MAX }}>
               {/* La onda del fragmento, que además es la única forma de moverse
                 dentro de él: esta pantalla no tenía barra de posición. */}
@@ -405,34 +388,11 @@ export default function MessageStory() {
 
               <IconButton label={playing ? 'Pausar' : 'Reproducir'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={() => player.toggle(message.id, song).catch((e: unknown) => avisar(mensajeError(e), true))} variant="primary" lado={56} icon={playing ? <IconPause size={20} color={ICON_COLOR.onPrimary} /> : <IconPlay size={20} color={ICON_COLOR.onPrimary} />} />
 
-              {/* Disco o letra, el mismo segmentado que el editor. Sin letra
-                guardada el botón no lleva a ningún lado y se apaga. */}
-              <View className="flex-row flex-wrap items-center justify-center gap-2">
-                <View className="flex-row items-center rounded-full bg-background/70 p-1">
-                  <Segment
-                    active={chosen === 'disc'}
-                    label="Disco"
-                    icon={
-                      <IconDisc
-                        size={14}
-                        color={chosen === 'disc' ? ICON_COLOR.onPrimary : ICON_COLOR.muted}
-                      />
-                    }
-                    onPress={() => setView('disc')}
-                  />
-                  <Segment
-                    active={chosen === 'lyrics'}
-                    label="Letra"
-                    enabled={hasLyrics}
-                    icon={
-                      <IconLyrics
-                        size={14}
-                        color={chosen === 'lyrics' ? ICON_COLOR.onPrimary : ICON_COLOR.muted}
-                      />
-                    }
-                    onPress={() => setView('lyrics')}
-                  />
-                </View>
+              <View style={{ width: '100%', maxWidth: 560, flexDirection: 'row', flexWrap: Platform.OS === 'ios' ? 'nowrap' : 'wrap', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                {hasLyrics ? <View style={{ flex: 1, minWidth: 140, maxWidth: 280 }}>
+                  <Segmentado<StoryView> value={chosen} onChange={setView} label="Vista del fragmento"
+                    options={[{ value: 'disc', label: 'Disco' }, { value: 'lyrics', label: 'Letra' }]} />
+                </View> : null}
 
                 {/* Mostrar y ocultar la frase. Solo si hay algo escrito: sin texto
                 sería un interruptor que no enciende nada. */}
@@ -441,7 +401,10 @@ export default function MessageStory() {
                 ) : null}
 
                 {/* Traducir: solo aparece si hay letra que traducir. */}
-                {hasLyrics ? (
+                {hasLyrics && onLyrics ? Platform.OS === 'ios' ? (
+                  <Menu label={translating ? 'Traduciendo la letra' : 'Traducir la letra'} triggerSymbol="character.bubble"
+                    items={LYRIC_LANGS.map(l => ({ label: l.label, selected: l.value === lang, onPress: () => setLang(l.value) }))} />
+                ) : (
                   <Popover
                     value={lang}
                     options={LYRIC_LANGS.map((l) => ({ value: l.value, label: l.label }))}
@@ -467,20 +430,4 @@ export default function MessageStory() {
       </SafeAreaView>
     </View>
   )
-}
-
-function Segment({
-  active,
-  label,
-  icon,
-  enabled = true,
-  onPress,
-}: {
-  active: boolean
-  label: string
-  icon: React.ReactNode
-  enabled?: boolean
-  onPress: () => void
-}) {
-  return <AccionSocial label={label} icono={icon} selected={active} secundaria={!active} disabled={!enabled} expandida={false} onPress={onPress} />
 }

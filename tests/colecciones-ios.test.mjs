@@ -199,3 +199,18 @@ test('álbum filtra por título/artista y reproduce el índice original en la co
   assert.equal(nodes(empty, 'TrackRow').length, 0)
   assert.equal(nodes(empty, 'Vacio')[0].props.titulo, 'Sin resultados')
 })
+
+test('búsqueda persistente de playlist entra sin teclado y cancelar limpia sin ocultar el campo', () => {
+  const h = search()
+  const queries = []
+  let closes = 0
+  let ui = h.render('CampoBusquedaColeccion', { ...props, siempreVisible: true, filtro: 'Tema', onFiltro: q => queries.push(q), onCerrar: () => closes++ })
+  const field = nodes(ui, 'NativeSearch')[0]
+  assert.equal(field.props.autoFocus, false)
+  field.props.onCancel()
+  assert.deepEqual(queries, [''])
+  assert.equal(closes, 0)
+  assert.equal(h.dismisses(), 1)
+  ui = h.render('CampoBusquedaColeccion', { ...props, siempreVisible: true })
+  assert.equal(nodes(ui, 'NativeSearch').length, 1)
+})

@@ -16,6 +16,7 @@ import {
 } from '../../src/ui/Ajustes'
 import { Avatar } from '../../src/ui/Avatar'
 import { CabeceraLateral, BotonLateral } from '../../src/ui/CabeceraLateral'
+import { EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
 import { BotonVolver } from '../../src/ui/BotonVolver'
 import { CollapsedSidebar } from '../../src/ui/SidebarMotion'
 import { ScrollArea as ScrollView } from '../../src/ui/ScrollArea'
@@ -540,8 +541,8 @@ function Telefono({
     const enfocada = !mostrarTodas && !buscando ? coinciden.find(c => c.id === initialId) : undefined
     const visibles = enfocada ? [enfocada] : coinciden
     return <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-row items-center px-3 py-1"><BotonVolver label="Volver" onPress={onVolver} /></View>
-      <ListaAjustes titulo={enfocada?.titulo ?? 'Configuración'} piso={piso + 72}>
+      <EncabezadoHoja titulo={enfocada?.titulo ?? 'Configuración'} izquierda={<BotonVolver label="Volver" onPress={onVolver} />} />
+      <ListaAjustes piso={piso + 72}>
         {enfocada ? <GrupoAjustes><FilaAccion rotulo="Ver toda la configuración" onPress={() => setMostrarTodas(true)} ultima /></GrupoAjustes> : !buscando ? cuenta : null}
         {visibles.map(c => <Fragment key={c.id}>{c.bloques}</Fragment>)}
         {!visibles.length ? <GrupoAjustes pie="Probá con otra palabra."><FilaDato rotulo="Sin resultados" valor={busqueda} /><FilaAccion rotulo="Ver todo" onPress={() => onBusqueda('')} ultima /></GrupoAjustes> : null}

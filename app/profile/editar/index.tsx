@@ -1,4 +1,4 @@
-import { FilaSocial } from '../../../src/ui/FilaSocial'
+import { EditorPerfilNativo } from '../../../src/ui/EditorPerfilNativo'
 import { AccionSocial } from '../../../src/ui/Social'
 import { IconButton } from '../../../src/ui/IconButton'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -215,6 +215,37 @@ export default function EditarPerfil() {
     )
   }
 
+  const confirmarQuitar = <Confirmar visible={quitar !== null} titulo={quitar === 'foto' ? '¿Quitar tu foto?' : '¿Quitar el fondo?'}
+    mensaje="El cambio quedará en la vista previa hasta que elijas Guardar cambios."
+    rotulo="Quitar del borrador" onCancelar={() => setQuitar(null)} onConfirmar={() => {
+      if (enVuelo.current) return
+      setBorrador(b => quitar === 'foto' ? { ...b, avatarPath: null, avatarEncuadre: null } : { ...b, bannerPath: null, bannerEncuadre: null })
+      setQuitar(null)
+    }} />
+
+  if (Platform.OS === 'ios') {
+    return <View style={{ flex: 1, backgroundColor: '#111111' }}>
+      <EditorPerfilNativo perfil={profile} nombre={nombreEditor} usuario={usuarioEditor} linea={lineaEditor}
+        ocupado={ocupado} guardando={guardando} cambiado={cambiado} puedeGuardar={valido}
+        error={error ?? errorMosaico} piso={pisoVisible} subiendoFoto={uploading} subiendoFondo={subiendoFondo}
+        progresoFondo={progresoFondo}
+        estilo={{
+          fuente: fuenteDe(profile.fuente)?.nombre ?? 'La del sistema',
+          marco: profile.marco ? esDecoracionPropia(profile.marco) ? 'Tu decoración' : nombreCosmetico(profile.marco) ?? MARCOS.find(m => m.id === profile.marco)?.nombre ?? 'Decoración guardada' : 'Ninguno',
+          efecto: profile.efecto ? esDecoracionPropia(profile.efecto) ? 'Tu decoración' : nombreCosmetico(profile.efecto) ?? nombreDeEfecto(profile.efecto) ?? 'Decoración guardada' : 'Ninguno',
+          placa: profile.placa ? nombreCosmetico(profile.placa) ?? nombreDePlaca(profile.placa) ?? 'Decoración guardada' : 'Ninguna',
+          marcoPerfil: nombreCosmetico(profile.marcoPerfil) ?? (profile.marcoPerfil ? 'Decoración guardada' : 'Ninguno'),
+        }}
+        onVolver={() => volver(router, '/profile')} onAbrir={abrir}
+        onGuardar={() => void guardarCambios()} onRestablecer={restablecer}
+        onElegirFoto={() => void elegirFoto()} onElegirFondo={() => void subirFondo()}
+        onQuitar={medio => { if (!enVuelo.current) setQuitar(medio) }}
+        onCambiar={cambios => { if (!enVuelo.current) actualizarPerfilEdicion(cambios) }} />
+      {confirmarQuitar}
+      {dialogo}
+    </View>
+  }
+
   /*
    * La foto, con lo que se puede hacer con ella. Va arriba en el teléfono y
    * como primer bloque de «Identidad» en la compu: es lo primero que uno
@@ -425,13 +456,6 @@ export default function EditarPerfil() {
     <Text className="text-muted-foreground text-footnote leading-5">Decoraciones de Discord, diseños de DMusic y tus propias piezas. Combiná y probá. Guardá todo junto al volver al editor.</Text>
     <View className="self-start rounded-full bg-primary px-4 py-3"><Text className="text-primary-foreground text-footnote font-bold">Personalizar perfil</Text></View>
   </Pressable>
-  const confirmarQuitar = <Confirmar visible={quitar !== null} titulo={quitar === 'foto' ? '¿Quitar tu foto?' : '¿Quitar el fondo?'}
-    mensaje="El cambio quedará en la vista previa hasta que elijas Guardar cambios."
-    rotulo="Quitar del borrador" onCancelar={() => setQuitar(null)} onConfirmar={() => {
-      if (enVuelo.current) return
-      setBorrador(b => quitar === 'foto' ? { ...b, avatarPath: null, avatarEncuadre: null } : { ...b, bannerPath: null, bannerEncuadre: null })
-      setQuitar(null)
-    }} />
   const barra = <BarraCambiosPerfil visible={cambiado} ocupado={ocupado} error={error ?? errorMosaico}
     puedeGuardar={valido} onRestablecer={restablecer} onGuardar={() => void guardarCambios()}
     abajo={escritorio ? 16 : Math.max(12, pisoVisible)} onAltura={setAltoBarra} />
@@ -523,7 +547,7 @@ function Movil({ secciones, previa, espacioBarra, pisoVisible, onVolver, childre
             <View className="gap-1">
               {secciones.map(s => {
                 const Icono = s.icono
-                return Platform.OS === 'ios' ? <View key={s.id} className="flex-row items-center gap-2"><Icono size={16} color={ICON_COLOR.muted} /><View style={{ flex: 1 }}><FilaSocial titulo={s.titulo} onPress={() => setElegida(s.id)} /></View></View> : <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo} onPress={() => setElegida(s.id)}
+                return <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo} onPress={() => setElegida(s.id)}
                   className="min-h-[44px] flex-row items-center gap-2.5 rounded-md px-2 active:bg-muted">
                   <Icono size={16} color={ICON_COLOR.muted} /><Text className="min-w-0 flex-1 text-foreground text-subheadline">{s.titulo}</Text><IconChevronRight size={16} color={ICON_COLOR.muted} />
                 </Pressable>
@@ -583,7 +607,7 @@ function Escritorio({ secciones, cuenta, onVolver, previa, espacioBarra }: {
               {secciones.map(s => {
                 const activa = s.id === actual?.id
                 const Icono = s.icono
-                return Platform.OS === 'ios' ? <View key={s.id} className="flex-row items-center gap-2"><Icono size={16} color={ICON_COLOR.muted} /><View style={{ flex: 1 }}><FilaSocial titulo={s.titulo} selected={activa} onPress={() => setElegida(s.id)} /></View></View> : <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo} accessibilityState={{ selected: activa }} onPress={() => setElegida(s.id)}
+                return <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo} accessibilityState={{ selected: activa }} onPress={() => setElegida(s.id)}
                   className={`h-[30px] flex-row items-center gap-2.5 rounded-md px-2 ${activa ? 'bg-muted' : 'hover:bg-white/5 active:bg-muted'}`}>
                   <Icono size={16} color={activa ? ICON_COLOR.foreground : ICON_COLOR.muted} />
                   <Text className={`min-w-0 flex-1 text-footnote ${activa ? 'text-foreground font-medium' : 'text-foreground'}`} numberOfLines={1}>{s.titulo}</Text>

@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ScrollView,
   Text,
@@ -159,6 +160,7 @@ export default function SongPicker() {
    */
   const [track, setTrack] = useState<TrackResult | null>(() => leerRecorte())
   function elegirTrack(next: TrackResult | null) {
+    if (next && Platform.OS === 'ios') Keyboard.dismiss()
     setTrack(next)
     setRecorteElegido(RECORTE_INICIAL)
   }
@@ -214,13 +216,13 @@ export default function SongPicker() {
       style={modal ? { height: Math.min(track ? 480 : 540, height - 96) } : { flex: 1 }}
       edges={Platform.OS === 'web' ? [] : ['bottom']}
     >
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="min-h-0 flex-1">
         <CabeceraSocial titulo={track ? 'Elegir fragmento' : 'Agregar canción'}
           ocupado={fijando}
           detalle={paraPerfil ? 'Para tu perfil' : recipientName ? `Para @${recipientName}` : 'Para acompañar tu mensaje'}
           onCerrar={() => { if (!fijando) volver(router, paraPerfil ? '/profile/editar/musica' : '/compose') }}
           />
 
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="min-h-0 flex-1">
         <View className="min-h-0 flex-1 flex-row">
           {track ? (
             <SnippetEditor

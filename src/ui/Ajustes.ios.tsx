@@ -12,7 +12,7 @@ const FILA = '#181818', TEXTO = '#FFFFFF', SECUNDARIO = '#B3B3B3'
 
 /** Un único List desplaza todas las secciones, sin un ScrollView de RN alrededor. */
 export function ListaAjustes({ children, piso = 24, titulo }: ComponentProps<typeof Shared.ListaAjustes>) {
-  return <EnLista.Provider value><Host style={{ flex: 1 }} useViewportSizeMeasurement colorScheme="dark" seedColor={TEXTO}>
+  return <EnLista.Provider value><Host ignoreSafeArea="container" style={{ flex: 1 }} colorScheme="dark" seedColor={TEXTO}>
     <List modifiers={[listStyle('insetGrouped'), scrollContentBackground('hidden'), scrollDismissesKeyboard('interactively'), tint(TEXTO)]}>
       {titulo ? <Text modifiers={[font({ textStyle: 'largeTitle', weight: 'bold' }), listRowBackground('clear'), listRowSeparator('hidden')]}>{titulo}</Text> : null}
       {children}
@@ -31,7 +31,7 @@ export function GrupoAjustes(props: ComponentProps<typeof Shared.GrupoAjustes>) 
 function Fila({ children }: { children: ReactNode }) {
   const lista = useContext(EnLista)
   if (lista) return children
-  return <Host style={{ width: '100%' }} matchContents={{ vertical: true }} colorScheme="dark" seedColor={TEXTO}>
+  return <Host ignoreSafeArea="all" style={{ width: '100%' }} matchContents={{ vertical: true }} colorScheme="dark" seedColor={TEXTO}>
     <VStack modifiers={[padding({ horizontal: 16, vertical: 6 }), frame({ minHeight: 52 })]}>{children}</VStack>
   </Host>
 }
@@ -82,7 +82,7 @@ export function FilaCuenta({ nombre, detalle, onPress, avatar }: ComponentProps<
   </HStack></Button></Fila>
 }
 export function FilaInterruptor({ rotulo, detalle, activo, onCambiar, disabled: apagada }: ComponentProps<typeof Shared.FilaInterruptor>) {
-  return <Fila><Toggle isOn={activo} onIsOnChange={apagada ? undefined : onCambiar} modifiers={[...fondo(), toggleStyle('switch'), tint(TEXTO), disabled(!!apagada)]}>
+  return <Fila><Toggle isOn={activo} onIsOnChange={apagada ? undefined : onCambiar} modifiers={[...fondo(), toggleStyle('switch'), tint('#34C759'), disabled(!!apagada)]}>
     <Rotulo rotulo={rotulo} detalle={detalle} />
   </Toggle></Fila>
 }

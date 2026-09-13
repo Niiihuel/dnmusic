@@ -17,6 +17,7 @@ export type NativeMenuEntry = {
 type SearchProps = ViewProps & {
   text: string
   placeholder: string
+  autoFocus?: boolean
   onChangeText: (event: { nativeEvent: { text: string } }) => void
   onCancel: () => void
 }

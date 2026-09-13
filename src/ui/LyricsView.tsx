@@ -4,7 +4,6 @@ import { LinearGradient } from 'expo-linear-gradient'
 import {
   fetchLyrics,
   translateLyrics,
-  LYRIC_LANGS,
   type LyricLang,
   type LyricLine,
 } from '../services/music'
@@ -13,8 +12,8 @@ import { getSupabase } from '../lib/supabase'
 import { avisar } from '../state/aviso'
 import { usePlaybackState } from '../state/playback'
 import { Lyrics, type LyricsSize } from './Lyrics'
-import { Popover } from './Popover'
-import { ICON_COLOR, IconLanguages, IconMusic } from './icons'
+import { LyricsTranslationMenu } from './LyricsTranslationMenu'
+import { ICON_COLOR, IconMusic } from './icons'
 
 /**
  * La letra sincronizada de lo que suena, con su traducción.
@@ -38,6 +37,8 @@ export function LyricsView({
   size = 'lg',
   fondo = '0,0,0',
   onTap,
+  onPickLine,
+  translationPlacement = 'floating',
 }: {
   track: { title: string; artist: string; durationMs: number }
   /** Muestra el botón de traducir. En el panel angosto no entra. */
@@ -62,6 +63,9 @@ export function LyricsView({
   fondo?: string
   /** Un toque sobre la letra. Lo usa «Sonando» para pedir los controles. */
   onTap?: () => void
+  onPickLine?: (atMs: number) => void
+  /** Controles fuera del área de versos en el reproductor iOS. */
+  translationPlacement?: 'floating' | 'footer'
 }) {
   const { positionMs } = usePlaybackState()
 
@@ -86,7 +90,7 @@ export function LyricsView({
     }
   }
   const [loaded, setLoaded] = useState<{ key: string; lines: LyricLine[] | null } | null>(null)
-  const key = `${track.artist}|${track.title}`
+  const key = JSON.stringify([track.artist, track.title, track.durationMs])
   const fresh = loaded?.key === key
 
   /*
@@ -112,10 +116,14 @@ export function LyricsView({
   useEffect(() => {
     if (fresh) return
     const controller = new AbortController()
+    let active = true
     fetchLyrics(track.artist, track.title, track.durationMs, controller.signal)
-      .then((lines) => setLoaded({ key, lines }))
-      .catch(() => setLoaded({ key, lines: null }))
-    return () => controller.abort()
+      .then((lines) => { if (active) setLoaded({ key, lines }) })
+      .catch(() => { if (active) setLoaded({ key, lines: null }) })
+    return () => {
+      active = false
+      controller.abort()
+    }
   }, [key, fresh, track.artist, track.title, track.durationMs])
 
   const base = useMemo(
@@ -170,29 +178,19 @@ export function LyricsView({
 
   const traductor = translatable ? (
     <View className="flex-row items-center gap-2">
-      <Popover
-        value={lang}
-        options={LYRIC_LANGS.map((l) => ({ value: l.value, label: l.label }))}
-        onChange={setLang}
-        display={LYRIC_LANGS.find((l) => l.value === lang)?.short || 'Traducir'}
-        accessibilityLabel="Traducir la letra"
-        icon={
-          <IconLanguages
-            size={15}
-            color={lang === 'off' ? ICON_COLOR.muted : ICON_COLOR.foreground}
-          />
-        }
-      />
+      <LyricsTranslationMenu value={lang} onChange={setLang} compact={translationPlacement === 'footer'} />
       {traduciendo ? <ActivityIndicator size="small" color={ICON_COLOR.muted} /> : null}
     </View>
   ) : null
 
   const letra = (
     <Lyrics
+      key={`${key}:${lang}`}
       lines={lines}
       atMs={positionMs}
       size={size}
       onTap={onTap}
+      onPickLine={onPickLine}
       /* Sostener fija **la línea original**, no la traducción: se busca por
          su tiempo en la letra base — lo que la canción dice, no lo que el
          traductor entendió. */
@@ -202,6 +200,23 @@ export function LyricsView({
       }}
     />
   )
+
+  if (size === 'xl' && translationPlacement === 'footer') {
+    return (
+      <View style={{ flex: 1, minHeight: 0, paddingHorizontal: 24 }}>
+        <View style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          {letra}
+          <LinearGradient pointerEvents="none"
+            colors={[`rgba(${fondo},0.38)`, `rgba(${fondo},0)`]}
+            style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 24 }} />
+          <LinearGradient pointerEvents="none"
+            colors={[`rgba(${fondo},0)`, `rgba(${fondo},0.38)`]}
+            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 24 }} />
+        </View>
+        {traductor ? <View style={{ minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' }}>{traductor}</View> : null}
+      </View>
+    )
+  }
 
   if (size === 'xl') {
     /*

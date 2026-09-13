@@ -26,7 +26,7 @@ import Animated, {
 import { abrirArtista, usePiso } from '../src/state/shell'
 import { LinearGradient } from 'expo-linear-gradient'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { haySelectorDeSalida, SelectorDeSalida } from '../modules/audio-route'
+import { haySelectorDeSalida, SelectorDeSalida, hayVolumenDelSistema, VolumenDelSistema } from '../modules/audio-route'
 import { artworkSource } from '../src/lib/artwork'
 import { resultadoDePista } from '../src/lib/pistas'
 import { fijarPistaEnPerfil } from '../src/lib/fijarEnPerfil'
@@ -91,6 +91,7 @@ import {
  * lugar para el título ni los controles.
  */
 const COLUMNA = 520
+const ES_IOS = Platform.OS === 'ios'
 
 /** Lo que tarda en crecer y en volver a guardarse. */
 const SUBE_MS = 380
@@ -110,27 +111,9 @@ const CONTROLES_MS = 4500
 const CONTROLES_FADE_MS = 240
 
 /**
- * Lo que suena, a pantalla completa.
- *
- * Es la otra mitad del reproductor del teléfono: la tarjeta de abajo se queda
- * con lo mínimo —qué suena y pausa— y todo lo que no entraba ahí vive acá. No
- * hay nada nuevo inventado: la carátula, el disco girando, la letra y la barra
- * de posición son los mismos componentes del panel derecho del escritorio.
- *
- * La anatomía es la de Apple Music: la tapa grande —o el disco, o la letra—,
- * debajo el título con el corazón y los tres puntos, la barra de posición, el
- * transporte y al pie una fila de íconos que cambian qué se mira (letra,
- * disco, salida, cola). **Con la letra puesta la pantalla es la letra**: el
- * encabezado se achica a una miniatura con el nombre, y los controles se
- * dibujan encima, abajo, y se van solos hasta que los volvés a tocar.
- *
- * Va como ruta y no como una capa dentro de la pantalla principal: la música
- * sigue sonando detrás sin sincronizar nada, y la pantalla tiene su URL.
- *
- * **La subida y el gesto los hace ella**, no el navegador. Eran los de un
- * `presentation: 'modal'`, que sube desde el borde de abajo de la pantalla; pero
- * acá no se entra por el borde, se entra tocando la tarjeta del reproductor, que
- * está más arriba. Ver `crece` y `arrastre`.
+ * Reproducción en pantalla completa. iOS usa la presentación de UIKit con
+ * regiones fijas para letras y controles. Web y Android conservan la expansión
+ * desde el mini reproductor y sus gestos hasta completar el port de Android.
  */
 export default function Playing() {
   const destinoEscucha = useDestinoEscucha()
@@ -156,7 +139,7 @@ export default function Playing() {
    * Al cerrar se vuelve al mismo número, así que la pantalla se guarda dentro
    * de la tarjeta de la que salió en vez de irse por el piso.
    */
-  const { height: alturaVentana } = useWindowDimensions()
+  const { height: alturaVentana, width: anchoVentana } = useWindowDimensions()
   /*
    * **Hasta dónde sube**: por debajo del safe area, no hasta el borde físico.
    *
@@ -168,13 +151,17 @@ export default function Playing() {
    * escritorio el inset es cero y la pantalla sigue llenando la ventana.
    */
   const insets = useSafeAreaInsets()
-  const tope = insets.top > 0 ? insets.top + 6 : 0
+  const tope = !ES_IOS && insets.top > 0 ? insets.top + 6 : 0
   const desde = Math.max(0, alturaVentana - usePiso() - tope)
 
   /** 0 es abierta del todo; `desde` es guardada en la tarjeta. */
-  const y = useSharedValue(desde)
+  const y = useSharedValue(ES_IOS ? 0 : desde)
 
   const cerrar = () => {
+    if (ES_IOS) {
+      volver(router, '/')
+      return
+    }
     /* Se navega **cuando terminó de bajar**, no antes: quitar la pantalla del
        árbol a mitad de camino corta el movimiento en seco. `runOnJS` porque el
        final de la animación llega en el hilo de la interfaz. */
@@ -194,6 +181,7 @@ export default function Playing() {
    * en la canción.
    */
   const arrastre = Gesture.Pan()
+    .enabled(!ES_IOS)
     .activeOffsetY(15)
     .failOffsetX([-20, 20])
     .onUpdate((e) => {
@@ -258,6 +246,7 @@ export default function Playing() {
    * imperativa porque el mismo valor lo mueve el arrastre.
    */
   useEffect(() => {
+    if (ES_IOS) return
     // eslint-disable-next-line react-hooks/immutability
     y.value = withTiming(0, { duration: SUBE_MS, easing: Easing.out(Easing.cubic) })
   }, [y])
@@ -280,7 +269,7 @@ export default function Playing() {
   const [escondidos, setEscondidos] = useState(false)
   /* Fuera de la letra los controles están siempre: el estado solo cuenta con
      la letra puesta, y se **deriva** en vez de sincronizarse con un efecto. */
-  const visibles = !conLetra || !escondidos
+  const visibles = ES_IOS || !conLetra || !escondidos
   const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null)
   const apagarTimer = () => {
     if (temporizador.current) clearTimeout(temporizador.current)
@@ -288,7 +277,7 @@ export default function Playing() {
   }
   const rearmar = useCallback(() => {
     apagarTimer()
-    if (!conLetra || !wantPlay) return
+    if (ES_IOS || !conLetra || !wantPlay) return
     temporizador.current = setTimeout(() => setEscondidos(true), CONTROLES_MS)
   }, [conLetra, wantPlay])
   useEffect(() => {
@@ -389,6 +378,11 @@ export default function Playing() {
       icon: <IconShare size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'square.and.arrow.up',
     },
+    ...(ES_IOS ? [{
+      label: view === 'disc' ? 'Ver la portada' : 'Ver el disco girando',
+      onPress: () => toggleView('disc'),
+      sfSymbol: 'opticaldisc' as const,
+    }] : []),
     {
       label: 'Ir al artista',
       subtitle: track.artist,
@@ -473,7 +467,7 @@ export default function Playing() {
    */
   const controles = (
     <View
-      className="gap-5 px-6 pb-2 pt-3"
+      style={{ gap: ES_IOS ? 10 : 20, paddingHorizontal: 24, paddingBottom: 8, paddingTop: 8, flexShrink: 0 }}
       /* Cualquier toque acá rearma el temporizador de los controles sobre la
          letra. Los dos manejadores porque el de puntero es el que llega en la
          web y el de toque el que llega en el teléfono. */
@@ -498,7 +492,7 @@ export default function Playing() {
        * con la canción de ahora. Mezclarlos obligaría a leer los cinco íconos
        * cada vez para encontrar el play.
        */}
-      <View className="flex-row items-center justify-center gap-5">
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: ES_IOS ? 'space-between' : 'center', gap: ES_IOS ? 0 : 20 }}>
         <BotonAleatorio size={22} lado={44} />
         <IconButton label="Anterior" symbol="backward.end.fill" onPress={playPrevious} lado={48} size={26} icon={<IconPrevious size={26} color={first ? ICON_COLOR.muted : ICON_COLOR.foreground} />} />
         <IconButton label={destinoEscucha.remoto ? 'Traer música a este dispositivo' : wantPlay ? 'Pausar' : 'Reproducir'} symbol={wantPlay && !destinoEscucha.remoto ? 'pause.fill' : 'play.fill'} onPress={togglePlayback} lado={64} size={24} variant="primary" icon={wantPlay && !destinoEscucha.remoto ? (
@@ -510,10 +504,10 @@ export default function Playing() {
         <BotonRepetir size={22} lado={44} />
       </View>
 
-      {/* El volumen, solo donde la app lo maneja: en el teléfono lo hacen los
-          botones del aparato y una perilla más sería una perilla que no
-          controla lo mismo que las de al lado. */}
+      {/* Web controla el reproductor; iOS presenta MPVolumeView, que ajusta el
+          mismo volumen del sistema que los botones físicos y AirPlay. */}
       {ES_WEB ? <Volumen /> : null}
+      {ES_IOS && hayVolumenDelSistema ? <VolumenDelSistema style={{ width: '100%', height: 44 }} /> : null}
 
       {/*
        * La fila del pie: qué se mira y a dónde va el sonido, como los tres
@@ -528,12 +522,12 @@ export default function Playing() {
           onPress={verLetra}
           icon={IconLyrics}
         />
-        <Alternador
+        {!ES_IOS ? <Alternador
           label="Ver el disco girando"
           active={view === 'disc'}
           onPress={() => toggleView('disc')}
           icon={IconDisc}
-        />
+        /> : null}
         {/*
          * A dónde sale el sonido. Adentro no va un ícono nuestro sino la vista
          * de Apple, que se dibuja y se anima sola; ocupa el redondel entero
@@ -558,6 +552,63 @@ export default function Playing() {
       </View>
     </View>
   )
+
+  if (ES_IOS) {
+    // La ruta nativa presenta la pantalla entera. El contenido respeta un solo
+    // safe area; las letras y los controles tienen regiones que no se solapan.
+    const compacto = alturaVentana - insets.top - insets.bottom < 650
+    const artworkSize = Math.max(120, Math.min(anchoVentana - 64, 360, alturaVentana - insets.top - insets.bottom - 390))
+    return (
+      <View style={{ flex: 1, backgroundColor: '#101010' }}>
+        {artwork ? <Image source={{ uri: artwork }} blurRadius={50}
+          style={[StyleSheet.absoluteFill, { opacity: 0.55, transform: [{ scale: 1.25 }] }]} /> : null}
+        <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0.42)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)']}
+          style={StyleSheet.absoluteFill} />
+        <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, width: '100%', maxWidth: COLUMNA, alignSelf: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 44 }}>
+            <IconButton label="Cerrar reproductor" symbol="chevron.down" onPress={cerrar} lado={44} size={20} />
+            <View style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
+              <Text numberOfLines={1} style={{ color: '#B3B3B3', fontSize: 12 }}>{manual ? 'En la cola' : listName || 'Sonando'}</Text>
+            </View>
+            <EstadoDispositivo compacto />
+          </View>
+          {conLetra ? (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 24, paddingTop: compacto ? 4 : 12, paddingBottom: 12 }}>
+                {artwork ? <Image source={{ uri: artwork }} style={{ width: 48, height: 48, borderRadius: 8 }} /> : null}
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '600' }}>{track.title}</Text>
+                  <Text numberOfLines={1} style={{ color: '#B3B3B3', fontSize: 14, marginTop: 3 }}>{track.artist}</Text>
+                </View>
+                <BotonMeGusta track={track} size={20} lado={44} />
+                {botonMenu}
+              </View>
+              <View style={{ flex: 1, minHeight: 0 }}>
+                <LyricsView track={track} translatable size="xl" translationPlacement="footer" onPickLine={seekToMs} />
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={{ flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
+                {view === 'disc' ? <SongDisc artworkUrl={track.artworkUrl} artworkPath={track.artworkPath} title={track.title} playing={wantPlay && !destinoEscucha.remoto} size={artworkSize} />
+                  : artwork ? <View style={{ width: artworkSize }}><TapaGrande uri={artwork} playing={wantPlay && !destinoEscucha.remoto} /></View>
+                    : <IconMusic size={64} color={ICON_COLOR.muted} />}
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 12 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '700' }}>{track.title}</Text>
+                  <Text numberOfLines={1} style={{ color: '#B3B3B3', fontSize: 17, marginTop: 3 }}>{track.artist}</Text>
+                </View>
+                <BotonMeGusta track={track} size={22} lado={44} />
+                {botonMenu}
+              </View>
+            </>
+          )}
+          {controles}
+        </SafeAreaView>
+      </View>
+    )
+  }
 
   return (
     /* El gesto envuelve todo y la animación también: lo que crece desde la

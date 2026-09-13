@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useIniciarPerfilEdicion } from '../../../src/state/perfilEdicion'
 import { CabeceraEdicionPerfil, TITULO_CAMPO, useEditorDeCampo, type CampoPerfil } from '../../../src/ui/EditorDeCampo'
+import { CampoPerfilNativo } from '../../../src/ui/EditorPerfilNativo'
 import { Panel } from '../../../src/ui/Panel'
 import { TarjetaPerfil } from '../../../src/ui/TarjetaPerfil'
 import { useKeyboardH, usePiso } from '../../../src/state/shell'
@@ -26,6 +27,8 @@ function EditorCampo({ cual }: { cual: CampoPerfil }) {
   const editor = useEditorDeCampo(cual)
   const columnas = ancho >= 740
 
+  if (Platform.OS === 'ios') return <CampoPerfilNativo cual={cual} editor={editor} piso={pisoVisible} onVolver={() => router.dismissTo('/profile/editar')} />
+
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="flex-1" onLayout={(e) => setAncho(e.nativeEvent.layout.width)}>
@@ -36,7 +39,7 @@ function EditorCampo({ cual }: { cual: CampoPerfil }) {
           rotuloVolver="Listo"
         />
         <Panel className="flex-1">
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
+          <KeyboardAvoidingView className="flex-1">
             <ScrollView
               contentContainerClassName="grow items-center px-5 pt-5"
               contentContainerStyle={{ paddingBottom: pisoVisible }}

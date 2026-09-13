@@ -10,6 +10,9 @@ public final class CollectionControlsModule: Module {
       Prop("text") { (view: CollectionSearchView, text: String) in
         if view.searchBar.text != text { view.searchBar.text = text }
       }
+      Prop("autoFocus") { (view: CollectionSearchView, autoFocus: Bool) in
+        view.autoFocus = autoFocus
+      }
       Prop("placeholder") { (view: CollectionSearchView, text: String) in
         view.searchBar.placeholder = text
         view.searchBar.searchTextField.accessibilityLabel = text
@@ -30,6 +33,7 @@ final class CollectionSearchView: ExpoView, UISearchBarDelegate {
   let onChangeText = EventDispatcher()
   let onCancel = EventDispatcher()
   private var focusedInitially = false
+  var autoFocus = false { didSet { setNeedsLayout() } }
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -39,7 +43,7 @@ final class CollectionSearchView: ExpoView, UISearchBarDelegate {
     searchBar.autocapitalizationType = .none
     searchBar.autocorrectionType = .no
     searchBar.returnKeyType = .search
-    searchBar.showsCancelButton = true
+    searchBar.showsCancelButton = false
     tintColor = .white
     searchBar.tintColor = .white
     searchBar.searchTextField.tintColor = .white
@@ -50,7 +54,7 @@ final class CollectionSearchView: ExpoView, UISearchBarDelegate {
     super.layoutSubviews()
     searchBar.frame = bounds
     // Esperar a tener ventana y ancho real; al filtrar no vuelve a pedir foco.
-    if window != nil, bounds.width > 0, !focusedInitially {
+    if autoFocus, window != nil, bounds.width > 0, !focusedInitially {
       focusedInitially = true
       searchBar.becomeFirstResponder()
     }
@@ -59,6 +63,14 @@ final class CollectionSearchView: ExpoView, UISearchBarDelegate {
   override func didMoveToWindow() {
     super.didMoveToWindow()
     if window != nil { setNeedsLayout() }
+  }
+
+  func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+    searchBar.setShowsCancelButton(true, animated: true)
+  }
+
+  func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+    searchBar.setShowsCancelButton(false, animated: true)
   }
 
   func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {

@@ -57,22 +57,28 @@ function BuscadorExpandible(props: Props & { vacia: boolean; gestos?: object; on
   </Animated.View>
 }
 
-export function CampoBusquedaColeccion({ contexto, abierto, filtro, onFiltro, onCerrar }: Props & { onCerrar: () => void }) {
-  if (Platform.OS !== 'ios' || !abierto) return null
+export function CampoBusquedaColeccion({ contexto, abierto, filtro, onFiltro, onCerrar, siempreVisible = false }: Props & { onCerrar: () => void; siempreVisible?: boolean }) {
+  if (Platform.OS !== 'ios' || (!abierto && !siempreVisible)) return null
+  const cancelar = () => {
+    if (siempreVisible) {
+      onFiltro('')
+      Keyboard.dismiss()
+    } else onCerrar()
+  }
   const placeholder = `Buscar en ${contexto === 'lista' ? 'esta lista' : 'este álbum'}`
   return <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
     {CollectionSearch ? <CollectionSearch text={filtro} placeholder={placeholder}
-      onChangeText={event => onFiltro(event.nativeEvent.text)} onCancel={onCerrar}
+      autoFocus={!siempreVisible} onChangeText={event => onFiltro(event.nativeEvent.text)} onCancel={cancelar}
       style={{ height: 56, width: '100%' }} /> : (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <TextInput value={filtro} onChangeText={onFiltro} placeholder={placeholder}
-          accessibilityLabel={placeholder} autoFocus autoCorrect={false} autoCapitalize="none"
+          accessibilityLabel={placeholder} autoFocus={!siempreVisible} autoCorrect={false} autoCapitalize="none"
           clearButtonMode="while-editing" returnKeyType="search"
           selectionColor={ICON_COLOR.foreground}
           placeholderTextColor={ICON_COLOR.muted}
           style={{ flex: 1, minWidth: 0, height: 44, borderRadius: 10, paddingHorizontal: 12,
             backgroundColor: '#262626', color: ICON_COLOR.foreground, fontSize: 17 }} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Cancelar búsqueda" onPress={onCerrar}
+        <Pressable accessibilityRole="button" accessibilityLabel="Cancelar búsqueda" onPress={cancelar}
           style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}>
           <Text style={{ color: ICON_COLOR.foreground, fontSize: 17 }}>Cancelar</Text>
         </Pressable>

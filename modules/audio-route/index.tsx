@@ -21,7 +21,7 @@ type Props = {
 function cargar() {
   if (Platform.OS !== 'ios') return null
   try {
-    return requireNativeView<Props>('AudioRoute')
+    return requireNativeView<Props>('AudioRoute', 'RoutePickerView')
   } catch {
     return null
   }
@@ -42,4 +42,20 @@ export const haySelectorDeSalida = Nativo !== null
 export function SelectorDeSalida(props: Props) {
   if (!Nativo) return null
   return <Nativo {...props} />
+}
+
+function cargarVolumen() {
+  if (Platform.OS !== 'ios') return null
+  try {
+    return requireNativeView<{ style?: ViewStyle }>('AudioRoute', 'SystemVolumeView')
+  } catch {
+    return null
+  }
+}
+
+const VolumenNativo = cargarVolumen()
+export const hayVolumenDelSistema = VolumenNativo !== null
+
+export function VolumenDelSistema({ style }: { style?: ViewStyle }) {
+  return VolumenNativo ? <VolumenNativo style={style} /> : null
 }

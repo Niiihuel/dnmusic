@@ -16,7 +16,7 @@ export function SearchField({ value, onChangeText, placeholder, accessibilityLab
     if (texto.get() !== value) texto.set(value)
   }, [texto, value])
 
-  return <Host style={{ width: '100%', height: alto }} colorScheme="dark" seedColor="#FFFFFF">
+  return <Host ignoreSafeArea="all" style={{ width: '100%', height: alto, flexShrink: 0 }} colorScheme="dark" seedColor="#FFFFFF">
     <HStack spacing={10} modifiers={[padding({ leading: 14, trailing: 2 }), frame({ height: alto }), background('#1F1F1F'), clipShape('capsule')]}>
       <Image systemName="magnifyingglass" color="#B3B3B3" size={18} />
       <TextField ref={input} text={texto} placeholder={placeholder} autoFocus={autoFocus}

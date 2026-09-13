@@ -5,13 +5,14 @@ import {
   disabled,
   font,
   foregroundStyle,
+  frame,
   lineLimit,
   padding,
   textFieldStyle,
 } from '@expo/ui/swift-ui/modifiers'
 import type { CampoMensajeProps } from './CampoMensaje.types'
 
-/** El editor del chat en iOS es un `TextField(axis: .vertical)` de SwiftUI. */
+/** SwiftUI mide las líneas; el shell RN ya resuelve safe areas y teclado. */
 export function CampoMensaje({
   value,
   onChangeText,
@@ -34,9 +35,10 @@ export function CampoMensaje({
   return (
     <Host
       matchContents={{ vertical: true }}
+      ignoreSafeArea="all"
       colorScheme="dark"
       seedColor="#FFFFFF"
-      style={[{ flex: 1, minHeight: expandido ? 112 : 44, maxHeight: 112 }, containerStyle]}
+      style={[{ width: '100%', flexShrink: 0, minHeight: expandido ? 112 : 44 }, containerStyle]}
     >
       <TextField
         text={texto}
@@ -53,6 +55,7 @@ export function CampoMensaje({
           font({ textStyle: 'subheadline' }),
           foregroundStyle('#FFFFFF'),
           padding({ horizontal: 14, vertical: 11 }),
+          frame({ minHeight: expandido ? 112 : 44, alignment: expandido ? 'topLeading' : 'leading' }),
         ]}
       />
     </Host>

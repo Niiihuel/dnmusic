@@ -329,13 +329,10 @@ function desenfoque(distance: number): number {
   return Math.min(6, distance > 0 ? (d - 1) * 1.6 : d * 1.1)
 }
 
-/**
- * El estilo del desenfoque, en el idioma de cada lado: en la web el `filter`
- * de CSS va como texto; en el teléfono va la forma de objeto de React Native,
- * que iOS y Android saben dibujar desde la arquitectura nueva.
- */
+/** iOS admite brillo y opacidad en `filter`, pero no blur. La profundidad
+ * allí la conserva la atenuación; web y Android mantienen el desenfoque. */
 function estiloDesenfoque(px: number): TextStyle | null {
-  if (px <= 0) return null
+  if (px <= 0 || Platform.OS === 'ios') return null
   if (Platform.OS === 'web') return { filter: `blur(${px.toFixed(1)}px)` } as unknown as TextStyle
   return { filter: [{ blur: px }] } as unknown as TextStyle
 }

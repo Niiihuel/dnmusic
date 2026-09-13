@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import AVKit
+import MediaPlayer
 
 /**
  El botón de AirPlay: a dónde va el sonido.
@@ -31,9 +32,14 @@ public final class RoutePickerView: ExpoView {
      * un monitor, y lo que se busca desde acá casi siempre son los auriculares.
      */
     picker.prioritizesVideoDevices = false
-    picker.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-
+    picker.translatesAutoresizingMaskIntoConstraints = false
     addSubview(picker)
+    NSLayoutConstraint.activate([
+      picker.leadingAnchor.constraint(equalTo: leadingAnchor),
+      picker.trailingAnchor.constraint(equalTo: trailingAnchor),
+      picker.topAnchor.constraint(equalTo: topAnchor),
+      picker.bottomAnchor.constraint(equalTo: bottomAnchor),
+    ])
   }
 
   func setColor(_ color: UIColor?) {
@@ -45,10 +51,32 @@ public final class RoutePickerView: ExpoView {
   }
 }
 
+/// Controla el volumen del sistema y respeta la salida seleccionada. No altera
+/// la ganancia de AVPlayer ni busca subviews privadas del slider del sistema.
+public final class SystemVolumeView: ExpoView {
+  private let volume = MPVolumeView(frame: .zero)
+
+  public required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+    overrideUserInterfaceStyle = .dark
+    volume.showsRouteButton = false
+    volume.tintColor = .white
+    volume.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(volume)
+    NSLayoutConstraint.activate([
+      volume.leadingAnchor.constraint(equalTo: leadingAnchor),
+      volume.trailingAnchor.constraint(equalTo: trailingAnchor),
+      volume.centerYAnchor.constraint(equalTo: centerYAnchor),
+      volume.heightAnchor.constraint(equalToConstant: 32),
+    ])
+  }
+}
+
 public final class AudioRouteModule: Module {
   public func definition() -> ModuleDefinition {
     Name("AudioRoute")
 
+    View(SystemVolumeView.self) {}
     View(RoutePickerView.self) {
       /** El ícono con la salida en el teléfono: es un control más, va en gris. */
       Prop("color") { (view: RoutePickerView, color: UIColor?) in

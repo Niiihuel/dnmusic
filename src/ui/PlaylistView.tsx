@@ -2,7 +2,7 @@ import { BotonSuperficie } from './BotonSuperficie'
 import { NativeMediaRow } from '../../modules/media-controls'
 import { IconButton } from './IconButton'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FlatList, Text, View } from 'react-native'
+import { FlatList, Platform, Text, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import {
   listTracks,
@@ -34,6 +34,7 @@ import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { useColapso } from './useColapso'
 import { FormError } from './Button'
+import { CollectionPlayButton } from './CollectionPlayButton'
 import { CollectionHeader, Insignia, useAngosto, useCoverSize } from './CollectionHeader'
 import { AccionesNombreLista, HojaNombreLista, TituloNombreLista, useNombreInline, useRenombrarLista, type EdicionNombreLista } from './RenombrarLista'
 import { compartirLista } from '../lib/compartirLista'
@@ -910,6 +911,8 @@ function Header({
         kind="Lista"
         tint={tint}
         bleedTop={bleedTop}
+        search={Platform.OS === 'ios' ? <CampoBusquedaColeccion contexto="lista" abierto={buscando} filtro={filtro}
+          onFiltro={onFiltro} onCerrar={onBuscar} siempreVisible /> : undefined}
         /* Publicada se dice arriba, al lado del rótulo: es qué clase de lista
            es, no un dato más de la lista. */
         insignia={
@@ -934,7 +937,8 @@ function Header({
              oscurece y aparece el ícono, como el avatar del perfil. */
           <BotonSuperficie
             accessibilityRole="button"
-            accessibilityLabel="Cambiar la portada"
+            accessibilityLabel={playlist.mia ? 'Cambiar la portada' : `Portada de ${playlist.name}`}
+            disabled={!playlist.mia}
             onPress={onPickCover}
             onPointerEnter={() => setOverCover(true)}
             onPointerLeave={() => setOverCover(false)}
@@ -951,14 +955,15 @@ function Header({
         title={<TituloNombreLista nombre={playlist.name} editor={editorNombre} />}
         actions={inline && editorNombre.borrador ? <AccionesNombreLista editor={editorNombre} /> :
           <>
-            <IconButton label={playing ? 'Pausar' : 'Reproducir la lista'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={onPlay} disabled={total === 0} lado={56} size={20} variant="primary" icon={playing ? (
+            {Platform.OS === 'ios' ? <BotonAleatorio size={19} lado={44} disabled={total === 0} /> : null}
+            {Platform.OS === 'ios' ? <CollectionPlayButton playing={playing} disabled={total === 0} onPress={onPlay} /> : <IconButton label={playing ? 'Pausar' : 'Reproducir la lista'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={onPlay} disabled={total === 0} lado={56} size={20} variant="primary" icon={playing ? (
                 <IconPause
                   size={20}
                   color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
                 />
               ) : (
                 <IconPlay size={20} color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary} />
-              )} />
+              )} />}
             {/*
              * Lineal o aleatorio, al lado de reproducir.
              *
@@ -971,7 +976,7 @@ function Header({
              * `primary`, que en este sistema **es** el acento (`docs/DESIGN.md`).
              * Apagado queda en gris, como cualquier control inactivo.
              */}
-            <BotonAleatorio size={19} lado={44} disabled={total === 0} />
+            {Platform.OS !== 'ios' ? <BotonAleatorio size={19} lado={44} disabled={total === 0} /> : null}
             {/*
              * Buscar adentro de la lista, al lado de los otros controles de la
              * lista. Filtra las filas que ya están, sin ir al servidor —el de
@@ -979,7 +984,7 @@ function Header({
              * en una lista larga—. Encendido es el blanco de `primary`, apagado
              * el gris de los inactivos (`docs/DESIGN.md`).
              */}
-            <BuscadorColeccion
+            {Platform.OS !== 'ios' ? <BuscadorColeccion
               contexto="lista"
               abierto={buscando}
               filtro={filtro}
@@ -987,10 +992,10 @@ function Header({
               gestos={tipBuscar.gestos}
               onAbrir={onBuscar}
               onFiltro={onFiltro}
-            />
+            /> : null}
             <BotonDescarga total={total} bajado={bajado} onPress={onDescarga} opciones={opcionesDescarga} />
             <Menu items={menu} label={`Opciones de ${playlist.name}`} size={17} />
-            {playlist.colaborativa && onVerGente ? (
+            {Platform.OS !== 'ios' && playlist.colaborativa && onVerGente ? (
               <ColaboradoresDeLista
                 playlistId={playlist.id}
                 total={playlist.colaboradores + 1}
@@ -1001,13 +1006,6 @@ function Header({
         }
       />
 
-      <CampoBusquedaColeccion
-        contexto="lista"
-        abierto={buscando}
-        filtro={filtro}
-        onFiltro={onFiltro}
-        onCerrar={onBuscar}
-      />
       <HojaNombreLista editor={editorNombre} />
       {children}
     </View>

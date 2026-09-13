@@ -8,7 +8,7 @@ import type { AccionSocialProps } from './Social'
 export function CabeceraSocial({ titulo, detalle, onCerrar, accion, ocupado = false }: {
   titulo: string; detalle?: string; onCerrar?: () => void; accion?: ReactNode; ocupado?: boolean
 }) {
-  return <EncabezadoHoja titulo={titulo} sobre={detalle} velo={false}
+  return <EncabezadoHoja titulo={titulo} sobre={detalle}
     izquierda={onCerrar ? <BotonHoja tipo="cerrar" label={`Cerrar ${titulo.toLowerCase()}`} onPress={onCerrar} disabled={ocupado} /> : undefined}
     derecha={accion} />
 }
@@ -17,7 +17,7 @@ export function CabeceraSocial({ titulo, detalle, onCerrar, accion, ocupado = fa
 export function AccionSocial({ label, accessibilityLabel: nombreAccesible, onPress, secundaria = false, selected, busy = false, disabled = false, expandida = true, style }: AccionSocialProps) {
   const inactiva = disabled || busy
   const vidrio = Number.parseInt(String(Platform.Version), 10) >= 26
-  return <Host colorScheme="dark" seedColor="#FFFFFF" matchContents={expandida ? { vertical: true } : true}
+  return <Host ignoreSafeArea="all" colorScheme="dark" seedColor="#FFFFFF" matchContents={expandida ? { vertical: true } : true}
     style={[{ minHeight: 44, alignSelf: expandida ? 'stretch' : 'flex-start', ...(expandida ? { width: '100%' as const } : {}) }, style]}>
     <Button onPress={inactiva ? undefined : onPress} modifiers={[
       accessibilityLabel(busy ? `${nombreAccesible ?? label}, en curso` : nombreAccesible ?? label), deshabilitado(inactiva),
@@ -37,11 +37,11 @@ export function AccionSocial({ label, accessibilityLabel: nombreAccesible, onPre
 
 export function SeccionSocial({ titulo, detalle, children }: { titulo?: string; detalle?: string; children: ReactNode }) {
   return <View style={{ gap: 8 }}>
-    {titulo ? <Host matchContents={{ vertical: true }} colorScheme="dark" style={{ width: '100%' }}>
+    {titulo ? <Host ignoreSafeArea="all" matchContents={{ vertical: true }} colorScheme="dark" style={{ width: '100%' }}>
       <Text modifiers={[font({ textStyle: 'headline' }), foregroundStyle('#FFFFFF')]}>{titulo}</Text>
     </Host> : null}
     <View style={{ overflow: 'hidden', borderRadius: 16, backgroundColor: '#181818' }}>{children}</View>
-    {detalle ? <Host matchContents={{ vertical: true }} colorScheme="dark" style={{ width: '100%' }}>
+    {detalle ? <Host ignoreSafeArea="all" matchContents={{ vertical: true }} colorScheme="dark" style={{ width: '100%' }}>
       <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle('#B3B3B3')]}>{detalle}</Text>
     </Host> : null}
   </View>

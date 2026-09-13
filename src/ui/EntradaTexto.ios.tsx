@@ -19,6 +19,12 @@ export const EntradaTexto = forwardRef<TextInput, TextInputProps>(function Entra
   const texto = useNativeState(value ?? defaultValue ?? '')
   const styles = StyleSheet.flatten(style) ?? {}
   const alineacion = props.textAlign ?? styles.textAlign
+  // NativeWind entrega puntos fijos. Elegir el estilo del sistema mantiene
+  // la jerarquía y permite que SwiftUI responda a Texto Más Grande.
+  const puntos = styles.fontSize ?? 17
+  const textStyle = puntos <= 12 ? 'caption' : puntos <= 13 ? 'footnote'
+    : puntos <= 15 ? 'subheadline' : puntos <= 16 ? 'callout' : puntos <= 17 ? 'body'
+    : puntos <= 20 ? 'title3' : puntos <= 22 ? 'title2' : puntos <= 28 ? 'title' : 'largeTitle'
   useEffect(() => { if (value !== undefined && texto.get() !== value) texto.set(value) }, [value, texto])
   useEffect(() => {
     if (selection && !secureTextEntry) void (input.current as TextFieldRef | null)?.setSelection(selection.start, selection.end ?? selection.start)
@@ -51,7 +57,7 @@ export const EntradaTexto = forwardRef<TextInput, TextInputProps>(function Entra
       else { onBlur?.(event() as unknown as Parameters<NonNullable<TextInputProps['onBlur']>>[0]); onEndEditing?.(event() as unknown as Parameters<NonNullable<TextInputProps['onEndEditing']>>[0]) }
     },
     modifiers: [textFieldStyle('plain'), disabled(!editable), frame({ minHeight: multiline ? 60 : 44, maxWidth: Infinity }),
-      font({ ...(styles.fontSize ? { size: styles.fontSize } : { textStyle: 'body' as const }), ...(styles.fontFamily ? { family: styles.fontFamily } : {}), weight: styles.fontWeight === 'bold' || styles.fontWeight === '700' ? 'bold' : styles.fontWeight === '600' ? 'semibold' : styles.fontWeight === '500' ? 'medium' : styles.fontWeight === '300' ? 'light' : 'regular' }),
+      font({ textStyle, ...(styles.fontSize ? { size: styles.fontSize } : {}), ...(styles.fontFamily ? { family: styles.fontFamily } : {}), weight: styles.fontWeight === 'bold' || styles.fontWeight === '700' ? 'bold' : styles.fontWeight === '600' ? 'semibold' : styles.fontWeight === '500' ? 'medium' : styles.fontWeight === '300' ? 'light' : 'regular' }),
       ...(styles.fontStyle === 'italic' ? [italic()] : []),
       foregroundStyle(typeof styles.color === 'string' ? styles.color : '#FFFFFF'),
       accessibilityLabel(label ?? placeholder ?? 'Texto'), autocorrectionDisabled(!autoCorrect),
@@ -68,7 +74,7 @@ export const EntradaTexto = forwardRef<TextInput, TextInputProps>(function Entra
     ],
   }
   return <View className={className} style={[{ minWidth: 0, minHeight: multiline ? 60 : 44 }, styles as ViewStyle]}>
-    <Host style={{ width: '100%' }} matchContents={{ vertical: true }} colorScheme="dark" seedColor="#FFFFFF">
+    <Host ignoreSafeArea="all" style={{ width: '100%', flexShrink: 0 }} matchContents={{ vertical: true }} colorScheme="dark" seedColor="#FFFFFF">
       {secureTextEntry ? <SecureField {...common} ref={input} /> : <TextField {...common} ref={input as React.Ref<TextFieldRef>}
         axis={multiline ? 'vertical' : 'horizontal'} onSelectionChange={onSelectionChange ? next => onSelectionChange({ nativeEvent: { selection: next } } as Parameters<NonNullable<TextInputProps['onSelectionChange']>>[0]) : undefined} />}
     </Host>

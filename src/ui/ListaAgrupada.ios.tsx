@@ -34,9 +34,8 @@ import type { FilaAgrupada, ListaAgrupadaProps } from './ListaAgrupada.types'
  * **La paleta se conserva.** `scrollContentBackground('hidden')` saca el fondo
  * agrupado que SwiftUI pone solo —un gris claro que en esta app sería el único
  * color— y deja ver el `background` de abajo; `listRowBackground` pone el
- * `card` de docs/DESIGN.md, y `seedColor` tiñe de blanco el interruptor y las
- * acciones, que es el acento de esta app. Sin esto el sistema pinta su propio
- * gris y su propio azul.
+ * `card` de docs/DESIGN.md. Las acciones conservan el acento de la app;
+ * los interruptores usan verde para distinguir su estado activo.
  */
 
 /** `card` y `background` de docs/DESIGN.md, en hex porque SwiftUI no lee tokens. */
@@ -49,7 +48,7 @@ export function ListaAgrupada({ secciones, label, piso = 24 }: ListaAgrupadaProp
       /* La lista llena su panel y desplaza sola: no se mide contra su
          contenido, que la dejaría creciendo sin fin adentro de un scroll. */
       style={{ flex: 1 }}
-      useViewportSizeMeasurement
+      ignoreSafeArea="container"
       colorScheme="dark"
       seedColor={ACENTO}
     >
@@ -88,7 +87,7 @@ function Fila({ fila }: { fila: FilaAgrupada }) {
         onIsOnChange={fila.disabled ? undefined : fila.onCambiar}
         label={fila.rotulo}
         systemImage={fila.symbol}
-        modifiers={[...fondo, toggleStyle('switch'), tint(ACENTO), disabled(!!fila.disabled)]}
+        modifiers={[...fondo, toggleStyle('switch'), tint('#34C759'), disabled(!!fila.disabled)]}
       />
     )
   }
