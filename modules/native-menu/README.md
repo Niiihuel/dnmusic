@@ -37,11 +37,11 @@ fondo con `showsMenuAsPrimaryAction`: RN dibuja, UIKit presenta.
 
 ## Límites
 
-- No queda ningún menú que se toque pasando por SwiftUI. El disparador con
-  texto —la duración del fragmento, el idioma de la letra, los selectores del
-  estudio de perfil— dejó de dibujarse con un `Label` de SwiftUI y usa la misma
-  píldora de React Native que ya se veía en la web y en Android: un solo lugar
-  donde cambiarla, y nada que medir entre dos sistemas.
+- Los disparadores compartidos siguen usando UIKit. El traductor del
+  reproductor iOS ahora usa un `Menu` enteramente SwiftUI en un `Host` de
+  dimensiones explícitas, sin alojar el disparador React Native ni devolver
+  medidas entre sistemas. Los formularios nativos también conservan sus
+  propios menús SwiftUI.
 - La pulsación larga sigue en `collection-controls`. Los dos módulos arman el
   mismo `UIMenu` con código equivalente porque son pods separados y compartir
   Swift entre ellos costaría más que las treinta líneas repetidas; si aparece
