@@ -49,5 +49,5 @@ export const CollectionContext = disponible
 export const CollectionFade = disponible && nativeModule?.contentFadeVersion === 1
   ? requireNativeView<ViewProps>('CollectionControls', 'CollectionFadeView') : null
 
-export const CollectionScrollEdge = disponible && nativeModule?.scrollEdgeVersion === 1 && Number(Platform.Version) >= 26
+export const CollectionScrollEdge = disponible && nativeModule?.scrollEdgeVersion === 1 && Number.parseInt(String(Platform.Version), 10) >= 26
   ? requireNativeView<ViewProps>('CollectionControls', 'CollectionScrollEdgeView') : null
