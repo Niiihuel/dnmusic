@@ -23,7 +23,10 @@ jobs:
           cache: npm
 
       - name: Install deps
-        run: npm ci
+        run: |
+          npm ci
+          npm --prefix server ci
+          npm --prefix desktop ci --ignore-scripts
 
       - name: Types
         run: npx tsc --noEmit
@@ -31,13 +34,16 @@ jobs:
       - name: Lint
         run: npx eslint .
 
+      - name: App tests
+        run: node --test tests/*.test.mjs
+
       - name: Music service — types
         working-directory: server
-        run: npm ci && npm test
+        run: npm test
 
       # `--ignore-scripts` saltea el postinstall de Electron, que baja ~100 MB
       # de binario. Los tipos vienen en el paquete de npm, así que para chequear
       # no hace falta: el binario recién importa al empaquetar.
       - name: Escritorio — types
         working-directory: desktop
-        run: npm ci --ignore-scripts && npm test
+        run: npm test
