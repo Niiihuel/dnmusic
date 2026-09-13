@@ -1,6 +1,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
+const { join } = require('node:path')
 const { DiscordPresence, FramesDiscord, frameDiscord, actividadDiscord, rutasDiscord } = require('../dist/discord-presence')
 const { registrarDiscord } = require('../dist/discord-ipc')
 
@@ -50,7 +51,7 @@ test('framing handles partial headers, joined payloads, ping bytes and bounds', 
   const bad = Buffer.alloc(8); bad.writeUInt32LE(1024 * 1024, 4)
   assert.throws(() => parser.push(bad), /grande/)
   assert.equal(rutasDiscord('win32')[0], '\\\\?\\pipe\\discord-ipc-0')
-  assert.equal(rutasDiscord('linux', { XDG_RUNTIME_DIR: '/run/user/1000', TMPDIR: '/bad' })[9], '/run/user/1000/discord-ipc-9')
+  assert.equal(rutasDiscord('linux', { XDG_RUNTIME_DIR: '/run/user/1000', TMPDIR: '/bad' })[9], join('/run/user/1000', 'discord-ipc-9'))
 })
 
 test('disabled and unconfigured never connect; invalid ID rejected without changing consent', () => {

@@ -19,6 +19,11 @@ on:
       version:
         description: 'Versión a publicar (ej. 1.2.0)'
         required: true
+      plataforma:
+        description: 'Plataforma a publicar; permite completar un release parcial'
+        type: choice
+        default: ambas
+        options: [ambas, windows, linux]
 
 permissions:
   contents: read
@@ -34,13 +39,10 @@ jobs:
       # juntos los dos intentan crearlo y uno pierde.
       max-parallel: 1
       matrix:
-        include:
-          - nombre: Linux (AppImage)
-            os: ubuntu-latest
-            plataforma: --linux
-          - nombre: Windows (NSIS)
-            os: windows-latest
-            plataforma: --win
+        include: >-
+          ${{ fromJSON(inputs.plataforma == 'windows' && '[{"nombre":"Windows (NSIS)","os":"windows-latest","plataforma":"--win"}]'
+            || inputs.plataforma == 'linux' && '[{"nombre":"Linux (AppImage)","os":"ubuntu-latest","plataforma":"--linux"}]'
+            || '[{"nombre":"Linux (AppImage)","os":"ubuntu-latest","plataforma":"--linux"},{"nombre":"Windows (NSIS)","os":"windows-latest","plataforma":"--win"}]') }}
 
     steps:
       - uses: actions/checkout@v4
