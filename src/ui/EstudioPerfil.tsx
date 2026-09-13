@@ -1,3 +1,4 @@
+import { superficieInteractivaWeb } from './estadoControl'
 import { FilaSocial } from './FilaSocial'
 import { SelectorCatalogo } from './SelectorCatalogo'
 import { AccionSocial } from './Social'
@@ -213,7 +214,7 @@ const TarjetaPieza = memo(function TarjetaPieza({ opcion: o, elegida, nombre, av
   const [hover, setHover] = useState(false)
   const [foco, setFoco] = useState(false)
   const noDisponible = o.discord?.disponible === false || o.paquete?.disponible === false
-  return <Pressable accessibilityRole="button" accessibilityLabel={`${noDisponible ? 'No disponible' : 'Probar'} ${o.nombre}, ${o.tipo === 'paquete' ? 'paquete' : TITULOS_ESTILO[o.tipo]}`}
+  return <Pressable {...superficieInteractivaWeb('card')} accessibilityRole="button" accessibilityLabel={`${noDisponible ? 'No disponible' : 'Probar'} ${o.nombre}, ${o.tipo === 'paquete' ? 'paquete' : TITULOS_ESTILO[o.tipo]}`}
     accessibilityState={{ selected: elegida, disabled: ocupado || noDisponible }} disabled={ocupado || noDisponible} onPress={onPress}
     onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} onFocus={event => setFoco(Platform.OS === 'web' && !!(event.target as unknown as HTMLElement).matches?.(':focus-visible'))} onBlur={() => setFoco(false)} style={[s.item, elegida ? s.elegido : null]}>
     <View style={s.imagen}><Muestra opcion={o} nombre={nombre} avatarPath={avatarPath} animado={hover || foco} /></View>

@@ -1,3 +1,4 @@
+import { ScrollArea } from './ScrollArea'
 import { IconButton } from './IconButton'
 import { FlatList, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
@@ -94,6 +95,7 @@ export function MeGustaView({
     <Panel className="flex-1">
       <View className="min-h-0 flex-1">
         <FlatList
+          renderScrollComponent={props => <ScrollArea {...props} />}
           data={canciones}
           keyExtractor={(t) => t.videoId}
           className="min-h-0 flex-1"

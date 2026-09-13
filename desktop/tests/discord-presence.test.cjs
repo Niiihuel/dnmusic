@@ -161,7 +161,7 @@ test('activity validation enforces freshness and public-only assets with no arbi
   const result = actividadDiscord(snapshot(now, { audioUrl: 'https://secret', userId: 'private', artworkUrl: 'https://i.ytimg.com/image?token=secret', trackUrl: 'file:///audio.mp3', expiresAt: now + 999999 }), now)
   assert.equal(result.expiresAt, now + 65000)
   assert.equal(result.activity.assets, undefined); assert.equal(result.activity.buttons, undefined)
-  assert.deepEqual(Object.keys(result.activity).sort(), ['details', 'state', 'timestamps', 'type'])
+  assert.deepEqual(Object.keys(result.activity).sort(), ['details', 'state', 'status_display_type', 'timestamps', 'type'])
   assert.equal(actividadDiscord(snapshot(now, { artworkUrl: 'https://i.ytimg.com/vi/id/hqdefault.jpg' }), now).activity.assets.large_image, 'https://i.ytimg.com/vi/id/hqdefault.jpg')
 })
 
@@ -295,4 +295,45 @@ test('retry works without music and opt-out cancels retries and late handshakes'
   pending.ready(); h.advance(60000)
   assert.equal(pending.frames.length, 0); assert.equal(h.sockets.length, 4)
   assert.equal(h.presence.estado().status, 'disabled')
+})
+
+
+test('retry renews a READY pipe and identifies the active Discord account locally', () => {
+  const h = harness(); h.enable()
+  const old = h.sockets[0]
+  old.emit('connect'); old.receive(1, { cmd: 'DISPATCH', evt: 'READY', data: { user: { username: 'friend', id: 'private-id', email: 'private-email' } } })
+  assert.equal(h.presence.estado().account, 'friend')
+  assert.ok(!JSON.stringify(h.presence.estado()).includes('private-'))
+  h.presence.publicar(snapshot(h.now())); old.ack()
+  assert.equal(old.commands().at(-1).args.activity.status_display_type, 1)
+  h.enable()
+  assert.equal(old.destroyed, true)
+  assert.equal(h.presence.estado().account, undefined)
+  const fresh = h.sockets[1]; fresh.ready(); fresh.ack()
+  assert.equal(h.presence.estado().status, 'published')
+  h.presence.limpiar()
+})
+
+test('Windows access denial survives pipe scanning and a valid later pipe still wins', () => {
+  const h = harness(); h.enable()
+  h.sockets[0].emit('error', Object.assign(Error('private path'), { code: 'EACCES' }))
+  h.sockets[1].emit('error', Object.assign(Error('missing'), { code: 'ENOENT' }))
+  assert.match(h.presence.estado().error, /administrador/)
+  assert.ok(!h.presence.estado().error.includes('private path'))
+  h.advance(15000)
+  h.sockets[2].ready()
+  assert.equal(h.presence.estado().status, 'ready')
+  assert.equal(h.presence.estado().error, undefined)
+  h.presence.limpiar()
+})
+
+test('RPC rejection and CLOSE preserve safe numeric diagnostics, never server text', () => {
+  const h = harness(); h.enable()
+  h.sockets[0].receive(2, { code: 4000, message: 'secret' })
+  assert.match(h.presence.estado().error, /no reconoce/)
+  h.advance(15000); h.sockets[1].ready(); h.presence.publicar(snapshot(h.now()))
+  h.sockets[1].receive(1, { evt: 'ERROR', nonce: h.sockets[1].commands().at(-1).nonce, data: { code: 4006, message: 'secret' } })
+  assert.match(h.presence.estado().error, /no autorizó/)
+  assert.ok(!h.presence.estado().error.includes('secret'))
+  h.presence.limpiar()
 })

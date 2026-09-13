@@ -19,9 +19,12 @@ export function ContenidoDiscord({ estado, cargado, guardando, error, onCambiar 
       pie="Abrí la app de Discord e iniciá sesión en esta computadora. Al conectar, compartís la canción que escuchás en tu actividad de Discord. DMusic se conecta a esa sesión automáticamente."
       error={error || estado.error}>
       <FilaDato rotulo="Estado" valor={cargado ? ESTADOS_DISCORD[estado.status] : 'Cargando…'} />
+      {conectado && estado.account ? <FilaDato rotulo="Cuenta de Discord" valor={`@${estado.account}`} /> : null}
       {!conectado ? <FilaAccion rotulo={conectando ? 'Conectando con Discord…' : estado.enabled ? 'Reintentar conexión' : 'Conectar Discord'}
         icono={<DiscordIcon size={20} />} iconoPlano destacada
         busy={guardando || conectando} disabled={!cargado} onPress={() => onCambiar(true)} ultima={!estado.enabled} /> : null}
+      {conectado ? <FilaAccion rotulo="Reintentar conexión" icono={<DiscordIcon size={20} />} iconoPlano
+        disabled={!cargado || guardando} onPress={() => onCambiar(true)} /> : null}
       {estado.enabled ? <FilaAccion rotulo={conectando ? 'Cancelar conexión' : 'Desconectar Discord'}
         icono={<DiscordIcon size={20} />} iconoPlano disabled={!cargado || guardando} onPress={() => onCambiar(false)} ultima /> : null}
     </GrupoAjustes>
@@ -29,5 +32,12 @@ export function ContenidoDiscord({ estado, cargado, guardando, error, onCambiar 
       pie="Podés escuchar en esta PC o en tu iPhone con la misma cuenta de DMusic. Mantené DMusic y Discord abiertos en la PC. Al pausar se retira la canción; al desconectar o cerrar sesión se deja de compartir. Si la actividad no aparece en tu perfil, revisá la privacidad de actividad en Discord.">
       <FilaDato rotulo="Compartir música" valor={estado.enabled ? 'Activado' : 'Desactivado'} ultima />
     </GrupoAjustes>
+    {estado.enabled ? <GrupoAjustes titulo="Si tu estado no aparece"
+      pie="La confirmación indica que Discord recibió la canción; la visibilidad para tus amigos depende de Discord. Esta integración usa la app abierta en tu PC, no agrega una cuenta en Conexiones como Spotify.">
+      <FilaDato rotulo="1. Discord" valor="App de escritorio abierta, con sesión iniciada" />
+      <FilaDato rotulo="2. Privacidad de actividad" valor="Activá Compartir tu actividad detectada" />
+      <FilaDato rotulo="3. Estado de Discord" valor="Usá un estado distinto de Invisible" />
+      <FilaDato rotulo="4. Música" valor="Reproducí una canción; también funciona en Jam si suena en esta PC" ultima />
+    </GrupoAjustes> : null}
   </>
 }

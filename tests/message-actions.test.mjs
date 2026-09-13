@@ -123,6 +123,7 @@ function dialog(kind = 'edit', userId = 'author') {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../services/messages': Object.fromEntries(['editMessage', 'deleteMessage'].map(name => [name, (...args) => new Promise((resolve, reject) => requests.push({ name, args, resolve, reject }))])),
     '../state/session': { refreshConversations: async () => {} }, '../state/aviso': { avisar: (...args) => notices.push(args) },
+    './Dialogo': { Dialogo: 'Modal' }, './EncabezadoHoja': { EncabezadoHoja: 'EncabezadoHoja', BotonHoja: 'BotonHoja' },
     './CampoMensaje': { CampoMensaje: 'CampoMensaje' }, './Button': { PrimaryButton: 'PrimaryButton', GhostButton: 'GhostButton' }, './Confirmar': { Confirmar: 'Confirmar' },
   }
   const { MessageActionDialog } = load('src/ui/MessageActionDialog.tsx', mocks)

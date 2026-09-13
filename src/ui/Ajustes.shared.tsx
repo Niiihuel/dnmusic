@@ -1,3 +1,5 @@
+import { SharedLayoutBg } from './SharedLayoutBg'
+import { superficieInteractivaWeb } from './estadoControl'
 import { CopyFeedback } from './CopyFeedback'
 import { createContext, useContext, type ReactNode } from 'react'
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native'
@@ -89,7 +91,7 @@ export function GrupoAjustes({
       {titulo ? (
         <Text className={`${compacto ? 'px-3 pb-1.5 text-footnote font-semibold uppercase' : 'px-4 pb-2 text-footnote'} text-muted-foreground`}>{titulo}</Text>
       ) : null}
-      <View className={`overflow-hidden bg-card ${compacto ? 'rounded-[16px]' : 'rounded-[22px]'}`}>{children}</View>
+      <View className={`overflow-hidden bg-card ${compacto ? 'rounded-[16px]' : 'rounded-[22px]'}`}><SharedLayoutBg targets="surfaces">{children}</SharedLayoutBg></View>
       {error ? (
         <Text
           accessibilityRole="alert"
@@ -158,6 +160,7 @@ export function FilaAjuste({
 
   return (
     <Pressable
+      {...superficieInteractivaWeb('row')}
       accessibilityRole="button"
       accessibilityLabel={`${rotulo}${puesto ? `: ${valor}` : vacio ? `: ${vacio}` : ''}`}
       accessibilityState={{ disabled }}
@@ -345,6 +348,7 @@ export function FilaAccion({
   const activa = !disabled && !busy
   return (
     <Pressable
+      {...superficieInteractivaWeb('row')}
       accessibilityRole="button"
       accessibilityLabel={rotulo}
       accessibilityState={{ disabled: !activa, busy }}
@@ -393,6 +397,7 @@ export function FilaCuenta({
 }) {
   return (
     <Pressable
+      {...superficieInteractivaWeb('row')}
       accessibilityRole="button"
       accessibilityLabel={`${nombre}. ${detalle}`}
       onPress={onPress}
@@ -468,6 +473,7 @@ export function FilaInterruptor({
       }
   return (
     <Fila
+      {...superficieInteractivaWeb('row')}
       {...escucha}
       className={`flex-row items-center ${disabled ? 'opacity-45' : INTERRUPTOR_PROPIO ? '' : 'active:bg-muted'} ${compacto ? 'gap-2.5 pl-3' : 'gap-3 pl-4'}`}
     >

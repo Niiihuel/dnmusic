@@ -929,8 +929,9 @@ const VACIO: DispositivoPresente[] = []
  */
 export function leerEscuchaParaIntegraciones() {
   const s = store.get(), p = getPlaybackState(), ahora = Date.now()
-  const local = !s.espejo && (!s.escucha || s.escucha.deviceId === s.deviceId)
-  if (hayJam()) return null
+  // Un Jam también puede sonar en esta PC. Sólo el motor confirma escucha:
+  // un participante que controla otra salida no inventa actividad local.
+  const local = hayJam() || (!s.espejo && (!s.escucha || s.escucha.deviceId === s.deviceId))
   if (local) {
     const track = p.manual ?? p.tracks[p.index]
     if (!track || !p.wantPlay || !s.sonandoLocal || p.error) return null

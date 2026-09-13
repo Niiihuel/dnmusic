@@ -6,7 +6,7 @@ const code=ts.transpileModule(readFileSync('src/state/escucha.ts','utf8'),{compi
 const flush=async()=>{for(let i=0;i<5;i++)await new Promise(r=>setImmediate(r))}
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return{promise,resolve,reject}}
 const track={id:'song',videoId:'song',audioPath:'audio/song.m4a',durationMs:300000,title:'Tema',artist:'Artista'}
-function fixture({playing=true,owner='pc',timestamp=true,send,claim,read}={}){
+function fixture({jam=false,playing=true,owner='pc',timestamp=true,send,claim,read}={}){
  let now=100000, seq=0, hooks, registered, fetches=0
  const timers=new Map(),listeners=new Set(),published=[],sent=[]
  let row={deviceId:owner,deviceNombre:owner==='pc'?'Mi PC':'Teléfono',track,suena:playing,posicionMs:12000,arrancadoEn:playing?now:null,revision:3,actualizadoEn:timestamp?now:null}
@@ -19,7 +19,7 @@ function fixture({playing=true,owner='pc',timestamp=true,send,claim,read}={}){
  '../lib/supabase':{getSupabase:()=>({auth:{getSession:async()=>({data:{session:{user:{id:'user'}}}})}})},
  '../lib/dispositivo':{idDispositivo:async()=>'ios',nombreDispositivo:()=> 'Mi iPhone'},
  '../services/escucha':{fetchEscuchaEstado:async()=>{fetches++;return read?read(state(),fetches):state()},publicarEscucha:async a=>{published.push(a);if(claim)return claim(a);row={...row,...a,actualizadoEn:now,revision:row.revision+1,arrancadoEn:a.suena?now:null};return row.revision},suscribirEscucha:(_,__,h)=>{hooks=h;h.onConexion('conectado');h.onPresentes([{deviceId:'pc',nombre:'Mi PC'},{deviceId:'ios',nombre:'Mi iPhone'}]);return{listo:Promise.resolve(),desuscribir(){},mandarA:async(...a)=>{sent.push(a);if(send)return send(...a)}}}},
- './jam':{hayJam:()=>false},
+ './jam':{hayJam:()=>jam},
  './playback':{getPlaybackState:()=>p,registerEscucha:c=>{registered=c},subscribePlayback:l=>{listeners.add(l);return()=>listeners.delete(l)},escuchaAplicar:emitPlayback,escuchaSoltar:()=>emitPlayback({tracks:[],index:-1,wantPlay:false}),escuchaTransporte:(wantPlay,positionMs)=>emitPlayback({wantPlay,positionMs}),resumePlayback:()=>emitPlayback({wantPlay:true}),reportProgress:(positionMs,durationMs)=>emitPlayback({positionMs,durationMs})},
  './store':{createStore(initial){let s=initial;const ls=new Set();return{get:()=>s,set(patch){const v=typeof patch==='function'?patch(s):patch;if(!Object.keys(v).some(k=>!Object.is(v[k],s[k])))return;s={...s,...v};for(const l of ls)l()},subscribe:l=>{ls.add(l);return()=>ls.delete(l)}}},useStore:(s,fn)=>fn(s.get())},
  }
@@ -159,4 +159,18 @@ test('snapshot externo refleja otro dispositivo sólo mientras su escucha está 
  assert.equal(h.api.leerEscuchaParaIntegraciones().track.id,'song')
  h.connection('desconectado');assert.equal(h.api.leerEscuchaParaIntegraciones(),null)
  h.connection('conectado');h.presence([{deviceId:'ios',nombre:'Teléfono'}]);assert.equal(h.api.leerEscuchaParaIntegraciones(),null);h.close()
+})
+
+
+test('Jam comparte la canción que suena localmente, no la fila personal ni una salida remota',async()=>{
+ const h=fixture({jam:true});await h.start()
+ const jamTrack={...track,id:'jam-song',title:'Tema del Jam'}
+ h.playback({tracks:[jamTrack],index:0,wantPlay:true,positionMs:25000})
+ assert.equal(h.api.leerEscuchaParaIntegraciones(),null,'estar en un Jam no confirma audio')
+ h.api.reportarActividadEscucha(true)
+ assert.equal(h.api.leerEscuchaParaIntegraciones().track.id,'jam-song')
+ assert.equal(h.api.leerEscuchaParaIntegraciones().posicionMs,25000)
+ h.api.reportarActividadEscucha(false)
+ assert.equal(h.api.leerEscuchaParaIntegraciones(),null,'pausar o controlar otra salida retira presencia')
+ h.close()
 })

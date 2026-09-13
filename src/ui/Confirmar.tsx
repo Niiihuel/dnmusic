@@ -1,6 +1,8 @@
+import { Dialogo } from './Dialogo'
+import { EncabezadoHoja, BotonHoja } from './EncabezadoHoja'
 import { estadoControlWeb } from './estadoControl'
 import type { ConfirmarProps } from './Confirmar.types'
-import { Modal, Pressable, Text, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { BORDE_REFERENTE, Glass } from './Glass'
 
 /**
@@ -29,8 +31,26 @@ export function Confirmar({
   onCancelar,
   onConfirmar,
 }: ConfirmarProps) {
+  const acciones = (
+    <View className="flex-row gap-2 p-4">
+      <Pressable
+        accessibilityRole="button"
+        onPress={onCancelar}
+        className="h-11 flex-1 items-center justify-center rounded-full bg-muted active:opacity-70"
+      >
+        <Text className="text-foreground text-subheadline font-semibold">Cancelar</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onConfirmar}
+        className="h-11 flex-1 items-center justify-center rounded-full bg-muted active:opacity-70"
+      >
+        <Text className="text-foreground text-subheadline font-semibold">{rotulo}</Text>
+      </Pressable>
+    </View>
+  )
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancelar}>
+    <Dialogo titulo={titulo} ancho={400} contenidoPC={<><EncabezadoHoja titulo={titulo} izquierda={<BotonHoja onPress={onCancelar} />} /><View className="px-5 pb-1"><Text className="text-muted-foreground text-subheadline leading-6">{mensaje}</Text></View>{acciones}</>} visible={visible} transparent animationType="fade" onRequestClose={onCancelar}>
       <View className="flex-1 items-center justify-center px-8">
         {/* El velo cierra, como cualquier diálogo del sistema. Va como hermano
             y no envolviendo la tarjeta: un Pressable adentro de otro es en web
@@ -55,24 +75,9 @@ export function Confirmar({
             <Text className="text-foreground text-center text-callout font-bold">{titulo}</Text>
             <Text className="text-muted-foreground text-center text-footnote leading-5">{mensaje}</Text>
           </View>
-          <View className="flex-row gap-2 p-4">
-            <Pressable
-              accessibilityRole="button"
-              onPress={onCancelar}
-              className="h-11 flex-1 items-center justify-center rounded-full bg-muted active:opacity-70"
-            >
-              <Text className="text-foreground text-subheadline font-semibold">Cancelar</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={onConfirmar}
-              className="h-11 flex-1 items-center justify-center rounded-full bg-muted active:opacity-70"
-            >
-              <Text className="text-foreground text-subheadline font-semibold">{rotulo}</Text>
-            </Pressable>
-          </View>
+          {acciones}
         </Glass>
       </View>
-    </Modal>
+    </Dialogo>
   )
 }

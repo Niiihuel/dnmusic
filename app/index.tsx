@@ -3334,7 +3334,7 @@ function ConversationSidebar({
       )}
 
       <FlatList
-        renderScrollComponent={onBuscar ? (props) => <ScrollArea {...props} /> : undefined}
+        renderScrollComponent={(props) => <ScrollArea {...props} />}
         style={{ flex: 1, minHeight: 0 }}
         data={conversations}
         keyExtractor={(conversation) => conversation.pairId}

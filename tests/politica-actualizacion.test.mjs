@@ -154,6 +154,8 @@ function uiFixture(path, dependencies, names = []) {
 test('gate: bloqueo sin children ni salida, preferencia desactivada y descarte nunca lo evitan', () => {
   let state = { iniciada: true, politica: policy({ minimum_version: '1.12.0' }), instalacion: installed('1.11.0'), descartada: 'windows:1.12.0' }, preference = false
   const f = uiFixture('src/ui/ControlActualizaciones.tsx', {
+    './EncabezadoHoja': { EncabezadoHoja: 'EncabezadoHoja', BotonHoja: 'BotonHoja' },
+    './Dialogo': { Dialogo: 'Modal' }, './ModalContext': { useDentroModalPC: () => false },
     '../state/ajustes': { usePreferencia: () => preference },
     '../state/actualizacion': { useActualizacion: () => ({ fase: 'inactivo' }) },
     '../state/politicaActualizacion': { usePoliticaActualizacion: () => state, iniciarPoliticaActualizacion: () => () => {}, descartarPolitica() {}, refrescarPolitica() {} },

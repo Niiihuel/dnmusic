@@ -1,3 +1,4 @@
+import { superficieInteractivaWeb } from './estadoControl'
 import { ActivityIndicator, Text, View } from 'react-native'
 import { Avatar } from './Avatar'
 import { BotonSuperficie } from './BotonSuperficie'
@@ -27,8 +28,8 @@ export function CargaChats({ texto }: { texto: string }) {
   </View>
 }
 export function FilaConversacion({ nombre, nombreAvatar = nombre, avatarPath, detalle, fecha, noLeidos, selected, compacto, onPress }: FilaConversacionProps) {
-  return <BotonSuperficie accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress}
-    className={`flex-row items-center gap-2 rounded-lg px-2 py-2 hover:bg-white/5 active:opacity-80 ${selected ? 'bg-muted' : ''}`}>
+  return <BotonSuperficie {...superficieInteractivaWeb('row')} accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress}
+    className={`flex-row items-center gap-2 rounded-lg px-2 py-2 active:opacity-80 ${selected ? 'bg-muted' : ''}`}>
     <Avatar name={nombreAvatar} path={avatarPath} size={compacto ? 36 : 44} />
     <View className="min-w-0 flex-1 gap-0.5">
       <View className="flex-row items-center gap-2">

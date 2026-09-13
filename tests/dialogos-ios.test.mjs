@@ -107,7 +107,7 @@ const jsx = (type, props) => ({ type, props })
 function nodes(node) {
   if (!node || typeof node !== 'object') return []
   if (Array.isArray(node)) return node.flatMap(nodes)
-  return [node, ...nodes(node.props?.children)]
+  return [node, ...nodes(node.props?.children), ...nodes(node.props?.contenidoPC), ...nodes(node.props?.izquierda)]
 }
 function viewFixture(path) {
   const state = { pendiente: { nombre: 'PC' }, ocupado: true, error: null, confirmar() {}, cancelar() {} }
@@ -119,6 +119,7 @@ function viewFixture(path) {
     if (id === 'react-native') return { Modal: 'Modal', Pressable: 'Pressable', View: 'View', Text: 'Text', StyleSheet: { absoluteFill: {} } }
     if (id === './Button') return { PrimaryButton: 'PrimaryButton', GhostButton: 'GhostButton' }
     if (id === './EncabezadoHoja') return { EncabezadoHoja: 'EncabezadoHoja', BotonHoja: 'BotonHoja' }
+    if (id === './Dialogo') return { Dialogo: 'Dialogo' }
     if (id === './Hoja') return { Hoja: 'Hoja' }
     if (id === './ListaAgrupada') return { ListaAgrupada: 'ListaAgrupada' }
     assert.fail(`Import inesperado ${id}`)
@@ -147,7 +148,10 @@ test('iOS mantiene hoja viva con progreso, bloquea swipe y conserva error al pie
 test('PC conserva modal accesible con progreso, cierre deshabilitado y error anunciado', () => {
   const f = viewFixture('src/ui/Traspaso.tsx')
   let ui = f.render()
-  assert.equal(ui[0].type, 'Modal')
+  assert.equal(ui[0].type, 'Dialogo')
+  assert.equal(ui[0].props.visible, true)
+  assert.equal(ui[0].props.onRequestClose, f.state.cancelar)
+  assert.equal(ui.find(node => node.type === 'BotonHoja').props.disabled, true)
   assert.equal(ui.find(node => node.type === 'PrimaryButton').props.busy, true)
   assert.equal(ui.find(node => node.type === 'GhostButton').props.disabled, true)
   assert.equal(ui.find(node => node.type === 'Pressable').props.disabled, true)

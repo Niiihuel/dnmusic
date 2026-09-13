@@ -201,6 +201,12 @@ la sesión borrada a los segundos de entrar—, y el reemplazo se reintenta ante
 de resignarse. Cuando algo de esto falla queda dicho en el log del proceso
 principal, que en Windows se ve con `dnmusic.exe --enable-logging`.
 
+**Cerrar sesión sólo afecta a esa instalación.** Desde la 1.15.1 se pasa
+`scope: local` a Supabase: omitirlo revocaba también las sesiones del resto de
+los dispositivos y se notaba cuando intentaban renovar su acceso. Esto corrige
+un motivo posible de cierres inesperados, pero no confirma por sí solo la causa
+en una computadora específica.
+
 **Un chunk que falta devuelve 404, no index.html.** El fallback de SPA es el
 mismo que hace `vercel.json` en la web, con el mismo corte: una ruta cae en
 index.html, un archivo con extensión que no está devuelve 404. Si le

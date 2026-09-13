@@ -202,6 +202,7 @@ export function ArtistPage({
       {photo && apaisada ? (
         <Banner
           photo={photo}
+          bleedTop={techo}
           aspect={artist.photoAspect ?? 16 / 9}
           nombre={artist.name}
           meta={meta}
@@ -305,12 +306,14 @@ export function ArtistPage({
  */
 function Banner({
   photo,
+  bleedTop = 0,
   aspect,
   nombre,
   meta,
   acciones,
 }: {
   photo: string
+  bleedTop?: number
   aspect: number
   nombre: string
   meta?: string
@@ -325,7 +328,7 @@ function Banner({
     <View>
       <View
         onLayout={(e) => setAncho(e.nativeEvent.layout.width)}
-        style={{ height: alto }}
+        style={{ height: alto + (Platform.OS === 'ios' ? bleedTop : 0), marginTop: Platform.OS === 'ios' ? -bleedTop : 0 }}
         className="justify-end overflow-hidden bg-card"
       >
         <Image

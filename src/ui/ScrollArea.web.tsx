@@ -1,3 +1,4 @@
+import { SharedLayoutBg } from './SharedLayoutBg'
 import { attachSmoothScroll } from './smoothScroll.web'
 import { forwardRef, useContext, useCallback, useEffect, useId, useRef, type KeyboardEvent, type PointerEvent } from 'react'
 import { ScrollView, View, type ScrollViewProps } from 'react-native'
@@ -153,6 +154,7 @@ export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function Scrol
   // Las filas horizontales conservan su presentación/indicador nativos.
   if (horizontal) return <ScrollView {...props} scrollIndicatorInsets={scrollIndicatorInsets} horizontal scrollEnabled={scrollEnabled} showsVerticalScrollIndicator={showsVerticalScrollIndicator} style={style} className={className} ref={ref} onScroll={onScroll} onContentSizeChange={onContentSizeChange} scrollEventThrottle={scrollEventThrottle}>{children}</ScrollView>
   return <View className={`dn-scroll-area ${className}`} style={[{ flexGrow: 1, flexShrink: 1, minWidth: 0, minHeight: 0, position: 'relative' }, style]}>
+    <SharedLayoutBg targets="surfaces" className="dn-shared-scroll">
     <ScrollAreaTecho.Provider value={0}>
     <ScrollView {...props} ref={ref} scrollEnabled={scrollEnabled} style={{ flexGrow: 1, flexShrink: 1, minWidth: 0, minHeight: 0 }} showsVerticalScrollIndicator={false}
       onScroll={onScroll} scrollEventThrottle={scrollEventThrottle}
@@ -160,6 +162,7 @@ export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function Scrol
       {children}
     </ScrollView>
     </ScrollAreaTecho.Provider>
+    </SharedLayoutBg>
     <div ref={track} className="dn-scrollbar" role="scrollbar" aria-label="Desplazar contenido" aria-orientation="vertical"
       aria-valuemin={0} aria-valuemax={0} aria-valuenow={0} aria-hidden={!indicadorActivo} hidden={!indicadorActivo}
       tabIndex={indicadorActivo ? 0 : -1} style={{ display: 'none' }}

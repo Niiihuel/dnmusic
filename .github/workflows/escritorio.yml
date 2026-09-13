@@ -122,9 +122,9 @@ jobs:
         working-directory: desktop
         run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
 
-      - name: Compilar el proceso principal
+      - name: Compilar y probar el proceso principal
         working-directory: desktop
-        run: npm run build
+        run: npm test
 
       - name: Traer la web y el ícono
         working-directory: desktop

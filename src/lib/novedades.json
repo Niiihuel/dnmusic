@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.15.1",
+    "fecha": "13 de septiembre de 2026",
+    "titulo": "Un escritorio más fluido.",
+    "cambios": [
+      "Los modales de computadora comparten un diseño de vidrio, bordes redondeados y animaciones al abrir, cerrar o cambiar su contenido.",
+      "Corregimos los fondos de hover para que cubran las filas completas y se muevan entre controles. Las tarjetas tienen más espacio alrededor y las flechas de los carruseles usan vidrio con borde.",
+      "Los tooltips conservan su indicador dentro del contorno de vidrio y esperan medio segundo sobre cada botón antes de aparecer.",
+      "La barra de progreso responde al arrastrarla sin actualizar toda la interfaz. El reproductor anima el cambio entre su tamaño compacto y expandido.",
+      "Discord recibe también la música de los Jam reproducida en esta computadora. Mostramos la cuenta detectada, mejoramos los reintentos y evitamos que un fallo al guardar la preferencia impida publicar la canción.",
+      "Cerrar sesión afecta solamente al dispositivo donde lo hacés, para conservar abiertas tus otras sesiones."
+    ]
+  },
+  {
     "version": "1.15.0",
     "fecha": "13 de septiembre de 2026",
     "titulo": "Tu música, más cerca.",

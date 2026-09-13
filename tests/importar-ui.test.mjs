@@ -47,6 +47,8 @@ function montar({ width = 1440, resultados = [resultado(0), resultado(1, 'dudosa
     'expo-router/react-navigation': { useNavigation: () => ({ dispatch: action => rutas.push(action) }), usePreventRemove: (activa, callback) => { guardia = { activa, callback } } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     'expo-audio': { useAudioPlayer: () => ({ play: () => assert.fail('No debe reproducir audio durante estas pruebas') }) },
+    '../src/ui/estadoControl': { superficieInteractivaWeb: tipo => ({ dataSet: { dnSurface: tipo } }), estadoControlWeb: modo => ({ dataSet: { dnHover: modo } }) },
+    '../src/ui/SharedLayoutBg': { SharedLayoutBg: 'SharedLayoutBg' },
     '../src/ui/EntradaTexto': { EntradaTexto: 'TextInput' },
     '../src/ui/Field': { PLACEHOLDER_COLOR: '#777' }, '../src/ui/Button': { FormError: 'FormError' },
     '../src/ui/Social': { CabeceraSocial: 'CabeceraSocial', AccionSocial: 'AccionSocial' },
