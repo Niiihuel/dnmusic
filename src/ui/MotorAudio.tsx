@@ -1,8 +1,12 @@
+import { crearVigilanteAudio, abrirFuenteConReintento, esperarAperturaAudio, type PresupuestoRecuperacion } from '../lib/recuperacionAudio'
+import { crearMedidorEscucha } from '../lib/escuchaEfectiva'
+import { useAudioLease } from '../lib/useAudioLease'
+import { registrarIncidenciaAudio } from '../state/diagnosticoAudio'
 import { proximasCola } from '../lib/proximasCola'
 import { usePrecargaCola } from './usePrecargaCola'
 import { useEspectroAudio } from './useEspectroAudio'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Platform } from 'react-native'
+import { AppState, Platform } from 'react-native'
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio'
 import { artworkSource } from '../lib/artwork'
 import { headroomGain, perceptualGain, resolveSong, signedUrl, type TrackResult } from '../services/music'
@@ -11,6 +15,8 @@ import { anotarEscucha } from '../services/plays'
 import type { PlaylistTrack } from '../services/playlists'
 import {
   advance,
+  getPlaybackState,
+  reportRecuperada,
   completarCancion,
   pausaExterna,
   playbackOrigin,
@@ -39,7 +45,7 @@ import {
   useJamSilencioso,
   useJamSincronizo,
 } from '../state/jam'
-import { useEscuchaEspejo } from '../state/escucha'
+import { reportarActividadEscucha, useEscuchaEspejo } from '../state/escucha'
 import { saltar } from '../lib/seek'
 import { useAppActiva } from '../lib/appActiva'
 import { avisar } from '../state/aviso'
@@ -57,8 +63,8 @@ const CACHE_URLS = 3
 /**
  * Cada cuánto se le avisa al store la posición.
  *
- * El bucle corre a sesenta cuadros por segundo porque el corte de fin de
- * canción lo necesita; los dibujados, no. Ver el `tick`.
+ * La barra fina se actualiza por cuadro mientras está visible; el store
+ * recibe menos avisos. El final lo informa el reproductor.
  */
 const AVISO_CADA_MS = 100
 /*
@@ -130,7 +136,7 @@ export function MotorAudio() {
    * que sigue en la lista. Si acá dijera otra cosa, precargaríamos una canción
    * que no va a sonar.
    */
-  const proximas = useMemo(() => proximasCola({ tracks, index, manual, upNext, shuffle, repetir }),
+  const proximas = useMemo(() => proximasCola({ tracks, index, manual, upNext, shuffle, repetir }, HAY_DESCARGAS ? 5 : 2),
     [tracks, index, manual, upNext, shuffle, repetir])
   /*
    * La carátula de la pantalla bloqueada, aparte y grande.
@@ -182,16 +188,19 @@ export function MotorAudio() {
    * canción actual", y no hace falta limpiarla desde un efecto. De paso una
    * firma que llega tarde nunca se usa para el tema equivocado.
    */
-  const [urls, setUrls] = useState<{ trackId: string; url: string }[]>([])
+  const [fuenteEnUso, setFuenteEnUso] = useState<string | null>(null)
+  const [urls, setUrls] = useState<{ trackId: string; url: string; hasta: number }[]>([])
   const urlOf = useCallback(
     (track: PlaylistTrack | null) => {
-      const uri = track ? urls.find(u => u.trackId === track.id)?.url : null
+      const entrada = track ? urls.find(u => u.trackId === track.id) : undefined
+      // Nunca expirar una fuente en uso. Al volver a seleccionarla, se refirma.
+      const uri = entrada && (fuenteEnUso === entrada.url || entrada.hasta > Date.now()) ? entrada.url : null
       if (!uri || !track) return null
       // Una caché temporal puede haberse eliminado desde la última escucha.
       if ((uri.startsWith('file:') || uri.startsWith('app://dnmusic/_audio/')) && rutaLocal(track.audioPath) !== uri) return null
       return uri
     },
-    [urls],
+    [urls, fuenteEnUso],
   )
 
   /*
@@ -227,7 +236,8 @@ export function MotorAudio() {
    */
   const remember = useCallback((trackId: string, url: string) => {
     setUrls((prev) => {
-      const todas = [{ trackId, url }, ...prev.filter((u) => u.trackId !== trackId)]
+      const hasta = /^https?:/.test(url) ? Date.now() + 50 * 60_000 : Infinity
+      const todas = [{ trackId, url, hasta }, ...prev.filter((u) => u.trackId !== trackId)]
       /* Un Set y no `vivas.current.includes(…)` adentro del filtro: aquello
          recorría la cola entera por cada URL guardada, y las dos crecen juntas
          —una cola larga es justo cuando hay más URLs—. El Set se arma una vez
@@ -287,8 +297,6 @@ export function MotorAudio() {
     if (!mudo && pathActual && fuenteLocal) marcarAudioUsado(pathActual)
   }, [mudo, pathActual, fuenteLocal])
   const raf = useRef<number | null>(null)
-  /** El cuadro anterior, para medir cuánto sonó de verdad entre uno y otro. */
-  const ultimoTick = useRef(0)
   /** El último aviso al store, para no inundarlo. Ver `AVISO_CADA_MS`. */
   const ultimoAviso = useRef(0)
 
@@ -304,9 +312,22 @@ export function MotorAudio() {
    */
   const player = useAudioPlayer(url ? { uri: url } : null, {
     keepAudioSessionActive: true,
+    preferredForwardBufferDuration: 30,
+    updateInterval: 1000,
     crossOrigin: 'anonymous',
   })
+  const lease = useAudioLease(player)
   const playing = wantPlay && url !== null
+  const bucle = !enJam && (repetir === 'una' || (repetir === 'lista' && tracks.length === 1 && upNext.length === 0 && !manual))
+  useEffect(() => {
+    // Repetir lo resuelve el reproductor, incluso con JS suspendido.
+    // eslint-disable-next-line react-hooks/immutability
+    player.loop = bucle
+  }, [player, bucle])
+  useEffect(() => {
+    if (!playing || mudo) reportarActividadEscucha(false)
+    return () => reportarActividadEscucha(false)
+  }, [player, current?.id, playing, mudo])
   const appActiva = useAppActiva()
   useEspectroAudio(player, current?.videoId, playing && appActiva)
 
@@ -411,12 +432,13 @@ export function MotorAudio() {
   useEffect(() => {
     registerEngine({
       seekTo: (ms) => {
+        if (!lease.active) return
         saltoEnVuelo.current = { objetivoS: ms / 1000, pedidoEn: performance.now() }
         saltar(player, ms / 1000)
       },
     })
     return () => registerEngine(null)
-  }, [player])
+  }, [player, lease])
 
   /*
    * Atenuación por canción.
@@ -469,7 +491,7 @@ export function MotorAudio() {
   useEffect(() => {
     // De control remoto o de espejo no se firma nada: no hay reproductor que
     // alimentar.
-    if (mudo || (HAY_DESCARGAS && !indiceLocalListo && !errorIndiceLocal)) return
+    if (mudo || !wantPlay || (HAY_DESCARGAS && !indiceLocalListo && !errorIndiceLocal)) return
     // Si la veníamos preparando ya está firmada, y encima a medio bajar.
     if (!current || urlOf(current)) return
     /*
@@ -499,22 +521,27 @@ export function MotorAudio() {
     }
     let alive = true
     const id = current.id
-    signedUrl(current.audioPath)
+    const abort = new AbortController()
+    abrirFuenteConReintento(() => signedUrl(current.audioPath), abort.signal)
       .then((next) => alive && remember(id, next))
-      .catch(() => alive && reportError('No se pudo abrir esa canción.'))
+      .catch((causa: unknown) => {
+        if (!alive) return
+        void registrarIncidenciaAudio({ tipo: 'agotado', motivo: mensajeError(causa), enSegundoPlano: AppState.currentState !== 'active' })
+        reportError('No se pudo abrir la canción. Revisá la conexión y tocá reproducir para reintentar.')
+      })
     return () => {
       alive = false
+      abort.abort()
     }
-  }, [current, urlOf, remember, mudo, resolver, indiceLocalListo, errorIndiceLocal])
+  }, [current, urlOf, remember, mudo, wantPlay, resolver, indiceLocalListo, errorIndiceLocal])
 
   usePrecargaCola({ current, proximas, url, player, wantPlay, mudo, remember, olvidar })
 
   /**
    * Pasar a la siguiente, una sola vez por canción.
    *
-   * El final se detecta por dos caminos —el aviso del reproductor y el reloj de
-   * abajo— y los dos pueden llegar casi juntos. Sin esta traba, la cola se
-   * saltearía un tema cada vez que coinciden.
+   * El reproductor puede entregar varios estados de fin para el mismo item.
+   * Esta traba impide que una notificación duplicada saltee una canción.
    */
   const ended = useRef(false)
   const finish = useCallback(() => {
@@ -549,6 +576,7 @@ export function MotorAudio() {
    *
    * Guardando el objeto no hay nada que buscar y no puede confundirse.
    */
+  const medidorEscucha = useMemo(() => crearMedidorEscucha(), [])
   const escuchado = useRef<{ track: PlaylistTrack | null; ms: number; origen: PlaybackOrigin | null }>({
     track: null,
     ms: 0,
@@ -574,9 +602,10 @@ export function MotorAudio() {
       })
     }
     if (previo.track?.id !== current?.id) {
+      medidorEscucha.reiniciar()
       escuchado.current = { track: current, ms: 0, origen: playbackOrigin() }
     }
-  }, [current])
+  }, [current, medidorEscucha])
 
   /*
    * Retomar donde habías dejado, al abrir la app.
@@ -631,6 +660,8 @@ export function MotorAudio() {
        * midió del archivo que tiene abierto; mientras no lo sepa, no se toca la
        * posición, que es lo correcto — ante la duda, seguir donde estaba.
        */
+      const estado = getPlaybackState()
+      if (!lease.active || !estado.wantPlay || (estado.manual ?? estado.tracks[estado.index])?.id !== current?.id) return
       const total = Number.isFinite(player.duration) ? player.duration : 0
       if (total > 0 && player.currentTime >= total - END_EPSILON_S) saltar(player, 0)
       ended.current = false
@@ -651,7 +682,7 @@ export function MotorAudio() {
     }
     const espero = setTimeout(arrancar, espera)
     return () => clearTimeout(espero)
-  }, [url, wantPlay, player, current?.id, jamRev])
+  }, [url, wantPlay, player, lease, current?.id, jamRev])
 
   /*
    * Lo que pasa por fuera de la app: el final de la canción y quién la pausó.
@@ -659,9 +690,8 @@ export function MotorAudio() {
    * **El final.** Este aviso es el único que sirve con la pantalla bloqueada:
    * el reloj de más abajo corre sobre `requestAnimationFrame`, que el sistema
    * congela apenas la app deja de estar a la vista, y la canción terminaba sin
-   * que nadie se enterara — justo con el teléfono guardado, que es cuando menos
-   * se puede hacer algo al respecto. En web no alcanza solo con esto, porque la
-   * implementación web no emite estado en `ended`: ahí sigue mandando el reloj.
+   * que nadie se enterara. El parche web también emite `didJustFinish` en
+   * `ended`, para continuar en pestañas ocultas sin depender del reloj visual.
    *
    * **Quién pausó.** Los botones de la pantalla bloqueada, los auriculares y el
    * auto le hablan al reproductor por abajo, sin pasar por `state/playback`:
@@ -672,6 +702,8 @@ export function MotorAudio() {
    * Solo en nativo: en web lo resuelve `lockScreen` con `mediaSession`.
    */
   const soundingBefore = useRef(false)
+  const presupuesto = useRef<PresupuestoRecuperacion>({ intentos: 0 })
+  useEffect(() => { presupuesto.current = { intentos: 0, posicionMs: getPlaybackState().positionMs } }, [current?.id, wantPlay, mudo])
   useEffect(() => {
     /*
      * Reproductor nuevo, memoria en blanco.
@@ -685,7 +717,53 @@ export function MotorAudio() {
      * ESTE reproductor, así que arranca sin historia.
      */
     soundingBefore.current = false
+    const mismaPista = () => {
+      const actual = getPlaybackState()
+      return lease.active && (actual.manual ?? actual.tracks[actual.index])?.id === current?.id
+    }
+    const sigue = () => mismaPista() && !mudo && !!url && getPlaybackState().wantPlay
+    const vigilancia = crearVigilanteAudio({
+      presupuesto: presupuesto.current,
+      sigue,
+      incidencia: evento => { void registrarIncidenciaAudio({ ...evento, enSegundoPlano: AppState.currentState !== 'active' }) },
+      agotado: () => reportError('No se pudo continuar el audio. Revisá la conexión y tocá reproducir para reintentar. El detalle quedó en Configuración → Diagnóstico de audio.'),
+      recargar: async (posicion, signal) => {
+        if (!current?.audioPath) throw new Error('No se pudo recuperar la fuente de audio')
+        const nueva = await esperarAperturaAudio(() => signedUrl(current.audioPath), signal)
+        if (!sigue() || signal.aborted) return
+        // Reabrir el mismo tema conservando su último segundo, sin avanzar la cola.
+        const objetivoJam = enJam ? jamPosicionObjetivoMs() : null
+        retomarMs.current = objetivoJam ?? posicion
+        soundingBefore.current = false
+        if (nueva === url) {
+          player.replace({ uri: nueva })
+          player.play()
+        } else remember(current.id, nueva)
+      },
+    })
     const sub = player.addListener('playbackStatusUpdate', (status) => {
+      if (!mismaPista()) return
+      reportarActividadEscucha(!mudo && status.playing && status.isLoaded && !status.isBuffering && !status.error)
+      // El parche distingue una pausa explícita de un fallo que también deja
+      // AVPlayer en paused. Cancela la red pendiente antes de cualquier retry.
+      if ((status as typeof status & { didJustPause?: boolean }).didJustPause) {
+        vigilancia.cancelar()
+        soundingBefore.current = false
+        if (!mudo && getPlaybackState().wantPlay) pausaExterna()
+        return
+      }
+      setFuenteEnUso(url)
+      const salto = saltoEnVuelo.current
+      if (salto && (Math.abs(status.currentTime - salto.objetivoS) <= 0.75 || performance.now() - salto.pedidoEn >= 1200)) saltoEnVuelo.current = null
+      const buscando = saltoEnVuelo.current !== null || retomarMs.current !== null
+      escuchado.current.ms += medidorEscucha.medir(status.currentTime * 1000, performance.now(), status.playing && !status.isBuffering, buscando)
+      // En background el progreso proviene sólo de eventos nativos de baja frecuencia.
+      if (AppState.currentState !== 'active' && !status.error && !buscando && Number.isFinite(status.currentTime) && status.isLoaded) {
+        reportProgress(status.currentTime * 1000, status.duration * 1000)
+      }
+      if (vigilancia.recibir(retomarMs.current !== null ? { ...status, currentTime: retomarMs.current / 1000 } : status)) { soundingBefore.current = false; reportCargada(false); return }
+      reportCargada(status.isLoaded && !status.error)
+      if (status.playing && status.isLoaded && !status.error) reportRecuperada()
       if (status.didJustFinish) {
         soundingBefore.current = false
         finish()
@@ -733,8 +811,8 @@ export function MotorAudio() {
       else if (!soundingBefore.current && nowPlaying) reanudacionExterna()
       soundingBefore.current = nowPlaying
     })
-    return () => sub.remove()
-  }, [player, finish])
+    return () => { vigilancia.cancelar(); sub.remove() }
+  }, [player, lease, finish, current?.id, current?.audioPath, url, mudo, remember, enJam, wantPlay, medidorEscucha])
 
   useEffect(() => {
     if (!wantPlay) player.pause()
@@ -871,14 +949,14 @@ export function MotorAudio() {
    * Sin esto, la barra aparecería atrasada hasta el siguiente cuadro.
    */
   useEffect(() => {
-    if (!alaVista || !current) return
+    if (!lease.active || !alaVista || !current) return
     const t = player.currentTime
     if (Number.isFinite(t)) reportProgress(t * 1000, playerTotalS(player, current) * 1000)
     /* Si mientras estuvo atrás una interrupción pausó este aparato dentro de
        un Jam, volver al frente es el momento de reengancharse: el Jam siguió
        sin nosotros y hay que sumarse donde va, no donde quedamos. */
     reanudarTrasInterrupcion()
-  }, [alaVista, current, player])
+  }, [alaVista, current, player, lease])
 
   useEffect(() => {
     if (!playing || !current || !alaVista) {
@@ -888,6 +966,8 @@ export function MotorAudio() {
     }
 
     const tick = () => {
+      const estado = getPlaybackState()
+      if (!lease.active || (estado.manual ?? estado.tracks[estado.index])?.id !== current.id) return
       const t = player.currentTime
       const total = playerTotalS(player, current)
 
@@ -905,11 +985,6 @@ export function MotorAudio() {
       }
 
       if (Number.isFinite(t)) {
-        if (total > 0 && t >= total - END_EPSILON_S) {
-          // Se terminó, y el aviso del reproductor no llegó: es el caso de web.
-          finish()
-          return
-        }
         /*
          * Al store se avisa **diez veces por segundo, no sesenta**.
          *
@@ -925,9 +1000,8 @@ export function MotorAudio() {
          * `PlayerBar`, que lee su reloj cada 200ms de un shared value en vez de
          * suscribirse a esto.
          *
-         * El bucle sigue a sesenta porque el corte de fin de canción —el `if` de
-         * arriba— sí quiere la resolución máxima: es lo que encadena un tema con
-         * el siguiente sin hueco audible.
+         * El bucle sólo anima la interfaz visible. El fin de la canción y
+         * el historial usan eventos del reproductor también en segundo plano.
          */
         /* Al hilo de UI, en cambio, se le avisa **en cada cuadro**: de ahí sale
            el relleno de la barra, que no pasa por React. Ver `posicionSV`. */
@@ -938,34 +1012,22 @@ export function MotorAudio() {
           ultimoAviso.current = ahoraMs
           reportProgress(t * 1000, total * 1000)
         }
-        /*
-         * El tiempo se suma del reloj que ya corre, no de la posición.
-         *
-         * Con la posición, arrastrar la barra hacia adelante sumaría los
-         * segundos que uno **salteó**. Contando el intervalo real entre cuadros
-         * solo suma lo que efectivamente sonó, que es lo que la estadística
-         * dice medir.
-         */
-        const ahora = performance.now()
-        const delta = ahora - (ultimoTick.current || ahora)
-        ultimoTick.current = ahora
-        if (delta > 0 && delta < 1000) escuchado.current.ms += delta
+
       }
       raf.current = requestAnimationFrame(tick)
     }
 
-    ultimoTick.current = 0
     raf.current = requestAnimationFrame(tick)
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current)
     }
-  }, [playing, current, player, finish, alaVista])
+  }, [playing, current, player, lease, alaVista])
   /* La barra dibuja el botón según esto: sin la URL firmada todavía no suena
      nada, por más que la intención de quien escucha sea reproducir. El control
      remoto de un Jam cuenta como cargado con solo tener canción: acá no se
      carga nada — el audio está sonando en el dispositivo del host. */
   useEffect(() => {
-    reportCargada(url !== null || (mudo && current !== null))
+    if (!url || mudo) reportCargada(mudo && current !== null)
   }, [url, mudo, current])
 
   return null

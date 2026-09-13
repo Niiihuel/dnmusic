@@ -1366,6 +1366,11 @@ store.subscribe(() => {
   if (posicionSV.value !== positionMs) posicionSV.value = positionMs
 })
 
+/** Sólo un evento de reproducción confirmada limpia el error anterior. */
+export function reportRecuperada() {
+  if (store.get().error !== null) store.set({ error: null })
+}
+
 export function reportError(message: string) {
   store.set({ error: message, wantPlay: false })
   /*

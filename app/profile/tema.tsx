@@ -1,5 +1,6 @@
+import { AccionSocial } from '../../src/ui/Social'
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
+import { Pressable, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { mensajeError } from '../../src/lib/mensajeError'
 import {
@@ -27,6 +28,7 @@ import { BarraCambiosPerfil } from '../../src/ui/BarraCambiosPerfil'
 import { useSalidaConCambios } from '../../src/ui/useSalidaConCambios'
 import { Superficie } from '../../src/ui/Vitrina'
 import { ICON_COLOR, IconBan, IconCheck, IconPalette } from '../../src/ui/icons'
+import { texto } from '../../src/ui/tipografia'
 
 /** Un color de muestra para los temas «de la tapa», que no tienen uno propio. */
 const TAPA_DE_MUESTRA = '#6B7280'
@@ -150,7 +152,7 @@ export default function ElegirTema() {
     <Hoja medida="contenido" onCerrar={cancelar}>
       {dialogoSalida}
       <View style={{ flexShrink: 1 }}>
-      {delPerfil ? <EncabezadoHoja titulo="Tema del perfil" izquierda={<BotonHoja tipo="cerrar" label="Cerrar editor de tema" onPress={cancelar} />} derecha={global ? <Pressable accessibilityRole="button" onPress={cancelar} disabled={edicion.ocupado}><Text className="text-foreground text-[15px] font-semibold">Listo</Text></Pressable> : undefined} /> : null}
+      {delPerfil ? <EncabezadoHoja titulo="Tema del perfil" izquierda={<BotonHoja tipo="cerrar" label="Cerrar editor de tema" onPress={cancelar} />} derecha={global ? <AccionSocial label="Listo" secundaria expandida={false} onPress={cancelar} disabled={edicion.ocupado} /> : undefined} /> : null}
       <ScrollView
         className="bg-background"
         style={{ flexGrow: 1 }}
@@ -163,10 +165,10 @@ export default function ElegirTema() {
         }}
       >
         <View className="items-center gap-1 px-6">
-          <Text className="text-foreground text-[17px] font-bold">
+          <Text className="text-foreground text-body font-bold">
             {delPerfil ? 'El tema de tu perfil' : 'El tema de esta pieza'}
           </Text>
-          <Text className="text-muted-foreground text-center text-[12px] leading-4">
+          <Text className="text-muted-foreground text-center text-caption1">
             {delPerfil
               ? 'Lo heredan todas las piezas que no eligieron el suyo.'
               : 'Sin tema, hereda el del perfil.'}
@@ -175,13 +177,13 @@ export default function ElegirTema() {
 
         {delPerfil ? (
           <View className="gap-2 px-6" pointerEvents="none">
-            <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">Vista previa</Text>
+            <Text className="text-muted-foreground text-footnote font-semibold uppercase">Vista previa</Text>
             <Superficie colores={coloresDe(elegido, TAPA_DE_MUESTRA)} fondo={null} radius={18}>
               <View className="gap-2 p-5">
-                <Text style={{ color: coloresDe(elegido, TAPA_DE_MUESTRA).texto, fontSize: 17, fontWeight: '700' }}>
+                <Text style={{ color: coloresDe(elegido, TAPA_DE_MUESTRA).texto, fontWeight: '700', ...texto('body') }}>
                   {perfil?.displayName || perfil?.username || 'Tu perfil'}
                 </Text>
-                <Text style={{ color: coloresDe(elegido, TAPA_DE_MUESTRA).secundario, fontSize: 13 }}>
+                <Text style={{ color: coloresDe(elegido, TAPA_DE_MUESTRA).secundario, ...texto('footnote') }}>
                   Así se verán las piezas que heredan el tema de tu perfil.
                 </Text>
               </View>
@@ -191,7 +193,7 @@ export default function ElegirTema() {
 
         {FAMILIAS.map((fila, i) => (
           <View key={fila.titulo} className="gap-2">
-            <Text className="px-6 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+            <Text className="px-6 text-muted-foreground text-footnote font-semibold uppercase">
               {fila.titulo}
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-3 px-6">
@@ -235,7 +237,7 @@ export default function ElegirTema() {
 
         {paleta ? (
           <View className="gap-3 px-6">
-            <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+            <Text className="text-muted-foreground text-footnote font-semibold uppercase">
               Un color a mano
             </Text>
             {/* Dos filas de doce: la de arriba siempre con texto negro, la de
@@ -270,26 +272,8 @@ export default function ElegirTema() {
               {ACABADOS.map((a) => {
                 const activo = acabado === a.id
                 return (
-                  <Pressable
-                    key={a.id}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: activo }}
-                    onPress={() => {
-                      setAcabado(a.id)
-                      if (colorAMano) elegirAMano(colorAMano, a.id)
-                    }}
-                    className={`h-9 items-center justify-center rounded-full px-4 ${
-                      activo ? 'bg-primary' : 'bg-muted active:opacity-80'
-                    }`}
-                  >
-                    <Text
-                      className={`text-[12px] font-semibold ${
-                        activo ? 'text-primary-foreground' : 'text-muted-foreground'
-                      }`}
-                    >
-                      {a.nombre}
-                    </Text>
-                  </Pressable>
+                  <AccionSocial key={a.id} label={a.nombre} selected={activo} secundaria={!activo} expandida={false}
+                    onPress={() => { setAcabado(a.id); if (colorAMano) elegirAMano(colorAMano, a.id) }} />
                 )
               })}
             </View>
@@ -297,33 +281,9 @@ export default function ElegirTema() {
         ) : null}
 
         {!delPerfil ? <View className="flex-row items-center justify-between gap-3 px-6">
-          <Pressable
-            accessibilityRole="button"
-            onPress={cancelar}
-            className="h-11 items-center justify-center rounded-full bg-muted px-5 active:opacity-80"
-          >
-            <Text className="text-foreground text-[14px] font-semibold">Cancelar</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            disabled={guardando || (delPerfil && !cambiado)}
-            onPress={() => void guardar()}
-            className={`h-11 min-w-[120px] items-center justify-center rounded-full px-6 ${
-              delPerfil && !cambiado ? 'bg-muted' : 'bg-primary active:opacity-80'
-            }`}
-          >
-            {guardando ? (
-              <ActivityIndicator color="#121212" />
-            ) : (
-              <Text
-                className={`text-[14px] font-bold ${
-                  delPerfil && !cambiado ? 'text-muted-foreground' : 'text-primary-foreground'
-                }`}
-              >
-                {delPerfil ? 'Guardar' : 'Listo'}
-              </Text>
-            )}
-          </Pressable>
+          <AccionSocial label="Cancelar" secundaria expandida={false} onPress={cancelar} disabled={guardando} />
+          <AccionSocial label={delPerfil ? 'Guardar' : 'Listo'} expandida={false} busy={guardando}
+            disabled={guardando || (delPerfil && !cambiado)} onPress={() => void guardar()} />
         </View> : null}
       </ScrollView>
       {delPerfil && !global ? <BarraCambiosPerfil visible={cambiado} ocupado={guardando} error={error}
@@ -403,7 +363,7 @@ function Muestra({
       <View className="h-4 flex-row items-center gap-1">
         {elegida ? <IconCheck size={11} color={ICON_COLOR.foreground} /> : null}
         <Text
-          className={`text-[11px] font-semibold ${elegida ? 'text-foreground' : 'text-muted-foreground'}`}
+          className={`text-caption2 font-semibold ${elegida ? 'text-foreground' : 'text-muted-foreground'}`}
         >
           {nombre}
         </Text>

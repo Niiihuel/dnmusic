@@ -1,4 +1,5 @@
-import { useState, type RefObject } from 'react'
+import { useImperativeHandle, useRef, useState } from 'react'
+import type { SearchFieldProps } from './SearchField.types'
 import { ActivityIndicator, Pressable, TextInput, View } from 'react-native'
 import { TECLADO_FISICO } from '../lib/teclado'
 import { ES_WEB, Glass, HAY_VIDRIO } from './Glass'
@@ -20,26 +21,6 @@ import { ICON_COLOR, IconClose, IconSearch } from './icons'
  * enfocado de en reposo, y sin el anillo no habría forma de ver dónde está el
  * cursor.
  */
-type Props = {
-  value: string
-  onChangeText: (v: string) => void
-  placeholder?: string
-  /** Compacto para barras laterales con mouse; conserva 44px si el puntero es táctil. */
-  density?: 'regular' | 'compact'
-  accessibilityLabel?: string
-  onSubmit?: () => void
-  autoFocus?: boolean
-  loading?: boolean
-  /**
-   * Para que otra pantalla pueda mandar el cursor acá.
-   *
-   * Lo usa la lista vacía: en vez de tener su propio buscador adentro, apunta
-   * al de arriba, que es el único de la app.
-   */
-  inputRef?: RefObject<TextInput | null>
-  /** Avisa cuándo tiene el cursor: lo mira quien dibuja el «cancelar». */
-  onFocusChange?: (focused: boolean) => void
-}
 
 export function SearchField({
   value,
@@ -52,7 +33,9 @@ export function SearchField({
   onFocusChange,
   density = 'regular',
   accessibilityLabel,
-}: Props) {
+}: SearchFieldProps) {
+  const input = useRef<TextInput>(null)
+  useImperativeHandle(inputRef, () => ({ focus: () => input.current?.focus(), blur: () => input.current?.blur() }), [])
   const [focused, setFocused] = useState(false)
   const compacto = density === 'compact' && TECLADO_FISICO
   const altura = density === 'compact' ? (compacto ? 34 : 44) : 48
@@ -88,7 +71,7 @@ export function SearchField({
     >
       <View style={{ flexShrink: 0 }}><IconSearch size={compacto ? 15 : 18} color={ICON_COLOR.muted} /></View>
       <TextInput
-        ref={inputRef}
+        ref={input}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}

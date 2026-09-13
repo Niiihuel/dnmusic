@@ -2,12 +2,11 @@
   "expo": {
     "name": "dnmusic",
     "slug": "flora",
-    "version": "1.14.0",
+    "version": "1.15.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "dnmusic",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.nihuel.dnmusic",
@@ -85,6 +84,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-web-browser",
+        {
+          "experimentalLauncherActivity": false
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/branding/splash-dnmusic.png",
@@ -111,7 +116,8 @@
       "expo-video",
       "expo-sharing",
       "expo-font",
-      "expo-image"
+      "expo-image",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

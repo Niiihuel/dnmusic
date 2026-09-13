@@ -124,13 +124,13 @@ export function FilaSostener({
           ultima ? '' : 'border-b border-muted'
         }`}
       >
-        <Text className={`text-foreground ${compacto ? 'text-[15px]' : 'text-[17px]'}`}>{rotulo}</Text>
+        <Text className={`text-foreground ${compacto ? 'text-subheadline' : 'text-body'}`}>{rotulo}</Text>
         {pista ? (
-          <Text className={`text-muted-foreground ${compacto ? 'text-[12px] leading-4' : 'text-[13px] leading-[18px]'}`}>
+          <Text className={`text-muted-foreground ${compacto ? 'text-caption1' : 'text-footnote leading-[18px]'}`}>
             Mantené apretado para confirmar
           </Text>
         ) : detalle ? (
-          <Text className={`text-muted-foreground ${compacto ? 'text-[12px] leading-4' : 'text-[13px] leading-[18px]'}`}>{detalle}</Text>
+          <Text className={`text-muted-foreground ${compacto ? 'text-caption1' : 'text-footnote leading-[18px]'}`}>{detalle}</Text>
         ) : null}
       </View>
     </Pressable>

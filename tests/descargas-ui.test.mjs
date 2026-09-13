@@ -90,7 +90,7 @@ function component(path,name,globals={}) {
  const fn=source.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name)
  const code=ts.transpileModule(`export ${fn.getText(source).replace(/^export default /,'').replace(/^export /,'')}`,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText
  const exports={}
- vm.runInNewContext(code,{exports,require:()=>({jsx,jsxs:jsx}),ICON_COLOR:{muted:'gray',foreground:'white'},...Object.fromEntries(['Menu','Text','View','Pressable','IconDownloaded','IconDownload'].map(n=>[n,n])),...globals})
+ vm.runInNewContext(code,{exports,require:()=>({jsx,jsxs:jsx}),ICON_COLOR:{muted:'gray',foreground:'white'},...Object.fromEntries(['IconButton','Menu','Text','View','Pressable','IconDownloaded','IconDownload'].map(n=>[n,n])),...globals})
  return exports[name]
 }
 test('encabezado descarga en escritorio/nativo y abre gestión con archivos existentes, sin borrado implícito', () => {
@@ -98,7 +98,7 @@ test('encabezado descarga en escritorio/nativo y abre gestión con archivos exis
  const render=component('src/ui/PlaylistView.tsx','BotonDescarga',{HAY_DESCARGAS:true})
  const props={total:2,bajado:{listas:0,bajando:0,progreso:0},onPress:()=>presses++,opciones:[{label:'Descargar para escuchar sin conexión'}]}
  const first=render(props)
- assert.equal(first.type,'Pressable');first.props.onPress();assert.equal(presses,1)
+ assert.equal(first.type,'IconButton');first.props.onPress();assert.equal(presses,1)
  const options=[{label:'Pausar descargas'},{label:'Quitar descargas terminadas'}]
  const next=render({...props,bajado:{listas:1,bajando:1,progreso:0.6},opciones:options})
  assert.equal(next.type,'Menu');assert.equal(next.props.items,options)
@@ -124,7 +124,7 @@ test('fila pendiente conserva menú y desactiva reproducción; una lista permite
 
 test('gestor reproduce la cola filtrada sin red y limpiar caché llama sólo la API temporal', () => {
  const f=fixture(), played=[], calls=[]
- let filter='', width=390, loaded=true, error=null, platform='ios'
+ let filter='', width=390, loaded=true, error=null, platform='android'
  const items={a:download('a'),b:download('b','lista',true),c:download('c','error')}
  const globals={
   ...f.api, HAY_DESCARGAS:true,
@@ -140,7 +140,7 @@ test('gestor reproduce la cola filtrada sin red y limpiar caché llama sólo la 
  const render=component('app/ajustes/descargas.tsx','Descargas',globals)
  let ui=nodes(render())
  assert.equal(ui.find(n=>n.type==='StackScreen').props.options.presentation,'formSheet')
- for (const os of ['ios','web']) {
+ for (const os of ['android','web']) {
   platform=os;ui=nodes(render())
   const back=ui.filter(n=>n.props?.label==='Volver a Ajustes')
   assert.equal(back.length,1,'una única salida visible en móvil')
@@ -151,7 +151,7 @@ test('gestor reproduce la cola filtrada sin red y limpiar caché llama sólo la 
   const searchHeader=nodes(ui.find(n=>n.type==='SectionList').props.ListHeaderComponent)
   assert.ok(searchHeader.some(n=>n.props?.label==='Reproducir disponibles sin conexión'))
  }
- platform='ios';ui=nodes(render())
+ platform='android';ui=nodes(render())
  assert.equal(ui.filter(n=>n.type==='Hoja'&&n.props.titulo==='Descargas y caché').length,1)
  ui.find(n=>n.props?.label==='Reproducir disponibles sin conexión').props.onPress()
  assert.deepEqual(played[0][0].map(t=>t.videoId),['a','b'])
@@ -250,4 +250,34 @@ test('Ajustes expone precarga sin soporte de descargas y reserva controles manua
   assert.equal(calls.length,supported?2:0)
   if(!supported) assert.match(exports.categoria.bloques.props.pie,/temporalmente durante esta sesión/)
  }
+})
+
+test('iOS: List único conserva cola filtrada, menús de pendientes, límite y limpieza sólo de caché', () => {
+ const f=fixture(),played=[],calls=[];let filtro=''
+ const items={a:download('a'),b:download('b','lista',true),c:download('c','error')}
+ const globals={...f.api,HAY_DESCARGAS:true,Platform:{OS:'ios'},Fragment:'Fragment',
+  ...Object.fromEntries(['ActivityIndicator','SafeAreaView','BotonLateral','BotonVolver','Text','View','Image','ListaAjustes','GrupoAjustes','FilaInterruptor','FilaAccion','FilaDato','FilaOpciones','FilaAjuste','SearchField','IconPlay','IconWifi','IconDisk','IconMusic','Menu'].map(n=>[n,n])),
+  ICON_COLOR:{foreground:'white',muted:'gray'},artworkSource:()=>null,Stack:{Screen:'StackScreen'},useRouter:()=>({}),
+  useAjustes:()=>({soloWifi:true,precargaAutomatica:true,precargaDatos:false}),useDescargas:()=>({items,esperandoWifi:false,esperandoRed:false,limiteCacheMB:250,cargado:true,error:null}),
+  useMemo:fn=>fn(),useState:()=>[filtro,v=>filtro=v],useWindowDimensions:()=>({width:1024}),usePiso:()=>100,usePisoHoja:()=>30,
+  playQueue:(...args)=>played.push(args),formatoBytes:bytes=>`${bytes} bytes`,volver(){},avisar(){},setSoloWifi(){},setPrecargaAutomatica(){},setPrecargaDatos(){},reanudarDescargas(){},
+  limpiarCache:()=>calls.push('limpiarCache'),quitarDescarga:key=>calls.push(['quitar',key]),setLimiteCacheMB:n=>calls.push(['limite',n]),
+ }
+ const render=component('app/ajustes/descargas.tsx','Descargas',globals)
+ let ui=nodes(render())
+ assert.equal(ui.filter(n=>n.type==='ListaAjustes').length,1)
+ assert.equal(ui.some(n=>n.type==='SectionList'||n.type==='ScrollView'),false)
+ ui.find(n=>n.props?.rotulo==='Reproducir disponibles sin conexión').props.onPress()
+ assert.deepEqual(played[0][0].map(t=>t.videoId),['a','b'])
+ assert.equal(ui.find(n=>n.type==='FilaAjuste'&&n.props.rotulo==='c').props.disabled,true)
+ const menu=ui.find(n=>n.type==='FilaOpciones'&&n.props.rotulo==='Opciones de c')
+ menu.props.onElegir(menu.props.opciones.find(o=>o.label==='Reintentar descarga').value)
+ assert.deepEqual(f.calls,[['reintentarDescarga','c']])
+ ui.find(n=>n.props?.rotulo==='Limpiar caché temporal').props.onPress()
+ assert.deepEqual(calls,['limpiarCache'])
+ ui.find(n=>n.props?.rotulo==='Límite de caché').props.onElegir(1024)
+ assert.deepEqual(calls.at(-1),['limite',1024])
+ ui.find(n=>n.type==='SearchField').props.onChangeText('b')
+ ui=nodes(render());ui.find(n=>n.props?.rotulo==='Reproducir disponibles sin conexión').props.onPress()
+ assert.deepEqual(played.at(-1)[0].map(t=>t.videoId),['b'])
 })

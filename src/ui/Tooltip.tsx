@@ -1,11 +1,12 @@
 import { useEffect } from 'react'
-import { Platform, StyleSheet, Text, View } from 'react-native'
+import { Platform, Text, View } from 'react-native'
 import {
   cerrarTooltip,
   retenerTooltip,
   soltarTooltip,
   useTooltip,
 } from '../state/tooltip'
+import { CapaTooltip } from './CapaTooltip'
 import { SuperficieTooltip } from './SuperficieTooltip'
 
 /**
@@ -65,9 +66,9 @@ export function Tooltip() {
   if (!tip) return null
 
   return (
-    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+    <CapaTooltip>
       <Rotulo tip={tip} />
-    </View>
+    </CapaTooltip>
   )
 }
 
@@ -80,6 +81,7 @@ function Rotulo({ tip }: { tip: { texto: string; x: number; y: number; w: number
 
   return (
     <View
+      pointerEvents="auto"
       onPointerEnter={retenerTooltip}
       onPointerLeave={soltarTooltip}
       style={{
@@ -92,7 +94,7 @@ function Rotulo({ tip }: { tip: { texto: string; x: number; y: number; w: number
       <SuperficieTooltip
         style={{ width: '100%', paddingHorizontal: 10, paddingVertical: 6 }}
       >
-        <Text className="text-foreground text-center text-[12px]" numberOfLines={1}>
+        <Text className="text-foreground text-center text-caption1" numberOfLines={1}>
           {tip.texto}
         </Text>
       </SuperficieTooltip>

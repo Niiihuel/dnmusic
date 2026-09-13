@@ -83,10 +83,10 @@ export function AvisoActualizacion() {
             onPress={() => router.push('/ajustes/novedades')}
             className="min-w-0 flex-1 active:opacity-70"
           >
-            <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
+            <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>
               Actualización lista
             </Text>
-            <Text className="text-muted-foreground text-[12px] leading-4" numberOfLines={1}>
+            <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
               {aviso.version} · Se instala al cerrar.
             </Text>
           </Pressable>
@@ -97,7 +97,7 @@ export function AvisoActualizacion() {
             onPress={instalarActualizacion}
             className="min-h-11 justify-center rounded-full bg-primary px-3.5 active:opacity-80"
           >
-            <Text className="text-primary-foreground text-[13px] font-semibold">Reiniciar</Text>
+            <Text className="text-primary-foreground text-footnote font-semibold">Reiniciar</Text>
           </Pressable>
 
           <Pressable

@@ -63,6 +63,7 @@ import { EMOJIS } from './Reacciones'
 import { Vitrina } from './Vitrina'
 import { useRouter } from 'expo-router'
 import { abrirArtista } from '../state/shell'
+import { texto } from './tipografia'
 
 /**
  * El fondo del perfil: la imagen entera, detrás de todo.
@@ -288,7 +289,7 @@ function FondoClip({ uri, animado }: { uri: string; animado: boolean }) {
   if (fallo) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-        <Text accessibilityRole="alert" style={{ color: '#fff', fontSize: 14, textAlign: 'center' }}>No se pudo reproducir el video de fondo.</Text>
+        <Text accessibilityRole="alert" style={{ color: '#fff', textAlign: 'center', ...texto('subheadline') }}>No se pudo reproducir el video de fondo.</Text>
       </View>
     )
   }
@@ -366,13 +367,13 @@ export function Identidad({
         />
         <View className="min-w-0 flex-1 items-start gap-1">
           <PlacaDeNombre id={placa} animado={animado}>
-            <Text className="text-foreground text-[32px] font-bold" numberOfLines={1}>
+            <Text className="text-foreground text-title1 font-bold" numberOfLines={1}>
               {nombre}
             </Text>
-            <Text className="text-muted-foreground text-[14px] mt-1" numberOfLines={1}>@{usuario}</Text>
+            <Text className="text-muted-foreground text-subheadline mt-1" numberOfLines={1}>@{usuario}</Text>
           </PlacaDeNombre>
           {bio.trim() ? (
-            <Text className="text-foreground text-[15px] leading-6" numberOfLines={2}>
+            <Text className="text-foreground text-subheadline leading-6" numberOfLines={2}>
               {bio}
             </Text>
           ) : null}
@@ -394,15 +395,15 @@ export function Identidad({
       />
       <PlacaDeNombre id={placa} animado={animado}>
         <View className={`gap-0.5 ${centrado ? 'items-center' : ''}`}>
-          <Text className="text-foreground text-[26px] font-bold" numberOfLines={1}>
+          <Text className="text-foreground text-title2 font-bold" numberOfLines={1}>
             {nombre}
           </Text>
-          <Text className="text-muted-foreground text-[14px]" numberOfLines={1}>@{usuario}</Text>
+          <Text className="text-muted-foreground text-subheadline" numberOfLines={1}>@{usuario}</Text>
         </View>
       </PlacaDeNombre>
       {bio.trim() ? (
         <Text
-          className={`text-foreground text-[15px] leading-6 ${centrado ? 'text-center' : ''}`}
+          className={`text-foreground text-subheadline leading-6 ${centrado ? 'text-center' : ''}`}
         >
           {bio}
         </Text>
@@ -491,7 +492,7 @@ export function Resumen({ ownerId, listas, canciones, vitrinas = null, desde, si
   return <View testID="estadisticas-perfil" style={{ width: '100%', maxWidth: 360, alignSelf: 'center', paddingBottom: enmarcado ? 16 : 0 }}>
     <MarcoContenidoDiscord id={marcoPerfil} animado={animado}>
       <View style={{ gap: 24, ...(enmarcado ? { padding: 22, borderRadius: 16, backgroundColor: 'rgba(20,20,24,0.92)', minHeight: 380 } : {}) }}>
-        <Text accessibilityRole="header" style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>Estadísticas</Text>
+        <Text accessibilityRole="header" style={{ color: '#fff', fontWeight: '600', ...texto('title3') }}>Estadísticas</Text>
         {sinEscucha ? null : <>
           <Dato rotulo="Minutos escuchados" valor={stats?.minutos ?? null} destacado />
           {stats?.artistaTop ? <Dato rotulo="Más escuchado" valor={stats.artistaTop} detalle={`${stats.minutosArtistaTop} min`} /> : null}
@@ -524,7 +525,7 @@ export function Dato({
   return (
     <View className="gap-1">
       <Text
-        className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]"
+        className="text-muted-foreground text-footnote font-semibold uppercase"
         style={sombra}
       >
         {rotulo}
@@ -534,7 +535,7 @@ export function Dato({
             sé todavía» es otra cosa. */}
         <Text
           className={`text-foreground font-semibold tabular-nums ${
-            destacado ? 'text-[34px] leading-[38px]' : 'text-[22px] leading-[26px]'
+            destacado ? 'text-large-title leading-[38px]' : 'text-title2 leading-[26px]'
           }`}
           numberOfLines={1}
           style={sombra}
@@ -542,7 +543,7 @@ export function Dato({
           {valor === null ? '—' : valor}
         </Text>
         {detalle ? (
-          <Text className="text-muted-foreground text-[13px] tabular-nums" style={sombra}>
+          <Text className="text-muted-foreground text-footnote tabular-nums" style={sombra}>
             {detalle}
           </Text>
         ) : null}

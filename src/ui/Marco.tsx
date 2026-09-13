@@ -130,27 +130,6 @@ export const MARCOS = [
 export type MarcoId = (typeof MARCOS)[number]['id']
 
 /**
- * Los que abren la vidriera: los animados al estilo Discord y los clásicos
- * con más personalidad, mezclados para que la primera pantalla muestre de
- * todo un poco. Es una lista a mano, como la de «destacados» de cualquier
- * tienda, y no una regla.
- */
-export const DESTACADOS: MarcoId[] = [
-  'pixeles',
-  'murcielagos',
-  'neon',
-  'invasor',
-  'corazones',
-  'orejas',
-  'planetas',
-  'velas',
-  'llamas',
-  'aurora',
-  'corona',
-  'vinilo',
-]
-
-/**
  * El marco alrededor de un hueco cuadrado de `size` px.
  *
  * Se dibuja **encima y por fuera** con posición absoluta: quien lo usa apila

@@ -6,8 +6,8 @@ import babel from '@babel/core'
 import traverseModule from '@babel/traverse'
 import generateModule from '@babel/generator'
 
-test('las pestañas conservan las medidas después de que iOS libera el evento', () => {
-  const ast = babel.parseSync(readFileSync('src/ui/PestanasPerfil.tsx', 'utf8'), {
+test('el selector compartido conserva las medidas después de liberar el evento', () => {
+  const ast = babel.parseSync(readFileSync('src/ui/SelectorPestanasPerfil.tsx', 'utf8'), {
     configFile: false,
     babelrc: false,
     parserOpts: { plugins: ['typescript', 'jsx'] },

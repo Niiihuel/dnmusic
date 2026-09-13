@@ -1,5 +1,8 @@
+import { BotonSuperficie } from './BotonSuperficie'
+import { NativeMediaRow } from '../../modules/media-controls'
+import { IconButton } from './IconButton'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FlatList, Pressable, Text, View } from 'react-native'
+import { FlatList, Text, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import {
   listTracks,
@@ -819,7 +822,9 @@ function FilaAgregarMusica({
   const suelto = useAngosto()
   return (
     <View className={`pt-2 ${suelto ? 'px-3' : 'px-6'}`}>
-      <Pressable
+      {NativeMediaRow ? <NativeMediaRow title="Agregar música" subtitle="A esta lista" symbol="plus" label="Agregar música a la lista"
+        onActivate={onPress} style={{ height: 68, width: '100%' }} /> : (
+      <BotonSuperficie
         accessibilityRole="button"
         accessibilityLabel="Agregar música a la lista"
         onPress={onPress}
@@ -831,11 +836,12 @@ function FilaAgregarMusica({
         >
           <IconPlus size={suelto ? 22 : 18} color={ICON_COLOR.foreground} />
         </View>
-        <Text className={`text-foreground ${suelto ? 'text-[16px]' : 'text-[14px]'}`}>
+        <Text className={`text-foreground ${suelto ? 'text-callout' : 'text-subheadline'}`}>
           Agregar música
         </Text>
-      </Pressable>
-      <Text className="px-2 pt-3 text-muted-foreground text-[13px]">
+      </BotonSuperficie>
+      )}
+      <Text className="px-2 pt-3 text-muted-foreground text-footnote">
         {total} {total === 1 ? 'canción' : 'canciones'}
         {totalMs > 0 ? `, ${formatLength(totalMs)}` : ''}
       </Text>
@@ -895,7 +901,6 @@ function Header({
   const cover = useCoverSize()
   const inline = useNombreInline()
   /* Los rótulos de los controles nombran su acción al pasar el cursor. */
-  const tipPlay = useConTooltip(playing ? 'Pausar' : 'Reproducir')
   const tipBuscar = useConTooltip(buscando ? 'Cerrar la búsqueda' : 'Buscar en la lista')
 
 
@@ -927,7 +932,7 @@ function Header({
         image={
           /* La portada es el botón para cambiarla: al pasar el cursor se
              oscurece y aparece el ícono, como el avatar del perfil. */
-          <Pressable
+          <BotonSuperficie
             accessibilityRole="button"
             accessibilityLabel="Cambiar la portada"
             onPress={onPickCover}
@@ -941,30 +946,19 @@ function Header({
                 <IconImage size={26} color={ICON_COLOR.foreground} />
               </View>
             ) : null}
-          </Pressable>
+          </BotonSuperficie>
         }
         title={<TituloNombreLista nombre={playlist.name} editor={editorNombre} />}
         actions={inline && editorNombre.borrador ? <AccionesNombreLista editor={editorNombre} /> :
           <>
-            <Pressable
-              {...tipPlay.gestos}
-              accessibilityRole="button"
-              accessibilityLabel={playing ? 'Pausar' : 'Reproducir la lista'}
-              onPress={onPlay}
-              disabled={total === 0}
-              className={`h-14 w-14 items-center justify-center rounded-full ${
-                total === 0 ? 'bg-muted' : 'bg-primary active:opacity-80'
-              }`}
-            >
-              {playing ? (
+            <IconButton label={playing ? 'Pausar' : 'Reproducir la lista'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={onPlay} disabled={total === 0} lado={56} size={20} variant="primary" icon={playing ? (
                 <IconPause
                   size={20}
                   color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
                 />
               ) : (
                 <IconPlay size={20} color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary} />
-              )}
-            </Pressable>
+              )} />
             {/*
              * Lineal o aleatorio, al lado de reproducir.
              *
@@ -1028,14 +1022,13 @@ function BotonDescarga({ total, bajado, onPress, opciones }: {
   const completa = total > 0 && bajado.listas === total
   const enCurso = bajado.bajando > 0
   const contenido = enCurso
-    ? <Text className="text-foreground text-[11px] font-semibold tabular-nums">{Math.round(bajado.progreso * 100)}%</Text>
+    ? <Text className="text-foreground text-caption2 font-semibold tabular-nums">{Math.round(bajado.progreso * 100)}%</Text>
     : completa ? <IconDownloaded size={19} color={ICON_COLOR.foreground} /> : <IconDownload size={19} color={ICON_COLOR.muted} />
   const gestionar = opciones.some(o => o.label !== 'Descargar para escuchar sin conexión')
   if (gestionar) return <Menu label="Opciones de descarga de la lista" items={opciones}
     trigger={<View className="h-11 w-11 items-center justify-center">{contenido}</View>} />
-  return <Pressable accessibilityRole="button" accessibilityLabel="Descargar para escuchar sin conexión"
-    accessibilityState={{ disabled: total === 0 }} disabled={total === 0} onPress={onPress}
-    className="h-11 w-11 items-center justify-center rounded-full active:bg-muted">{contenido}</Pressable>
+  return <IconButton label="Descargar para escuchar sin conexión" symbol="arrow.down.circle"
+    disabled={total === 0} onPress={onPress} icon={contenido} size={19} muted />
 }
 
 /**
@@ -1053,7 +1046,7 @@ function MarcaDescarga({ descarga }: { descarga: DescargaUI | undefined }) {
       {descarga.estado === 'lista' ? (
         <IconDownloaded size={13} color={ICON_COLOR.muted} />
       ) : descarga.estado === 'bajando' ? (
-        <Text className="text-muted-foreground text-[10px] tabular-nums">
+        <Text className="text-muted-foreground text-caption2 tabular-nums">
           {Math.round(descarga.progreso * 100)}%
         </Text>
       ) : (

@@ -49,3 +49,30 @@ sigue apagado en local a propósito: sus credenciales viven sólo en Supabase.
 
 Referencias: [Supabase Identity Linking](https://supabase.com/docs/guides/auth/auth-identity-linking)
 y [configuración de Auth](https://supabase.com/docs/reference/api/v1-update-auth-service-config).
+
+## Cliente con acceso exclusivo por Google
+
+Desde esta revisión, la pantalla pública de acceso ofrece solo Google. Las
+sesiones antiguas siguen vigentes y mantienen esta opción de vinculación en
+Configuración. Conviene completar la vinculación antes de cerrar una sesión
+antigua: Google con otra identidad no recupera por sí solo las listas de esa
+cuenta. No se eliminaron identidades ni se cambiaron cuentas remotas.
+
+## Invitación al entrar
+
+Las sesiones aprobadas sin identidad Google reciben una invitación en Inicio.
+`AvisoVincularGoogle` confirma el usuario con `auth.getUser()` antes de abrirla:
+no aparece con Google conectado, una respuesta de otra cuenta o un error de Auth.
+Se ofrece una vez por sesión de la app y vuelve a habilitarse al cambiar de
+cuenta o cerrar sesión. «Más tarde» permite seguir usando la cuenta y completar
+la vinculación desde Configuración. Las novedades y esta invitación no se
+superponen. Cerrar la hoja cancela una espera de Google pendiente.
+
+La invitación reutiliza `ConectarGoogle` y `linkIdentity`; sólo se cierra por
+éxito cuando Google está confirmado en el UUID original. No permite recuperar
+una cuenta antigua cuya sesión ya se haya cerrado sin vincular Google.
+
+El retorno de escritorio muestra el logo original en PNG transparente, fondo
+y texto centrado, sin tarjeta. El recurso va incluido en el instalador y se
+inserta como imagen `data:` porque el servidor loopback se cierra al devolver
+el código. El HTML no muestra parámetros de OAuth ni carga recursos externos.

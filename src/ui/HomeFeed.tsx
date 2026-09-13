@@ -1,8 +1,8 @@
+import { BotonSuperficie } from './BotonSuperficie'
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import {
   Image,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -252,7 +252,7 @@ export function HomeFeed({
             la del título del panel. */}
         <Text
           className={`px-6 text-foreground font-bold tracking-[-0.4px] ${
-            grande ? 'text-[28px]' : 'text-[34px]'
+            grande ? 'text-title1' : 'text-large-title'
           }`}
         >
           Inicio
@@ -387,13 +387,13 @@ function Encabezado({
   const texto = (
     <View className="min-w-0 flex-1 gap-0.5">
       <View className="flex-row items-center gap-1.5">
-        <Text className="shrink text-foreground text-[20px] font-bold" numberOfLines={1}>
+        <Text className="shrink text-foreground text-title3 font-bold" numberOfLines={1}>
           {titulo}
         </Text>
         {onPress ? <IconChevronRight size={17} color={ICON_COLOR.muted} /> : null}
       </View>
       {detalle ? (
-        <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+        <Text className="text-muted-foreground text-footnote" numberOfLines={1}>
           {detalle}
         </Text>
       ) : null}
@@ -401,14 +401,14 @@ function Encabezado({
   )
   if (!onPress) return <View className="px-6">{texto}</View>
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="button"
       accessibilityLabel={`Ver todo: ${titulo}`}
       onPress={onPress}
       className="flex-row items-center self-start px-6 active:opacity-70"
     >
       {texto}
-    </Pressable>
+    </BotonSuperficie>
   )
 }
 
@@ -525,7 +525,7 @@ function TarjetaCuadrada({
 }) {
   const [over, setOver] = useState(false)
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
@@ -541,16 +541,16 @@ function TarjetaCuadrada({
         {tapa ?? <IconMusic size={26} color={ICON_COLOR.muted} />}
       </View>
       <View className="gap-0.5">
-        <Text className="text-foreground text-[14px] font-semibold" numberOfLines={2}>
+        <Text className="text-foreground text-subheadline font-semibold" numberOfLines={2}>
           {titulo}
         </Text>
         {detalle ? (
-          <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+          <Text className="text-muted-foreground text-footnote" numberOfLines={1}>
             {detalle}
           </Text>
         ) : null}
       </View>
-    </Pressable>
+    </BotonSuperficie>
   )
 }
 
@@ -623,21 +623,20 @@ function SongRow({
       onPointerLeave={() => setOver(false)}
       className={`flex-row items-center gap-3 rounded-lg p-1.5 ${over ? 'bg-muted' : ''}`}
     >
-      <Pressable
+      <BotonSuperficie
         accessibilityRole="button"
         accessibilityLabel={isCurrent && wantPlay ? `Pausar ${item.title}` : `Reproducir ${item.title}`}
         /* Si ya es la que suena, tocarla pausa o sigue. Antes volvía a
            resolverla y arrancaba de cero, y no había forma de pausar desde
            acá: había que ir hasta la barra de abajo. */
         onPress={() => (isCurrent ? togglePlayback() : onPlay())}
-        onLongPress={Platform.OS === 'ios' && menu.length ? () => {} : undefined}
         delayLongPress={500}
         accessibilityHint="Mantené apretado para ver las opciones"
         className="min-w-0 flex-1 flex-row items-center gap-3"
       >
         {/* El puesto, apagado y tabular: el número acompaña, la tapa manda. */}
         {puesto !== undefined ? (
-          <Text className="w-6 text-center text-muted-foreground text-[15px] font-semibold tabular-nums">
+          <Text className="w-6 text-center text-muted-foreground text-subheadline font-semibold tabular-nums">
             {puesto}
           </Text>
         ) : null}
@@ -652,16 +651,16 @@ function SongRow({
         </View>
 
         <View className="min-w-0 flex-1 gap-0.5">
-          <Text className="text-foreground text-[15px]" numberOfLines={1}>
+          <Text className="text-foreground text-subheadline" numberOfLines={1}>
             {item.title}
           </Text>
           {item.subtitle ? (
-            <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+            <Text className="text-muted-foreground text-footnote" numberOfLines={1}>
               {item.subtitle}
             </Text>
           ) : null}
         </View>
-      </Pressable>
+      </BotonSuperficie>
 
       {/* Los tres puntos siguen disponibles para abrir las mismas opciones con un toque. */}
       <View className="w-8 items-center">
@@ -840,7 +839,7 @@ function TarjetaDestacada({
 }) {
   const [over, setOver] = useState(false)
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="button"
       accessibilityLabel={`${tarjeta.motivo}: ${tarjeta.titulo}`}
       onPress={tarjeta.onPress}
@@ -871,21 +870,21 @@ function TarjetaDestacada({
       <View className="absolute inset-x-0 bottom-0 flex-row items-end gap-3 p-4">
         <View className="min-w-0 flex-1 gap-0.5">
           <Text
-            className="text-[12px] font-semibold"
+            className="text-caption1 font-semibold"
             numberOfLines={1}
             style={{ color: 'rgba(255,255,255,0.72)' }}
           >
             {tarjeta.motivo}
           </Text>
           <Text
-            className="text-[18px] font-bold leading-[22px]"
+            className="text-title3 font-bold"
             numberOfLines={2}
             style={{ color: '#fff', textShadowColor: 'rgba(0,0,0,0.45)', textShadowRadius: 6 }}
           >
             {tarjeta.titulo}
           </Text>
           <Text
-            className="text-[13px] leading-[17px]"
+            className="text-footnote leading-[17px]"
             numberOfLines={2}
             style={{ color: 'rgba(255,255,255,0.8)' }}
           >
@@ -894,7 +893,7 @@ function TarjetaDestacada({
         </View>
         {tarjeta.suena ? <RedondelDePlay sonando={sonando} /> : null}
       </View>
-    </Pressable>
+    </BotonSuperficie>
   )
 }
 
@@ -1180,7 +1179,7 @@ function TarjetaConNombre({
 }) {
   const [over, setOver] = useState(false)
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="button"
       accessibilityLabel={sonando ? `Pausar ${nombre}` : `Reproducir ${nombre}`}
       onPress={onPress}
@@ -1210,7 +1209,7 @@ function TarjetaConNombre({
         <View className="absolute inset-x-0 bottom-0 flex-row items-end gap-2 p-3">
           <Text
             numberOfLines={2}
-            className="min-w-0 flex-1 text-[16px] font-bold leading-[19px]"
+            className="min-w-0 flex-1 text-callout font-bold leading-[19px]"
             style={{ color: '#fff', textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 6 }}
           >
             {nombre}
@@ -1218,10 +1217,10 @@ function TarjetaConNombre({
           <RedondelDePlay sonando={sonando} lado={34} />
         </View>
       </View>
-      <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+      <Text className="text-muted-foreground text-footnote" numberOfLines={1}>
         {detalle}
       </Text>
-    </Pressable>
+    </BotonSuperficie>
   )
 }
 
@@ -1287,7 +1286,7 @@ function TarjetaArtista({
   onPress?: () => void
 }) {
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="button"
       accessibilityLabel={nombre}
       onPress={onPress}
@@ -1308,10 +1307,10 @@ function TarjetaArtista({
           <IconMusic size={26} color={ICON_COLOR.muted} />
         )}
       </View>
-      <Text className="text-center text-foreground text-[14px] font-semibold" numberOfLines={2}>
+      <Text className="text-center text-foreground text-subheadline font-semibold" numberOfLines={2}>
         {nombre}
       </Text>
-    </Pressable>
+    </BotonSuperficie>
   )
 }
 
@@ -1415,7 +1414,7 @@ function GeneroCard({
   const [over, setOver] = useState(false)
   const alto = Math.round(width * GENERO_RATIO)
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="button"
       accessibilityLabel={genero.name}
       onPress={onPress}
@@ -1446,13 +1445,13 @@ function GeneroCard({
         />
         <Text
           numberOfLines={1}
-          className="absolute bottom-2.5 left-3 right-3 text-foreground text-[15px] font-bold"
+          className="absolute bottom-2.5 left-3 right-3 text-foreground text-subheadline font-bold"
           style={{ textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 6 }}
         >
           {genero.name}
         </Text>
       </View>
-    </Pressable>
+    </BotonSuperficie>
   )
 }
 
@@ -1630,10 +1629,10 @@ function CabeceraDePagina({
     <View className="flex-row items-center gap-3 pb-4">
       <BotonVolver label="Volver a la portada" onPress={onBack} />
       <View className="min-w-0 flex-1">
-        <Text className="text-foreground text-2xl font-bold" numberOfLines={1}>
+        <Text className="text-foreground text-title2 font-bold" numberOfLines={1}>
           {titulo}
         </Text>
-        {detalle ? <Text className="text-muted-foreground text-xs">{detalle}</Text> : null}
+        {detalle ? <Text className="text-muted-foreground text-caption1">{detalle}</Text> : null}
       </View>
     </View>
   )

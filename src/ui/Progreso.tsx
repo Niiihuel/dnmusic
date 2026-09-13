@@ -24,7 +24,7 @@ export function BarraDeProgreso({ valor, rotulo }: { valor: number; rotulo?: str
         />
       </View>
       {rotulo ? (
-        <Text className="text-muted-foreground text-[12px] tabular-nums">{rotulo}</Text>
+        <Text className="text-muted-foreground text-caption1 tabular-nums">{rotulo}</Text>
       ) : null}
     </View>
   )

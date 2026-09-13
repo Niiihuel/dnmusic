@@ -141,32 +141,71 @@ monocromo. Si en algún momento molesta, alcanza con darle un tono al token
 
 ## Tipografía
 
-Las fuentes propias de Spotify (SpotifyMixUI / CircularSp) son licenciadas, así
-que se usa la pila del sistema, que en iOS resuelve a **SF Pro** — la más cercana
-en carácter a Circular.
+Se usa la pila del sistema, que en iOS y en macOS resuelve a **SF Pro**. Y la
+escala es **la de iOS, con sus once estilos**, medida del UI Kit oficial de
+Apple: vive en `src/ui/apple.json`, de donde la leen los dos lados —
+`tailwind.config.js` arma las clases y `src/ui/tipografia.ts` la sirve a los
+`Animated.*`, que no pueden usar `className`.
 
-| Rol | Tamaño | Peso |
-|-----|--------|------|
-| Título de pantalla | 24px | 700 |
-| Encabezado | 18px | 600 |
-| Cuerpo | 16px | 400 |
-| Botón | 14px | 600, versalitas con `letter-spacing: 1.4px` |
-| Etiqueta / metadato | 14px | 400 |
-| Fino | 12px | 400 |
+| Clase | Estilo | Tamaño / interlineado | Tracking |
+|-------|--------|----------------------|----------|
+| `text-large-title` | Large Title | 34 / 41 | +0.40 |
+| `text-title1` | Title 1 | 28 / 34 | +0.38 |
+| `text-title2` | Title 2 | 22 / 28 | −0.26 |
+| `text-title3` | Title 3 | 20 / 25 | −0.45 |
+| `text-headline` | Headline | 17 / 22 | −0.43 |
+| `text-body` | Body | 17 / 22 | −0.43 |
+| `text-callout` | Callout | 16 / 21 | −0.31 |
+| `text-subheadline` | Subheadline | 15 / 20 | −0.23 |
+| `text-footnote` | Footnote | 13 / 18 | −0.08 |
+| `text-caption1` | Caption 1 | 12 / 16 | 0 |
+| `text-caption2` | Caption 2 | 11 / 13 | +0.06 |
 
-**Binario negrita/regular:** casi todo es 700 o 400. La jerarquía sale del
-contraste de peso, no de la variedad de tamaños. Rango total 10–24px: esto es una
-app, no una revista.
+**El tracking es la mitad que faltaba.** SF trae una tabla óptica por tamaño
+—positiva en los títulos grandes, negativa en el cuerpo— y sin ella los títulos
+se leen sueltos y el cuerpo apretado. Es lo que separa «parecido a Apple» de
+«es Apple», y es exactamente lo que no se puede escribir a ojo.
+
+**Binario negrita/regular:** el peso sigue siendo de donde sale la jerarquía —
+casi todo es semibold o regular. Por eso el peso **no** es parte del token: en
+la escala de Apple cada estilo tiene su variante «emphasized», y meterlo adentro
+obligaría a un token por combinación.
+
+**Nada de tamaños sueltos.** Un `text-[14px]` o un `text-[19px]` no son de
+ninguna escala: son un número elegido en el momento. Si algo no entra en la
+tabla, el que no entra es el diseño.
+
+Con tres excepciones, y están todas escritas en su lugar: el **rótulo de la
+barra de pestañas** (10) y el **número del globito** (9), que son medidas de esa
+pieza y no estilos de texto —UIKit tampoco los saca de la escala—, y el tamaño
+de un **emoji**, que es un dibujo.
+
+**Las versalitas son de la lista agrupada, no del botón.** Apple pone en
+mayúsculas el rótulo de una sección de Ajustes —`text-footnote uppercase` en
+gris secundario— y **nunca** el rótulo de un botón. La app tenía las dos cosas
+en versalitas de 13 con 1,4px de tracking, que es la etiqueta de botón de
+Spotify y de donde salió la primera versión de esto. El rótulo de un botón es
+`text-body font-semibold` en oración normal.
 
 ## Geometría
 
-La identidad es **píldora y círculo**:
+La identidad es **píldora y círculo**, y coincide con Apple: en el kit de iOS 27
+todo botón —bordered, prominent, glass— es una píldora.
 
-- Botones → `rounded-full` (píldora completa)
+- Botones → `rounded-full` (píldora completa), alto 50 (`CONTROL.botonGrande`)
 - Controles de reproducción → círculo (`50%`)
 - Campo de búsqueda → píldora
-- Tarjetas y contenedores → 8px
-- Campos de texto multilínea → 8px
+- Lista agrupada / bloque de formulario → `rounded-agrupado` (10, el del kit)
+- Tarjetas y contenedores de la app → `rounded-card` (20)
+
+Los radios de Apple viven en `src/ui/apple.json` **nombrados por la pieza**, no
+por un tamaño: el sistema no tiene una rampa geométrica, le asigna un radio a
+cada cosa. `card` y `pill` conservan su valor de siempre — son de la app, no del
+kit, y cambiarlos repintaría todo de refilón.
+
+Vale saber, para cuando se toque el vidrio: **en iOS 27 varios radios subieron
+fuerte**. Alerta, menú y menú contextual pasaron de 14 a 34, y el popover a 38.
+Están en `apple.json` (`radio.menu`, `radio.popover`) sin aplicar todavía.
 
 ## Elevación
 

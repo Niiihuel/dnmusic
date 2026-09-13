@@ -12,7 +12,7 @@ function nodes(n) {
   if (Array.isArray(n)) return n.flatMap(nodes)
   return [n, ...nodes(n.props?.children)]
 }
-function fixture(nombre = 'Escritorio') {
+function fixture(nombre = 'Escritorio', os = 'web') {
   const fn = source.statements.find(n => ts.isFunctionDeclaration(n) && n.name.text === nombre)
   const code = ts.transpileModule(`export ${fn.getText(source)}`, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText
   const states = [], exports = {}
@@ -20,8 +20,8 @@ function fixture(nombre = 'Escritorio') {
   vm.runInNewContext(code, {
     exports, require: () => ({ jsx, jsxs: jsx }), LATERAL_W: 210, MAX_W: 560,
     useState(initial) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], v => { states[i] = typeof v === 'function' ? v(states[i]) : v }] },
-    ...Object.fromEntries(['Shell', 'SafeAreaView', 'View', 'Panel', 'CabeceraLateral', 'BotonLateral', 'BotonVolver', 'ScrollView', 'Text', 'Pressable', 'CollapsedSidebar', 'PreviaPlegable', 'IconUser', 'IconEye', 'IconEyeOff', 'IconCollapseLeft', 'IconCollapseRight', 'IconBack', 'IconChevronRight', 'KeyboardAvoidingView', 'AjustesCompactos'].map(n => [n, n])),
-    ICON_COLOR: { foreground: 'white', muted: 'gray' }, Platform: { OS: 'ios' },
+    ...Object.fromEntries(['Shell', 'SafeAreaView', 'View', 'Panel', 'CabeceraLateral', 'BotonLateral', 'BotonVolver', 'ScrollView', 'Text', 'Pressable', 'CollapsedSidebar', 'PreviaPlegable', 'IconUser', 'IconEye', 'IconEyeOff', 'IconCollapseLeft', 'IconCollapseRight', 'IconBack', 'IconChevronRight', 'KeyboardAvoidingView', 'AjustesCompactos', 'FilaSocial'].map(n => [n, n])),
+    ICON_COLOR: { foreground: 'white', muted: 'gray' }, Platform: { OS: os },
   })
   const previa = { type: 'PerfilBorrador', props: { nombre: 'Cambio pendiente' } }
   const sections = [
@@ -31,7 +31,7 @@ function fixture(nombre = 'Escritorio') {
   let vueltas = 0
   const render = props => { cursor = 0; return nodes(exports[nombre]({ secciones: sections, cuenta: { type: 'Cuenta' }, previa, espacioBarra: 140, onVolver: () => vueltas++, ...props })) }
   const width = value => render().find(n => n.type === 'SafeAreaView').props.onLayout({ nativeEvent: { layout: { width: value } } })
-  const control = (ui, label) => ui.find(n => n.props?.label === label || n.props?.accessibilityLabel === label)
+  const control = (ui, label) => ui.find(n => n.props?.label === label || n.props?.accessibilityLabel === label || n.props?.titulo === label)
   return { render, width, control, previa, sections, vueltas: () => vueltas }
 }
 
@@ -99,16 +99,16 @@ test('previa móvil plegada no monta cosméticos; expandir conserva el contenido
 
 
 test('iOS abre Identidad desde el menú y vuelve sin perder la barra ni los cambios recibidos', () => {
-  const f = fixture('Movil')
+  const f = fixture('Movil', 'ios')
   const barra = { type: 'BarraCambiosPerfil', props: { visible: true } }
   const render = () => f.render({ pisoVisible: 80, children: barra })
   let ui = render()
   assert.equal(ui.some(n => n.type === 'CamposIdentidad'), false, 'el formulario no se monta sobre el menú')
   for (const label of ['Identidad', 'Mosaico']) {
     const fila = f.control(ui, label)
-    assert.match(fila.props.className, /min-h-\[44px\]/)
-    assert.equal(fila.props.children[0].props.size, 16)
-    assert.notEqual(fila.props.children[0].type, 'View')
+    assert.equal(fila.type, 'FilaSocial', 'el toque de navegación lo maneja la fila nativa')
+    const contenedor = ui.find(n => n.type === 'View' && n.props?.children?.[0]?.props?.size === 16 && nodes(n).includes(fila))
+    assert.ok(contenedor, 'el icono se conserva fuera del control de texto')
   }
   f.control(ui, 'Identidad').props.onPress()
   ui = render()
@@ -131,8 +131,8 @@ test('iOS abre Identidad desde el menú y vuelve sin perder la barra ni los camb
 
 test('filas de apariencia y campos aceptan iconos directos sin cambiar el estilo predeterminado', () => {
   for (const [path, name, props] of [
-    ['src/ui/Ajustes.tsx', 'FilaAjuste', { rotulo: 'Tipografía', onPress() {} }],
-    ['src/ui/Ajustes.tsx', 'FilaInterruptor', { rotulo: 'Perfil público', activo: true, onCambiar() {} }],
+    ['src/ui/Ajustes.shared.tsx', 'FilaAjuste', { rotulo: 'Tipografía', onPress() {} }],
+    ['src/ui/Ajustes.shared.tsx', 'FilaInterruptor', { rotulo: 'Perfil público', activo: true, onCambiar() {} }],
     ['src/ui/EditorDeCampo.tsx', 'FilaCampo', { cual: 'nombre', editor: { valor: 'Ana', cambiar() {} } }],
   ]) {
     const file = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
@@ -141,6 +141,10 @@ test('filas de apariencia y campos aceptan iconos directos sin cambiar el estilo
     const exports = {}
     vm.runInNewContext(code, {
       exports, require: () => ({ jsx, jsxs: jsx }), ICON_COLOR: { muted: 'gray' }, TITULO_CAMPO: { nombre: 'Nombre' }, useAjustesCompactos: () => false,
+      /* `false` = la fila escucha el toque, que es lo que hace en web y en
+         Android. En iOS lo escucha el `Toggle` del sistema y la fila deja de
+         ser un Pressable; ver `src/ui/Interruptor.ios.tsx`. */
+      INTERRUPTOR_PROPIO: false, Platform: { OS: 'web' }, EntradaTexto: 'EntradaTexto',
       ...Object.fromEntries(['View', 'Text', 'TextInput', 'Pressable', 'IconoAjuste', 'IconChevronRight', 'Interruptor', 'Globito'].map(n => [n, n])),
     })
     const icono = { type: 'IconPalette', props: { size: 16 } }

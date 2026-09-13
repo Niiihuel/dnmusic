@@ -267,6 +267,8 @@ const altoFila = (item: MenuItem) => (item.subtitle ? ROW_SUB_H : ROW_H)
  */
 type MenuProps = {
   items: MenuItem[]
+  /** Desactiva el disparador completo sin ocultar sus opciones. */
+  disabled?: boolean
   label?: string
   /**
    * El rótulo al pasar el cursor. Corto a propósito y **distinto** de `label`:
@@ -308,6 +310,7 @@ type MenuProps = {
 
 export function Menu({
   items,
+  disabled = false,
   label = 'Más opciones',
   tooltip = 'Opciones',
   size = 15,
@@ -380,7 +383,6 @@ export function Menu({
 
   const window = useWindowDimensions()
 
-  const usable = items.filter((item) => !item.disabled)
   const { rapidas, lista } = repartirMenu(items)
   /*
    * El alto ideal cuenta TODO lo que se dibuja: la fila de acciones rápidas,
@@ -399,7 +401,7 @@ export function Menu({
 
   if (HAY_MENU_NATIVO && !sinDisparador) {
     return (
-      <MenuNativo items={usable} label={label} size={size} symbol={triggerSymbol} fullWidth={triggerFullWidth}>
+      <MenuNativo items={items} label={label} size={size} symbol={triggerSymbol} fullWidth={triggerFullWidth} disabled={disabled}>
         {trigger}
       </MenuNativo>
     )
@@ -513,7 +515,8 @@ export function Menu({
         {...tip.gestos}
         accessibilityRole="button"
         accessibilityLabel={label}
-        accessibilityState={{ expanded: open }}
+        accessibilityState={{ expanded: open, disabled }}
+        disabled={disabled}
         onPress={openMenu}
         style={triggerFullWidth ? { width: '100%' } : undefined}
         /* El tamaño fijo es **de los tres puntos**. Con un `trigger` propio el
@@ -603,7 +606,7 @@ export function Menu({
               </>
             ) : null}
             {lista.map((item, i) => (
-              <Fragment key={item.label}>
+              <Fragment key={`${i}:${item.label}`}>
               {llevaCorte(lista, i) ? <Divisor /> : null}
               <Fila item={item} abierto={sub === i} onPress={() => elegir(item, i)} />
               </Fragment>
@@ -654,7 +657,7 @@ export function Menu({
             >
               <Filas alto={subMaxH} cerrando={cerrando}>
                 {subItems.map((item, i) => (
-                  <Fragment key={item.label}>
+                  <Fragment key={`${i}:${item.label}`}>
                     {llevaCorte(subItems, i) ? <Divisor /> : null}
                     <Fila
                       item={item}
@@ -709,12 +712,12 @@ function Fila({ item, abierto, onPress }: { item: MenuItem; abierto: boolean; on
       <View className="min-w-0 flex-1">
         <Text
           numberOfLines={1}
-          className={`text-[15px] ${item.destructive ? 'text-muted-foreground' : 'text-foreground'}`}
+          className={`text-subheadline ${item.destructive ? 'text-muted-foreground' : 'text-foreground'}`}
         >
           {item.label}
         </Text>
         {item.subtitle ? (
-          <Text numberOfLines={1} className="text-muted-foreground text-[12px]">
+          <Text numberOfLines={1} className="text-muted-foreground text-caption1">
             {item.subtitle}
           </Text>
         ) : null}
@@ -740,9 +743,9 @@ function Fila({ item, abierto, onPress }: { item: MenuItem; abierto: boolean; on
 function FilaRapidas({ items, onElegir }: { items: MenuItem[]; onElegir: (item: MenuItem) => void }) {
   return (
     <View className="mx-1.5 flex-row" style={{ height: RAPIDAS_H }}>
-      {items.map((item) => (
+      {items.map((item, index) => (
         <Pressable
-          key={item.label}
+          key={`${index}:${item.label}`}
           accessibilityRole="button"
           accessibilityLabel={item.label}
           accessibilityState={item.selected !== undefined ? { selected: item.selected } : undefined}
@@ -754,7 +757,7 @@ function FilaRapidas({ items, onElegir }: { items: MenuItem[]; onElegir: (item: 
           </View>
           <Text
             numberOfLines={2}
-            className={`text-center text-[11px] leading-[13px] ${
+            className={`text-center text-caption2 leading-[13px] ${
               item.selected ? 'text-foreground' : 'text-muted-foreground'
             }`}
           >

@@ -148,7 +148,7 @@ function uiFixture(path, dependencies, names = []) {
   }
   const components = Object.fromEntries(['View','Text','Modal','ScrollView','ActivityIndicator','Pressable','Switch'].map(n => [n,n]))
   const native = { ...components, Platform: { OS: 'web' }, BackHandler: { addEventListener: () => ({ remove() {} }) }, Linking: { openURL: async () => {} } }
-  const api = moduleAt(path, { 'react': react, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': native, './Button': { PrimaryButton: 'PrimaryButton', GhostButton: 'GhostButton' }, ...dependencies }, {}, names.length ? `\nexport { ${names.join(',')} };` : '')
+  const api = moduleAt(path, { 'react': react, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': native, './Ajustes': Object.fromEntries(['ListaAjustes', 'GrupoAjustes', 'FilaAccion', 'FilaDato'].map(n => [n, n])), './Button': { PrimaryButton: 'PrimaryButton', GhostButton: 'GhostButton' }, ...dependencies }, {}, names.length ? `\nexport { ${names.join(',')} };` : '')
   return { render(name, props) { index = 0; return flatten(api[name](props)) }, effects }
 }
 test('gate: bloqueo sin children ni salida, preferencia desactivada y descarte nunca lo evitan', () => {

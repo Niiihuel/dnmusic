@@ -1,3 +1,6 @@
+import { useDestinoEscucha } from '../src/ui/Dispositivos.shared'
+import { EstadoDispositivo } from '../src/ui/EstadoDispositivo'
+import { IconButton } from '../src/ui/IconButton'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'expo-router'
 import { volver } from '../src/lib/volver'
@@ -130,6 +133,7 @@ const CONTROLES_FADE_MS = 240
  * está más arriba. Ver `crece` y `arrastre`.
  */
 export default function Playing() {
+  const destinoEscucha = useDestinoEscucha()
   const router = useRouter()
   const { tracks, index, manual, wantPlay, positionMs, durationMs } = usePlaybackState()
   const view = useNowPlayingView()
@@ -496,35 +500,13 @@ export default function Playing() {
        */}
       <View className="flex-row items-center justify-center gap-5">
         <BotonAleatorio size={22} lado={44} />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Anterior"
-          onPress={playPrevious}
-          className="h-12 w-12 items-center justify-center rounded-full active:opacity-60"
-        >
-          <IconPrevious size={26} color={first ? ICON_COLOR.muted : ICON_COLOR.foreground} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={wantPlay ? 'Pausar' : 'Reproducir'}
-          onPress={togglePlayback}
-          className="h-16 w-16 items-center justify-center rounded-full bg-primary active:opacity-80"
-        >
-          {wantPlay ? (
+        <IconButton label="Anterior" symbol="backward.end.fill" onPress={playPrevious} lado={48} size={26} icon={<IconPrevious size={26} color={first ? ICON_COLOR.muted : ICON_COLOR.foreground} />} />
+        <IconButton label={destinoEscucha.remoto ? 'Traer música a este dispositivo' : wantPlay ? 'Pausar' : 'Reproducir'} symbol={wantPlay && !destinoEscucha.remoto ? 'pause.fill' : 'play.fill'} onPress={togglePlayback} lado={64} size={24} variant="primary" icon={wantPlay && !destinoEscucha.remoto ? (
             <IconPause size={24} color={ICON_COLOR.onPrimary} />
           ) : (
             <IconPlay size={24} color={ICON_COLOR.onPrimary} />
-          )}
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Siguiente"
-          onPress={playNext}
-          disabled={last}
-          className="h-12 w-12 items-center justify-center rounded-full active:opacity-60"
-        >
-          <IconNext size={26} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />
-        </Pressable>
+          )} />
+        <IconButton label="Siguiente" symbol="forward.end.fill" onPress={playNext} disabled={last} lado={48} size={26} icon={<IconNext size={26} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />} />
         <BotonRepetir size={22} lado={44} />
       </View>
 
@@ -652,6 +634,7 @@ export default function Playing() {
         style={StyleSheet.absoluteFill}
       />
 
+      <View style={{ alignItems: 'center', paddingTop: 6 }}><EstadoDispositivo /></View>
       {/*
        * En ventana ancha, el reproductor es una **columna centrada**.
        *
@@ -693,14 +676,7 @@ export default function Playing() {
                 /* En la compu no hay dedo que arrastre: la flecha es la única
                    forma clara de bajar la hoja. En el teléfono la manija y el
                    gesto alcanzan, como en Apple Music. */
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Bajar"
-                  onPress={cerrar}
-                  className="h-10 w-10 items-center justify-center rounded-full active:bg-muted"
-                >
-                  <IconChevronDown size={22} color={ICON_COLOR.foreground} />
-                </Pressable>
+                <IconButton label="Bajar" symbol="chevron.down" onPress={cerrar} size={22} icon={<IconChevronDown size={22} color={ICON_COLOR.foreground} />} />
               ) : null}
               {artwork ? (
                 <Image
@@ -717,10 +693,10 @@ export default function Playing() {
                 </View>
               )}
               <View className="min-w-0 flex-1">
-                <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
+                <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
                   {track.title}
                 </Text>
-                <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+                <Text className="text-muted-foreground text-footnote" numberOfLines={1}>
                   {track.artist}
                 </Text>
               </View>
@@ -756,16 +732,9 @@ export default function Playing() {
         ) : (
           <>
             <View className="flex-row items-center px-4 py-1">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Bajar"
-                onPress={cerrar}
-                className="h-10 w-10 items-center justify-center rounded-full active:bg-muted"
-              >
-                <IconChevronDown size={22} color={ICON_COLOR.foreground} />
-              </Pressable>
+              <IconButton label="Bajar" symbol="chevron.down" onPress={cerrar} size={22} icon={<IconChevronDown size={22} color={ICON_COLOR.foreground} />} />
               <View className="min-w-0 flex-1 items-center">
-                <Text className="text-muted-foreground text-[11px] uppercase tracking-[1.2px]">
+                <Text className="text-muted-foreground text-footnote uppercase">
                   {manual ? 'En la cola' : listName || 'Sonando'}
                 </Text>
               </View>
@@ -801,10 +770,10 @@ export default function Playing() {
                 transporte, donde se leerían como botones de reproducción. */}
             <View className="flex-row items-center gap-2 px-6 pt-5">
               <View className="min-w-0 flex-1 gap-0.5">
-                <Text className="text-foreground text-[20px] font-bold" numberOfLines={1}>
+                <Text className="text-foreground text-title3 font-bold" numberOfLines={1}>
                   {track.title}
                 </Text>
-                <Text className="text-muted-foreground text-[15px]" numberOfLines={1}>
+                <Text className="text-muted-foreground text-subheadline" numberOfLines={1}>
                   {track.artist}
                 </Text>
               </View>
@@ -880,19 +849,8 @@ function Alternador({
   onPress: () => void
   icon: (props: { size?: number; color?: string }) => React.ReactElement
 }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      className={`h-11 w-11 items-center justify-center rounded-full active:opacity-70 ${
-        active ? 'bg-white/15' : ''
-      }`}
-    >
-      <Icon size={20} color={active ? ICON_COLOR.foreground : ICON_COLOR.muted} />
-    </Pressable>
-  )
+  return <IconButton label={label} symbol={Icon === IconLyrics ? 'quote.bubble' : Icon === IconDisc ? 'opticaldisc' : Icon === IconUsers ? 'person.2' : 'list.bullet'}
+    selected={active} onPress={onPress} muted={!active} icon={<Icon size={20} color={active ? ICON_COLOR.foreground : ICON_COLOR.muted} />} />
 }
 
 /**
@@ -904,14 +862,7 @@ function Volumen() {
   const volumen = useVolume()
   return (
     <View className="flex-row items-center gap-3 px-1">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Silenciar"
-        onPress={() => setVolume(0)}
-        className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
-      >
-        <IconVolumeOff size={14} color={ICON_COLOR.muted} />
-      </Pressable>
+      <IconButton label="Silenciar" symbol="speaker.slash.fill" onPress={() => setVolume(0)} lado={32} size={14} icon={<IconVolumeOff size={14} color={ICON_COLOR.muted} />} />
       <View className="flex-1">
         <SeekBar
           label="Volumen"
@@ -923,14 +874,7 @@ function Volumen() {
           onSeek={setVolume}
         />
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Volumen al máximo"
-        onPress={() => setVolume(1)}
-        className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
-      >
-        <IconVolume size={14} color={ICON_COLOR.muted} />
-      </Pressable>
+      <IconButton label="Volumen al máximo" symbol="speaker.wave.2.fill" onPress={() => setVolume(1)} lado={32} size={14} icon={<IconVolume size={14} color={ICON_COLOR.muted} />} />
     </View>
   )
 }

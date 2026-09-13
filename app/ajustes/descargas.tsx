@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { ActivityIndicator, Image, Platform, Pressable, SectionList, Text, useWindowDimensions, View } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Panel } from '../../src/ui/Panel'
-import { GrupoAjustes, FilaInterruptor } from '../../src/ui/Ajustes'
+import { GrupoAjustes, FilaInterruptor, ListaAjustes, FilaAccion, FilaDato, FilaOpciones, FilaAjuste } from '../../src/ui/Ajustes'
 import { BotonLateral, CabeceraLateral } from '../../src/ui/CabeceraLateral'
 import { BotonVolver } from '../../src/ui/BotonVolver'
 import { Hoja, usePisoHoja } from '../../src/ui/Hoja'
@@ -70,12 +70,12 @@ export default function Descargas() {
     {HAY_DESCARGAS ? <View className="gap-3 px-3">
       <View className="flex-row items-center gap-2.5">
         <IconDisk size={16} color={ICON_COLOR.muted} />
-        <Text className="min-w-0 flex-1 text-foreground text-[15px]">Límite de caché</Text>
+        <Text className="min-w-0 flex-1 text-foreground text-subheadline">Límite de caché</Text>
         <Menu label="Elegir límite de caché" items={LIMITES_CACHE_MB.map(n => ({
           label: `${n} MB`, selected: limiteCacheMB === n, onPress: () => setLimiteCacheMB(n),
-        }))} trigger={<View className="min-h-[44px] justify-center px-2"><Text className="text-foreground text-[15px]">{limiteCacheMB} MB</Text></View>} />
+        }))} trigger={<View className="min-h-[44px] justify-center px-2"><Text className="text-foreground text-subheadline">{limiteCacheMB} MB</Text></View>} />
       </View>
-      <Text className="text-muted-foreground text-[13px]">{formatoBytes(bytesCache)} de caché · {formatoBytes(bytesManual)} de descargas</Text>
+      <Text className="text-muted-foreground text-footnote">{formatoBytes(bytesCache)} de caché · {formatoBytes(bytesManual)} de descargas</Text>
       <Menu label="Opciones de almacenamiento" items={[
         { label: 'Limpiar caché temporal', disabled: !temporales.length, destructive: true, sfSymbol: 'trash', onPress: () => {
           limpiarCache(); avisar('Limpiando la caché temporal. Tus descargas se conservan.')
@@ -88,10 +88,51 @@ export default function Descargas() {
   </View>
   const botonReproducir = HAY_DESCARGAS ? <BotonLateral label="Reproducir disponibles sin conexión" disabled={!cola.length} onPress={() => reproducir()}
     icono={<IconPlay size={16} color={ICON_COLOR.foreground} />} /> : null
+  if (Platform.OS === 'ios') {
+    return <>
+      <Stack.Screen options={{ presentation: 'formSheet', sheetAllowedDetents: [1], sheetGrabberVisible: true }} />
+      <SafeAreaView className="min-h-0 flex-1 bg-background" edges={['bottom']}>
+        <View className="flex-row items-center gap-2 px-3 py-1"><BotonVolver label="Volver a Ajustes" onPress={cerrar} /><Text accessibilityRole="header" className="flex-1 text-foreground text-body font-semibold">Descargas y caché</Text></View>
+        <View className="px-4 py-2"><SearchField value={filtro} onChangeText={setFiltro} placeholder="Buscar por canción o artista" accessibilityLabel="Buscar descargas y caché" /></View>
+        <ListaAjustes piso={pisoHoja}>
+          <GrupoAjustes titulo="Descargas manuales" pie={esperandoWifi ? 'Hay canciones esperando Wi-Fi.' : 'Las descargas manuales se conservan hasta que las quites.'}>
+            <FilaInterruptor rotulo="Descargar solo con Wi-Fi" activo={ajustes.soloWifi} onCambiar={v => { setSoloWifi(v); reanudarDescargas() }} />
+            <FilaAccion rotulo="Reproducir disponibles sin conexión" disabled={!cola.length} onPress={() => reproducir()} ultima />
+          </GrupoAjustes>
+          <GrupoAjustes titulo="Caché automática" pie="Prepara música para reducir las esperas. La caché se reutiliza automáticamente; tus descargas manuales se conservan.">
+            <FilaInterruptor rotulo="Precarga automática" activo={ajustes.precargaAutomatica} onCambiar={v => { setPrecargaAutomatica(v); reanudarDescargas() }} />
+            <FilaInterruptor rotulo="Precargar con datos móviles" activo={ajustes.precargaDatos} onCambiar={v => { setPrecargaDatos(v); reanudarDescargas() }} />
+            <FilaOpciones rotulo="Límite de caché" valor={limiteCacheMB} opciones={LIMITES_CACHE_MB.map(n => ({ value: n, label: `${n} MB` }))} onElegir={setLimiteCacheMB} />
+            <FilaDato rotulo="Caché utilizada" valor={formatoBytes(bytesCache)} />
+            <FilaDato rotulo="Descargas utilizadas" valor={formatoBytes(bytesManual)} />
+            <FilaAccion rotulo="Limpiar caché temporal" disabled={!temporales.length} onPress={() => { limpiarCache(); avisar('Limpiando la caché temporal. Tus descargas se conservan.') }} />
+            <FilaAccion rotulo="Quitar descargas terminadas" disabled={!manuales.some(e => e.descarga.estado === 'lista')} onPress={() => { manuales.filter(e => e.descarga.estado === 'lista').forEach(e => quitarDescarga(e.clave)) }} ultima />
+          </GrupoAjustes>
+          {!cargado || errorDescargas ? <GrupoAjustes error={errorDescargas}>
+            <FilaAccion rotulo={errorDescargas ? 'Reintentar lectura' : 'Leyendo descargas…'} busy={!cargado && !errorDescargas} onPress={() => { void cargarDescargas() }} ultima />
+          </GrupoAjustes> : null}
+          {cargado && !visibles.length ? <GrupoAjustes><FilaDato rotulo={filtro.trim() ? 'No hay canciones que coincidan' : 'Todavía no hay descargas'} valor="" ultima /></GrupoAjustes> : null}
+          {secciones.map(seccion => !seccion.data.length ? null : <GrupoAjustes key={seccion.title} titulo={seccion.title} pie={`${seccion.total} canciones · ${formatoBytes(seccion.bytes)}`}>
+            {seccion.data.map(item => {
+              const d = item.descarga
+              const disponible = d.estado === 'lista' && !!d.audioPath
+              const opciones = menuDescarga(item)
+              const arte = artworkSource(d.artworkPath, d.track?.artworkUrl ?? d.artworkUrl ?? null, 96)
+              return <Fragment key={item.clave}>
+                <FilaAjuste rotulo={d.title} detalle={`${d.artist} · ${estadoDescarga(d, esperandoWifi, esperandoRed)}`} valor={disponible ? formatoBytes(d.bytes) : ''} vacio="" disabled={!disponible} onPress={() => reproducir(item.clave)}
+                  icono={arte ? <Image source={{ uri: arte }} style={{ width: 24, height: 24, borderRadius: 4 }} /> : <IconMusic size={20} color={ICON_COLOR.muted} />} />
+                <FilaOpciones rotulo={`Opciones de ${d.title}`} valor={null} opciones={opciones.map((o, i) => ({ value: i, label: o.label, sfSymbol: o.sfSymbol, destructive: o.destructive }))} onElegir={i => opciones[i]?.onPress?.()} ultima />
+              </Fragment>
+            })}
+          </GrupoAjustes>)}
+        </ListaAjustes>
+      </SafeAreaView>
+    </>
+  }
   const contenido = <SafeAreaView className="min-h-0 flex-1 bg-background" edges={ancho ? ['top', 'bottom'] : []}>
     <View className="flex-row items-center gap-2 px-3 py-1">
       <BotonVolver label="Volver a Ajustes" onPress={cerrar} />
-      <Text accessibilityRole="header" className="min-w-0 flex-1 text-foreground text-[17px] font-semibold">Descargas y caché</Text>
+      <Text accessibilityRole="header" className="min-w-0 flex-1 text-foreground text-body font-semibold">Descargas y caché</Text>
       {ancho ? botonReproducir : null}
     </View>
     {!HAY_DESCARGAS ? <Panel className="min-h-0 flex-1">
@@ -115,17 +156,17 @@ export default function Descargas() {
               </View>
               {!cargado && !errorDescargas ? <ActivityIndicator accessibilityLabel="Leyendo descargas" color={ICON_COLOR.muted} /> : null}
               {errorDescargas ? <View className="gap-2">
-                <Text accessibilityLiveRegion="polite" className="text-muted-foreground text-[13px]">{errorDescargas}</Text>
+                <Text accessibilityLiveRegion="polite" className="text-muted-foreground text-footnote">{errorDescargas}</Text>
                 {!cargado ? <Pressable accessibilityRole="button" accessibilityLabel="Reintentar lectura"
                   onPress={() => void cargarDescargas()} className="min-h-[44px] self-start justify-center rounded-full bg-muted px-4 active:opacity-70">
-                  <Text className="text-foreground text-[14px] font-semibold">Reintentar lectura</Text>
+                  <Text className="text-foreground text-subheadline font-semibold">Reintentar lectura</Text>
                 </Pressable> : null}
               </View> : null}
-              {cargado && !visibles.length ? <Text className="text-muted-foreground text-[13px]">{filtro.trim() ? 'No hay canciones que coincidan.' : 'Descargá canciones desde sus menús para escucharlas sin conexión.'}</Text> : null}
+              {cargado && !visibles.length ? <Text className="text-muted-foreground text-footnote">{filtro.trim() ? 'No hay canciones que coincidan.' : 'Descargá canciones desde sus menús para escucharlas sin conexión.'}</Text> : null}
             </View>}
             renderSectionHeader={({ section }) => <View className="flex-row items-center justify-between gap-2 pb-2 pt-4">
-              <Text accessibilityRole="header" className="text-foreground text-[15px] font-semibold">{section.title}</Text>
-              <Text className="text-muted-foreground text-[12px]">{section.total} · {formatoBytes(section.bytes)}</Text>
+              <Text accessibilityRole="header" className="text-foreground text-subheadline font-semibold">{section.title}</Text>
+              <Text className="text-muted-foreground text-caption1">{section.total} · {formatoBytes(section.bytes)}</Text>
             </View>}
             renderItem={({ item }) => <Fila item={item} esperandoWifi={esperandoWifi} esperandoRed={esperandoRed} onPlay={() => reproducir(item.clave)} />} />
         </Panel>
@@ -148,9 +189,9 @@ function Fila({ item, esperandoWifi, esperandoRed, onPlay }: { item: EntradaDesc
       {arte ? <Image source={{ uri: arte }} style={{ width: 44, height: 44 }} className="rounded" /> :
         <View style={{ width: 44, height: 44 }} className="items-center justify-center"><IconMusic size={16} color={ICON_COLOR.muted} /></View>}
       <View className="min-w-0 flex-1 gap-0.5">
-        <Text className="text-foreground text-[14px]" numberOfLines={1}>{d.title}</Text>
-        <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>{d.artist}</Text>
-        <Text className="text-muted-foreground text-[12px]" numberOfLines={2}>{estadoDescarga(d, esperandoWifi, esperandoRed)}{disponible ? ` · ${formatoBytes(d.bytes)}` : ''}</Text>
+        <Text className="text-foreground text-subheadline" numberOfLines={1}>{d.title}</Text>
+        <Text className="text-muted-foreground text-caption1" numberOfLines={1}>{d.artist}</Text>
+        <Text className="text-muted-foreground text-caption1" numberOfLines={2}>{estadoDescarga(d, esperandoWifi, esperandoRed)}{disponible ? ` · ${formatoBytes(d.bytes)}` : ''}</Text>
       </View>
     </Pressable>
     <Menu label={`Opciones de descarga de ${d.title}`} items={menuDescarga(item)} size={16} />

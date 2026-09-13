@@ -1,10 +1,30 @@
+import type { PrimaryButtonProps, GhostButtonProps } from './Button.types'
 import { estadoControlWeb } from './estadoControl'
 import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import { BotonVidrio, HAY_VIDRIO } from './Glass'
 import { ICON_COLOR } from './icons'
+import { CONTROL } from './tipografia'
 
-/** Alto de las dos píldoras. Comparten medida para poder ir en la misma fila. */
-const ALTO = 52
+/**
+ * Alto de las dos píldoras. Comparten medida para poder ir en la misma fila.
+ *
+ * Los 50 del botón grande de Apple (`apple.json`), no 52 a ojo: es la altura
+ * contra la que se ven todos los botones del sistema al lado.
+ */
+const ALTO = CONTROL.botonGrande
+
+/**
+ * El rótulo de un botón, como lo escribe Apple.
+ *
+ * Antes iba en versalitas de 13 con 1,4px de tracking — la etiqueta de botón de
+ * Spotify, que es de donde salió la primera versión de esta app. Apple **nunca**
+ * pone en mayúsculas el rótulo de un botón: es `body` de 17 en semibold y en
+ * oración normal, y el tracking se lo pone la escala (−0,43), no una constante
+ * elegida a mano. La regla ya estaba escrita en la sección de HIG de
+ * docs/DESIGN.md —«acciones en oración normal»— y era la tabla vieja de
+ * tipografía la que decía lo contrario.
+ */
+const ROTULO = 'text-body font-semibold'
 
 /**
  * Botón principal de los formularios.
@@ -27,12 +47,7 @@ export function PrimaryButton({
   onPress,
   disabled = false,
   busy = false,
-}: {
-  label: string
-  onPress: () => void
-  disabled?: boolean
-  busy?: boolean
-}) {
+}: PrimaryButtonProps) {
   const active = !disabled && !busy
 
   if (HAY_VIDRIO && active) {
@@ -47,7 +62,7 @@ export function PrimaryButton({
         {busy ? (
           <ActivityIndicator color={ICON_COLOR.onPrimary} />
         ) : (
-          <Text className="text-primary-foreground text-[13px] font-semibold uppercase tracking-[1.4px]">
+          <Text className={`text-primary-foreground ${ROTULO}`}>
             {label}
           </Text>
         )}
@@ -62,7 +77,8 @@ export function PrimaryButton({
       accessibilityState={{ disabled: !active, busy }}
       disabled={!active}
       onPress={onPress}
-      className={`h-[52px] items-center justify-center rounded-full ${
+      style={{ height: ALTO }}
+      className={`items-center justify-center rounded-full ${
         active ? 'bg-primary active:opacity-80' : 'bg-muted'
       }`}
     >
@@ -76,7 +92,7 @@ export function PrimaryButton({
         <ActivityIndicator color={ICON_COLOR.foreground} />
       ) : (
         <Text
-          className={`text-[13px] font-semibold uppercase tracking-[1.4px] ${
+          className={`${ROTULO} ${
             active ? 'text-primary-foreground' : 'text-muted-foreground'
           }`}
         >
@@ -99,11 +115,7 @@ export function GhostButton({
   label,
   onPress,
   disabled = false,
-}: {
-  label: string
-  onPress: () => void
-  disabled?: boolean
-}) {
+}: GhostButtonProps) {
   if (HAY_VIDRIO) {
     return (
       <BotonVidrio
@@ -113,7 +125,7 @@ export function GhostButton({
         radius={26}
         style={{ height: ALTO }}
       >
-        <Text className="text-foreground text-[13px] font-semibold uppercase tracking-[1.4px]">
+        <Text className={`text-foreground ${ROTULO}`}>
           {label}
         </Text>
       </BotonVidrio>
@@ -126,11 +138,12 @@ export function GhostButton({
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      className={`h-[52px] items-center justify-center rounded-full border border-border ${
+      style={{ height: ALTO }}
+      className={`items-center justify-center rounded-full border border-border ${
         disabled ? 'opacity-40' : 'active:bg-muted'
       }`}
     >
-      <Text className="text-foreground text-[13px] font-semibold uppercase tracking-[1.4px]">
+      <Text className={`text-foreground ${ROTULO}`}>
         {label}
       </Text>
     </Pressable>
@@ -141,8 +154,8 @@ export function GhostButton({
 export function FormError({ message }: { message: string | null }) {
   if (!message) return null
   return (
-    <View className="rounded-lg bg-muted px-4 py-3">
-      <Text className="text-destructive text-[13px] leading-5">{message}</Text>
+    <View className="rounded-agrupado bg-muted px-4 py-3">
+      <Text className="text-destructive text-footnote">{message}</Text>
     </View>
   )
 }

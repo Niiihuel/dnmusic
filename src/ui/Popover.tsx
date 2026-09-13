@@ -83,8 +83,8 @@ export function Popover<T extends string | number>({
   const disparador = (dirigida: boolean) => (
     <View className="flex-row items-center gap-2 rounded-full bg-muted px-4 py-2.5">
       {icon}
-      {label && <Text className="text-muted-foreground text-xs">{label}</Text>}
-      {text !== '' && <Text className="text-foreground text-[13px] font-medium">{text}</Text>}
+      {label && <Text className="text-muted-foreground text-caption1">{label}</Text>}
+      {text !== '' && <Text className="text-foreground text-footnote font-medium">{text}</Text>}
       {dirigida ? (
         <IconChevronUp size={14} color={ICON_COLOR.muted} />
       ) : (
@@ -165,7 +165,7 @@ export function Popover<T extends string | number>({
                   }`}
                 >
                   <Text
-                    className={`text-[14px] ${active ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}
+                    className={`text-subheadline ${active ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}
                   >
                     {o.label}
                   </Text>

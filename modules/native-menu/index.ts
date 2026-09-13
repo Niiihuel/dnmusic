@@ -30,6 +30,7 @@ type Props = ViewProps & {
   symbol?: string
   symbolSize?: number
   symbolColor?: string
+  disabled?: boolean
   onOpen: () => void
   onSelect: (event: { nativeEvent: { id: string } }) => void
 }

@@ -7,12 +7,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
   type TextInputProps,
 } from 'react-native'
 import { useRouter } from 'expo-router'
+import { EntradaTexto } from '../src/ui/EntradaTexto'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useAudioPlayer } from 'expo-audio'
 import { PLACEHOLDER_COLOR } from '../src/ui/Field'
@@ -254,7 +254,7 @@ export default function Importar() {
                 <Resumen lista={lista} nombre={nombre} onNombre={setNombre}
                   total={resultados.length} aRevisar={aRevisar} error={error} />
                 <View className="flex-row items-center justify-between gap-3">
-                  <Text accessibilityLiveRegion="polite" className="min-w-0 flex-1 text-muted-foreground text-[13px]">
+                  <Text accessibilityLiveRegion="polite" className="min-w-0 flex-1 text-muted-foreground text-footnote">
                     {filtro === 'todas' ? `${resultados.length} canciones` : `${filas.length} para revisar`} · {aTraer} seleccionadas
                   </Text>
                   <Menu label="Opciones de importación" items={[
@@ -272,7 +272,7 @@ export default function Importar() {
                 keyExtractor={({ indice }) => String(indice)} keyboardShouldPersistTaps="handled"
                 renderScrollComponent={(props) => <ScrollArea {...props} />}
                 contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 12 }}
-                ListEmptyComponent={<Text className="text-muted-foreground py-5 text-[15px]">No hay coincidencias pendientes de revisar.</Text>}
+                ListEmptyComponent={<Text className="text-muted-foreground py-5 text-subheadline">No hay coincidencias pendientes de revisar.</Text>}
                 renderItem={({ item }) => <FilaResultado resultado={item.resultado}
                   elegido={decisiones[item.indice] ?? null} previo={previo}
                   onElegir={(videoId) => setDecisiones(d => ({ ...d, [item.indice]: videoId }))} />} />
@@ -305,7 +305,7 @@ function CampoImportar({ label, ...input }: TextInputProps & { label: string }) 
   const escritorio = useWindowDimensions().width >= SHELL_PX
   return <View className="gap-2">
     <Text style={{ fontSize: escritorio ? 13 : 15 }} className="text-foreground font-medium">{label}</Text>
-    <TextInput {...input} accessibilityLabel={label} placeholderTextColor={PLACEHOLDER_COLOR}
+    <EntradaTexto {...input} accessibilityLabel={label} placeholderTextColor={PLACEHOLDER_COLOR}
       className="bg-muted px-3 text-foreground"
       style={[{ minHeight: escritorio ? 40 : 44, borderRadius: escritorio ? 10 : 16, fontSize: escritorio ? 15 : 16, paddingVertical: escritorio ? 8 : 10 }, input.style]} />
   </View>
@@ -324,11 +324,11 @@ function Entrada({ enlace, onEnlace, error, onTraer }: {
       <View style={{ width: '100%', maxWidth: 520, gap: escritorio ? 14 : 16 }}>
         <View style={{ gap: escritorio ? 4 : 6 }}>
           <Text accessibilityRole="header" style={{ fontSize: escritorio ? 19 : 21 }} className="text-foreground font-semibold">Importá una lista pública</Text>
-          <Text className="text-muted-foreground text-[13px] leading-5">Pegá el enlace de Spotify. Antes de crearla vas a poder revisar todas las coincidencias.</Text>
+          <Text className="text-muted-foreground text-footnote leading-5">Pegá el enlace de Spotify. Antes de crearla vas a poder revisar todas las coincidencias.</Text>
         </View>
         <CampoImportar label="Enlace de la lista" value={enlace} onChangeText={onEnlace} autoCapitalize="none" autoCorrect={false}
           inputMode="url" placeholder="https://open.spotify.com/playlist/…" returnKeyType="go" onSubmitEditing={() => { if (listo) onTraer() }} />
-        <Text className="text-muted-foreground text-[12px] leading-4">En Spotify: Compartir → Copiar enlace. La lista tiene que ser pública.</Text>
+        <Text className="text-muted-foreground text-caption1">En Spotify: Compartir → Copiar enlace. La lista tiene que ser pública.</Text>
         <FormError message={error} />
         <View className="items-end pt-1">
           <AccionSocial label="Revisar canciones" onPress={onTraer} disabled={!listo} compacta expandida={!escritorio} />
@@ -377,7 +377,7 @@ function Trabajando({
   return (
     <View accessibilityLiveRegion="polite" className="flex-1 items-center justify-center gap-4 px-5">
       <ActivityIndicator color={ICON_COLOR.muted} />
-      <Text className="text-foreground text-center text-[15px]">{rotulo}</Text>
+      <Text className="text-foreground text-center text-subheadline">{rotulo}</Text>
 
       {avance.total > 0 ? (
         <View accessibilityRole="progressbar" accessibilityLabel={rotulo} accessibilityValue={{ min: 0, max: avance.total, now: avance.hechas }} className="h-1 w-full max-w-[280px] overflow-hidden rounded-full bg-muted">
@@ -385,7 +385,7 @@ function Trabajando({
         </View>
       ) : null}
 
-      <Text className="text-muted-foreground text-center text-[12px] leading-4">{detalle}</Text>
+      <Text className="text-muted-foreground text-center text-caption1">{detalle}</Text>
 
       {fase !== 'guardando' ? (
         <Pressable
@@ -393,7 +393,7 @@ function Trabajando({
           onPress={onCancelar}
           className="h-11 items-center justify-center rounded-full px-5 active:bg-muted"
         >
-          <Text className="text-muted-foreground text-[13px]">Cancelar</Text>
+          <Text className="text-muted-foreground text-footnote">Cancelar</Text>
         </Pressable>
       ) : null}
     </View>
@@ -408,9 +408,9 @@ function Resumen({ lista, nombre, onNombre, total, aRevisar, error }: {
 }) {
   return <View className="gap-2">
     <CampoImportar label="Nombre de la lista" value={nombre} onChangeText={onNombre} maxLength={60} />
-    <Text className="text-muted-foreground text-[13px]">{aRevisar ? `${aRevisar} de ${total} coincidencias para revisar` : 'Todas las canciones tienen coincidencia.'}</Text>
+    <Text className="text-muted-foreground text-footnote">{aRevisar ? `${aRevisar} de ${total} coincidencias para revisar` : 'Todas las canciones tienen coincidencia.'}</Text>
     {lista?.truncada ? <View className="gap-1">
-      <Text accessibilityRole="alert" className="text-muted-foreground text-[13px]">Spotify devolvió hasta {TOPE_SPOTIFY} canciones. La lista puede estar incompleta.</Text>
+      <Text accessibilityRole="alert" className="text-muted-foreground text-footnote">Spotify devolvió hasta {TOPE_SPOTIFY} canciones. La lista puede estar incompleta.</Text>
     </View> : null}
     <FormError message={error} />
   </View>
@@ -450,18 +450,18 @@ function FilaResultado({
       >
         <Tapa url={track?.artworkUrl} />
         <View className="min-w-0 flex-1">
-          <Text className="text-foreground text-[14px]" numberOfLines={1}>
+          <Text className="text-foreground text-subheadline" numberOfLines={1}>
             {track?.title ?? resultado.pista.titulo}
           </Text>
-          <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+          <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
             {track?.artist ?? resultado.pista.artista}
           </Text>
-          {dudosa ? <Text className="text-muted-foreground text-[12px]">{resultado.confianza === 'sin_resultado' ? 'Sin coincidencia' : 'Revisar coincidencia'}</Text> : null}
+          {dudosa ? <Text className="text-muted-foreground text-caption1">{resultado.confianza === 'sin_resultado' ? 'Sin coincidencia' : 'Revisar coincidencia'}</Text> : null}
         </View>
         {elegido ? (
           <IconCheck size={15} color={ICON_COLOR.muted} />
         ) : (
-          <Text className="text-muted-foreground text-[12px]">No entra</Text>
+          <Text className="text-muted-foreground text-caption1">No entra</Text>
         )}
       </Pressable>
     )
@@ -471,10 +471,10 @@ function FilaResultado({
     <View className="my-1.5 gap-3 rounded-2xl bg-card p-3">
       <View className="flex-row items-center gap-3">
         <View className="min-w-0 flex-1">
-          <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
+          <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
             {resultado.pista.titulo}
           </Text>
-          <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+          <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
             {resultado.pista.artista}
             {resultado.pista.durationMs ? ` · ${reloj(resultado.pista.durationMs)}` : ''}
           </Text>
@@ -501,7 +501,7 @@ function FilaResultado({
       </View>
 
       {resultado.candidatos.length === 0 ? (
-        <Text className="text-muted-foreground text-[12px] leading-4">
+        <Text className="text-muted-foreground text-caption1">
           No encontré nada parecido. Se puede buscar a mano después, desde la lista.
         </Text>
       ) : (
@@ -520,10 +520,10 @@ function FilaResultado({
               >
                 <Tapa url={candidato.track.artworkUrl} />
                 <View className="min-w-0 flex-1">
-                  <Text className="text-foreground text-[13px]" numberOfLines={1}>
+                  <Text className="text-foreground text-footnote" numberOfLines={1}>
                     {candidato.track.title}
                   </Text>
-                  <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+                  <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
                     {candidato.track.artist}
                     {candidato.track.durationMs ? ` · ${reloj(candidato.track.durationMs)}` : ''}
                     {candidato.motivo ? ` · ${candidato.motivo}` : ''}
@@ -545,7 +545,7 @@ function FilaResultado({
         }`}
       >
         <IconClose size={13} color={ICON_COLOR.muted} />
-        <Text className="text-muted-foreground text-[13px]">No traer esta</Text>
+        <Text className="text-muted-foreground text-footnote">No traer esta</Text>
       </Pressable>
       <AccionSocial label="Cerrar opciones" secundaria expandida={false} onPress={() => setAbierta(false)} />
     </View>

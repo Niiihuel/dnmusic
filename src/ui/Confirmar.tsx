@@ -52,8 +52,8 @@ export function Confirmar({
           }}
         >
           <View className="gap-2 px-5 pt-5">
-            <Text className="text-foreground text-center text-[16px] font-bold">{titulo}</Text>
-            <Text className="text-muted-foreground text-center text-[13px] leading-5">{mensaje}</Text>
+            <Text className="text-foreground text-center text-callout font-bold">{titulo}</Text>
+            <Text className="text-muted-foreground text-center text-footnote leading-5">{mensaje}</Text>
           </View>
           <View className="flex-row gap-2 p-4">
             <Pressable
@@ -61,14 +61,14 @@ export function Confirmar({
               onPress={onCancelar}
               className="h-11 flex-1 items-center justify-center rounded-full bg-muted active:opacity-70"
             >
-              <Text className="text-foreground text-[14px] font-semibold">Cancelar</Text>
+              <Text className="text-foreground text-subheadline font-semibold">Cancelar</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
               onPress={onConfirmar}
               className="h-11 flex-1 items-center justify-center rounded-full bg-muted active:opacity-70"
             >
-              <Text className="text-foreground text-[14px] font-semibold">{rotulo}</Text>
+              <Text className="text-foreground text-subheadline font-semibold">{rotulo}</Text>
             </Pressable>
           </View>
         </Glass>

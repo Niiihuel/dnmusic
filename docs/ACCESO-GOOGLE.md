@@ -6,7 +6,7 @@ Activación autorizada y aplicada el 7 de septiembre de 2026 en Supabase DMusic
 (`tdvndpjaxuqhibcpufat`). Migración registrada, cuentas existentes aprobadas y
 administración fijada al UUID verificado de `@nihuel`. Los dos hooks de Auth y
 Realtime `private_only` están activos. Las altas por contraseña quedan rechazadas
-por el hook y el trigger; las cuentas existentes conservan su login.
+por el hook y el trigger. El login del cliente se unificó posteriormente en Google.
 
 Servidor de producción actualizado y READY en
 [dnmusic-api](https://dnmusic-api.vercel.app), despliegue
@@ -25,7 +25,9 @@ versiones móviles anteriores necesitan actualizarse para usar canales privados.
 ## Comportamiento
 
 - Las cuentas nuevas eligen **Continuar con Google** y esperan aprobación.
-- Las cuentas existentes conservan usuario y contraseña; el backfill las aprueba.
+- El cliente actualizado permite iniciar sesión únicamente con Google; `/sign-up` redirige a `/sign-in`. No muestra acceso por usuario/contraseña.
+- Las sesiones existentes se conservan. Quien todavía esté conectado con una cuenta antigua puede vincular Google desde Configuración para mantener su UUID, perfil y listas.
+- Esta entrega no deshabilita el proveedor de contraseña en Supabase ni modifica usuarios remotos. Quitar el formulario no equivale a cerrar ese endpoint para clientes antiguos.
 - El dueño decide en **Configuración → Solicitudes de acceso**.
 - La cuenta administradora confirmada es `@nihuel`. Su UUID se verificó contra
   Auth; el bootstrap fija ese UUID, nunca toma un nombre suministrado por un cliente.
@@ -96,3 +98,29 @@ La exportación Hermes prueba compilación, no sustituye la prueba en un disposi
 Fuentes: [Google en Supabase](https://supabase.com/docs/guides/auth/social-login/auth-google),
 [redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls),
 [OAuth en apps instaladas](https://developers.google.com/identity/protocols/oauth2/native-app).
+
+## Unificación del cliente · 12 de septiembre de 2026
+
+El botón Google sirve para volver a entrar y para crear una cuenta. Se conserva
+la aprobación de acceso, el retorno PKCE y la validación de sesión. Cancelar
+permite reintentar; un doble toque no abre dos transacciones. La función antigua
+`signIn` rechaza localmente el acceso por credenciales y no llama al proveedor.
+
+Las cuentas antiguas usan identificadores de correo internos: no se puede
+asumir que iniciar Google vincule automáticamente la cuenta anterior. La
+vinculación requiere la sesión de esa cuenta mediante `linkIdentity`. Una
+cuenta antigua sin sesión y sin Google vinculado necesita una recuperación
+asistida que verifique la titularidad; no se reasignan datos por nombre de usuario.
+[Identidades en Supabase](https://supabase.com/docs/guides/auth/auth-identity-linking).
+
+No se cambió la configuración remota de Auth ni se realizaron consentimientos
+Google reales durante esta modificación.
+
+### Retorno PKCE en el SDK actual
+
+El cliente habilita `auth.experimental.appendPkceFlowIdToRedirects`. El SDK
+devuelve `flowId` aunque esta opción esté apagada; sin ella, nuestra validación
+del retorno rechazaba el inicio antes de abrir Google. La prueba de regresión
+usa el SDK instalado para preparar la URL y pasarla por la validación real de
+DMusic en web y escritorio. Los callbacks autorizados conservan `dn_state` y
+`sb_flow_id`; no se reduce la validación de origen, nonce ni desafío S256.

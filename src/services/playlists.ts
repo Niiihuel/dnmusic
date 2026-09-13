@@ -177,9 +177,23 @@ export async function createPlaylist(
  * de la biblioteca por haberla compartido reordenaría lo que estás mirando sin
  * que hayas cambiado una canción.
  */
+/** Los perfiles abiertos invalidan su lectura después de confirmar la escritura. */
+const publicPlaylistListeners = new Set<(ownerId: string) => void>()
+export function subscribePublicPlaylistChanges(listener: (ownerId: string) => void): () => void {
+  publicPlaylistListeners.add(listener)
+  return () => { publicPlaylistListeners.delete(listener) }
+}
+
 export async function setPlaylistVisibility(id: string, visibilidad: Visibilidad): Promise<void> {
-  const { error } = await getSupabase().from('playlists').update({ visibilidad }).eq('id', id)
+  const { data, error } = await getSupabase().from('playlists')
+    .update({ visibilidad }).eq('id', id).select('id, owner_id, visibilidad').single()
   if (error) throw error
+  // PostgREST puede aceptar un UPDATE con cero filas por RLS. Eso no es una
+  // publicación confirmada y no debe habilitar el link ni anunciar éxito.
+  if (data?.id !== id || data.visibilidad !== visibilidad || typeof data.owner_id !== 'string') {
+    throw new Error('No se pudo confirmar la visibilidad de la lista. Volvé a intentar.')
+  }
+  publicPlaylistListeners.forEach(listener => listener(data.owner_id))
 }
 
 /** Las listas que esta persona publicó. Vacío si no publicó ninguna. */

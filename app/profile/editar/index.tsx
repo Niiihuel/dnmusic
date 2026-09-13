@@ -1,3 +1,6 @@
+import { FilaSocial } from '../../../src/ui/FilaSocial'
+import { AccionSocial } from '../../../src/ui/Social'
+import { IconButton } from '../../../src/ui/IconButton'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { TarjetaPerfil } from '../../../src/ui/TarjetaPerfil'
 import { esDiscord, useCatalogoDiscord } from '../../../src/services/discordCatalogo'
@@ -221,46 +224,21 @@ export default function EditarPerfil() {
     <View className="items-center gap-4">
       <View style={{ width: 96, height: 96, margin: 12 }}><Avatar name={nombre} path={avatarPath} size={96} encuadre={profile.avatarEncuadre} /><Marco marco={profile.marco} size={96} /></View>
       <View className="flex-row items-center gap-2">
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => void elegirFoto()}
-          disabled={ocupado}
-          className="h-10 flex-row items-center gap-2 rounded-full bg-muted px-4 active:opacity-80"
-        >
-          {uploading ? <ActivityIndicator size="small" color={ICON_COLOR.muted} /> : null}
-          <Text className="text-foreground text-[13px] font-semibold">
-            {avatarPath ? 'Cambiar foto' : 'Subir foto'}
-          </Text>
-        </Pressable>
+        <AccionSocial label={avatarPath ? 'Cambiar foto' : 'Subir foto'} secundaria expandida={false} onPress={() => void elegirFoto()} disabled={ocupado} busy={uploading} />
         {avatarPath ? (
           <>
             {/* Encuadrar es distinto de cambiar: la foto ya está, lo que se
                 elige es qué pedazo se ve. Por eso vive al lado y no adentro de
                 «cambiar foto». */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Encuadrar la foto"
-              onPress={() => abrir({ pathname: '/perfil/encuadrar', params: { que: 'foto' } })}
-              className="h-10 flex-row items-center rounded-full bg-muted px-4 active:opacity-80"
-            >
-              <Text className="text-foreground text-[13px] font-semibold">Encuadrar</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Quitar la foto"
-              disabled={ocupado}
-              onPress={() => { if (!enVuelo.current) setQuitar('foto') }}
-              className="h-10 w-10 items-center justify-center rounded-full bg-muted active:opacity-80"
-            >
-              <IconClose size={16} color={ICON_COLOR.muted} />
-            </Pressable>
+            <AccionSocial label="Encuadrar" secundaria expandida={false} onPress={() => abrir({ pathname: '/perfil/encuadrar', params: { que: 'foto' } })} disabled={ocupado} />
+            <IconButton label="Quitar la foto" symbol="xmark" disabled={ocupado} onPress={() => { if (!enVuelo.current) setQuitar('foto') }} icon={<IconClose size={16} color={ICON_COLOR.muted} />} />
           </>
         ) : null}
       </View>
       {error ? (
-        <Text className="text-destructive text-xs">{error}</Text>
+        <Text className="text-destructive text-caption1">{error}</Text>
       ) : (
-        <Text className="text-muted-foreground text-xs">
+        <Text className="text-muted-foreground text-caption1">
           JPG, PNG, WebP o GIF · hasta 8 MB. El GIF queda animado.
         </Text>
       )}
@@ -438,14 +416,14 @@ export default function EditarPerfil() {
 
 
   const vistaPrevia = <View className="w-full gap-4" style={{ maxWidth: 390, alignSelf: 'center' }}>
-    <Text className="text-muted-foreground text-[11px] px-3">{profile.visibility === 'publico' ? 'Público' : 'Solo vos'}</Text>
+    <Text className="text-muted-foreground text-caption2 px-3">{profile.visibility === 'publico' ? 'Público' : 'Solo vos'}</Text>
     <View style={{ padding: 24 }}><TarjetaPerfil perfil={profile} /></View>
   </View>
   const abrirProbador = <Pressable accessibilityRole="button" accessibilityLabel="Abrir el probador de personalización" onPress={() => abrir('/profile/marco')}
     className="gap-3 rounded-xl bg-card p-5 active:bg-muted">
-    <View className="flex-row items-center gap-3"><IconSparkles size={16} color={ICON_COLOR.foreground} /><Text className="text-foreground text-[18px] font-bold">Encontrá tu estilo</Text></View>
-    <Text className="text-muted-foreground text-[13px] leading-5">Decoraciones de Discord, diseños de DMusic y tus propias piezas. Combiná y probá. Guardá todo junto al volver al editor.</Text>
-    <View className="self-start rounded-full bg-primary px-4 py-3"><Text className="text-primary-foreground text-[13px] font-bold">Personalizar perfil</Text></View>
+    <View className="flex-row items-center gap-3"><IconSparkles size={16} color={ICON_COLOR.foreground} /><Text className="text-foreground text-title3 font-bold">Encontrá tu estilo</Text></View>
+    <Text className="text-muted-foreground text-footnote leading-5">Decoraciones de Discord, diseños de DMusic y tus propias piezas. Combiná y probá. Guardá todo junto al volver al editor.</Text>
+    <View className="self-start rounded-full bg-primary px-4 py-3"><Text className="text-primary-foreground text-footnote font-bold">Personalizar perfil</Text></View>
   </Pressable>
   const confirmarQuitar = <Confirmar visible={quitar !== null} titulo={quitar === 'foto' ? '¿Quitar tu foto?' : '¿Quitar el fondo?'}
     mensaje="El cambio quedará en la vista previa hasta que elijas Guardar cambios."
@@ -504,10 +482,10 @@ export default function EditarPerfil() {
         <View className="mx-2 flex-row items-center gap-3 px-2 py-2">
           <Avatar name={nombre} path={avatarPath} size={40} />
           <View className="min-w-0 flex-1">
-            <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
+            <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
               {nombre}
             </Text>
-            <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+            <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
               @{profile.username}
             </Text>
           </View>
@@ -535,7 +513,7 @@ function Movil({ secciones, previa, espacioBarra, pisoVisible, onVolver, childre
       <View className="flex-row items-center gap-3 px-3 py-1">
         <BotonVolver label={actual ? 'Volver a editar perfil' : 'Volver al perfil'}
           onPress={actual ? () => setElegida(null) : onVolver} />
-        <Text accessibilityRole="header" className="text-foreground text-[17px] font-semibold">{actual?.titulo ?? 'Editar perfil'}</Text>
+        <Text accessibilityRole="header" className="text-foreground text-body font-semibold">{actual?.titulo ?? 'Editar perfil'}</Text>
       </View>
       <ScrollView key={actual?.id ?? 'menu'} keyboardShouldPersistTaps="handled"
         contentContainerClassName="px-4 pt-4" contentContainerStyle={{ paddingBottom: pisoVisible + espacioBarra }}>
@@ -545,12 +523,9 @@ function Movil({ secciones, previa, espacioBarra, pisoVisible, onVolver, childre
             <View className="gap-1">
               {secciones.map(s => {
                 const Icono = s.icono
-                return <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo}
-                  onPress={() => setElegida(s.id)}
+                return Platform.OS === 'ios' ? <View key={s.id} className="flex-row items-center gap-2"><Icono size={16} color={ICON_COLOR.muted} /><View style={{ flex: 1 }}><FilaSocial titulo={s.titulo} onPress={() => setElegida(s.id)} /></View></View> : <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo} onPress={() => setElegida(s.id)}
                   className="min-h-[44px] flex-row items-center gap-2.5 rounded-md px-2 active:bg-muted">
-                  <Icono size={16} color={ICON_COLOR.muted} />
-                  <Text className="min-w-0 flex-1 text-foreground text-[15px]">{s.titulo}</Text>
-                  <IconChevronRight size={16} color={ICON_COLOR.muted} />
+                  <Icono size={16} color={ICON_COLOR.muted} /><Text className="min-w-0 flex-1 text-foreground text-subheadline">{s.titulo}</Text><IconChevronRight size={16} color={ICON_COLOR.muted} />
                 </Pressable>
               })}
             </View>
@@ -608,11 +583,10 @@ function Escritorio({ secciones, cuenta, onVolver, previa, espacioBarra }: {
               {secciones.map(s => {
                 const activa = s.id === actual?.id
                 const Icono = s.icono
-                return <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo}
-                  accessibilityState={{ selected: activa }} onPress={() => setElegida(s.id)}
+                return Platform.OS === 'ios' ? <View key={s.id} className="flex-row items-center gap-2"><Icono size={16} color={ICON_COLOR.muted} /><View style={{ flex: 1 }}><FilaSocial titulo={s.titulo} selected={activa} onPress={() => setElegida(s.id)} /></View></View> : <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo} accessibilityState={{ selected: activa }} onPress={() => setElegida(s.id)}
                   className={`h-[30px] flex-row items-center gap-2.5 rounded-md px-2 ${activa ? 'bg-muted' : 'hover:bg-white/5 active:bg-muted'}`}>
                   <Icono size={16} color={activa ? ICON_COLOR.foreground : ICON_COLOR.muted} />
-                  <Text className={`min-w-0 flex-1 text-[13px] ${activa ? 'text-foreground font-medium' : 'text-foreground'}`} numberOfLines={1}>{s.titulo}</Text>
+                  <Text className={`min-w-0 flex-1 text-footnote ${activa ? 'text-foreground font-medium' : 'text-foreground'}`} numberOfLines={1}>{s.titulo}</Text>
                 </Pressable>
               })}
             </ScrollView>
@@ -621,7 +595,7 @@ function Escritorio({ secciones, cuenta, onVolver, previa, espacioBarra }: {
       <Panel className="min-w-0 flex-1">
         <View className="flex-row items-center gap-1 px-2 py-1">
           <BotonVolver label="Volver al perfil" onPress={onVolver} />
-          <Text className="min-w-0 flex-1 text-foreground text-[15px] font-semibold" numberOfLines={1}>{actual?.titulo}</Text>
+          <Text className="min-w-0 flex-1 text-foreground text-subheadline font-semibold" numberOfLines={1}>{actual?.titulo}</Text>
         </View>
         <ScrollView className="min-h-0 flex-1" keyboardShouldPersistTaps="handled"
           contentContainerClassName="items-center px-6 pt-5" contentContainerStyle={{ paddingBottom: 40 + espacioBarra }}>

@@ -1,4 +1,6 @@
-import { Image, Pressable, Text, View } from 'react-native'
+import { IconButton } from './IconButton'
+import { CancionCompartida } from './CancionCompartida'
+import { Image, Text, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 import type { Message } from '../models/message'
 import { artworkSource } from '../lib/artwork'
@@ -47,12 +49,14 @@ export function MessageDetailBody({ message, mine, contactName, playing, sonando
         titulo="Elegí un mensaje" detalle="Acá podés leerlo, escuchar su fragmento o abrir una invitación." />
     </View> : <ScrollArea contentContainerClassName="gap-5 px-5 pt-2" contentContainerStyle={{ paddingBottom: piso }}>
       <View className="gap-1">
-        <Text className="text-foreground text-[15px] font-semibold" numberOfLines={2}>{mine ? `Para @${contactName}` : `De @${contactName}`}</Text>
-        {message.createdAt ? <Text className="text-muted-foreground text-[13px]">{formatMessageDate(message.createdAt, true)}</Text> : null}
+        <Text className="text-foreground text-subheadline font-semibold" numberOfLines={2}>{mine ? `Para @${contactName}` : `De @${contactName}`}</Text>
+        {message.createdAt ? <Text className="text-muted-foreground text-footnote">{formatMessageDate(message.createdAt, true)}</Text> : null}
       </View>
 
       {invitacion ? <InvitacionJam texto={message.text} /> : message.text ?
-        <SeccionSocial><Text selectable className="text-foreground p-4 text-[16px] leading-6">{message.text}</Text></SeccionSocial> : null}
+        <SeccionSocial><Text selectable className="text-foreground p-4 text-callout leading-6">{message.text}</Text></SeccionSocial> : null}
+
+      {message.sharedSong ? <CancionCompartida song={message.sharedSong} /> : null}
 
       {song ? <View className="gap-4">
         {art ? <Image source={{ uri: art }} accessibilityLabel={`Portada de ${song.title}`}
@@ -60,13 +64,10 @@ export function MessageDetailBody({ message, mine, contactName, playing, sonando
         <View className="flex-row items-center gap-3">
           {!art ? <View className="h-12 w-12 items-center justify-center rounded-xl bg-muted"><IconMusic size={22} color={ICON_COLOR.muted} /></View> : null}
           <View className="min-w-0 flex-1 gap-1">
-            <Text className="text-foreground text-[17px] font-semibold" numberOfLines={2}>{song.title}</Text>
-            <Text className="text-muted-foreground text-[13px]" numberOfLines={2}>{song.artist} · {Math.round(song.durationMs / 1000)} s</Text>
+            <Text className="text-foreground text-body font-semibold" numberOfLines={2}>{song.title}</Text>
+            <Text className="text-muted-foreground text-footnote" numberOfLines={2}>{song.artist} · {Math.round(song.durationMs / 1000)} s</Text>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel={playing ? 'Pausar fragmento' : 'Reproducir fragmento'} onPress={onPlay}
-            className="h-12 w-12 items-center justify-center rounded-full bg-primary active:opacity-75">
-            {playing ? <IconPause size={18} color={ICON_COLOR.onPrimary} /> : <IconPlay size={18} color={ICON_COLOR.onPrimary} />}
-          </Pressable>
+          <IconButton label={playing ? 'Pausar fragmento' : 'Reproducir fragmento'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={onPlay} variant="primary" icon={playing ? <IconPause size={18} color={ICON_COLOR.onPrimary} /> : <IconPlay size={18} color={ICON_COLOR.onPrimary} />} />
         </View>
         {picos ? <Onda picos={picos} posicionMs={posicionSV} desdeMs={song.startMs} duracionMs={song.durationMs}
           activa={sonando} onSeek={onSeek} height={36} etiqueta={song.title} /> :
@@ -76,7 +77,7 @@ export function MessageDetailBody({ message, mine, contactName, playing, sonando
             en vez de cortarse con puntos suspensivos, con tres se veía un verso
             y medio. */}
         {song.lyrics?.length ? playing ? <Lyrics lines={song.lyrics} atMs={positionMs} visible={4} /> :
-          <Text className="text-muted-foreground text-[13px] leading-5">Reproducí el fragmento para seguir la letra.</Text> : null}
+          <Text className="text-muted-foreground text-footnote leading-5">Reproducí el fragmento para seguir la letra.</Text> : null}
       </View> : null}
     </ScrollArea>}
   </View>

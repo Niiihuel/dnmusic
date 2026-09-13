@@ -1,6 +1,5 @@
 import { forwardRef, type ReactNode } from 'react'
-import { Pressable, Text, TextInput, View, type TextInputProps } from 'react-native'
-import { ICON_COLOR, IconEye, IconEyeOff } from './icons'
+import { Text, TextInput, View, type TextInputProps } from 'react-native'
 
 /**
  * Campo de formulario con etiqueta.
@@ -13,7 +12,7 @@ import { ICON_COLOR, IconEye, IconEyeOff } from './icons'
  */
 export const PLACEHOLDER_COLOR = '#777777'
 
-type Props = Omit<TextInputProps, 'className'> & {
+export type FieldProps = Omit<TextInputProps, 'className'> & {
   /**
    * La etiqueta en versalitas arriba del campo. Opcional: sin ella, el campo va
    * pelado —solo el placeholder guía— para las pantallas que quieren el mínimo,
@@ -31,7 +30,7 @@ type Props = Omit<TextInputProps, 'className'> & {
   accessory?: ReactNode
 }
 
-export const Field = forwardRef<TextInput, Props>(function Field(
+export const Field = forwardRef<TextInput, FieldProps>(function Field(
   { label, icon, hint, error, accessory, ...input },
   ref,
 ) {
@@ -44,7 +43,7 @@ export const Field = forwardRef<TextInput, Props>(function Field(
   return (
     <View className="gap-2">
       {label ? (
-        <Text className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.8px]">
+        <Text className="text-muted-foreground text-footnote font-semibold uppercase">
           {label}
         </Text>
       ) : null}
@@ -58,14 +57,14 @@ export const Field = forwardRef<TextInput, Props>(function Field(
           ref={ref}
           placeholderTextColor={PLACEHOLDER_COLOR}
           accessibilityLabel={label ?? input.placeholder}
-          className="h-full flex-1 text-foreground text-[15px]"
+          className="h-full flex-1 text-foreground text-subheadline"
           {...input}
         />
         {accessory}
       </View>
       {pie !== null ? (
         <Text
-          className={`text-[12px] leading-4 ${error ? 'text-destructive' : 'text-muted-foreground'}`}
+          className={`text-caption1 ${error ? 'text-destructive' : 'text-muted-foreground'}`}
         >
           {pie}
         </Text>
@@ -73,36 +72,3 @@ export const Field = forwardRef<TextInput, Props>(function Field(
     </View>
   )
 })
-
-/**
- * Campo de contraseña con el ojo para mostrarla.
- *
- * El botón va como hermano del input y no envolviéndolo: anidado, en web sale
- * un `<button>` dentro de otro control y deja de ser alcanzable con el tabulador.
- */
-export function PasswordField({
-  visible,
-  onToggleVisible,
-  ...props
-}: Props & { visible: boolean; onToggleVisible: () => void }) {
-  return (
-    <Field
-      {...props}
-      secureTextEntry={!visible}
-      accessory={
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={visible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-          onPress={onToggleVisible}
-          className="h-10 w-10 items-center justify-center rounded-full active:bg-background"
-        >
-          {visible ? (
-            <IconEyeOff size={18} color={ICON_COLOR.muted} />
-          ) : (
-            <IconEye size={18} color={ICON_COLOR.muted} />
-          )}
-        </Pressable>
-      }
-    />
-  )
-}

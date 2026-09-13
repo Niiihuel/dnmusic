@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ActivityIndicator, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Platform, Text, View } from 'react-native'
+import { EntradaTexto } from './EntradaTexto'
 import { Field } from './Field'
 import { BotonConfirmar, BotonHoja, EncabezadoHoja } from './EncabezadoHoja'
-import { BarraCambiosPerfil } from './BarraCambiosPerfil'
-import { useSalidaConCambios } from './useSalidaConCambios'
 import { ICON_COLOR, IconAt, IconCheck, IconClose, IconMessage, IconUser } from './icons'
 import { IconoAjuste, useAjustesCompactos } from './Ajustes'
 import { isUsernameAvailable } from '../services/auth'
@@ -224,7 +223,7 @@ export function FilaCampo({ cual, editor, icono, iconoPlano = false, ultima = fa
   const esBio = cual === 'linea'
   const apilado = compacto || esBio
   const entrada = (
-    <TextInput
+    <EntradaTexto
       accessibilityLabel={TITULO_CAMPO[cual]}
       value={editor.valor}
       editable={!editor.busy}
@@ -238,8 +237,10 @@ export function FilaCampo({ cual, editor, icono, iconoPlano = false, ultima = fa
       scrollEnabled={!esBio}
       submitBehavior={esBio ? 'newline' : 'blurAndSubmit'}
       textAlignVertical={esBio ? 'top' : 'center'}
-      className={`text-foreground ${densidadCompacta ? 'text-[15px]' : 'text-[17px]'} ${apilado ? 'text-left' : 'text-right'}`}
-      style={esBio
+      className={`text-foreground ${densidadCompacta ? 'text-subheadline' : 'text-body'} ${apilado ? 'text-left' : 'text-right'}`}
+      style={esBio && Platform.OS === 'ios'
+        ? { minHeight: 60, paddingVertical: 6, fontSize: 17 }
+        : esBio
         ? { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', paddingVertical: 6, paddingHorizontal: 0, lineHeight: 24 }
         : { minHeight: densidadCompacta ? 36 : 44, minWidth: apilado ? 0 : 120, flex: apilado ? undefined : 1, paddingVertical: densidadCompacta ? 4 : 6, paddingHorizontal: 0 }}
     />
@@ -250,9 +251,9 @@ export function FilaCampo({ cual, editor, icono, iconoPlano = false, ultima = fa
         <View className={apilado ? 'gap-1' : `${densidadCompacta ? 'min-h-[36px] gap-2.5' : 'min-h-[44px] gap-3'} flex-row items-center`}>
           <View className="flex-row items-center gap-2">
             {icono ? densidadCompacta || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : null}
-            <Text className={apilado ? 'text-muted-foreground text-[14px]' : `text-foreground ${densidadCompacta ? 'text-[15px]' : 'text-[17px]'}`}>{TITULO_CAMPO[cual]}</Text>
+            <Text className={apilado ? 'text-muted-foreground text-subheadline' : `text-foreground ${densidadCompacta ? 'text-subheadline' : 'text-body'}`}>{TITULO_CAMPO[cual]}</Text>
           </View>
-          {esBio ? (
+          {esBio && Platform.OS !== 'ios' ? (
             <View style={{ minHeight: 60 }}>
               {/* Este texto mide el contenido también al borrar o cambiar el ancho.
                   El input superpuesto conserva foco y crece sin scroll interno. */}
@@ -268,24 +269,9 @@ export function FilaCampo({ cual, editor, icono, iconoPlano = false, ultima = fa
           {editor.marca}
         </View>
         {editor.aviso || editor.error ? (
-          <Text accessibilityLiveRegion="polite" className={`${apilado ? 'text-left' : 'text-right'} text-muted-foreground text-[13px]`}>{editor.error ?? editor.aviso}</Text>
+          <Text accessibilityLiveRegion="polite" className={`${apilado ? 'text-left' : 'text-right'} text-muted-foreground text-footnote`}>{editor.error ?? editor.aviso}</Text>
         ) : null}
       </View>
-    </View>
-  )
-}
-
-/** Editor independiente con la misma confirmación que el resto del perfil. */
-export function CampoEnLinea({ cual, onGuardado }: { cual: CampoPerfil; onGuardado?: () => void }) {
-  const editor = useEditorDeCampo(cual, onGuardado)
-  const dialogo = useSalidaConCambios(editor.cambiado, editor.busy)
-  return (
-    <View className="gap-4">
-      {editor.campo}
-      <BarraCambiosPerfil visible={editor.cambiado} ocupado={editor.busy} error={editor.error}
-        puedeGuardar={editor.puedeGuardar} onRestablecer={editor.restablecer}
-        onGuardar={() => void editor.guardar()} flotante={false} />
-      {dialogo}
     </View>
   )
 }

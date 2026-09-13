@@ -1,0 +1,61 @@
+{
+  "_lease": "Las medidas de Apple, y de dónde salió cada una.",
+  "_porQue": "Un solo archivo y dos lectores, como novedades.json: tailwind.config.js lo requiere para armar las clases (text-body, rounded-menu) y src/ui/tipografia.ts lo importa para los Animated.*, que no pueden usar className (ver la trampa de NativeWind en docs/DESIGN.md). Sin esto, la escala viviría copiada en dos lados y se irían separando.",
+  "_fuente": "Medido del UI Kit oficial de iOS 27 de Apple para Figma (kit 27.0.2, 2026-07-16) vía la REST API, a través de github.com/seunghan91/ios27-design-system. Los grises, labels, fondos y separadores del kit se verificaron contra los valores conocidos de Apple y dan idénticos; acá no se usan, porque la paleta de DMusic es acromática por decisión propia (docs/DESIGN.md) y de este kit se toma la geometría, no el color.",
+  "_noSeUsa": "El color del kit —azul de acento, #f2f2f7 de fondo agrupado, tarjetas blancas, separadores de pelo— es el vocabulario de Ajustes de iOS y pelearía con la regla de separar por luminancia. Ver docs/DESIGN.md.",
+
+  "texto": {
+    "_porQue": "Los once estilos de texto de iOS, con su interlineado y su tracking. El tracking es la mitad que más se nota y la que no estaba: SF viene con una tabla óptica por tamaño —positivo en los títulos grandes, negativo en el cuerpo— y sin ella el texto se lee suelto en los títulos y apretado en el cuerpo, que es la diferencia entre «parecido a Apple» y «es Apple».",
+    "_unidad": "px, que en esta app es también el punto de iOS.",
+    "largeTitle": { "size": 34, "leading": 41, "tracking": 0.4 },
+    "title1": { "size": 28, "leading": 34, "tracking": 0.38 },
+    "title2": { "size": 22, "leading": 28, "tracking": -0.26 },
+    "title3": { "size": 20, "leading": 25, "tracking": -0.45 },
+    "headline": { "size": 17, "leading": 22, "tracking": -0.43 },
+    "body": { "size": 17, "leading": 22, "tracking": -0.43 },
+    "callout": { "size": 16, "leading": 21, "tracking": -0.31 },
+    "subheadline": { "size": 15, "leading": 20, "tracking": -0.23 },
+    "footnote": { "size": 13, "leading": 18, "tracking": -0.08 },
+    "caption1": { "size": 12, "leading": 16, "tracking": 0 },
+    "caption2": { "size": 11, "leading": 13, "tracking": 0.06 }
+  },
+
+  "radio": {
+    "_porQue": "Apple no tiene una rampa geométrica de radios: le asigna uno a cada pieza. Estos son los que el kit dibuja, con el nombre de la pieza, así que se elige por lo que la cosa ES y no por un tamaño abstracto.",
+    "_agrupado": "El contenedor de una lista agrupada del kit es 10. `tarjeta` (12) no está atestiguado en el kit de iOS 27: viene del de iOS 26.",
+    "_iOS27": "Varios subieron fuerte en iOS 27: alerta, menú y menú contextual pasaron de 14 a 34, y el popover a 38. Un menú con radio 14 hoy se lee como de iOS 18.",
+    "tapa": 7,
+    "tapaAlta": 11,
+    "agrupado": 10,
+    "tarjeta": 12,
+    "celdaMenu": 20,
+    "aviso": 24,
+    "vidrioClaro": 23,
+    "menu": 34,
+    "alerta": 34,
+    "menuContextual": 34,
+    "hojaMedia": 34,
+    "vidrio": 34,
+    "popover": 38,
+    "hojaGrande": 38,
+    "pildora": 9999
+  },
+
+  "control": {
+    "_porQue": "Las alturas del sistema. La barra de arriba subió de 44 a 54 en iOS 27 y la de pestañas quedó en 95 con la bandeja de vidrio de 62 adentro; copiar los números viejos deja la app medio centímetro corrida contra cualquier app del sistema.",
+    "toque": 44,
+    "botonGrande": 50,
+    "botonMedio": 34,
+    "botonChico": 28,
+    "_fila": "iOS 27 subió la fila de lista de 44 a 52. Los 44 siguen siendo el mínimo de toque de la HIG, pero ya no son una altura de fila que el kit dibuje.",
+    "fila": 52,
+    "filaAlta": 68,
+    "barraSuperior": 54,
+    "barraSuperiorTituloGrande": 125,
+    "barraPestanas": 95,
+    "barraPestanasFila": 54,
+    "barraPestanasVidrio": 62,
+    "margenContenido": 16,
+    "anchoLectura": 672
+  }
+}

@@ -1,7 +1,9 @@
 import { TextoPerfil as Text } from './FuentePerfil'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Pressable, View } from 'react-native'
-import { listPublicPlaylists, type Playlist } from '../services/playlists'
+import type { Playlist } from '../services/playlists'
+import { useListasPublicas } from './useListasPublicas'
+import { AccionSocial } from './Social'
 import { PlaylistCover } from './PlaylistCover'
 import { formatLength } from './SeekBar'
 
@@ -30,30 +32,19 @@ export function ListasPerfil({
   nombre,
   propio,
   onAbrir,
+  recarga = 0,
 }: {
   ownerId: string
   /** Cómo se llama quien tiene el perfil, para el cartel de vacío. */
   nombre: string
   propio: boolean
+  recarga?: number
   onAbrir: (playlist: Playlist) => void
 }) {
-  const [listas, setListas] = useState<Playlist[] | null>(null)
+  const { listas, error, cargando, reintentar } = useListasPublicas(ownerId, recarga)
   const [ancho, setAncho] = useState(0)
 
-  useEffect(() => {
-    let vivo = true
-    listPublicPlaylists(ownerId)
-      .then((l) => vivo && setListas(l))
-      /* Que fallen no puede dejar el perfil sin lo demás: se muestra como si no
-         hubiera ninguna, igual que hacen las vitrinas. */
-      .catch(() => vivo && setListas([]))
-    return () => {
-      vivo = false
-    }
-  }, [ownerId])
-
-  if (listas === null) return null
-  if (!listas.length && !propio) return null
+  if (!cargando && !error && !listas?.length && !propio) return null
 
   /* Cuántas entran, medidas sobre el ancho real: el perfil se dibuja a 520px en
      el teléfono y a 720 en escritorio, y el mismo número fijo daría tarjetas
@@ -63,19 +54,28 @@ export function ListasPerfil({
 
   return (
     <View className="gap-3" onLayout={(e) => setAncho(e.nativeEvent.layout.width)}>
-      <Text className="text-foreground text-[18px] font-bold">Listas públicas</Text>
+      <Text className="text-foreground text-title3 font-bold">Listas públicas</Text>
 
-      {listas.length ? (
+      {error ? (
+        <View className="gap-2">
+          <Text accessibilityRole="alert" className="text-muted-foreground text-footnote">{error}</Text>
+          <AccionSocial label="Reintentar" onPress={reintentar} secundaria compacta />
+        </View>
+      ) : null}
+      {cargando && !listas?.length ? (
+        <Text className="text-muted-foreground text-footnote">Cargando listas públicas…</Text>
+      ) : null}
+      {listas?.length ? (
         <View className="flex-row flex-wrap" style={{ gap: HUECO }}>
           {listas.map((lista) => (
             <Tarjeta key={lista.id} lista={lista} lado={lado} onPress={() => onAbrir(lista)} />
           ))}
         </View>
-      ) : (
-        <Text className="text-muted-foreground text-[13px] leading-5">
+      ) : !cargando && !error && propio ? (
+        <Text className="text-muted-foreground text-footnote leading-5">
           Todavía no publicaste listas. Podés hacerlas públicas desde su menú.
         </Text>
-      )}
+      ) : null}
     </View>
   )
 }
@@ -112,10 +112,10 @@ function Tarjeta({
         <PlaylistCover covers={lista.covers} coverPath={lista.coverPath} size={lado} />
       </View>
       <View className="gap-0.5">
-        <Text className="text-foreground text-[14px] font-semibold" numberOfLines={2}>
+        <Text className="text-foreground text-subheadline font-semibold" numberOfLines={2}>
           {lista.name}
         </Text>
-        <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+        <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
           {lista.tracks} {lista.tracks === 1 ? 'canción' : 'canciones'}
           {lista.totalMs > 0 ? ` · ${formatLength(lista.totalMs)}` : ''}
         </Text>

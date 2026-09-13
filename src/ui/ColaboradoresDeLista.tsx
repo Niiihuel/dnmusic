@@ -69,7 +69,7 @@ export function ColaboradoresDeLista({
           <IconUsers size={20} color={ICON_COLOR.muted} />
         )}
       </View>
-      <Text className="text-muted-foreground text-[12px] font-semibold">
+      <Text className="text-muted-foreground text-caption1 font-semibold">
         {cantidad > 3 ? `+${cantidad - 3}` : cantidad === 1 ? 'Invitar' : cantidad}
       </Text>
     </Pressable>

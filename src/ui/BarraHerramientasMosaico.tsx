@@ -1,5 +1,5 @@
-import { Text, View } from 'react-native'
-import { BotonVidrio } from './Glass'
+import { View } from 'react-native'
+import { IconButton } from './IconButton'
 import { Menu } from './Menu'
 import { ICON_COLOR, IconBack, IconMore, IconPalette, IconPlus, IconType } from './icons'
 
@@ -16,16 +16,9 @@ export function BarraHerramientasMosaico({ ocupado, onTema, onFuente, onAgregar,
         ]}
         trigger={<View style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#242424' }}><IconMore size={21} color={ICON_COLOR.foreground} /></View>} />
     </View> : null}
-    <BotonVidrio label="Agregar una pieza" disabled={ocupado} onPress={onAgregar} radius={999}
-      tint={ICON_COLOR.foreground} style={{ width: 48, height: 48 }}>
-      <IconPlus size={22} color={ICON_COLOR.onPrimary} strokeWidth={2.4} />
-    </BotonVidrio>
-    <BotonVidrio label="Volver al editor de perfil" disabled={ocupado} onPress={onEditor} radius={999}
-      style={{ height: 44, paddingHorizontal: 16 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <IconBack size={16} color={ICON_COLOR.foreground} />
-        <Text className="text-foreground text-[13px] font-semibold">Editor</Text>
-      </View>
-    </BotonVidrio>
+    <IconButton label="Agregar una pieza" symbol="plus" disabled={ocupado} onPress={onAgregar} variant="primary" lado={48} size={22}
+      icon={<IconPlus size={22} color={ICON_COLOR.onPrimary} strokeWidth={2.4} />} />
+    <IconButton label="Volver al editor de perfil" symbol="chevron.left" disabled={ocupado} onPress={onEditor} variant="glass"
+      icon={<IconBack size={16} color={ICON_COLOR.foreground} />} />
   </View>
 }

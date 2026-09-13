@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Regenera la marca desde assets/branding/dnmusic-source.png. Requiere Pillow."""
+import argparse
 from pathlib import Path
 from PIL import Image
 
@@ -40,6 +41,17 @@ def save(path, im, **kwargs):
     print(path, im.size)
 
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--desktop-only', action='store_true', help='Regenerar sólo los recursos de Windows y Linux')
+args = parser.parse_args()
+
+# Windows y Linux dibujan la silueta del recurso, no aplican la máscara de iOS.
+# Usamos la marca transparente existente, igual que en el splash.
+save('assets/desktop-icon.png', icon(1024, opaque=False))
+save('assets/icon.ico', icon(256, opaque=False), sizes=[(n, n) for n in (16, 20, 24, 32, 40, 48, 64, 128, 256)])
+if args.desktop_only:
+    raise SystemExit(0)
+
 save('assets/icon.png', icon(1024))
 save('assets/favicon.png', icon(64))
 save('assets/branding/splash-dnmusic.png', icon(1024, .78, opaque=False))
@@ -51,4 +63,3 @@ for size in (192, 512):
     save(f'public/icons/icon-{size}.png', icon(size))
 save('public/icons/icon-maskable-512.png', icon(512, safe_radius=.36))
 save('public/icons/apple-touch-icon.png', icon(180))
-save('assets/icon.ico', icon(256), sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128, 256)])

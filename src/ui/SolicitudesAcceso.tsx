@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Image, Text, View } from 'react-native'
+import { ActivityIndicator, Image, Platform, Text, View } from 'react-native'
 import {
   deleteAccessAccount,
   decideAccess,
   listAccessRequests,
   type AccessRequest,
 } from '../services/acceso'
+import { ListaAgrupada } from './ListaAgrupada'
+import type { SeccionAgrupada } from './ListaAgrupada.types'
 import { usePiso } from '../state/shell'
 import { AccionSocial } from './Social'
 import { FormError } from './Button'
@@ -14,6 +16,7 @@ import { ICON_COLOR } from './icons'
 import { Avatar } from './Avatar'
 import { Confirmar } from './Confirmar'
 import { ScrollArea } from './ScrollArea'
+import { isInternalAuthEmail } from '../services/auth'
 
 const ESTADOS = {
   pending: 'Pendientes',
@@ -22,13 +25,15 @@ const ESTADOS = {
 } as const
 
 function nombreCuenta(cuenta: AccessRequest) {
-  return cuenta.display_name || cuenta.username || cuenta.email || 'Cuenta de Google'
+  const email = isInternalAuthEmail(cuenta.email ?? undefined) ? null : cuenta.email
+  return cuenta.display_name || cuenta.username || email || 'Cuenta de Google'
 }
 
 function detalleCuenta(cuenta: AccessRequest) {
-  if (cuenta.username && cuenta.email) return `@${cuenta.username} · ${cuenta.email}`
+  const email = isInternalAuthEmail(cuenta.email ?? undefined) ? null : cuenta.email
+  if (cuenta.username && email) return `@${cuenta.username} · ${email}`
   if (cuenta.username) return `@${cuenta.username}`
-  return cuenta.email || 'Cuenta vinculada con Google'
+  return email || 'Cuenta vinculada con Google'
 }
 
 function AvatarCuenta({ cuenta }: { cuenta: AccessRequest }) {
@@ -156,12 +161,41 @@ export function ListaSolicitudes({
     }
   }
 
+  if (Platform.OS === 'ios') {
+    const resumen: SeccionAgrupada = { id: 'resumen', titulo: 'Cuentas de DMusic',
+      pie: aviso ?? 'Las cuentas nuevas necesitan tu aprobación antes de entrar.', error: error ?? undefined,
+      filas: [{ tipo: 'accion', id: 'actualizar', rotulo: solicitudes === null && error ? 'Reintentar' : 'Actualizar', busy: busy === 'lectura', disabled: busy !== null, onPress: () => { void cargar() } },
+        ...(solicitudes?.length === 0 ? [{ tipo: 'dato' as const, id: 'vacia', rotulo: 'No hay cuentas para revisar', valor: '' }] : [])] }
+    const estados = (['pending', 'approved', 'rejected'] as const).flatMap((estado): SeccionAgrupada[] => {
+      const cuentas = solicitudes?.filter(s => s.status === estado) ?? []
+      if (!cuentas.length) return []
+      return [{ id: estado, titulo: `${ESTADOS[estado]} · ${cuentas.length}`, filas: cuentas.map(cuenta => {
+        if (cuenta.user_id === administradorId) return { tipo: 'dato' as const, id: cuenta.user_id, rotulo: nombreCuenta(cuenta), valor: 'Administrador' }
+        return { tipo: 'menu' as const, id: cuenta.user_id, rotulo: nombreCuenta(cuenta),
+          detalle: `${detalleCuenta(cuenta)} · Solicitud del ${new Date(cuenta.requested_at).toLocaleDateString('es')}`,
+          valor: busy === cuenta.user_id ? 'Guardando…' : 'Opciones', disabled: busy !== null,
+          opciones: [
+            ...(estado !== 'approved' ? [{ id: 'aprobar', rotulo: 'Aprobar acceso', symbol: 'checkmark' as const }] : []),
+            ...(estado !== 'rejected' ? [{ id: 'rechazar', rotulo: 'Rechazar acceso', symbol: 'xmark' as const }] : []),
+            { id: 'eliminar', rotulo: 'Eliminar cuenta', symbol: 'trash' as const, destructiva: true },
+          ], onElegir: id => { if (id === 'eliminar') setPorEliminar(cuenta); else void decidir(cuenta, id === 'aprobar') },
+        }
+      }) }]
+    })
+    return <>
+      <ListaAgrupada secciones={[resumen, ...estados]} label="Solicitudes de acceso" piso={piso} />
+      <Confirmar visible={!!porEliminar} titulo="¿Eliminar esta cuenta?"
+        mensaje={porEliminar ? `${nombreCuenta(porEliminar)} perderá el acceso y sus datos asociados. Esta acción no se puede deshacer.` : ''}
+        rotulo="Eliminar cuenta" onCancelar={() => setPorEliminar(null)} onConfirmar={() => { if (porEliminar) void eliminar(porEliminar) }} />
+    </>
+  }
+
   const cuerpo = (
     <View className="w-full gap-5">
       <View className="flex-row flex-wrap items-center justify-between gap-3">
         <View className="min-w-0 flex-1 gap-0.5">
-          <Text className="text-foreground text-[15px] font-semibold">Cuentas de DMusic</Text>
-          <Text className="text-muted-foreground text-[12px]">
+          <Text className="text-foreground text-subheadline font-semibold">Cuentas de DMusic</Text>
+          <Text className="text-muted-foreground text-caption1">
             Las cuentas nuevas necesitan tu aprobación antes de entrar.
           </Text>
         </View>
@@ -176,7 +210,7 @@ export function ListaSolicitudes({
 
       <FormError message={error} />
       {aviso ? (
-        <Text accessibilityLiveRegion="polite" className="text-muted-foreground text-[12px]">
+        <Text accessibilityLiveRegion="polite" className="text-muted-foreground text-caption1">
           {aviso}
         </Text>
       ) : null}
@@ -186,7 +220,7 @@ export function ListaSolicitudes({
         </View>
       ) : null}
       {solicitudes?.length === 0 ? (
-        <Text className="text-muted-foreground py-8 text-center text-[13px]">
+        <Text className="text-muted-foreground py-8 text-center text-footnote">
           No hay cuentas para revisar.
         </Text>
       ) : null}
@@ -198,14 +232,15 @@ export function ListaSolicitudes({
           <View key={estado} className="gap-1.5">
             <Text
               accessibilityRole="header"
-              className="px-3 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.1px]"
+              className="px-3 text-muted-foreground text-footnote font-semibold uppercase"
             >
               {ESTADOS[estado]} · {filas.length}
             </Text>
             <View className="overflow-hidden rounded-[16px] bg-card">
               {filas.map((cuenta, i) => {
                 const esOwner = cuenta.user_id === administradorId
-                const etiqueta = cuenta.email || cuenta.username || cuenta.display_name || 'esta cuenta'
+                const email = isInternalAuthEmail(cuenta.email ?? undefined) ? null : cuenta.email
+                const etiqueta = email || cuenta.username || cuenta.display_name || 'esta cuenta'
                 return (
                   <View key={cuenta.user_id} className="flex-row items-center gap-3 pl-3">
                     <AvatarCuenta cuenta={cuenta} />
@@ -215,20 +250,20 @@ export function ListaSolicitudes({
                       }`}
                     >
                       <View className="min-w-0 flex-1 gap-0.5">
-                        <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
+                        <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
                           {nombreCuenta(cuenta)}
                         </Text>
-                        <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+                        <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
                           {detalleCuenta(cuenta)}
                         </Text>
-                        <Text className="text-muted-foreground/70 text-[11px]" numberOfLines={1}>
+                        <Text className="text-muted-foreground/70 text-caption2" numberOfLines={1}>
                           Solicitud del {new Date(cuenta.requested_at).toLocaleDateString('es')}
                         </Text>
                       </View>
                       {busy === cuenta.user_id ? (
                         <ActivityIndicator accessibilityLabel="Guardando cambios" color={ICON_COLOR.muted} />
                       ) : esOwner ? (
-                        <Text className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground text-[11px]">
+                        <Text className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground text-caption2">
                           Administrador
                         </Text>
                       ) : (

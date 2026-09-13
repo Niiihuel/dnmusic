@@ -1,5 +1,6 @@
+import { IconButton } from './IconButton'
 import { useEffect, useState } from 'react'
-import { Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { Image, Text, useWindowDimensions, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import { resolveSong, fetchAlbum, type AlbumInfo, type AlbumTrack } from '../services/music'
 import {
@@ -117,7 +118,7 @@ export function AlbumPanel({
     return (
       <View className="items-center gap-3 px-8 py-10">
         <IconMusic size={22} color={ICON_COLOR.muted} />
-        <Text className="text-muted-foreground text-center text-[13px] leading-5">
+        <Text className="text-muted-foreground text-center text-footnote leading-5">
           No pude traer {kind === 'album' ? 'este álbum' : 'esta lista'}. Puede que YouTube no lo
           esté publicando.
         </Text>
@@ -218,27 +219,17 @@ export function AlbumPanel({
         }
         actions={
           <>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={mine && soundingPlay ? 'Pausar' : `Reproducir ${album.title}`}
-              onPress={() => {
+            <IconButton label={mine && soundingPlay ? 'Pausar' : `Reproducir ${album.title}`} symbol={mine && soundingPlay ? 'pause.fill' : 'play.fill'} onPress={() => {
                 if (mine) togglePlayback()
                 else if (onPlayAll && total > 0) onPlayAll(album.tracks, album.artworkUrl)
-              }}
-              disabled={total === 0 || (!mine && !onPlayAll)}
-              className={`h-14 w-14 items-center justify-center rounded-full ${
-                total === 0 ? 'bg-muted' : 'bg-primary active:opacity-80'
-              }`}
-            >
-              {mine && soundingPlay ? (
+              }} disabled={total === 0 || (!mine && !onPlayAll)} lado={56} size={20} variant="primary" icon={mine && soundingPlay ? (
                 <IconPause
                   size={20}
                   color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
                 />
               ) : (
                 <IconPlay size={20} color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary} />
-              )}
-            </Pressable>
+              )} />
 
             {/* Lineal o aleatorio, al lado de reproducir: la misma decisión y
                 el mismo lenguaje que en una lista propia — encendido es el
@@ -311,14 +302,7 @@ export function AlbumPanel({
                   {suelto ? null : (
                     <View className="w-9 items-center">
                       {hovered === track.videoId ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={`Agregar ${track.title}`}
-                          onPress={() => onAdd(track, album.artworkUrl)}
-                          className="h-7 w-7 items-center justify-center active:opacity-60"
-                        >
-                          <IconPlus size={15} color={ICON_COLOR.foreground} />
-                        </Pressable>
+                        <IconButton label={`Agregar ${track.title}`} symbol="plus" onPress={() => onAdd(track, album.artworkUrl)} lado={28} size={15} icon={<IconPlus size={15} color={ICON_COLOR.foreground} />} />
                       ) : null}
                     </View>
                   )}

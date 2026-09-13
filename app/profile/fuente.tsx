@@ -1,3 +1,4 @@
+import { FilaSocial } from '../../src/ui/FilaSocial'
 import { useState } from 'react'
 import { FlatList, Platform, Pressable, ScrollView, Text, View } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
@@ -84,15 +85,15 @@ export default function ElegirFuente() {
         >
           <View style={{ flexDirection: columnas ? 'row' : 'column', gap: 28, alignItems: columnas ? 'flex-start' : 'stretch' }}>
             <View style={{ width: columnas ? 340 : '100%', maxWidth: 380, alignSelf: columnas ? 'flex-start' : 'center', gap: 8 }}>
-              <Text className="text-foreground text-[17px] font-semibold">Vista previa</Text>
+              <Text className="text-foreground text-body font-semibold">Vista previa</Text>
               <View style={{ paddingHorizontal: 16, paddingVertical: 24 }}>
                 {perfilVistaPrevia ? <TarjetaPerfil perfil={perfilVistaPrevia} animado={false} /> : (
-                  <Text className="text-muted-foreground text-[15px]">Cargando tu perfil…</Text>
+                  <Text className="text-muted-foreground text-subheadline">Cargando tu perfil…</Text>
                 )}
               </View>
             </View>
             <View style={{ flex: columnas ? 1 : undefined, minWidth: 0, gap: 16 }}>
-              <Text className="text-muted-foreground text-[15px] leading-5">
+              <Text className="text-muted-foreground text-subheadline">
                 La fuente se aplica a tu nombre, biografía, canciones y mosaico.
               </Text>
               <View className="overflow-hidden rounded-2xl bg-card">
@@ -126,6 +127,8 @@ function Opcion({ nombre, detalle, muestra, estilo, elegida, desactivada, onPres
   desactivada: boolean
   onPress: () => void
 }) {
+  if (Platform.OS === 'ios') return <FilaSocial titulo={muestra} detalle={`${nombre} · ${detalle}`} fontFamily={estilo?.fontFamily}
+    label={`Fuente ${nombre}. ${detalle}`} selected={elegida} disabled={desactivada} onPress={onPress} />
   return (
     <Pressable
       {...estadoControlWeb('none')}

@@ -47,10 +47,10 @@ function EditorCampo({ cual }: { cual: CampoPerfil }) {
                   {editor.campo}
                 </View>
                 <View style={{ width: columnas ? 340 : '100%', maxWidth: 380, alignSelf: columnas ? 'flex-start' : 'center', gap: 8 }}>
-                  <Text className="text-foreground text-[17px] font-semibold">Vista previa</Text>
+                  <Text className="text-foreground text-body font-semibold">Vista previa</Text>
                   <View style={{ paddingHorizontal: 16, paddingVertical: 24 }}>
                     {editor.perfilVistaPrevia ? <TarjetaPerfil perfil={editor.perfilVistaPrevia} animado={false} /> : (
-                      <Text className="text-muted-foreground text-[15px]">Cargando tu perfil…</Text>
+                      <Text className="text-muted-foreground text-subheadline">Cargando tu perfil…</Text>
                     )}
                   </View>
                 </View>

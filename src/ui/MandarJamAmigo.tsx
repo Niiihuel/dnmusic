@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import { avisar } from '../state/aviso'
 import { mensajeError } from '../lib/mensajeError'
 import { useUser } from '../state/session'
@@ -8,7 +8,7 @@ import { sendMessage } from '../services/messages'
 import { linkDeJam } from '../lib/invitarJam'
 import { Avatar } from './Avatar'
 import { SearchField } from './SearchField'
-import { ICON_COLOR, IconCheck } from './icons'
+import { FilaSocial } from './FilaSocial'
 
 /**
  * Mandar la invitación al Jam **por chat**, eligiendo un amigo.
@@ -75,37 +75,21 @@ export function MandarJamAmigo({ code }: { code: string }) {
 
   return (
     <View className="gap-2">
-      <Text accessibilityRole="header" className="text-foreground text-[15px] font-semibold">Invitar por chat</Text>
+      <Text accessibilityRole="header" className="text-foreground text-subheadline font-semibold">Invitar por chat</Text>
       <SearchField value={busqueda} onChangeText={setBusqueda} placeholder="Buscar una persona" accessibilityLabel="Buscar a un amigo para mandarle el Jam" loading={busqueda.trim().length >= 2 && buscando} />
-      {hallado?.texto === busqueda.trim() && !buscando && !resultados.length ? <Text className="text-muted-foreground text-[13px]">No encontramos personas con ese nombre.</Text> : null}
+      {hallado?.texto === busqueda.trim() && !buscando && !resultados.length ? <Text className="text-muted-foreground text-footnote">No encontramos personas con ese nombre.</Text> : null}
       {resultados.map((c) => {
         const ya = enviados.has(c.id)
         return (
-          <Pressable
-            key={c.id}
-            accessibilityRole="button"
-            accessibilityLabel={ya ? `Ya le mandaste a ${c.username}` : `Mandarle a ${c.username}`}
-            disabled={ya || mandando !== null}
-            onPress={() => void mandar(c)}
-            className="min-h-11 flex-row items-center gap-3 rounded-2xl px-3 py-3 active:bg-muted"
-          >
+          <View key={c.id} className="flex-row items-center gap-2">
             <Avatar name={c.displayName || c.username} path={c.avatarPath} size={40} />
-            <View className="min-w-0 flex-1">
-              <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
-                {c.displayName?.trim() || `@${c.username}`}
-              </Text>
-              <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
-                @{c.username}
-              </Text>
+            <View style={{ flex: 1 }}><FilaSocial
+              titulo={c.displayName?.trim() || `@${c.username}`} detalle={`@${c.username}`}
+              label={ya ? `Ya le mandaste a ${c.username}` : `Mandarle a ${c.username}`}
+              valor={ya ? 'Invitación enviada' : 'Invitar'} selected={ya} busy={mandando === c.id}
+              disabled={ya || mandando !== null} onPress={() => void mandar(c)} />
             </View>
-            {mandando === c.id ? (
-              <ActivityIndicator size="small" color={ICON_COLOR.muted} />
-            ) : ya ? (
-              <IconCheck size={16} color={ICON_COLOR.muted} />
-            ) : (
-              <Text className="text-foreground text-[14px] font-semibold">Invitar</Text>
-            )}
-          </Pressable>
+          </View>
         )
       })}
     </View>

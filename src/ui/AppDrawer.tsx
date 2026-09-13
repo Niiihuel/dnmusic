@@ -1,3 +1,4 @@
+import type { AppDrawerProps } from './AppDrawer.types'
 import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -50,18 +51,7 @@ export function AppDrawer({
   onNewPlaylist,
   onOpenPlaylist,
   onAjustes,
-}: {
-  name: string
-  avatarPath: string | null | undefined
-  onProfile: () => void
-  onPlaylists: () => void
-  onChats: () => void
-  onNowPlaying: () => void
-  onNewPlaylist: () => void
-  /** Abre una lista puntual, sin pasar por la pestaña. */
-  onOpenPlaylist: (id: string) => void
-  onAjustes: () => void
-}) {
+}: AppDrawerProps) {
   const insets = useSafeAreaInsets()
   const sonando = usePlaybackTrack()
   /* Lo que espera en Chats: el mismo número del globito de la pestaña. */
@@ -103,7 +93,7 @@ export function AppDrawer({
       {/* La marca, no una tarjeta de perfil.
           Quién sos ya está abajo, en el avatar: repetirlo arriba en grande era
           gastar el tramo más visible del panel en un dato que no es un destino. */}
-      <Text className="text-foreground px-6 pb-6 pt-2 text-2xl font-bold">dnmusic</Text>
+      <Text className="text-foreground px-6 pb-6 pt-2 text-title2 font-bold">dnmusic</Text>
 
       <ScrollView
         className="min-h-0 flex-1"
@@ -151,7 +141,7 @@ export function AppDrawer({
          */}
         {listas && listas.length > 0 ? (
           <View className="mt-8 gap-0.5 px-3">
-            <Text className="text-muted-foreground px-3 pb-2 text-[13px]">Tus listas</Text>
+            <Text className="text-muted-foreground px-3 pb-2 text-footnote">Tus listas</Text>
             {listas.map((lista) => (
               <Pressable
                 key={lista.id}
@@ -160,7 +150,7 @@ export function AppDrawer({
                 onPress={() => onOpenPlaylist(lista.id)}
                 className="rounded-xl px-3 py-3 active:bg-muted"
               >
-                <Text className="text-foreground text-[16px]" numberOfLines={1}>
+                <Text className="text-foreground text-callout" numberOfLines={1}>
                   {lista.name}
                 </Text>
               </Pressable>
@@ -173,7 +163,7 @@ export function AppDrawer({
               onPress={onPlaylists}
               className="flex-row items-center gap-1 rounded-xl px-3 py-3 active:bg-muted"
             >
-              <Text className="text-muted-foreground text-[15px]">Todas tus listas</Text>
+              <Text className="text-muted-foreground text-subheadline">Todas tus listas</Text>
               <IconChevronRight size={15} color={ICON_COLOR.muted} />
             </Pressable>
           </View>
@@ -220,7 +210,7 @@ export function AppDrawer({
             className="h-11 flex-row items-center gap-1.5 rounded-full bg-primary px-5 active:opacity-80"
           >
             <IconPlus size={16} color={ICON_COLOR.onPrimary} />
-            <Text className="text-primary-foreground text-[14px] font-semibold">Nueva lista</Text>
+            <Text className="text-primary-foreground text-subheadline font-semibold">Nueva lista</Text>
           </Pressable>
         </View>
       </View>
@@ -249,14 +239,14 @@ function Fila({
       className="flex-row items-center gap-4 rounded-xl px-3 py-3.5 active:bg-muted"
     >
       <View className="w-6 items-center">{icon}</View>
-      <Text className="min-w-0 flex-1 text-foreground text-[17px] font-medium" numberOfLines={1}>
+      <Text className="min-w-0 flex-1 text-foreground text-body font-medium" numberOfLines={1}>
         {label}
       </Text>
       {/* El mismo globito de la pestaña y de una conversación sin leer:
           blanco —el acento— con el número oscuro. */}
       {badge > 0 ? (
         <View className="min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5">
-          <Text className="text-primary-foreground text-[10px] font-semibold">
+          <Text className="text-primary-foreground text-caption2 font-semibold">
             {Math.min(badge, 99)}
           </Text>
         </View>

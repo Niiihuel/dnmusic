@@ -1,3 +1,5 @@
+import { IconButton } from '../../src/ui/IconButton'
+import { CancionCompartida } from '../../src/ui/CancionCompartida'
 import { invitacionEnTexto } from '../../src/lib/invitacionJam'
 import { InvitacionJam } from '../../src/ui/InvitacionJam'
 import { useEffect, useMemo, useState } from 'react'
@@ -5,7 +7,6 @@ import {
   ActivityIndicator,
   Image,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -297,11 +298,12 @@ export default function MessageStory() {
             {wide && song && verFrase && message.text ? (
               <View style={{ width: Math.min(300, width * 0.34) }}>
                 {invitacionEnTexto(message.text) ? <InvitacionJam texto={message.text} /> :
-                  <SeccionSocial titulo="Mensaje"><Text selectable className="text-foreground p-4 text-[16px] leading-6">{message.text}</Text></SeccionSocial>}
+                  <SeccionSocial titulo="Mensaje"><Text selectable className="text-foreground p-4 text-callout leading-6">{message.text}</Text></SeccionSocial>}
               </View>
             ) : null}
 
             <View className="min-h-0 flex-1 items-center justify-center gap-7">
+              {message.sharedSong ? <CancionCompartida song={message.sharedSong} /> : null}
               {/*
             La letra va en una ventana de líneas fijas y no ocupando todo el
             alto: con el alto libre la última línea quedaba cortada por la mitad
@@ -312,7 +314,7 @@ export default function MessageStory() {
                 <View className="w-full max-w-xl items-center">
                   <Lyrics lines={lyrics} atMs={player.positionMs} size="lg" visible={5} />
                   {song?.lyricsLang ? (
-                    <Text className="text-muted-foreground pt-3 text-center text-[13px]">
+                    <Text className="text-muted-foreground pt-3 text-center text-footnote">
                       Traducida al {LANG_NAMES[song.lyricsLang] ?? song.lyricsLang}
                     </Text>
                   ) : null}
@@ -327,10 +329,10 @@ export default function MessageStory() {
                     size={Math.min(wide ? DISC_WIDE : DISC_NARROW, Math.max(140, width - 80))}
                   />
                   <View className="items-center gap-1">
-                    <Text className="text-foreground text-xl font-semibold" numberOfLines={1}>
+                    <Text className="text-foreground text-title3 font-semibold" numberOfLines={1}>
                       {song.title}
                     </Text>
-                    <Text className="text-muted-foreground text-sm" numberOfLines={1}>
+                    <Text className="text-muted-foreground text-subheadline" numberOfLines={1}>
                       {song.artist}
                     </Text>
                   </View>
@@ -349,21 +351,12 @@ export default function MessageStory() {
                       <InvitacionJam texto={message.text} />
                     </ScrollView>
                   ) : (
-                    <Text className="text-foreground text-[15px] leading-6" numberOfLines={3}>
+                    <Text className="text-foreground text-subheadline leading-6" numberOfLines={3}>
                       {message.text}
                     </Text>
                   )}
                   {!invitacionEnTexto(message.text) ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => setFraseAbierta((v) => !v)}
-                      accessibilityState={{ expanded: fraseAbierta }}
-                      className="min-h-11 self-end justify-center px-2 active:opacity-60"
-                    >
-                      <Text className="text-muted-foreground text-[15px] font-semibold">
-                        {fraseAbierta ? 'Ver menos' : 'Ver más'}
-                      </Text>
-                    </Pressable>
+                    <AccionSocial label={fraseAbierta ? 'Ver menos' : 'Ver más'} secundaria expandida={false} onPress={() => setFraseAbierta(v => !v)} />
                   ) : null}
                 </View>
               ) : null}
@@ -398,8 +391,8 @@ export default function MessageStory() {
                     etiqueta={song.title}
                   />
                   <View className="flex-row justify-between">
-                    <Text className="text-muted-foreground text-[12px] tabular-nums">{formatClock(Math.max(0, Math.min(song.durationMs, player.positionMs - song.startMs)))}</Text>
-                    <Text className="text-muted-foreground text-[12px] tabular-nums">{formatClock(song.durationMs)}</Text>
+                    <Text className="text-muted-foreground text-caption1 tabular-nums">{formatClock(Math.max(0, Math.min(song.durationMs, player.positionMs - song.startMs)))}</Text>
+                    <Text className="text-muted-foreground text-caption1 tabular-nums">{formatClock(song.durationMs)}</Text>
                   </View>
                 </View>
               ) : <View className="w-full max-w-xl">
@@ -410,22 +403,7 @@ export default function MessageStory() {
                   onSeek={(fraction) => { void player.seek(message.id, song, fraction).catch((e: unknown) => avisar(mensajeError(e), true)) }} />
               </View>}
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={playing ? 'Pausar' : 'Reproducir'}
-                onPress={() =>
-                  player
-                    .toggle(message.id, song)
-                    .catch((e: unknown) => avisar(mensajeError(e), true))
-                }
-                className="h-14 w-14 items-center justify-center rounded-full bg-primary active:opacity-80"
-              >
-                {playing ? (
-                  <IconPause size={20} color={ICON_COLOR.onPrimary} />
-                ) : (
-                  <IconPlay size={20} color={ICON_COLOR.onPrimary} />
-                )}
-              </Pressable>
+              <IconButton label={playing ? 'Pausar' : 'Reproducir'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={() => player.toggle(message.id, song).catch((e: unknown) => avisar(mensajeError(e), true))} variant="primary" lado={56} icon={playing ? <IconPause size={20} color={ICON_COLOR.onPrimary} /> : <IconPlay size={20} color={ICON_COLOR.onPrimary} />} />
 
               {/* Disco o letra, el mismo segmentado que el editor. Sin letra
                 guardada el botón no lleva a ningún lado y se apaga. */}
@@ -459,27 +437,7 @@ export default function MessageStory() {
                 {/* Mostrar y ocultar la frase. Solo si hay algo escrito: sin texto
                 sería un interruptor que no enciende nada. */}
                 {message.text ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: verFrase }}
-                    accessibilityLabel={verFrase ? 'Ocultar la frase' : 'Ver la frase'}
-                    onPress={() => setVerFrase((v) => !v)}
-                    className={`min-h-11 flex-row items-center justify-center gap-2 rounded-full px-4 py-2.5 active:opacity-70 ${
-                      verFrase ? 'bg-primary' : 'bg-background/70'
-                    }`}
-                  >
-                    <IconMessage
-                      size={14}
-                      color={verFrase ? ICON_COLOR.onPrimary : ICON_COLOR.muted}
-                    />
-                    <Text
-                      className={`text-[13px] font-medium ${
-                        verFrase ? 'text-primary-foreground' : 'text-muted-foreground'
-                      }`}
-                    >
-                      Frase
-                    </Text>
-                  </Pressable>
+                  <IconButton label={verFrase ? 'Ocultar la frase' : 'Ver la frase'} symbol="text.bubble" selected={verFrase} onPress={() => setVerFrase(v => !v)} icon={<IconMessage size={18} color={ICON_COLOR.foreground} />} />
                 ) : null}
 
                 {/* Traducir: solo aparece si hay letra que traducir. */}
@@ -524,24 +482,5 @@ function Segment({
   enabled?: boolean
   onPress: () => void
 }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active, disabled: !enabled }}
-      disabled={!enabled}
-      onPress={onPress}
-      className={`min-h-11 flex-row items-center justify-center gap-1.5 rounded-full px-3.5 py-2 ${
-        active ? 'bg-primary' : ''
-      } ${enabled ? 'active:opacity-70' : 'opacity-40'}`}
-    >
-      {icon}
-      <Text
-        className={`text-[15px] font-medium ${
-          active ? 'text-primary-foreground' : 'text-muted-foreground'
-        }`}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  )
+  return <AccionSocial label={label} icono={icon} selected={active} secundaria={!active} disabled={!enabled} expandida={false} onPress={onPress} />
 }

@@ -1,4 +1,5 @@
-import { Pressable, Text } from 'react-native'
+import { BotonSuperficie } from './BotonSuperficie'
+import { Text } from 'react-native'
 import { useRouter } from 'expo-router'
 import { abrirArtista } from '../state/shell'
 import { TECLADO_FISICO } from '../lib/teclado'
@@ -8,10 +9,10 @@ export function EnlaceArtista({ id, nombre, size = 14 }: { id?: string | null; n
   const router = useRouter()
   const texto = <Text numberOfLines={1} className="text-muted-foreground" style={{ fontSize: size }}>{nombre}</Text>
   if (!id) return texto
-  return <Pressable accessibilityRole="link" accessibilityLabel={`Ver artista: ${nombre}`}
+  return <BotonSuperficie accessibilityRole="link" accessibilityLabel={`Ver artista: ${nombre}`}
     onPress={() => { abrirArtista(id, nombre); router.dismissTo('/') }}
     className="min-w-0 self-start justify-center rounded active:opacity-70 hover:bg-white/5"
     style={{ maxWidth: '100%', minHeight: TECLADO_FISICO ? 20 : 44 }}>
     {texto}
-  </Pressable>
+  </BotonSuperficie>
 }

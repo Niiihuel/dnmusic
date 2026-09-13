@@ -1,5 +1,7 @@
+import { AccionSocial } from './Social'
+import { IconButton } from './IconButton'
 import { useEffect, useRef, useState } from 'react'
-import { Image, Platform, Pressable, Text, View } from 'react-native'
+import { Image, Platform, Text, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import type { PlaylistTrack } from '../services/playlists'
 import { getPlaybackState } from '../state/playback'
@@ -81,32 +83,15 @@ export function AvisoCaptura() {
             </View>
           )}
           <View className="min-w-0 flex-1 gap-0.5">
-            <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
+            <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>
               ¿La compartís en tu historia?
             </Text>
-            <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+            <Text className="text-muted-foreground text-caption2" numberOfLines={1}>
               {oferta.title} — {oferta.artist}
             </Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Compartir en una historia"
-            onPress={() => {
-              setOferta(null)
-              compartirHistoria(oferta)
-            }}
-            className="h-9 flex-row items-center rounded-full bg-primary px-4 active:opacity-80"
-          >
-            <Text className="text-primary-foreground text-xs font-semibold">Historia</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Cerrar"
-            onPress={() => setOferta(null)}
-            className="h-9 w-9 items-center justify-center rounded-full bg-muted active:opacity-80"
-          >
-            <IconClose size={14} color={ICON_COLOR.muted} />
-          </Pressable>
+          <AccionSocial label="Historia" accessibilityLabel="Compartir en una historia" expandida={false} onPress={() => { setOferta(null); compartirHistoria(oferta) }} />
+          <IconButton label="Cerrar" symbol="xmark" onPress={() => setOferta(null)} icon={<IconClose size={14} color={ICON_COLOR.muted} />} />
         </View>
       </Glass>
     </View>

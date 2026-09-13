@@ -1,8 +1,8 @@
+import { FilaSocial } from '../../src/ui/FilaSocial'
 import { ScrollArea as ScrollView } from '../../src/ui/ScrollArea'
 import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
-  Pressable,
   Text,
   useWindowDimensions,
   View,
@@ -19,7 +19,7 @@ import { CabeceraSocial, AccionSocial } from '../../src/ui/Social'
 import { usePiso } from '../../src/state/shell'
 import { Avatar } from '../../src/ui/Avatar'
 import { PANEL_PX } from '../../src/ui/NowPlayingBar'
-import { ICON_COLOR, IconCheck, IconUsers } from '../../src/ui/icons'
+import { ICON_COLOR, IconUsers } from '../../src/ui/icons'
 
 /**
  * La puerta de un Jam: acá cae el link de WhatsApp.
@@ -108,17 +108,11 @@ export default function EntrarAlJam() {
     return (
       <SafeAreaView className="flex-1 items-center justify-center gap-4 bg-background px-8">
         <IconUsers size={26} color={ICON_COLOR.muted} />
-        <Text className="text-foreground text-[15px] font-semibold">Ese Jam ya no existe</Text>
-        <Text className="text-muted-foreground text-center text-[13px] leading-5">
+        <Text className="text-foreground text-subheadline font-semibold">Ese Jam ya no existe</Text>
+        <Text className="text-muted-foreground text-center text-footnote leading-5">
           O terminó, o el código no es. Pedile a quien te invitó que te mande el link de nuevo.
         </Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.replace('/')}
-          className="rounded-full bg-muted px-5 py-2.5 active:opacity-80"
-        >
-          <Text className="text-foreground text-[13px] font-semibold">Ir a la app</Text>
-        </Pressable>
+        <AccionSocial label="Ir a la app" secundaria onPress={() => router.replace('/')} />
       </SafeAreaView>
     )
   }
@@ -141,10 +135,10 @@ export default function EntrarAlJam() {
         <View className="w-full max-w-[420px] items-center gap-3">
           <Avatar name={nombreHost} path={vista.hostAvatarPath} size={72} />
           <View className="items-center gap-1">
-            <Text className="text-foreground text-center text-xl font-bold">
+            <Text className="text-foreground text-center text-title3 font-bold">
               {nombreHost} te invita a su Jam
             </Text>
-            <Text className="text-muted-foreground text-[13px]">
+            <Text className="text-muted-foreground text-footnote">
               {vista.cuantos === 1
                 ? 'Una persona escuchando'
                 : `${vista.cuantos} personas escuchando`}
@@ -192,20 +186,5 @@ function Opcion({
   activa: boolean
   onPress: () => void
 }) {
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ checked: activa }}
-      onPress={onPress}
-      className={`flex-row items-center gap-3 rounded-2xl px-4 py-3.5 active:opacity-80 ${
-        activa ? 'bg-muted' : 'bg-card'
-      }`}
-    >
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text className="text-foreground text-[15px] font-semibold">{titulo}</Text>
-        <Text className="text-muted-foreground text-[13px] leading-5">{detalle}</Text>
-      </View>
-      {activa ? <IconCheck size={17} color={ICON_COLOR.foreground} /> : null}
-    </Pressable>
-  )
+  return <FilaSocial titulo={titulo} detalle={detalle} selected={activa} onPress={onPress} />
 }

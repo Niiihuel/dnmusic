@@ -40,6 +40,10 @@ public final class NativeMenuModule: Module {
       Prop("symbolColor") { (view: NativeMenuButtonView, color: UIColor?) in
         view.symbolColor = color
       }
+      Prop("disabled") { (view: NativeMenuButtonView, disabled: Bool) in
+        view.button.isEnabled = !disabled
+        view.button.accessibilityTraits = disabled ? [.button, .notEnabled] : [.button]
+      }
     }
   }
 }

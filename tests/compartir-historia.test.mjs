@@ -125,12 +125,12 @@ function hoja(track) {
 
 const cancion = { id: 'a', videoId: 'v1', title: 'No One Noticed', artist: 'The Marías', artworkUrl: 'u', artworkPath: null, durationMs: 237000 }
 
-test('la hoja muestra la misma tarjeta que se manda y ofrece las tres salidas', () => {
+test('la hoja muestra la misma tarjeta que se manda y ofrece el chat y las tres salidas externas', () => {
   const h = hoja(cancion)
   const ui = h.render()
   assert.equal(ui.filter((n) => n.type === 'TarjetaHistoria').length, 1, 'la previa es la tarjeta de verdad')
   const filas = ui.filter((n) => n.type === 'FilaAccion').map((n) => n.props.rotulo)
-  assert.deepEqual(filas, ['Compartir la historia', 'Compartir el link', 'Copiar el link'])
+  assert.deepEqual(filas, ['Enviar por chat', 'Compartir la historia', 'Compartir el link', 'Copiar el link'])
 })
 
 test('la previa se achica con transform: la tarjeta conserva su tamaño real', () => {

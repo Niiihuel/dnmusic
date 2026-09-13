@@ -1,7 +1,8 @@
+import { BotonSuperficie } from '../../src/ui/BotonSuperficie'
+import { IconButton } from '../../src/ui/IconButton'
 import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   Text,
   useWindowDimensions,
@@ -185,7 +186,7 @@ export default function ListaPublica() {
         {ancho ? null : (
           <View className="flex-row items-center gap-3 px-3 py-1">
             <BotonVolver onPress={() => volver(router, '/')} />
-            <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
+            <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
               {lista?.playlist.name ?? 'Lista'}
             </Text>
           </View>
@@ -251,18 +252,9 @@ export default function ListaPublica() {
                   }
                   actions={
                     <>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={
+                      <IconButton label={
                           algunaSuena && suena ? 'Pausar' : `Reproducir ${lista.playlist.name}`
-                        }
-                        onPress={() => (algunaSuena ? togglePlayback() : play(0))}
-                        disabled={total === 0}
-                        className={`h-14 w-14 items-center justify-center rounded-full ${
-                          total === 0 ? 'bg-muted' : 'bg-primary active:opacity-80'
-                        }`}
-                      >
-                        {algunaSuena && suena ? (
+                        } symbol={algunaSuena && suena ? 'pause.fill' : 'play.fill'} onPress={() => (algunaSuena ? togglePlayback() : play(0))} disabled={total === 0} lado={56} size={20} variant="primary" icon={algunaSuena && suena ? (
                           <IconPause
                             size={20}
                             color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
@@ -272,8 +264,7 @@ export default function ListaPublica() {
                             size={20}
                             color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
                           />
-                        )}
-                      </Pressable>
+                        )} />
 
                       {/*
                        * Si la podés escribir —sos el dueño o ya colaborás—, lo
@@ -287,7 +278,7 @@ export default function ListaPublica() {
                        * la base te sumó, y este botón te deja adentro.
                        */}
                       {lista.puedoEditar ? (
-                        <Pressable
+                        <BotonSuperficie
                           accessibilityRole="button"
                           accessibilityLabel="Abrir en mis listas"
                           onPress={() => {
@@ -297,10 +288,10 @@ export default function ListaPublica() {
                           className="h-11 flex-row items-center gap-2 rounded-full bg-muted px-4 active:opacity-80"
                         >
                           <IconMusic size={16} color={ICON_COLOR.foreground} />
-                          <Text className="text-foreground text-[13px] font-semibold">
+                          <Text className="text-foreground text-footnote font-semibold">
                             Abrir en mis listas
                           </Text>
-                        </Pressable>
+                        </BotonSuperficie>
                       ) : null}
 
                       {/*
@@ -310,7 +301,7 @@ export default function ListaPublica() {
                        * lista que ya tenés no es nada que alguien quiera.
                        */}
                       {lista.mia || lista.puedoEditar ? null : (
-                        <Pressable
+                        <BotonSuperficie
                           accessibilityRole="button"
                           accessibilityLabel="Guardar en mis listas"
                           onPress={() => void guardar()}
@@ -322,38 +313,31 @@ export default function ListaPublica() {
                           ) : (
                             <IconPlus size={16} color={ICON_COLOR.foreground} />
                           )}
-                          <Text className="text-foreground text-[13px] font-semibold">
+                          <Text className="text-foreground text-footnote font-semibold">
                             {guardando ? 'Guardando…' : 'Guardar'}
                           </Text>
-                        </Pressable>
+                        </BotonSuperficie>
                       )}
 
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Compartir el link"
-                        onPress={() => void compartirLista(lista.playlist.id, lista.playlist.name)}
-                        className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-                      >
-                        <IconShare size={18} color={ICON_COLOR.muted} />
-                      </Pressable>
+                      <IconButton label="Compartir el link" symbol="square.and.arrow.up" onPress={() => void compartirLista(lista.playlist.id, lista.playlist.name)} lado={44} size={18} icon={<IconShare size={18} color={ICON_COLOR.muted} />} />
                     </>
                   }
                 />
 
                 {/* De quién es, con su cara: el link llega solo y sin esto la
                     lista aparece sin dueño. Toca y te lleva a su perfil. */}
-                <Pressable
+                <BotonSuperficie
                   accessibilityRole="button"
                   accessibilityLabel={`Ver el perfil de @${lista.dueño.username}`}
                   onPress={() => router.push(`/perfil/${lista.dueño.username}`)}
                   className="mx-6 mb-5 flex-row items-center gap-3 self-start rounded-full bg-card py-1.5 pl-1.5 pr-4 active:opacity-80"
                 >
                   <Avatar name={inicialesDueño} path={lista.dueño.avatarPath} size={28} />
-                  <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+                  <Text className="text-muted-foreground text-footnote" numberOfLines={1}>
                     Una lista de{' '}
                     <Text className="text-foreground font-semibold">{nombreDueño}</Text>
                   </Text>
-                </Pressable>
+                </BotonSuperficie>
 
                 {!fresco ? (
                   <View className="px-6">

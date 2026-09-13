@@ -1,3 +1,4 @@
+import { IconButton } from './IconButton'
 /* eslint-disable react-hooks/immutability -- Los `useSharedValue` de Reanimated
    existen para mutarse desde los worklets de gesto: es su contrato, no una
    mutación de estado de React. La regla no lo conoce y marca cada `x.value =`
@@ -103,34 +104,23 @@ export function ColaJam({
         <View className="flex-row items-center gap-3" style={{ height: FILA_H }}>
           <Caratula path={actual.artworkPath} url={actual.artworkUrl} />
           <View className="min-w-0 flex-1">
-            <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
+            <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
               {actual.title}
             </Text>
-            <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+            <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
               {actual.artist}
             </Text>
           </View>
           {/* Pausar acá pasa por el puente del Jam: si el permiso no alcanza,
               el aviso lo dice con palabras — el botón no adivina. */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={suena ? 'Pausar' : 'Reproducir'}
-            onPress={togglePlayback}
-            className="h-11 w-11 items-center justify-center rounded-full bg-primary active:opacity-80"
-          >
-            {suena ? (
-              <IconPause size={17} color={ICON_COLOR.onPrimary} />
-            ) : (
-              <IconPlay size={17} color={ICON_COLOR.onPrimary} />
-            )}
-          </Pressable>
+          <IconButton label={suena ? 'Pausar' : 'Reproducir'} symbol={suena ? 'pause.fill' : 'play.fill'} onPress={togglePlayback} variant="primary" icon={suena ? <IconPause size={18} color={ICON_COLOR.onPrimary} /> : <IconPlay size={18} color={ICON_COLOR.onPrimary} />} />
         </View>
       ) : null}
 
       {proximas.length === 0 ? (
         <View className="items-center gap-2 rounded-2xl bg-card px-6 py-7">
           <IconMusic size={18} color={ICON_COLOR.muted} />
-          <Text className="text-muted-foreground text-center text-[12px]">
+          <Text className="text-muted-foreground text-center text-caption1">
             No viene nada después. Agregá desde el buscador o una lista.
           </Text>
         </View>
@@ -140,7 +130,7 @@ export function ColaJam({
             {/* El corte entre lo pedido y lo sugerido, una sola vez: es lo que
                 dice que lo tuyo va a sonar antes que la radio del Jam. */}
             {item.automatica && !proximas[i - 1]?.automatica ? (
-              <Text className="pb-1 pt-3 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+              <Text className="pb-1 pt-3 text-muted-foreground text-footnote font-semibold uppercase">
                 {i === 0 ? 'Después · sigue el Jam' : 'Después · sigue el Jam'}
               </Text>
             ) : null}
@@ -284,10 +274,10 @@ function FilaProxima({
         >
           <Caratula path={item.artworkPath} url={item.artworkUrl} />
           <View className="min-w-0 flex-1">
-            <Text className="text-foreground text-[14px] font-semibold" numberOfLines={1}>
+            <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
               {item.title}
             </Text>
-            <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+            <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
               {item.artist}
               {item.automatica
                 ? ' · sigue el Jam'
@@ -298,14 +288,7 @@ function FilaProxima({
           </View>
         </Pressable>
         {puedoQuitar ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Quitar ${item.title}`}
-            onPress={() => quitarCancionDelJam(item.id)}
-            className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconClose size={14} color={ICON_COLOR.muted} />
-          </Pressable>
+          <IconButton label={`Quitar ${item.title}`} symbol="xmark" onPress={() => quitarCancionDelJam(item.id)} icon={<IconClose size={14} color={ICON_COLOR.muted} />} />
         ) : null}
         {puedoMover ? (
           <GestureDetector gesture={arrastre}>

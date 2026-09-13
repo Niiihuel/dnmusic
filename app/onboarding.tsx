@@ -1,7 +1,7 @@
+import { BotonSuperficie } from '../src/ui/BotonSuperficie'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Image,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -261,7 +261,7 @@ function GeneroOpcion({
   const lado = 160
   const alto = Math.round(lado * 0.58)
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="button"
       accessibilityLabel={`${elegido ? 'Quitar' : 'Elegir'} ${genero.name}`}
       accessibilityState={{ selected: elegido }}
@@ -292,7 +292,7 @@ function GeneroOpcion({
         />
         <Text
           numberOfLines={1}
-          className="absolute bottom-2 left-2.5 right-2.5 text-foreground text-[13px] font-bold"
+          className="absolute bottom-2 left-2.5 right-2.5 text-foreground text-footnote font-bold"
           style={{ textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 6 }}
         >
           {genero.name}
@@ -308,7 +308,7 @@ function GeneroOpcion({
           </View>
         ) : null}
       </View>
-    </Pressable>
+    </BotonSuperficie>
   )
 }
 
@@ -404,7 +404,7 @@ function PasoArtistas({
       </View>
       <ScrollView className="min-h-0 flex-1" contentContainerClassName="px-6 pb-6 gap-1.5">
         {lista.length === 0 && sugeridos !== null && !busqueda.trim() ? (
-          <Text className="text-muted-foreground text-sm">
+          <Text className="text-muted-foreground text-subheadline">
             No encontré sugerencias para tus géneros. Buscá alguno que te guste.
           </Text>
         ) : null}
@@ -455,7 +455,7 @@ function ArtistaOpcion({
   onPress: () => void
 }) {
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="button"
       accessibilityLabel={`${elegido ? 'Quitar' : 'Elegir'} ${artista.name}`}
       accessibilityState={{ selected: elegido }}
@@ -470,11 +470,11 @@ function ArtistaOpcion({
           />
         ) : null}
       </View>
-      <Text className="min-w-0 flex-1 text-foreground text-[15px]" numberOfLines={1}>
+      <Text className="min-w-0 flex-1 text-foreground text-subheadline" numberOfLines={1}>
         {artista.name}
       </Text>
       {elegido ? <IconCheck size={18} color={ICON_COLOR.foreground} /> : null}
-    </Pressable>
+    </BotonSuperficie>
   )
 }
 
@@ -493,16 +493,16 @@ function Encabezado({
   return (
     <View className="gap-4 px-6 pt-8 pb-5">
       <View className="flex-row items-start justify-between gap-3">
-        <Text className="text-foreground text-2xl font-bold" style={{ maxWidth: '75%' }}>
+        <Text className="text-foreground text-title2 font-bold" style={{ maxWidth: '75%' }}>
           {titulo}
         </Text>
-        <Pressable accessibilityRole="button" onPress={onSaltear} className="active:opacity-70">
-          <Text className="text-muted-foreground text-[13px] font-semibold underline">
+        <BotonSuperficie accessibilityRole="button" onPress={onSaltear} className="active:opacity-70">
+          <Text className="text-muted-foreground text-footnote font-semibold underline">
             Saltar
           </Text>
-        </Pressable>
+        </BotonSuperficie>
       </View>
-      <Text className="text-muted-foreground text-sm leading-5">{detalle}</Text>
+      <Text className="text-muted-foreground text-subheadline">{detalle}</Text>
     </View>
   )
 }

@@ -180,6 +180,7 @@ function album(query) {
     './Menu': { Menu: 'Menu' }, './SeekBar': { formatLength: () => '' }, './Skeleton': {},
     './TrackRow': { TrackRow: 'TrackRow', TrackColumnHeader: 'TrackColumnHeader' },
     './BusquedaColeccion': { useBusquedaColeccion: () => ({ abierto: true, filtro: query }), BuscadorColeccion: 'BuscadorColeccion', CampoBusquedaColeccion: 'CampoBusquedaColeccion' },
+    './IconButton': { IconButton: 'IconButton' },
     './Vacio': { Vacio: 'Vacio' }, './BotonMeGusta': {}, './Transport': { BotonAleatorio: 'BotonAleatorio' },
     '../state/gustos': {}, './icons': icons,
   })

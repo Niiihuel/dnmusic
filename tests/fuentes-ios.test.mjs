@@ -40,6 +40,7 @@ test('iOS muestra lista independiente con cabecera nativa y permite elegir sin g
     'react-native': { Platform: { OS: 'ios' }, FlatList: 'FlatList', View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView' },
     'expo-router': { Stack: { Screen: 'StackScreen' }, useRouter: () => ({ dismissTo: path => salidas.push(path) }) },
     '../../src/lib/fuentes': fonts,
+    '../../src/ui/FilaSocial': { FilaSocial: 'FilaSocial' },
     '../../src/ui/Hoja': { Hoja: 'Hoja', useHojaModal: () => false, usePisoHoja: () => 34 },
     '../../src/ui/icons': { ICON_COLOR: { foreground: '#fff' }, IconCheck: 'IconCheck' },
     '../../src/ui/EditorDeCampo': { CabeceraEdicionPerfil: 'CabeceraEdicionPerfil' },
@@ -61,7 +62,9 @@ test('iOS muestra lista independiente con cabecera nativa y permite elegir sin g
   assert.equal(list.props.data.length, 13)
   const item = list.props.renderItem({ item: fonts.fuenteDe('editorial') })
   const option = item.type(item.props)
-  assert.equal(option.props.accessibilityRole, 'radio')
+  assert.equal(option.type, 'FilaSocial')
+  assert.equal(option.props.fontFamily, fonts.estiloDeFuente('editorial').fontFamily)
+  assert.equal(option.props.selected, false)
   assert.equal(option.props.disabled, false)
   option.props.onPress()
   assert.deepEqual(cambios, [{ fuente: 'editorial' }])

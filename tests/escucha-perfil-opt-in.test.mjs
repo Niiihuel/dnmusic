@@ -35,7 +35,7 @@ test('escuchaDe descarta pausa, ausencia, timestamps inválidos y desconexión; 
 function component(escucha, viewer='contact') {
  const effects = []
  const {EscuchaConReacciones} = load('src/ui/Reacciones.tsx', {
-  './AutoresReaccion': {}, './useLecturaViva':{useLecturaViva:()=>escucha},
+  './Social': { AccionSocial: 'AccionSocial' }, './AutoresReaccion': {}, './useLecturaViva':{useLecturaViva:()=>escucha},
   './FuentePerfil':{TextoPerfil:'Text'},
   'react':{useCallback:f=>f,useEffect:f=>effects.push(f),useRef:v=>({current:v}),useState:v=>[v,()=>{}]},
   'react-native':{View:'View',Text:'Text',Image:'Image',Pressable:'Pressable',ScrollView:'ScrollView',ActivityIndicator:'ActivityIndicator'},
@@ -47,8 +47,8 @@ function component(escucha, viewer='contact') {
 const walk = node => node && typeof node === 'object' ? [node,...[node.props?.children].flat(Infinity).flatMap(walk)] : []
 test('la tarjeta solo muestra escucha vigente; el dueño y una sesión ausente no tienen botones de reacción', () => {
  const fresh={track,suena:true,cuando:new Date()}
- assert.equal(walk(component(fresh)).filter(n=>n.type==='Pressable').length,6)
- for (const viewer of ['owner',null]) assert.equal(walk(component(fresh,viewer)).filter(n=>n.type==='Pressable').length,0)
+ assert.equal(walk(component(fresh)).filter(n=>n.type==='AccionSocial').length,6)
+ for (const viewer of ['owner',null]) assert.equal(walk(component(fresh,viewer)).filter(n=>n.type==='AccionSocial').length,0)
  for (const value of [null,{...fresh,suena:false},{...fresh,cuando:new Date(Date.now()-66000)}]) assert.equal(component(value),null)
 })
 
@@ -88,4 +88,14 @@ test('el hook limpia al ir al fondo o perder foco y no revive respuestas tardía
  const late=pending.shift()
  blur();late('respuesta vieja');await new Promise(resolve=>setImmediate(resolve))
  assert.equal(render(),null)
+})
+
+test('escuchaDe propaga AbortSignal y no devuelve datos si la petición se cancela durante el RPC',async()=>{
+ let resolve,calls=0,received
+ const result=new Promise(r=>{resolve=r});result.abortSignal=signal=>{received=signal;return result}
+ const api=load('src/services/reacciones.ts',{'./lecturaViva':live,'./escucha':{cancionDeFila:v=>v},'../lib/supabase':{getSupabase:()=>({rpc:()=>{calls++;return result}})}})
+ const before=new AbortController();before.abort();await assert.rejects(api.escuchaDe('owner',before.signal),{name:'AbortError'});assert.equal(calls,0)
+ const abort=new AbortController(),pending=api.escuchaDe('owner',abort.signal);assert.equal(received,abort.signal)
+ abort.abort();resolve({data:[{track,suena:true,updated_at:new Date().toISOString()}],error:null})
+ await assert.rejects(pending,{name:'AbortError'})
 })

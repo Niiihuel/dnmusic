@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Image, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
+import { Image, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { AjustesNovedades } from '../../src/ui/AjustesNovedades'
 import { Panel } from '../../src/ui/Panel'
 import { Actualizador } from '../../src/ui/Actualizador'
 import { BotonVolver } from '../../src/ui/BotonVolver'
@@ -25,15 +26,15 @@ function Version({ novedad, ultima }: { novedad: Novedad; ultima: boolean }) {
       >
         <View className="min-w-0 flex-1 gap-2">
           <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
-            <Text className="text-foreground text-[12px] font-semibold">{novedad.version}</Text>
-            <Text className="text-muted-foreground text-[11px]">{novedad.fecha}</Text>
+            <Text className="text-foreground text-caption1 font-semibold">{novedad.version}</Text>
+            <Text className="text-muted-foreground text-caption2">{novedad.fecha}</Text>
             {ultima ? (
-              <Text className="text-muted-foreground text-[10px] uppercase tracking-[1px]">
+              <Text className="text-muted-foreground text-footnote uppercase">
                 Esta versión
               </Text>
             ) : null}
           </View>
-          <Text className="text-foreground text-[15px] font-semibold leading-5">
+          <Text className="text-foreground text-subheadline font-semibold">
             {novedad.titulo}
           </Text>
         </View>
@@ -45,8 +46,8 @@ function Version({ novedad, ultima }: { novedad: Novedad; ultima: boolean }) {
         <View className="gap-3 px-5 pb-5">
           {novedad.cambios.map((cambio, i) => (
             <View key={i} className="flex-row gap-3">
-              <Text className="text-muted-foreground text-[13px] leading-5">·</Text>
-              <Text className="min-w-0 flex-1 text-muted-foreground text-[13px] leading-5">
+              <Text className="text-muted-foreground text-footnote leading-5">·</Text>
+              <Text className="min-w-0 flex-1 text-muted-foreground text-footnote leading-5">
                 {cambio}
               </Text>
             </View>
@@ -66,9 +67,9 @@ export default function Novedades() {
       <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
         <View className="flex-row items-center gap-3 px-3 py-1">
           <BotonVolver onPress={() => volver(router, '/ajustes')} />
-          <Text className="text-foreground text-[15px] font-semibold">Actualizaciones</Text>
+          <Text className="text-foreground text-subheadline font-semibold">Actualizaciones</Text>
         </View>
-        <Panel className="flex-1">
+        {Platform.OS === 'ios' ? <AjustesNovedades novedades={NOVEDADES} piso={piso} /> : <Panel className="flex-1">
           <ScrollView
             contentContainerClassName={`items-center ${suelto ? 'px-4 pt-3' : 'p-6'}`}
             contentContainerStyle={{ paddingBottom: piso }}
@@ -81,17 +82,17 @@ export default function Novedades() {
                   resizeMode="contain"
                 />
                 <View className="min-w-0 flex-1 gap-1">
-                  <Text className="text-foreground text-[24px] font-bold">
+                  <Text className="text-foreground text-title2 font-bold">
                     Siempre un poco mejor.
                   </Text>
-                  <Text className="text-muted-foreground text-[13px]">
+                  <Text className="text-muted-foreground text-footnote">
                     Lo nuevo en dnmusic · {NOVEDADES[0]?.version}
                   </Text>
                 </View>
               </View>
               <Actualizador />
               <View className="gap-3">
-                <Text className="px-1 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                <Text className="px-1 text-muted-foreground text-footnote font-semibold uppercase">
                   Historial de versiones
                 </Text>
                 {NOVEDADES.map((n, i) => (
@@ -100,7 +101,7 @@ export default function Novedades() {
               </View>
             </View>
           </ScrollView>
-        </Panel>
+        </Panel>}
       </View>
     </SafeAreaView>
   )

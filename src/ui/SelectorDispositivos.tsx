@@ -1,136 +1,55 @@
-import { useEffect } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated'
-import {
-  cerrarSelectorDispositivos,
-  mandarEscuchaA,
-  traerEscuchaAca,
-  useDispositivoQueSuena,
-  useDispositivos,
-  useEsteDispositivo,
-  useSelectorDispositivos,
-} from '../state/escucha'
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
+import { cerrarSelectorDispositivos, useSelectorDispositivos } from '../state/escucha'
+import { usePanelDispositivos } from './Dispositivos.shared'
+import { IconButton } from './IconButton'
+import { ICON_COLOR, IconCheck, IconClose, IconDispositivo, IconPause } from './icons'
 import { PlayingBars } from './PlayingBars'
-import { ICON_COLOR, IconDispositivo } from './icons'
 
-const ENTRADA_MS = 200
-
-/**
- * El selector de dispositivos: dónde suena y a dónde mandarlo.
- *
- * Es Spotify Connect con el modelo de la casa: la lista de los aparatos de tu
- * cuenta conectados ahora (`useDispositivos`), con el que suena marcado. Tocar
- * **este** aparato trae la música acá; tocar **otro** se la manda, y él la toma
- * solo (ver `state/escucha`). No hay un botón de «reproducir en» aparte: tocar
- * el dispositivo **es** elegirlo, como en el panel de Apple Music.
- *
- * Vive fuera de las pantallas —montado en el layout, junto a `Traspaso`— porque
- * la música suena desde cualquier lado y el selector tiene que poder abrirse
- * mire lo que mire la persona.
- */
+/** Diálogo vivo: la transferencia conserva la hoja hasta que se vea su resultado. */
 export function SelectorDispositivos() {
   const abierto = useSelectorDispositivos()
-  const dispositivos = useDispositivos()
-  const esteId = useEsteDispositivo()
-  const sonandoId = useDispositivoQueSuena()
-
-  const p = useSharedValue(0)
-  useEffect(() => {
-    p.value = withTiming(abierto ? 1 : 0, { duration: ENTRADA_MS, easing: Easing.out(Easing.cubic) })
-  }, [abierto, p])
-
-  const velo = useAnimatedStyle(() => ({ opacity: p.value }))
-  const tarjeta = useAnimatedStyle(() => ({
-    opacity: p.value,
-    transform: [{ scale: 0.96 + p.value * 0.04 }],
-  }))
-
+  const panel = usePanelDispositivos()
+  const { height } = useWindowDimensions()
   if (!abierto) return null
-
-  /* Solo lo elegís cuando hay más de un aparato: con uno solo no hay a dónde
-     mandar nada, y el propio suena por defecto. */
-  const elegir = (deviceId: string) => {
-    if (deviceId === esteId) traerEscuchaAca()
-    else mandarEscuchaA(deviceId)
-    cerrarSelectorDispositivos()
-  }
-
-  return (
-    <View style={StyleSheet.absoluteFill} className="items-center justify-center px-8">
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.6)' }, velo]} />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Cerrar el selector de dispositivos"
-        onPress={cerrarSelectorDispositivos}
-        style={StyleSheet.absoluteFill}
-      />
-      <Animated.View
-        style={[
-          {
-            // Inline: NativeWind no procesa clases en animados (docs/DESIGN.md).
-            backgroundColor: '#181818',
-            borderRadius: 16,
-            maxWidth: 380,
-            width: '100%',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-          },
-          tarjeta,
-        ]}
-      >
-        <View className="px-6 pb-2 pt-6">
-          <Text className="text-foreground text-[18px] font-semibold">Escuchar en</Text>
-          <Text className="text-muted-foreground text-[13px] leading-5">
-            Elegí dónde suena. La música se mueve en el segundo por el que va.
-          </Text>
+  return <Modal transparent visible animationType="fade" onRequestClose={cerrarSelectorDispositivos} accessibilityLabel="Escuchar en">
+    <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.6)' }]}
+        accessibilityRole="button" accessibilityLabel="Cerrar el selector de dispositivos" onPress={cerrarSelectorDispositivos} />
+      <View accessibilityViewIsModal style={{ width: '100%', maxWidth: 460, maxHeight: Math.max(240, height * .85), backgroundColor: '#181818', borderRadius: 24, overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
+        <View className="flex-row items-center justify-between px-5 pt-4 pb-2">
+          <Text accessibilityRole="header" className="text-foreground text-title3 font-semibold">Escuchar en</Text>
+          <IconButton label="Cerrar" symbol="xmark" onPress={cerrarSelectorDispositivos} lado={44} icon={<IconClose size={18} color={ICON_COLOR.muted} />} />
         </View>
-
-        <View className="gap-1 px-3 pb-4 pt-2">
-          {dispositivos.length === 0 ? (
-            <Text className="px-3 py-3 text-muted-foreground text-[13px]">
-              No hay otros dispositivos conectados ahora.
-            </Text>
-          ) : (
-            dispositivos.map((d) => {
-              const suena = d.deviceId === sonandoId
-              const esEste = d.deviceId === esteId
-              return (
-                <Pressable
-                  key={d.deviceId}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    esEste ? `Traer la música a este dispositivo` : `Reproducir en ${d.nombre}`
-                  }
-                  onPress={() => elegir(d.deviceId)}
-                  className="flex-row items-center gap-3 rounded-xl px-3 py-3 active:bg-muted"
-                >
-                  {/* Si suena acá, las barras dicen «esto está sonando»; si no, el
-                      ícono del aparato. Mismo lenguaje que la fila de una lista. */}
-                  {suena ? (
-                    <View className="h-[18px] w-[18px] items-center justify-center">
-                      <PlayingBars playing size={14} />
-                    </View>
-                  ) : (
-                    <IconDispositivo size={18} color={ICON_COLOR.foreground} />
-                  )}
-                  <View className="min-w-0 flex-1">
-                    <Text className="text-foreground text-[15px]" numberOfLines={1}>
-                      {esEste ? 'Este dispositivo' : d.nombre}
-                    </Text>
-                    {suena ? (
-                      <Text className="text-muted-foreground text-[12px]">Sonando ahora</Text>
-                    ) : null}
-                  </View>
-                </Pressable>
-              )
-            })
-          )}
-        </View>
-      </Animated.View>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}>
+          <View className="pb-5 pt-1 gap-2" accessibilityLiveRegion="polite">
+            <Text className="text-foreground text-body font-semibold">{panel.resumen}</Text>
+            <Text className="text-muted-foreground text-footnote">{panel.detalle}</Text>
+          </View>
+          <View className="gap-1">
+            {panel.filas.map(fila => <Pressable key={fila.id} accessibilityRole="button"
+              accessibilityLabel={`${fila.nombre}. ${fila.detalle}`}
+              accessibilityState={{ selected: fila.seleccionado, disabled: fila.disabled, busy: fila.busy }}
+              disabled={fila.disabled} onPress={() => panel.elegir(fila.id)}
+              style={{ minHeight: 72, backgroundColor: fila.seleccionado ? '#292929' : 'transparent', opacity: fila.estado === 'desconectado' ? .6 : 1 }}
+              className="flex-row items-center gap-4 rounded-2xl px-4 py-3 hover:bg-muted active:bg-muted">
+              <IconDispositivo size={24} color={fila.seleccionado ? ICON_COLOR.foreground : ICON_COLOR.muted} />
+              <View className="flex-1 min-w-0 gap-1">
+                <Text numberOfLines={1} className={`text-foreground text-subheadline ${fila.seleccionado ? 'font-semibold' : ''}`}>{fila.nombre}</Text>
+                <Text className="text-muted-foreground text-caption1">{fila.detalle}</Text>
+              </View>
+              {fila.busy ? <ActivityIndicator color={ICON_COLOR.foreground} />
+                : fila.estado === 'sonando' ? <PlayingBars playing size={16} />
+                : fila.estado === 'pausado' ? <IconPause size={16} color={ICON_COLOR.muted} />
+                : fila.seleccionado ? <IconCheck size={18} color={ICON_COLOR.muted} /> : null}
+            </Pressable>)}
+          </View>
+          {!panel.filas.some(f => !f.esEste && f.estado !== 'desconectado') ? <Text className="text-muted-foreground text-footnote pt-5">
+            Para ver otro dispositivo, abrí DMusic e iniciá sesión con la misma cuenta.
+          </Text> : null}
+          {panel.mensaje ? <Text accessibilityRole={panel.error ? 'alert' : undefined} accessibilityLiveRegion="polite"
+            className={`text-foreground text-footnote pt-5 ${panel.error ? 'font-semibold' : ''}`}>{panel.mensaje}</Text> : null}
+        </ScrollView>
+      </View>
     </View>
-  )
+  </Modal>
 }

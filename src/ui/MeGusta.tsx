@@ -1,4 +1,5 @@
-import { FlatList, Pressable, View } from 'react-native'
+import { IconButton } from './IconButton'
+import { FlatList, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import type { PlaylistTrack } from '../services/playlists'
 import { alternarMeGusta, useMeGusta, useMeGustaCargado } from '../state/gustos'
@@ -120,21 +121,12 @@ export function MeGustaView({
                 }
                 actions={
                   <>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={
+                    <IconButton label={
                         mine && soundingPlay ? 'Pausar' : 'Reproducir tus me gusta'
-                      }
-                      onPress={() => {
+                      } symbol={mine && soundingPlay ? 'pause.fill' : 'play.fill'} onPress={() => {
                         if (mine) togglePlayback()
                         else if (total > 0) play(0)
-                      }}
-                      disabled={total === 0}
-                      className={`h-14 w-14 items-center justify-center rounded-full ${
-                        total === 0 ? 'bg-muted' : 'bg-primary active:opacity-80'
-                      }`}
-                    >
-                      {mine && soundingPlay ? (
+                      }} disabled={total === 0} lado={56} size={20} variant="primary" icon={mine && soundingPlay ? (
                         <IconPause
                           size={20}
                           color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
@@ -144,8 +136,7 @@ export function MeGustaView({
                           size={20}
                           color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
                         />
-                      )}
-                    </Pressable>
+                      )} />
                     {/* Lineal o aleatorio, como en cualquier colección: el
                         mismo botón y el mismo lenguaje que en una lista. */}
                     <BotonAleatorio size={19} lado={44} disabled={total === 0} />

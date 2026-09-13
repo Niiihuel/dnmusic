@@ -1,10 +1,11 @@
+import { AccionSocial } from './Social'
 import { AutoresReaccion } from './AutoresReaccion'
 import { useLecturaViva } from './useLecturaViva'
 import { TextoPerfil as Text } from './FuentePerfil'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { escuchaVigente, VIGENCIA_ESCUCHA_MS } from '../services/lecturaViva'
 import { useUser } from '../state/session'
-import { ActivityIndicator, Image, Pressable, ScrollView, View } from 'react-native'
+import { Image, ScrollView, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import { mensajeError } from '../lib/mensajeError'
 import {
@@ -69,7 +70,7 @@ export function EscuchaConReacciones({
   /** Se acaba de mandar una: el perfil recarga su lista. */
   onReaccion?: () => void
 }) {
-  const leer = useCallback(() => escuchaDe(ownerId), [ownerId])
+  const leer = useCallback((signal?: AbortSignal) => escuchaDe(ownerId, signal), [ownerId])
   const user = useUser()
   const escucha = useLecturaViva(`${user?.id ?? ''}:${ownerId}`, leer)
   const puedeReaccionar = !!user && user.id !== ownerId && !!onReaccion
@@ -121,14 +122,14 @@ export function EscuchaConReacciones({
             {/* Las mismas barras que marcan la canción que suena en una lista:
                 una interfaz sin colores distingue «ahora» por el movimiento. */}
             <PlayingBars playing={suena} size={11} />
-            <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+            <Text className="text-muted-foreground text-footnote font-semibold uppercase">
               Escuchando ahora
             </Text>
           </View>
-          <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>
+          <Text className="text-foreground text-subheadline font-semibold" numberOfLines={1}>
             {track.title}
           </Text>
-          <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+          <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
             {track.artist}
           </Text>
         </View>
@@ -139,23 +140,7 @@ export function EscuchaConReacciones({
           const esta = mandando === emoji
           const listo = mandado === `${track.videoId}:${emoji}`
           return (
-            <Pressable
-              key={emoji}
-              accessibilityRole="button"
-              accessibilityLabel={`Reaccionar con ${emoji} a lo que escucha ${nombre}`}
-              accessibilityState={{ disabled: !!mandando, selected: listo }}
-              disabled={!!mandando}
-              onPress={() => void mandar(emoji)}
-              className={`h-11 w-11 items-center justify-center rounded-full ${
-                listo ? 'bg-primary' : 'bg-muted active:opacity-70'
-              }`}
-            >
-              {esta ? (
-                <ActivityIndicator size="small" color="#B3B3B3" />
-              ) : (
-                <Text className="text-[19px]">{emoji}</Text>
-              )}
-            </Pressable>
+            <AccionSocial key={emoji} label={emoji} accessibilityLabel={`Reaccionar con ${emoji} a lo que escucha ${nombre}`} selected={listo} secundaria={!listo} busy={esta} disabled={!!mandando} expandida={false} onPress={() => void mandar(emoji)} />
           )
         })}
       </ScrollView> : null}
@@ -196,30 +181,30 @@ export function ParedDeReacciones({
 
   return (
     <View className="gap-2">
-      <Text className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+      <Text className="text-muted-foreground text-footnote font-semibold uppercase">
         {propio ? 'Lo que te dejaron' : `Lo que le dejaron a ${nombre}`}
       </Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
         {reacciones.map((r) => (
           <View key={r.id} className="w-[176px] gap-2 rounded-2xl bg-card p-3">
             <AutoresReaccion emoji={r.emoji} cantidad={1} autores={[r.de]} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text className="text-[20px]">{r.emoji}</Text>
+              <Text className="text-title3">{r.emoji}</Text>
               <Avatar
                 name={r.de.displayName || r.de.username}
                 path={r.de.avatarPath}
                 size={20}
               />
-              <Text className="text-muted-foreground min-w-0 flex-1 text-[11px]" numberOfLines={1}>
+              <Text className="text-muted-foreground min-w-0 flex-1 text-caption2" numberOfLines={1}>
                 @{r.de.username}
               </Text>
             </AutoresReaccion>
             <View className="flex-row items-center gap-2">
               <Tapa uri={artworkSource(r.track.artworkPath, r.track.artworkUrl, 96)} size={32} />
               <View className="min-w-0 flex-1">
-                <Text className="text-foreground text-[12px] font-semibold" numberOfLines={1}>
+                <Text className="text-foreground text-caption1 font-semibold" numberOfLines={1}>
                   {r.track.title}
                 </Text>
-                <Text className="text-muted-foreground text-[10px]" numberOfLines={1}>
+                <Text className="text-muted-foreground text-caption2" numberOfLines={1}>
                   {r.track.artist}
                 </Text>
               </View>

@@ -35,7 +35,7 @@ export default function OpcionesJam() {
       <Hoja medida="contenido" titulo="Opciones del Jam">
         <CabeceraSocial titulo="Opciones del Jam" onCerrar={() => volver(router, '/')} />
         <View className="gap-5 bg-background px-5 pt-3" style={{ paddingBottom: piso }}>
-          <Text className="text-muted-foreground text-[15px]">El Jam terminó.</Text>
+          <Text className="text-muted-foreground text-subheadline">El Jam terminó.</Text>
           <AccionSocial label="Volver" secundaria onPress={() => volver(router, '/')} />
         </View>
       </Hoja>
@@ -69,7 +69,7 @@ export default function OpcionesJam() {
               ultima
             />
           </GrupoAjustes>
-          <Text className="text-muted-foreground px-4 text-[13px] leading-5">
+          <Text className="text-muted-foreground px-4 text-footnote leading-5">
             Quitar tiene su regla fija: cada uno puede sacar lo que agregó, y vos
             cualquiera. La que está sonando no la saca nadie.
           </Text>

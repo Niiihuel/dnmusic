@@ -1,8 +1,9 @@
+import { IconButton } from './IconButton'
 /* eslint-disable react-hooks/immutability -- Los `useSharedValue` de Reanimated
    se mutan desde los worklets de gesto: es su contrato, no estado de React.
    Mismo falso positivo que en ColaJam y Waveform. */
 import { useCallback, useState } from 'react'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { ScrollView, Text, View } from 'react-native'
 import { Gesture, GestureDetector, State } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
@@ -154,8 +155,8 @@ export function ColaBody({
       {conTitulo ? (
         /* La cabecera de lista: rótulo, título grande y el resumen. */
         <View className="gap-1 px-5 pb-4 pt-2">
-          <Text className="text-foreground text-2xl font-bold">Lo que viene</Text>
-          <Text className="text-muted-foreground text-[13px]">
+          <Text className="text-foreground text-title2 font-bold">Lo que viene</Text>
+          <Text className="text-muted-foreground text-footnote">
             {cuantas} {cuantas === 1 ? 'canción' : 'canciones'} · {formatClock(totalMs)}
           </Text>
         </View>
@@ -203,14 +204,7 @@ export function ColaBody({
                    Saltearlo sería adelantar la cola entera de todos modos. */
                 onPlay={() => {}}
                 trailing={
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Quitar ${track.title} de la cola`}
-                    onPress={() => quitarEncolada(i)}
-                    className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
-                  >
-                    <IconClose size={15} color={ICON_COLOR.muted} />
-                  </Pressable>
+                  <IconButton label={`Quitar ${track.title} de la cola`} symbol="xmark" onPress={() => quitarEncolada(i)} lado={36} size={15} icon={<IconClose size={15} color={ICON_COLOR.muted} />} />
                 }
               />
             </EncoladaArrastrable>
@@ -236,14 +230,7 @@ export function ColaBody({
               playing={false}
               onPlay={() => {}}
               trailing={
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Quitar ${track.title} de la cola`}
-                  onPress={() => quitarEncolada(i)}
-                  className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
-                >
-                  <IconClose size={15} color={ICON_COLOR.muted} />
-                </Pressable>
+                <IconButton label={`Quitar ${track.title} de la cola`} symbol="xmark" onPress={() => quitarEncolada(i)} lado={36} size={15} icon={<IconClose size={15} color={ICON_COLOR.muted} />} />
               }
             />
           ))}
@@ -314,7 +301,7 @@ export function ColaBody({
 /** Separador de sección, en el idioma de las etiquetas de la app. */
 function Encabezado({ texto }: { texto: string }) {
   return (
-    <Text className="text-muted-foreground px-5 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-[1.2px]">
+    <Text className="text-muted-foreground px-5 pb-2 pt-5 text-footnote font-semibold uppercase">
       {texto}
     </Text>
   )

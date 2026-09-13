@@ -1,5 +1,6 @@
+import type { SearchFieldHandle } from './SearchField.types'
 import { useState, type ReactNode, type RefObject } from 'react'
-import { Pressable, Text, View, type TextInput } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import type { Playlist } from '../services/playlists'
 import { useTermino } from '../state/busqueda'
 import { useCuantosMeGusta } from '../state/gustos'
@@ -100,7 +101,7 @@ export function BarraLateral({
    */
   onBuscar: (termino: string) => void
   /** Para que otra pantalla pueda mandar el cursor al buscador. */
-  inputRef?: RefObject<TextInput | null>
+  inputRef?: RefObject<SearchFieldHandle | null>
   placeholderBusqueda?: string
   buscando?: boolean
   onInicio: () => void
@@ -185,13 +186,13 @@ export function BarraLateral({
             </Pressable>
           }
         >
-          {error ? <Text className="px-2 py-1 text-muted-foreground text-[12px]">{error}</Text> : null}
+          {error ? <Text className="px-2 py-1 text-muted-foreground text-caption1">{error}</Text> : null}
           {playlists === null ? (
             <View className="px-1 py-1">
               <SkeletonList rows={4} />
             </View>
           ) : playlists.length === 0 ? (
-            <Text className="px-2 py-1 text-muted-foreground text-[12px]">
+            <Text className="px-2 py-1 text-muted-foreground text-caption1">
               Todavía no hay listas. El «+» crea la primera.
             </Text>
           ) : (
@@ -248,10 +249,10 @@ export function BarraLateral({
             <View className="w-full flex-row items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-white/5">
               <Avatar name={nombre} path={avatarPath} size={28} />
               <View className="min-w-0 flex-1">
-                <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
+                <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>
                   {nombre}
                 </Text>
-                <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+                <Text className="text-muted-foreground text-caption2" numberOfLines={1}>
                   @{usuario}
                 </Text>
               </View>
@@ -279,7 +280,7 @@ export function CampoBusquedaLateral({
   buscando = false,
 }: {
   onBuscar: (termino: string) => void
-  inputRef?: RefObject<TextInput | null>
+  inputRef?: RefObject<SearchFieldHandle | null>
   placeholder: string
   buscando?: boolean
 }) {
@@ -302,7 +303,7 @@ function Seccion({ titulo, accion, children }: { titulo: string; accion?: ReactN
   return (
     <View className="pt-4">
       <View className="h-6 flex-row items-center justify-between px-2">
-        <Text className="text-muted-foreground text-[11px] font-semibold">{titulo}</Text>
+        <Text className="text-muted-foreground text-caption2 font-semibold">{titulo}</Text>
         {accion}
       </View>
       <View className="gap-0.5 pt-1">{children}</View>
@@ -341,19 +342,19 @@ function FilaLateral({
     >
       <Icono size={16} color={activa ? ICON_COLOR.foreground : ICON_COLOR.muted} />
       <Text
-        className={`min-w-0 flex-1 text-[13px] ${activa ? 'text-foreground font-medium' : 'text-foreground'}`}
+        className={`min-w-0 flex-1 text-footnote ${activa ? 'text-foreground font-medium' : 'text-foreground'}`}
         numberOfLines={1}
       >
         {label}
       </Text>
       {globito ? (
         <View className="min-w-[18px] items-center justify-center rounded-full bg-primary px-1">
-          <Text className="text-primary-foreground text-[10px] font-bold leading-[16px]">
+          <Text className="text-primary-foreground text-caption2 font-bold">
             {Math.min(globito, 99)}
           </Text>
         </View>
       ) : detalle ? (
-        <Text className="text-muted-foreground text-[11px] tabular-nums">{detalle}</Text>
+        <Text className="text-muted-foreground text-caption2 tabular-nums">{detalle}</Text>
       ) : null}
     </Pressable>
   )
@@ -395,7 +396,7 @@ function FilaLista({
           <PlaylistCover covers={playlist.covers} coverPath={playlist.coverPath} size={18} />
         </View>
         <Text
-          className={`min-w-0 flex-1 text-[13px] ${sonando ? 'text-foreground font-medium' : 'text-foreground'}`}
+          className={`min-w-0 flex-1 text-footnote ${sonando ? 'text-foreground font-medium' : 'text-foreground'}`}
           numberOfLines={1}
         >
           {playlist.name}

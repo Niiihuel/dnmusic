@@ -1,3 +1,4 @@
+import type { VacioProps } from './Vacio.types'
 import type { ReactNode } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import { useNetworkState } from 'expo-network'
@@ -23,15 +24,7 @@ export function Vacio({
   detalle,
   accion,
   compacto = false,
-}: {
-  icono: ReactNode
-  titulo: string
-  detalle?: string
-  /** Un solo próximo paso, como pide la HIG. Se dibuja como píldora del acento. */
-  accion?: { rotulo: string; onPress: () => void }
-  /** Para paneles chicos —desplegables, pies de lista—: menos aire, mismo lenguaje. */
-  compacto?: boolean
-}) {
+}: VacioProps) {
   return (
     <View className={`items-center gap-2 px-8 ${compacto ? 'py-8' : 'py-16'}`}>
       <View
@@ -41,11 +34,11 @@ export function Vacio({
       >
         {icono}
       </View>
-      <Text className="pt-1.5 text-foreground text-center text-[17px] font-semibold">
+      <Text className="pt-1.5 text-foreground text-center text-body font-semibold">
         {titulo}
       </Text>
       {detalle ? (
-        <Text className="max-w-xs text-muted-foreground text-center text-[13px] leading-5">
+        <Text className="max-w-xs text-muted-foreground text-center text-footnote leading-5">
           {detalle}
         </Text>
       ) : null}
@@ -55,7 +48,7 @@ export function Vacio({
           onPress={accion.onPress}
           className="mt-3 rounded-full bg-primary px-6 py-3 active:opacity-80"
         >
-          <Text className="text-primary-foreground text-[13px] font-semibold">
+          <Text className="text-primary-foreground text-footnote font-semibold">
             {accion.rotulo}
           </Text>
         </Pressable>
@@ -66,7 +59,7 @@ export function Vacio({
 
 /** Si el aparato tiene red. `null`/`undefined` cuentan como conectado: ante la
  *  duda no se acusa a la conexión de un error que quizás es nuestro. */
-export function useConectado(): boolean {
+function useConectado(): boolean {
   const estado = useNetworkState()
   return estado.isConnected !== false
 }

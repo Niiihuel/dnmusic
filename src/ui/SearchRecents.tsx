@@ -1,5 +1,7 @@
+import { BotonSuperficie } from './BotonSuperficie'
+import { IconButton } from './IconButton'
 import { useEffect } from 'react'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { ScrollView, Text, View } from 'react-native'
 import { cargarRecientes, limpiarRecientes, olvidarBusqueda, useRecientes } from '../state/recientes'
 import { useKeyboardH, usePiso, useTecho } from '../state/shell'
 import { ICON_COLOR, IconClose, IconSearch } from './icons'
@@ -49,10 +51,10 @@ export function SearchRecents({ onPick }: { onPick: (termino: string) => void })
         style={{ paddingTop: techo, paddingBottom: piso + teclado }}
       >
         <IconSearch size={34} color={ICON_COLOR.muted} />
-        <Text className="text-foreground text-center text-[17px] font-semibold">
+        <Text className="text-foreground text-center text-body font-semibold">
           Ninguna búsqueda reciente
         </Text>
-        <Text className="text-muted-foreground text-center text-[13px] leading-5">
+        <Text className="text-muted-foreground text-center text-footnote leading-5">
           Acá van a aparecer las canciones y los artistas que busques.
         </Text>
       </View>
@@ -62,16 +64,16 @@ export function SearchRecents({ onPick }: { onPick: (termino: string) => void })
   return (
     <View className="min-h-0 flex-1">
       <View className="flex-row items-center justify-between px-4 pb-1" style={{ paddingTop: techo }}>
-        <Text className="text-foreground text-[17px] font-bold">Búsquedas recientes</Text>
-        <Pressable
+        <Text className="text-foreground text-body font-bold">Búsquedas recientes</Text>
+        <BotonSuperficie
           accessibilityRole="button"
           accessibilityLabel="Limpiar las búsquedas recientes"
           onPress={limpiarRecientes}
           hitSlop={8}
           className="active:opacity-60"
         >
-          <Text className="text-muted-foreground text-[13px] font-semibold">Limpiar</Text>
-        </Pressable>
+          <Text className="text-muted-foreground text-footnote font-semibold">Limpiar</Text>
+        </BotonSuperficie>
       </View>
 
       <ScrollView
@@ -85,26 +87,18 @@ export function SearchRecents({ onPick }: { onPick: (termino: string) => void })
             {/* El término ocupa toda la fila y el «✕» queda afuera del
                 Pressable: anidarlo dejaría un botón dentro de otro, que en web
                 es HTML inválido y se come el click del de adentro. */}
-            <Pressable
+            <BotonSuperficie
               accessibilityRole="button"
               accessibilityLabel={`Buscar ${termino} otra vez`}
               onPress={() => onPick(termino)}
               className="min-w-0 flex-1 flex-row items-center gap-3 px-4 py-3 active:opacity-60"
             >
               <IconSearch size={17} color={ICON_COLOR.muted} />
-              <Text className="min-w-0 flex-1 text-foreground text-[15px]" numberOfLines={1}>
+              <Text className="min-w-0 flex-1 text-foreground text-subheadline" numberOfLines={1}>
                 {termino}
               </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Olvidar ${termino}`}
-              onPress={() => olvidarBusqueda(termino)}
-              hitSlop={8}
-              className="h-11 w-11 items-center justify-center active:opacity-60"
-            >
-              <IconClose size={15} color={ICON_COLOR.muted} />
-            </Pressable>
+            </BotonSuperficie>
+            <IconButton label={`Olvidar ${termino}`} symbol="xmark" onPress={() => olvidarBusqueda(termino)} lado={44} size={15} icon={<IconClose size={15} color={ICON_COLOR.muted} />} />
           </View>
         ))}
       </ScrollView>

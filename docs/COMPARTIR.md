@@ -8,6 +8,24 @@ igual de mal: quien los abría sin la sesión puesta caía en el login sin ver
 y la palabra «dnmusic» para cualquier URL. Una canción directamente no tenía
 link: mandarla terminaba en una captura de pantalla.
 
+## Enviar una canción dentro de dnmusic
+
+La hoja de una canción incluye **Enviar por chat**. Abre un selector de
+contactos existentes y envía un adjunto reproducible con título, artista y
+portada; no necesita copiar un enlace. El destinatario escucha la canción
+completa desde la conversación, usando el reproductor principal.
+
+El adjunto se almacena en `messages.song` con `kind: 'track'`; los fragmentos
+mantienen su formato anterior. El texto acompaña al adjunto para la bandeja,
+las notificaciones y los clientes anteriores. No se publica una tarjeta
+externa ni se resuelve el audio durante el envío. Las políticas del chat
+siguen controlando quién puede enviar y leer.
+
+Implementación: `app/compartir-contactos.tsx`,
+`src/services/compartirPorChat.ts`, `src/models/sharedSong.ts` y
+`src/ui/CancionCompartida.tsx`. El selector usa `ListaAgrupada.ios` en iOS.
+Estado de la migración y validación: [MIGRACION-IOS.md](MIGRACION-IOS.md).
+
 ## Las cuatro cosas y sus dos URLs
 
 | | Link | Para incrustar |

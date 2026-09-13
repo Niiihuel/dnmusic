@@ -1,9 +1,10 @@
+import { IconButton } from '../../src/ui/IconButton'
 import { BarraHerramientasMosaico } from '../../src/ui/BarraHerramientasMosaico'
 import { buscarVitrinaEdicion, esVitrinaTemporal } from '../../src/state/mosaicoEdicion'
 import { useMosaicoPerfil } from '../../src/ui/useMosaicoPerfil'
 import { FuentePerfil, TextoPerfil as Text } from '../../src/ui/FuentePerfil'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native'
+import { ActivityIndicator, ScrollView, View } from 'react-native'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Tema } from '../../src/lib/tema'
@@ -142,8 +143,8 @@ export default function SubspaceScreen() {
   /* El hueco dice qué hacer, según quién mira y qué está haciendo. */
   const vacio = (
     <View className="items-center gap-2 rounded-2xl bg-card px-6 py-12">
-      <Text className="text-foreground text-[15px] font-semibold">Este sub-space está vacío</Text>
-      <Text className="text-muted-foreground text-center text-[13px] leading-5">
+      <Text className="text-foreground text-subheadline font-semibold">Este sub-space está vacío</Text>
+      <Text className="text-muted-foreground text-center text-footnote leading-5">
         {!propio
           ? 'Todavía no hay nada acá adentro.'
           : armando
@@ -172,7 +173,7 @@ export default function SubspaceScreen() {
           <View className="flex-row items-center gap-3 px-3 py-1">
             <BotonVolver onPress={() => volver(router, '/profile')} />
             <Text
-              className="min-w-0 flex-1 text-foreground text-[15px] font-semibold"
+              className="min-w-0 flex-1 text-foreground text-subheadline font-semibold"
               numberOfLines={1}
             >
               {titulo}
@@ -182,19 +183,12 @@ export default function SubspaceScreen() {
             {propio && pieza ? (
               armando ? (
                 <View className="h-9 justify-center rounded-full bg-muted px-4">
-                  <Text className="text-foreground text-[11px] font-bold uppercase tracking-[1.4px]">
+                  <Text className="text-foreground text-footnote font-bold uppercase">
                     Modo de edición
                   </Text>
                 </View>
               ) : (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Armar el sub-space"
-                  onPress={entrarEdicion}
-                  className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-                >
-                  <IconPencil size={17} color={ICON_COLOR.foreground} />
-                </Pressable>
+                <IconButton label="Armar el sub-space" symbol="pencil" onPress={entrarEdicion} icon={<IconPencil size={17} color={ICON_COLOR.foreground} />} />
               )
             ) : null}
           </View>

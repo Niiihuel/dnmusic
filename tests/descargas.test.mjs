@@ -2,17 +2,18 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import { clasificarRedPrecarga } from '../src/lib/politicaPrecarga.ts'
 const MB = 1024 * 1024
 const tick = async () => { for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r)) }
 const track = (id = 'uno', path = `${id}.m4a`) => ({ id, videoId: id, audioPath: path, title: `Tema ${id}`, artist: 'Artista', artistId: null, artworkUrl: '', artworkPath: null, durationMs: 180000 })
 const done = (id, temporal = false, uso = 1, bytes = MB) => ({ ...track(id), estado: 'lista', progreso: 1, bytes, arte: false, temporal, ultimoUso: uso, error: null, intentos: 0, uri: `local:${id}.m4a` })
 const source = ts.transpileModule(readFileSync('src/state/descargas.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
-function montar({ datos = new Map(), archivos = new Map(), red = { conectada: true, segura: true }, soloWifi = true, leerRed, resolver, guardar, quitar, listar, desktop = false, libre = 5000 * MB } = {}) {
+function montar({ datos = new Map(), archivos = new Map(), red = { conectada: true, segura: true }, soloWifi = true, precargaDatos = false, leerRed, resolver, guardar, quitar, listar, portada, desktop = false, libre = 5000 * MB } = {}) {
   const jobs = [], resolves = [], timer = new Map(), borrados = [], escritos = []
   let now = 100000, tid = 0, networkChange, settings = soloWifi, free = libre
   const adapter = {
     hayAlmacenAudio: true, escritorioAudio: desktop, RESERVA_AUDIO: 300 * MB,
-    audioV1: k => archivos.get(k) ?? null, arteGuardado: () => null, guardarArte: async () => null, quitarPausa: async () => {}, limpiarParciales: async () => {},
+    audioV1: k => archivos.get(k) ?? null, arteGuardado: () => null, guardarArte: async (...args) => portada ? portada(...args) : null, quitarPausa: async () => {}, limpiarParciales: async () => {},
     listarAudio: async () => listar ? listar() : [...archivos.values()], espacioLibreAudio: () => free,
     estadoRedAudio: async () => leerRed ? leerRed() : red, escucharRedAudio: cb => { networkChange = cb },
     quitarAudio: async k => { borrados.push(k); if (quitar) await quitar(k); archivos.delete(k) },
@@ -32,9 +33,10 @@ function montar({ datos = new Map(), archivos = new Map(), red = { conectada: tr
   const storage = { getItem: async k => datos.get(k) ?? null, setItem: async (k, v) => { escritos.push(JSON.parse(v)); if (guardar) await guardar(k, v); datos.set(k, v) } }
   const deps = {
     '@react-native-async-storage/async-storage': storage,
-    '../lib/artwork': { artworkRemoto: () => null, registerArteLocal: () => {} }, '../lib/mensajeError': { mensajeError: e => e.message },
+    '../lib/artwork': { artworkRemoto: path => path ? `https://art.test/${path}` : null, registerArteLocal: () => {} }, '../lib/mensajeError': { mensajeError: e => e.message },
+    '../lib/politicaPrecarga': { clasificarRedPrecarga },
     '../lib/almacenAudio': adapter, '../services/music': { signedUrl: async k => `signed:${k}`, resolveSong: async (t, s) => { resolves.push(t.videoId); return resolver ? resolver(t, s) : { path: `${t.videoId}.m4a`, artworkPath: null } } },
-    './ajustes': { leerAjustes: () => ({ soloWifi: settings }) },
+    './ajustes': { leerAjustes: () => ({ soloWifi: settings, precargaAutomatica: true, precargaDatos }) },
     './store': { createStore(initial) { let state = initial; const listeners = new Set(); return { get: () => state, set(patch) { state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }; for (const f of [...listeners]) f() }, subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn) } } }, useStore: (s, fn) => fn(s.get()) },
   }
   const exports = {}
@@ -94,7 +96,7 @@ test('error se persiste tras tres intentos con espera exponencial; reintento exp
 })
 
 test('offline no consume intentos; WiFi desconocida bloquea fijadas pero no caché autorizada', async () => {
-  const h = montar({ red: { conectada: false, segura: false } }); await h.iniciar(); h.api.descargar(track('manual')); await tick()
+  const h = montar({ red: { conectada: false, segura: false }, precargaDatos: true }); await h.iniciar(); h.api.descargar(track('manual')); await tick()
   await h.avanzar(60000); assert.equal(h.jobs.length, 0); assert.equal(h.items['manual.m4a'].intentos, 0)
   await h.red({ conectada: true, segura: false }); assert.equal(h.jobs.length, 0); assert.equal(h.api.getDescargas().esperandoWifi, true)
   const p = h.api.prepararCache(track('cache')); await tick(); assert.equal(h.jobs[0].key, 'cache.m4a')
@@ -277,4 +279,44 @@ test('propietarios Symbol con mismo nombre no se pisan; LRU espera la liberació
   h.api.protegerDescargas([], a); await tick(); assert.deepEqual(h.borrados, [])
   h.api.protegerDescargas([], 'motor'); await tick(); assert.deepEqual(h.borrados, [])
   h.api.protegerDescargas([], b); await tick(); assert.deepEqual(h.borrados, ['uno.m4a'])
+})
+
+test('caché protegida deja de transferir al perder WiFi sin permiso de datos',async()=>{
+ const h=montar();await h.iniciar();h.api.protegerDescargas(['uno.m4a'])
+ const abort=new AbortController(),p=h.api.prepararCache(track(),abort.signal);await tick()
+ assert.equal(h.jobs.length,1)
+ await h.red({segura:false});assert.equal(h.jobs[0].pausada,true)
+ await h.avanzar(60000);assert.equal(h.jobs.length,1)
+ abort.abort();await p
+ h.api.protegerDescargas([]);await tick()
+})
+
+test('abortar la ventana detiene un temporal activo aunque su archivo siga protegido',async()=>{
+ const h=montar();await h.iniciar();h.api.protegerDescargas(['uno.m4a'])
+ const abort=new AbortController(),p=h.api.prepararCache(track(),abort.signal);await tick()
+ abort.abort();assert.equal(await p,null);await tick()
+ assert.equal(h.jobs[0].pausada,true);assert.equal(h.jobs.length,1)
+ h.api.protegerDescargas([]);await tick();assert.equal(h.items['uno.m4a'],undefined)
+})
+
+test('la canción próxima adelanta el lote pendiente y permite retomar descargas elegidas',async()=>{
+ const h=montar();await h.iniciar();h.api.descargarLista([track('lote1'),track('lote2')]);await tick()
+ const p=h.api.prepararCache(track('proxima'));await tick()
+ assert.equal(h.jobs[0].pausada,true);assert.equal(h.jobs[1].key,'proxima.m4a')
+ h.jobs[1].completar();assert.equal(await p,'local:proxima.m4a');await tick()
+ assert.equal(h.jobs[2].key,'lote1.m4a')
+ h.jobs[2].completar();await tick();assert.equal(h.jobs[3].key,'lote2.m4a')
+})
+
+
+test('portadas nunca bloquean precarga temporal ni audio pendiente del lote',async()=>{
+ const portadas=[]
+ const h=montar({portada:path=>{portadas.push(path);return new Promise(()=>{})}});await h.iniciar()
+ const a={...track('a'),artworkPath:'arte-a'},b={...track('b'),artworkPath:'arte-b'}
+ const precarga=h.api.prepararCache(a);await tick();h.jobs[0].completar();await precarga;await tick()
+ assert.deepEqual(portadas,[])
+ h.api.descargarLista([b,{...track('c'),artworkPath:'arte-c'}]);await tick()
+ h.jobs[1].completar();await tick();assert.equal(h.jobs[2].key,'c.m4a');assert.deepEqual(portadas,[])
+ h.jobs[2].completar();await tick();assert.deepEqual(portadas,['arte-c'])
+ assert.equal(h.items['c.m4a'].estado,'lista')
 })

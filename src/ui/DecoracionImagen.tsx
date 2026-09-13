@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Image } from 'expo-image'
 import {
   decoracionPropia,
@@ -27,7 +27,7 @@ import { DiscordEfecto } from './DiscordCosmeticos'
  * falso se congela en el primer cuadro —la vidriera de marcos anima solo
  * la elegida y la que tiene el cursor, como con los dibujados.
  */
-export function MarcoImagen({
+function MarcoImagen({
   decoracion,
   size,
   animado = true,
@@ -131,18 +131,5 @@ function EfectoImagen({ id, alto, animado }: { id: string | null | undefined; al
         accessibilityLabel={decoracion.nombre}
       />
     </View>
-  )
-}
-
-/**
- * La atribución de una decoración: autor y licencia, en una línea apagada.
- * Es lo que CC BY pide, y va donde se elige la decoración.
- */
-export function Atribucion({ decoracion }: { decoracion: Decoracion }) {
-  if (!decoracion.autor && !decoracion.licencia) return null
-  return (
-    <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
-      {[decoracion.autor, decoracion.licencia].filter(Boolean).join(' · ')}
-    </Text>
   )
 }

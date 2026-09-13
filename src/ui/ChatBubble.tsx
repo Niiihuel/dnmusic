@@ -1,3 +1,5 @@
+import { IconButton } from './IconButton'
+import { CancionCompartida } from './CancionCompartida'
 import { InvitacionJam } from './InvitacionJam'
 import { invitacionEnTexto } from '../lib/invitacionJam'
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
@@ -49,7 +51,7 @@ export function ChatBubble({
 
   return (
     <View className={`w-full ${mine ? 'items-end' : 'items-start'}`}>
-      <View style={{ maxWidth: '92%', minWidth: 140, ...(song ? { width: 360 } : {}) }}>
+      <View style={{ maxWidth: '92%', minWidth: 140, ...(song || message.sharedSong ? { width: 360 } : {}) }}>
         <View
           style={selected ? { backgroundColor: '#2A2A2C', borderColor: 'rgba(255,255,255,0.18)' } : undefined}
           className={`gap-2 rounded-[20px] border px-3.5 py-2.5 ${
@@ -67,9 +69,11 @@ export function ChatBubble({
               onPress={onPress}
               className="min-h-11 justify-center active:opacity-80"
             >
-              <Text className="text-foreground text-[15px] leading-5">{message.text}</Text>
+              <Text className="text-foreground text-subheadline">{message.text}</Text>
             </Pressable>
           ) : null}
+
+          {message.sharedSong ? <CancionCompartida song={message.sharedSong} /> : null}
 
           {song ? (
             /*
@@ -123,29 +127,18 @@ export function ChatBubble({
                     </View>
                   )}
                   <View className="min-w-0 flex-1 gap-0.5">
-                    <Text className="text-foreground text-[15px] font-semibold" numberOfLines={2}>
+                    <Text className="text-foreground text-subheadline font-semibold" numberOfLines={2}>
                       {song.title}
                     </Text>
                     {/* Solo el artista: la duración pasó a estar al final de la
                         barra, y repetirla acá la decía dos veces en dos
                         formatos distintos ("15 s" y "0:15"). */}
-                    <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>
+                    <Text className="text-muted-foreground text-footnote" numberOfLines={1}>
                       {song.artist}
                     </Text>
                   </View>
                 </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={playing ? 'Pausar' : 'Reproducir canción'}
-                  onPress={onPlay}
-                  className="h-11 w-11 items-center justify-center rounded-full bg-primary"
-                >
-                  {playing ? (
-                    <IconPause size={18} color={ICON_COLOR.onPrimary} />
-                  ) : (
-                    <IconPlay size={18} color={ICON_COLOR.onPrimary} />
-                  )}
-                </Pressable>
+                <IconButton label={playing ? 'Pausar' : 'Reproducir canción'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={onPlay} variant="primary" icon={playing ? <IconPause size={18} color={ICON_COLOR.onPrimary} /> : <IconPlay size={18} color={ICON_COLOR.onPrimary} />} />
               </View>
               {/*
                 La onda del tema en vez de la barra lisa, con los tiempos a los
@@ -155,7 +148,7 @@ export function ChatBubble({
               */}
               {picos ? (
                 <View className="flex-row items-center gap-2">
-                  <Text className="text-muted-foreground w-8 text-[12px] tabular-nums">
+                  <Text className="text-muted-foreground w-8 text-caption1 tabular-nums">
                     {formatClock(progress * song.durationMs)}
                   </Text>
                   <View className="flex-1">
@@ -170,7 +163,7 @@ export function ChatBubble({
                       etiqueta={song.title}
                     />
                   </View>
-                  <Text className="text-muted-foreground w-8 text-right text-[12px] tabular-nums">
+                  <Text className="text-muted-foreground w-8 text-right text-caption1 tabular-nums">
                     {formatClock(song.durationMs)}
                   </Text>
                 </View>
@@ -188,11 +181,11 @@ export function ChatBubble({
 
           <View className="flex-row items-center justify-end gap-1.5">
             {message.createdAt ? (
-              <Text className="text-muted-foreground text-[12px] tabular-nums">
+              <Text className="text-muted-foreground text-caption1 tabular-nums">
                 {formatMessageDate(message.createdAt)}
               </Text>
             ) : null}
-            {mine ? <Text accessibilityLabel={message.readAt ? 'Leído' : message.openedAt ? 'Abierto' : 'Enviado'} className="text-muted-foreground text-[12px]">{delivery}</Text> : null}
+            {mine ? <Text accessibilityLabel={message.readAt ? 'Leído' : message.openedAt ? 'Abierto' : 'Enviado'} className="text-muted-foreground text-caption1">{delivery}</Text> : null}
           </View>
         </View>
       </View>

@@ -1,11 +1,12 @@
-import { Keyboard, TextInput, View } from 'react-native'
+import { IconButton } from './IconButton'
+import type { SearchFieldHandle } from './SearchField.types'
+import { Keyboard, View } from 'react-native'
 import { useRef } from 'react'
 import Animated, { interpolate, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { cerrarBusqueda, setActivo, setTermino, usePista, useTermino } from '../state/busqueda'
 import { useRouter } from 'expo-router'
 import { setTab, useKeyboardH } from '../state/shell'
-import { BotonVidrio } from './Glass'
 import { SearchField } from './SearchField'
 import { ICON_COLOR, IconClose, IconHome } from './icons'
 
@@ -31,7 +32,7 @@ export function SearchRow() {
   const insets = useSafeAreaInsets()
   const termino = useTermino()
   const pista = usePista()
-  const input = useRef<TextInput>(null)
+  const input = useRef<SearchFieldHandle>(null)
   const teclado = useKeyboardH()
   const router = useRouter()
 
@@ -77,9 +78,7 @@ export function SearchRow() {
        * ahí tiene sentido irse. Es lo que hace Apple Music.
        */}
       {teclado > 0 ? null : (
-        <BotonVidrio
-          label="Volver al inicio"
-          onPress={() => {
+        <IconButton label="Volver al inicio" symbol="house" onPress={() => {
             cerrarBusqueda()
             Keyboard.dismiss()
             setTab('inicio')
@@ -92,12 +91,7 @@ export function SearchRow() {
              * la raíz es lo que el botón promete.
              */
             router.replace('/')
-          }}
-          radius={24}
-          style={{ width: 48, height: 48 }}
-        >
-          <IconHome size={21} color={ICON_COLOR.foreground} />
-        </BotonVidrio>
+          }} variant="glass" lado={48} icon={<IconHome size={21} color={ICON_COLOR.foreground} />} />
       )}
 
       <View className="min-w-0 flex-1">
@@ -120,17 +114,10 @@ export function SearchRow() {
 
       {/* Redondel y sin texto, como en iOS 26: la ✕ no necesita explicación, y
           «Cancelar» escrito obligaría al botón a comerse el ancho del campo. */}
-      <BotonVidrio
-        label="Cancelar la búsqueda"
-        onPress={() => {
+      <IconButton label="Cancelar la búsqueda" symbol="xmark" onPress={() => {
           cerrarBusqueda()
           Keyboard.dismiss()
-        }}
-        radius={24}
-        style={{ width: 48, height: 48 }}
-      >
-        <IconClose size={18} color={ICON_COLOR.foreground} />
-      </BotonVidrio>
+        }} variant="glass" lado={48} icon={<IconClose size={18} color={ICON_COLOR.foreground} />} />
     </Animated.View>
   )
 }

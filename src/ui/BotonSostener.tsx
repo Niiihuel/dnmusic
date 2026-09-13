@@ -100,7 +100,7 @@ function DosClics({
       <Text
         selectable={false}
         style={armado ? { color: '#121212' } : undefined} /* primary-foreground */
-        className={`text-[13px] font-semibold ${armado ? '' : 'text-foreground'}`}
+        className={`text-footnote font-semibold ${armado ? '' : 'text-foreground'}`}
         numberOfLines={1}
       >
         {armado ? `¿Seguro? ${rotulo}` : rotulo}
@@ -174,7 +174,7 @@ function Sostenido({
       {/* Sin selección: en web, sostener el botón arrancaba una selección de
           texto del navegador sobre el rótulo, y esa selección cancela el
           press — la marea llegaba a la mitad y se perdía. */}
-      <Text selectable={false} className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
+      <Text selectable={false} className="text-foreground text-footnote font-semibold" numberOfLines={1}>
         {rotulo}
       </Text>
       {/* La copia invertida, recortada al progreso. Todo por `style`:
@@ -202,7 +202,7 @@ function Sostenido({
           <Text
             selectable={false}
             style={{ color: '#121212' }}
-            className="text-[13px] font-semibold"
+            className="text-footnote font-semibold"
             numberOfLines={1}
           >
             {rotulo}

@@ -20,7 +20,7 @@ import { picosDeCancion } from '../services/music'
 export const BARRA = 2
 export const HUECO = 3
 /** Ninguna barra desaparece: una parte muda sigue siendo parte de la canción. */
-export const MINIMA = 2
+const MINIMA = 2
 
 /**
  * Los dos tonos de la onda: lo que ya sonó y lo que falta.

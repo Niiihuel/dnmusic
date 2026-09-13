@@ -1,5 +1,6 @@
+import { BotonSuperficie } from '../../src/ui/BotonSuperficie'
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, ScrollView, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { volver } from '../../src/lib/volver'
@@ -162,7 +163,7 @@ export default function ElegirLista() {
                   />
                 ) : null}
                 {visibles.length ? (
-                  <Text className="px-5 pb-1 pt-3 text-muted-foreground text-[11px] font-semibold uppercase tracking-[1.2px]">
+                  <Text className="px-5 pb-1 pt-3 text-muted-foreground text-footnote font-semibold uppercase">
                     {q ? 'Resultados' : 'Tus listas'}
                   </Text>
                 ) : null}
@@ -217,7 +218,7 @@ function Fila({
   onPress: () => void
 }) {
   return (
-    <Pressable
+    <BotonSuperficie
       accessibilityRole="button"
       accessibilityLabel={`Agregar a ${titulo}`}
       accessibilityState={{ disabled }}
@@ -228,14 +229,14 @@ function Fila({
     >
       {icono}
       <View className="min-w-0 flex-1">
-        <Text className="text-foreground text-[15px]" numberOfLines={1}>
+        <Text className="text-foreground text-subheadline" numberOfLines={1}>
           {titulo}
         </Text>
-        <Text className="text-muted-foreground text-[12px]" numberOfLines={1}>
+        <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
           {detalle}
         </Text>
       </View>
       {ocupada ? <ActivityIndicator size="small" color={ICON_COLOR.muted} /> : null}
-    </Pressable>
+    </BotonSuperficie>
   )
 }

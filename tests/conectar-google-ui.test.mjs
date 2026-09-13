@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 const tick = () => new Promise(r => setImmediate(r))
-function montar(user, connect) {
+function montar(user, connect, onConectado) {
   let cursor = 0
   const state = [], calls = []
   const jsx = (type, props) => ({ type, props })
@@ -12,19 +12,23 @@ function montar(user, connect) {
     'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': { Text: 'Text', View: 'View' },
     '../services/auth': { conectarGoogle: async id => { calls.push(id); return connect ? connect() : null }, cancelarGoogle: async () => calls.push('cancel') },
     '../lib/supabase': { getSupabase: () => ({}) }, './GoogleIcon': { GoogleIcon: 'Google' },
+    './GoogleOAuthFeedback': {
+      mensajeErrorGoogle: (error, fallback) => error?.code === 'identity_already_exists' ? 'Ese Google ya está conectado a otra cuenta de dnmusic. Elegí otro.' : fallback,
+      textoEsperaGoogle: () => 'Terminá en Google y volvé a dnmusic.',
+    },
     './Ajustes': { GrupoAjustes: 'Group', FilaAccion: 'Accion', FilaDato: 'Dato' },
   }
   const exports = {}
   const source = ts.transpileModule(readFileSync('src/ui/ConectarGoogle.tsx','utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText
   new Function('exports','require',source)(exports, k => { assert.ok(k in deps,k); return deps[k] })
-  return { calls, render() { cursor=0; return exports.ConectarGoogle({ user }) } }
+  return { calls, render() { cursor=0; return exports.ConectarGoogle({ user, onConectado }) } }
 }
 function nodes(tree, type) {
   if (!tree || typeof tree !== 'object') return []
   if (Array.isArray(tree)) return tree.flatMap(x => nodes(x,type))
   return [...(tree.type===type ? [tree] : []), ...nodes(tree.props?.children,type)]
 }
-const conectar = ui => nodes(ui,'Accion').find(n=>n.props.rotulo==='Conectar con Google')
+const conectar = ui => nodes(ui,'Accion').find(n=>['Conectar con Google','Esperando a Google…'].includes(n.props.rotulo))
 test('Cuenta presenta Google, bloquea doble click y confirma la identidad conectada', async () => {
   let done
   const h=montar({id:'legacy'},()=>new Promise(r=>{done=r}))
@@ -33,6 +37,8 @@ test('Cuenta presenta Google, bloquea doble click y confirma la identidad conect
   fila.props.onPress(); fila.props.onPress(); await tick()
   // Ocupada, la fila no acepta otro toque: `FilaAccion` no llama con `busy`.
   assert.deepEqual(h.calls,['legacy']);assert.equal(conectar(h.render()).props.busy,true)
+  assert.equal(conectar(h.render()).props.rotulo, 'Esperando a Google…')
+  assert.match(nodes(h.render(),'Group')[0].props.pie, /Terminá en Google/)
   assert.ok(nodes(h.render(),'Accion').some(n=>n.props.rotulo==='Cancelar'),'se puede salir de la espera')
   done({id:'legacy',identities:[{provider:'google',identity_data:{email:'test@example.test'}}]});await tick()
   assert.equal(conectar(h.render()),undefined)
@@ -49,4 +55,13 @@ test('error de vinculación se muestra sin confirmar éxito', async () => {
   assert.equal(conectar(h.render()).props.busy,false)
   // El error va al pie de su bloque, no en un cartel suelto debajo.
   assert.match(nodes(h.render(),'Group')[0].props.error,/otra cuenta/)
+})
+
+test('el modal se completa sólo con Google confirmado en la misma cuenta', async () => {
+  for (const result of [null, { id: 'otra', identities: [{ provider: 'google' }] }, { id: 'legacy', identities: [] }, { id: 'legacy', identities: [{ provider: 'google' }] }]) {
+    let completadas = 0
+    const h = montar({ id: 'legacy' }, async () => result, () => completadas++)
+    conectar(h.render()).props.onPress(); await tick()
+    assert.equal(completadas, result?.id === 'legacy' && result.identities.length ? 1 : 0)
+  }
 })

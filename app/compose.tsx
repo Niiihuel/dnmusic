@@ -1,13 +1,12 @@
+import { FilaSocial } from '../src/ui/FilaSocial'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FlatList,
   Image,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native'
@@ -51,6 +50,7 @@ import {
   IconMusic,
   IconSend,
 } from '../src/ui/icons'
+import { CampoMensaje } from '../src/ui/CampoMensaje'
 
 const MAX_MESSAGE_LENGTH = 2000
 const SEARCH_DEBOUNCE_MS = 250
@@ -273,17 +273,12 @@ export default function Compose() {
   )
 
   const chipDestinatario = recipient ? (
-    <Pressable accessibilityRole="button" accessibilityLabel="Cambiar destinatario" disabled={busy}
-      onPress={() => setDraft({ recipient: null, chooseRecipient: true })}
-      className="min-h-11 flex-row items-center gap-3 px-1 active:opacity-70">
-      <Text className="text-muted-foreground text-[15px]">Para</Text>
+    <View className="min-h-11 flex-row items-center gap-3 px-1">
+      <Text className="text-muted-foreground text-subheadline">Para</Text>
       <Avatar name={contactLabel(recipient)} path={recipient.avatarPath} size={32} />
-      <View className="min-w-0 flex-1">
-        <Text className="text-foreground text-[15px] font-semibold" numberOfLines={1}>{contactTitle(recipient)}</Text>
-        <Text className="text-muted-foreground text-[13px]" numberOfLines={1}>@{recipient.username}</Text>
-      </View>
-      <Text className="text-muted-foreground text-[13px]">Cambiar</Text>
-    </Pressable>
+      <View style={{ flex: 1 }}><FilaSocial titulo={contactTitle(recipient)} detalle={`@${recipient.username}`} valor="Cambiar" label="Cambiar destinatario"
+        disabled={busy} onPress={() => setDraft({ recipient: null, chooseRecipient: true })} /></View>
+    </View>
   ) : null
 
   const messageEditor = (
@@ -296,10 +291,10 @@ export default function Compose() {
         <View className="gap-3 p-4">
         <View className="flex-row items-center justify-between">
           <View className="gap-0.5">
-            <Text className="text-foreground text-[15px] font-semibold">Mensaje</Text>
+            <Text className="text-foreground text-subheadline font-semibold">Mensaje</Text>
           </View>
           <Text
-            className={`text-xs tabular-nums ${
+            className={`text-caption1 tabular-nums ${
               draft.text.length > MAX_MESSAGE_LENGTH
                 ? 'text-destructive'
                 : 'text-muted-foreground'
@@ -308,76 +303,48 @@ export default function Compose() {
             {draft.text.length}/{MAX_MESSAGE_LENGTH}
           </Text>
         </View>
-        <TextInput
+        <CampoMensaje
           editable={!busy}
           value={draft.text}
           onChangeText={(text) => setDraft({ text })}
           placeholder={
             recipient ? `Escribile algo a @${recipient.username}…` : 'Escribí algo…'
           }
-          placeholderTextColor="#777777"
           accessibilityLabel="Mensaje"
-          multiline
           autoFocus={!!recipient}
           maxLength={MAX_MESSAGE_LENGTH + 1}
-          textAlignVertical="top"
-          className="min-h-28 text-foreground text-[16px] leading-6"
+          expandido
+          className="min-h-28 text-foreground text-callout leading-6"
         />
         </View>
       </SeccionSocial>
 
       <View className="gap-2">
-        <Text className="text-foreground text-[15px] font-semibold">
+        <Text className="text-foreground text-subheadline font-semibold">
           Canción
         </Text>
         {draft.song ? (
           <View className="flex-row items-center gap-3 rounded-xl bg-muted p-3">
-            <Pressable accessibilityRole="button" accessibilityLabel="Cambiar canción" disabled={busy}
-              onPress={() => router.push('/song')}
-              className="min-h-11 min-w-0 flex-1 flex-row items-center gap-3 active:opacity-75">
-            {(draft.song.artworkPath || draft.song.artworkUrl) ? (
-              <Image
-                source={{ uri: artworkSource(draft.song.artworkPath, draft.song.artworkUrl, 128) ?? '' }}
-                className="h-14 w-14 rounded-lg bg-card"
-              />
-            ) : (
-              <View className="h-14 w-14 items-center justify-center rounded-lg bg-card">
-                <IconMusic size={20} color={ICON_COLOR.muted} />
-              </View>
-            )}
-            <View className="min-w-0 flex-1 gap-0.5">
-              <Text className="text-foreground text-[15px] font-semibold" numberOfLines={2}>
-                {draft.song.title}
-              </Text>
-              <Text className="text-muted-foreground text-xs" numberOfLines={1}>
-                {draft.song.artist} · {Math.round(draft.song.durationMs / 1000)} s
-                {draft.song.lyrics?.length ? ' · con letra' : ''}
-              </Text>
+            <View className="min-w-0 flex-1 flex-row items-center gap-3">
+              {(draft.song.artworkPath || draft.song.artworkUrl) ? <Image source={{ uri: artworkSource(draft.song.artworkPath, draft.song.artworkUrl, 128) ?? '' }} style={{ width: 56, height: 56, borderRadius: 8 }} /> :
+                <View className="h-14 w-14 items-center justify-center rounded-lg bg-card"><IconMusic size={20} color={ICON_COLOR.muted} /></View>}
+              <View style={{ flex: 1 }}><FilaSocial titulo={draft.song.title}
+                detalle={`${draft.song.artist} · ${Math.round(draft.song.durationMs / 1000)} s${draft.song.lyrics?.length ? ' · con letra' : ''}`}
+                label="Cambiar canción" disabled={busy} onPress={() => router.push('/song')} /></View>
             </View>
-            </Pressable>
             <Menu label="Opciones de la canción adjunta" items={[
               { label: 'Cambiar canción', sfSymbol: 'music.note', disabled: busy, onPress: () => router.push('/song') },
               { label: 'Quitar canción', sfSymbol: 'trash', disabled: busy, destructive: true, onPress: () => setDraft({ song: null }) },
             ]} />
           </View>
         ) : (
-          <Pressable
-            accessibilityRole="button"
-            disabled={busy}
-            onPress={() => router.push('/song')}
-            className="min-h-11 self-start flex-row items-center justify-center gap-2 rounded-full bg-muted px-4 py-3 active:opacity-80"
-          >
-            <IconMusic size={18} color={ICON_COLOR.muted} />
-            <Text className="text-muted-foreground text-[15px] font-semibold">
-              Agregar una canción
-            </Text>
-          </Pressable>
+          <AccionSocial label="Agregar una canción" secundaria disabled={busy} expandida={false} onPress={() => router.push('/song')} icono={<IconMusic size={18} color={ICON_COLOR.muted} />} />
         )}
       </View>
 
       {error ? (
         <View className="rounded-lg bg-muted px-4 py-3">
-          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="text-destructive text-sm leading-5">{error}</Text>
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="text-destructive text-subheadline">{error}</Text>
         </View>
       ) : null}
     </ScrollView>
@@ -388,10 +355,10 @@ export default function Compose() {
   const requestNotice = recipient ? (
     <View className="flex-1 gap-4">
       <View className="gap-2 rounded-xl bg-muted p-5">
-        <Text className="text-foreground text-[15px] font-semibold">
+        <Text className="text-foreground text-subheadline font-semibold">
           {solicitud === 'enviada' ? 'Solicitud enviada' : 'Todavía no son contactos'}
         </Text>
-        <Text className="text-muted-foreground text-[13px] leading-5">
+        <Text className="text-muted-foreground text-footnote leading-5">
           {solicitud === 'enviada'
             ? `Tu solicitud ya salió. Cuando @${recipient.username} la acepte vas a poder escribirle y compartirle canciones.`
             : `Mandale una solicitud a @${recipient.username}: cuando la acepte vas a poder escribirle y compartirle canciones.`}
@@ -399,7 +366,7 @@ export default function Compose() {
       </View>
       {error ? (
         <View className="rounded-lg bg-muted px-4 py-3">
-          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="text-destructive text-sm leading-5">{error}</Text>
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="text-destructive text-subheadline">{error}</Text>
         </View>
       ) : null}
     </View>

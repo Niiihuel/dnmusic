@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import { createRequire } from 'node:module'
+const RADIO = createRequire(import.meta.url)('../src/ui/apple.json').radio
 
 const jsx = (type, props) => ({ type, props })
 function compile(path, deps) {
@@ -124,12 +126,16 @@ test('sólo la hoja nativa de marcos fija fondo y evita expandir al alcanzar el 
   }
   visit(ast)
   const expression = screen.attributes.properties.find(p => p.name?.getText(ast) === 'options').initializer.expression.getText(ast)
-  const options = new Function('ES_WEB', 'HOJA_WEB', `return (${expression})`)
-  const native = options(false, {})
+  const options = new Function('ES_WEB', 'HOJA_WEB', 'RADIO', `return (${expression})`)
+  const native = options(false, {}, RADIO)
   assert.equal(native.presentation, 'formSheet')
   assert.deepEqual(native.contentStyle, { backgroundColor: '#121212' })
   assert.equal(native.sheetExpandsWhenScrolledToEdge, false)
   assert.deepEqual(native.sheetAllowedDetents, [1])
+  /* La esquina de la hoja sale de la medida de Apple y no de un número a ojo:
+     38 la de borde a borde, 34 la que flota. Estaban todas en 24, que es el
+     radio de una hoja de iOS 18. */
+  assert.equal(native.sheetCornerRadius, RADIO.hojaGrande)
   const web = { presentation: 'transparentModal' }
   assert.equal(options(true, web), web)
 })

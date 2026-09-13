@@ -450,3 +450,23 @@ las dos formas del perfil; la tarjeta de la tienda la muestra igual. Se
 elige en la pestaña «Placas» de Decoraciones, también desde «Editar perfil →
 Placa de nombre».
 
+
+
+## Publicación de listas
+
+Hacer pública o privada una lista confirma la fila devuelta por PostgREST antes
+de anunciar éxito. Un UPDATE sin filas afectadas (por permisos o una lista
+eliminada) se trata como fallo. La consulta del perfil sigue usando
+`list_public_playlists(ownerId)`: sólo devuelve listas públicas del dueño.
+
+`ListasPerfil` actualiza su lectura al volver al perfil, reintentar y recibir una
+publicación confirmada del mismo dueño en este cliente. Las respuestas anteriores
+no pueden sobrescribir una más reciente. Un error RPC se presenta con Reintentar;
+«Todavía no publicaste listas» sólo aparece después de una consulta vacía exitosa.
+Los cambios hechos desde otro dispositivo se leen al volver al perfil; no se añade
+un canal Realtime para este estante.
+
+Validación: `node --test tests/publicacion-listas.test.mjs` y
+`supabase/tests/listas_publicadas.sql` (base local, transacción con ROLLBACK).
+La prueba SQL comprueba publicación, lectura propia/ajena, retorno a privada y
+rechazo de cambios ajenos sin alterar cuentas ni políticas.

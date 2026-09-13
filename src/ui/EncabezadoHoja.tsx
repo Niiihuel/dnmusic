@@ -7,7 +7,7 @@ import { BotonVidrio, ES_WEB } from './Glass'
 import { ICON_COLOR, IconCheck, IconChevronLeft, IconClose } from './icons'
 
 /** Lo que mide la cabecera, para quien la pega arriba y necesita reservarlo. */
-export const ALTO_ENCABEZADO = 68
+const ALTO_ENCABEZADO = 68
 /** Lo que cuelga el velo por debajo de la cabecera. */
 const VELO = 28
 
@@ -55,10 +55,10 @@ export function EncabezadoHoja({
       <View className="flex-row items-center gap-3 px-4 py-3" style={{ minHeight: ALTO_ENCABEZADO }}>
         <View className="min-w-11 items-start">{izquierda}</View>
         <View className="min-w-0 flex-1 items-center gap-0.5">
-          <Text accessibilityRole="header" className="text-foreground text-center text-[17px] font-semibold" numberOfLines={2}>
+          <Text accessibilityRole="header" className="text-foreground text-center text-body font-semibold" numberOfLines={2}>
             {titulo}
           </Text>
-          {sobre ? <Text className="text-muted-foreground text-center text-[13px]" numberOfLines={2}>{sobre}</Text> : null}
+          {sobre ? <Text className="text-muted-foreground text-center text-footnote" numberOfLines={2}>{sobre}</Text> : null}
         </View>
         <View className="min-w-11 items-end">{derecha}</View>
       </View>

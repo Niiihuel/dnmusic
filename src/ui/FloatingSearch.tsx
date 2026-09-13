@@ -1,9 +1,10 @@
+import { IconButton } from './IconButton'
+import type { SearchFieldHandle } from './SearchField.types'
 import type { RefObject } from 'react'
-import { Keyboard, TextInput, View } from 'react-native'
+import { Keyboard, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated'
 import { usePiso } from '../state/shell'
-import { BotonVidrio } from './Glass'
 import { SearchField } from './SearchField'
 import { ICON_COLOR, IconClose } from './icons'
 
@@ -39,7 +40,7 @@ export function BuscadorFlotante({
   onChangeText: (v: string) => void
   placeholder?: string
   loading?: boolean
-  inputRef?: RefObject<TextInput | null>
+  inputRef?: RefObject<SearchFieldHandle | null>
   /** Tiene el cursor. Lo guarda quien lo usa, para poder prenderlo desde afuera. */
   activo: boolean
   onActivoChange: (activo: boolean) => void
@@ -125,20 +126,13 @@ export function BuscadorFlotante({
       {/* Redondel y sin texto, como en iOS 26: la ✕ no necesita que le
           expliquen qué hace, y «Cancelar» escrito obligaría al botón a crecer
           hasta comerse el ancho del campo. */}
-      <BotonVidrio
-        label="Cancelar la búsqueda"
-        radius={24}
-        style={{ width: 48, height: 48 }}
-        onPress={() => {
+      <IconButton label="Cancelar la búsqueda" symbol="xmark" onPress={() => {
           onChangeText('')
           inputRef?.current?.blur()
           Keyboard.dismiss()
           onActivoChange(false)
           onCancel?.()
-        }}
-      >
-        <IconClose size={18} color={ICON_COLOR.foreground} />
-      </BotonVidrio>
+        }} variant="glass" lado={48} icon={<IconClose size={18} color={ICON_COLOR.foreground} />} />
     </Animated.View>
   )
 }

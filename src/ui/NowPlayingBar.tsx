@@ -1,9 +1,14 @@
+import { NativeMiniPlayer } from '../../modules/media-controls'
+import { useDestinoEscucha } from './Dispositivos.shared'
+import { EstadoDispositivo } from './EstadoDispositivo'
+import { BotonSuperficie } from './BotonSuperficie'
+import { IconButton } from './IconButton'
 import { useRef, useState } from 'react'
 import { useRouter } from 'expo-router'
-import { ActivityIndicator, Image, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Image, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { artworkSource } from '../lib/artwork'
-import { useTabsVisible } from '../state/shell'
+import { abrirCara, hayQuienAbraCaras, useTabsVisible } from '../state/shell'
 import {
   canOpenPlaylist,
   posicionSV,
@@ -23,9 +28,8 @@ import {
   useModoReproduccion,
 } from '../state/playback'
 import { crearJamActual, salirDelJam, useCuantosJam, useJamActivo } from '../state/jam'
-import { abrirSelectorDispositivos, useEscuchaEspejoNombre } from '../state/escucha'
+import { abrirSelectorDispositivos } from '../state/escucha'
 import { BORDE_REFERENTE, ES_WEB, Glass, HAY_VIDRIO } from './Glass'
-import { useConTooltip } from './Tooltip'
 import { useClicDerecho } from './useClicDerecho'
 import { dejarCancionACompartir } from '../state/compartir'
 import { Menu, type MenuItem } from './Menu'
@@ -72,6 +76,21 @@ const WIDE_PX = 720
 export const PANEL_PX = 1120
 
 /**
+ * Poner una cara de la música: el Jam, la cola, la letra, el disco.
+ *
+ * No alterna la vista de una: se lo pide a la pantalla principal, que primero
+ * trae la música al medio. Estando en conversaciones el panel de la derecha es
+ * el detalle del mensaje y la cara no tenía dónde dibujarse — tocar «Jam»
+ * desde un chat no hacía nada. Ver `abrirCara` en `state/shell.ts`.
+ *
+ * Sin nadie escuchando —una ruta apilada, el teléfono— alterna como siempre.
+ */
+function ponerCara(cara: 'disc' | 'lyrics' | 'jam' | 'cola') {
+  if (hayQuienAbraCaras()) abrirCara(cara)
+  else toggleView(cara)
+}
+
+/**
  * La barra de abajo: qué suena, y los controles.
  *
  * Es **solo la cara**. Quien toca el audio es `MotorAudio`, que se monta aparte
@@ -101,29 +120,29 @@ export const PANEL_PX = 1120
  * con ícono según el caso, y caer justo donde antes iba el subtítulo.
  */
 function lineaEstado({
-  espejoEn,
+  estadoRemoto,
   error,
   artist,
   artistId,
 }: {
-  espejoEn: string | null
+  estadoRemoto: string | null
   error: string | null
   artist: string
   artistId?: string | null
 }) {
   if (error) {
     return (
-      <Text className="text-muted-foreground text-[11px]" numberOfLines={1}>
+      <Text className="text-muted-foreground text-caption2" numberOfLines={1}>
         {error}
       </Text>
     )
   }
-  if (espejoEn) {
+  if (estadoRemoto) {
     return (
       <View className="flex-row items-center gap-1">
         <IconDispositivo size={12} color={ICON_COLOR.foreground} />
-        <Text className="text-foreground text-[11px]" numberOfLines={1}>
-          Sonando en «{espejoEn}»
+        <Text className="text-foreground text-caption2" numberOfLines={1}>
+          {estadoRemoto}
         </Text>
       </View>
     )
@@ -154,7 +173,7 @@ export function NowPlayingBar({
   const insets = useSafeAreaInsets()
   const conTabs = useTabsVisible()
   const router = useRouter()
-  const { width } = useWindowDimensions()
+  const { width, fontScale } = useWindowDimensions()
   const wide = width >= WIDE_PX
   /* El nombre de la lista de la que salió la cola, para el subtítulo de «Ver
      la lista». Vacío con algo encolado a mano o sin origen. */
@@ -168,7 +187,10 @@ export function NowPlayingBar({
    * error— porque es la línea que dice el **estado** de lo que suena, y
    * «Sonando en tu computadora» es exactamente eso.
    */
-  const espejoEn = useEscuchaEspejoNombre()
+  const destinoEscucha = useDestinoEscucha()
+  const estadoRemoto = destinoEscucha.remoto ? destinoEscucha.resumen : null
+  const [opcionesNativas, setOpcionesNativas] = useState<{ x: number; y: number } | null>(null)
+  const miniNativo = useRef<View>(null)
   /** El tamaño cambia únicamente al elegirlo, nunca al recorrer o ajustar volumen. */
   const [compacto, setCompacto] = useState(false)
   /* Click derecho sobre el reproductor: las mismas opciones que los tres
@@ -236,7 +258,7 @@ export function NowPlayingBar({
       /* Con panel, el Jam se abre ahí al lado; sin panel, en su pantalla. */
       onPress: () => {
         const abrir = () => {
-          if (width >= PANEL_PX) toggleView('jam')
+          if (width >= PANEL_PX) ponerCara('jam')
           else router.push('/jam')
         }
         if (enJam) {
@@ -256,7 +278,7 @@ export function NowPlayingBar({
       /* Como el Jam: con panel al lado, la cola se abre ahí — un drawer es un
          gesto de teléfono, no de una ventana grande. Sin panel, su pantalla. */
       onPress: () => {
-        if (width >= PANEL_PX) toggleView('cola')
+        if (width >= PANEL_PX) ponerCara('cola')
         else router.push('/cola')
       },
       icon: <IconCola size={15} color={ICON_COLOR.muted} />,
@@ -286,6 +308,7 @@ export function NowPlayingBar({
       // Spotify Connect: mover la música entre los aparatos de la cuenta. El
       // selector lo dibuja `SelectorDispositivos`, montado en el layout.
       label: 'Escuchar en…',
+      subtitle: destinoEscucha.resumen,
       onPress: abrirSelectorDispositivos,
       icon: <IconDispositivo size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'laptopcomputer.and.iphone',
@@ -370,6 +393,17 @@ export function NowPlayingBar({
    * Lo que no cabe acá —la barra de posición, la letra, el disco, la cola— es
    * lo que va en la pantalla completa de «Sonando», que se abre desde acá.
    */
+  if (!wide && NativeMiniPlayer) {
+    return <View ref={miniNativo} collapsable={false} style={{ paddingHorizontal: compacta ? 0 : 12, paddingBottom: conTabs ? 8 : compacta ? 0 : 8 + insets.bottom }}>
+      <NativeMiniPlayer title={current.title} subtitle={error || (destinoEscucha.remoto ? destinoEscucha.resumen : current.artist)} artwork={artwork}
+        playing={playing} busy={cargando} canNext={!last} canPrevious
+        deviceLabel={destinoEscucha.resumen} remote={destinoEscucha.remoto}
+        style={{ width: '100%', height: Math.max(64, 44 + 20 * fontScale) }}
+        onOpen={() => router.push('/playing')} onPlayPause={togglePlayback} onNext={playNext}
+        onPrevious={playPrevious} onDevices={abrirSelectorDispositivos} onOptions={() => miniNativo.current?.measureInWindow((x, y, ancho) => setOpcionesNativas({ x: x + ancho / 2, y }))} />
+      {opcionesNativas ? <Menu items={menu} sinDisparador abiertoEn={opcionesNativas} onCerrarPunto={() => setOpcionesNativas(null)} /> : null}
+    </View>
+  }
   if (!wide) {
     /*
      * Plegada, los márgenes los pone la fila que la contiene: acá adentro
@@ -399,7 +433,7 @@ export function NowPlayingBar({
          * tiene un solo dueño.
          */}
         <View className="flex-row items-center gap-3 px-2.5 py-2">
-          <Pressable
+          <BotonSuperficie
             accessibilityRole="button"
             accessibilityLabel={`${current.title}, de ${current.artist}`}
             onPress={() => router.push('/playing')}
@@ -414,12 +448,12 @@ export function NowPlayingBar({
             )}
 
             <View className="min-w-0 flex-1 gap-0.5">
-              <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
+              <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>
                 {current.title}
               </Text>
-              {lineaEstado({ espejoEn, error, artist: current.artist })}
+              {lineaEstado({ estadoRemoto, error, artist: current.artist })}
             </View>
-          </Pressable>
+          </BotonSuperficie>
 
           {/* Los controles van **pegados entre sí**, como en el mini
               reproductor de Apple Music: cada botón ya lleva su área táctil
@@ -431,38 +465,16 @@ export function NowPlayingBar({
                 una canción suelta de la búsqueda no hay a dónde volver, y un
                 botón que nunca hace nada es peor que no tenerlo. */}
             {tracks.length > 1 ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Anterior"
-                onPress={playPrevious}
-                className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
-              >
-                <IconPrevious size={19} color={ICON_COLOR.foreground} />
-              </Pressable>
+              <IconButton label="Anterior" symbol="backward.end.fill" onPress={playPrevious} lado={40} size={19} icon={<IconPrevious size={19} color={ICON_COLOR.foreground} />} />
             ) : null}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={cargando ? 'Cargando' : playing ? 'Pausar' : 'Reproducir'}
-              onPress={togglePlayback}
-              className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
-            >
-              {cargando ? (
+            <IconButton label={destinoEscucha.remoto ? 'Traer música a este dispositivo' : cargando ? 'Pausar carga' : playing ? 'Pausar' : 'Reproducir'} symbol={playing && !destinoEscucha.remoto ? 'pause.fill' : 'play.fill'} onPress={togglePlayback} lado={40} size={19} busy={cargando} icon={cargando ? (
                 <ActivityIndicator size="small" color={ICON_COLOR.foreground} />
-              ) : playing ? (
+              ) : playing && !destinoEscucha.remoto ? (
                 <IconPause size={19} color={ICON_COLOR.foreground} />
               ) : (
                 <IconPlay size={19} color={ICON_COLOR.foreground} />
-              )}
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Siguiente"
-              onPress={playNext}
-              disabled={last}
-              className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
-            >
-              <IconNext size={19} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />
-            </Pressable>
+              )} />
+            <IconButton label="Siguiente" symbol="forward.end.fill" onPress={playNext} disabled={last} lado={40} size={19} icon={<IconNext size={19} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />} />
           </View>
 
           {/*
@@ -507,10 +519,10 @@ export function NowPlayingBar({
           </View>
         )}
         <View className="min-w-0 flex-1 gap-0.5">
-          <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
+          <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>
             {current.title}
           </Text>
-          {lineaEstado({ espejoEn, error, artist: current.artist, artistId: current.artistId })}
+          {lineaEstado({ estadoRemoto, error, artist: current.artist, artistId: current.artistId })}
         </View>
         {/* El corazón, pegado a lo que suena: es un juicio sobre la canción,
             no un control de transporte — por eso va acá y no con el play. */}
@@ -524,38 +536,17 @@ export function NowPlayingBar({
               Ver `ui/Transport`, que es donde viven los dos. */}
           {wide ? <BotonAleatorio size={16} lado={36} /> : null}
           {wide ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Anterior"
-              onPress={playPrevious}
-              className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-            >
-              <IconPrevious size={17} color={ICON_COLOR.muted} />
-            </Pressable>
+            <IconButton label="Anterior" symbol="backward.end.fill" onPress={playPrevious} lado={36} size={17} icon={<IconPrevious size={17} color={ICON_COLOR.muted} />} />
           ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={cargando ? 'Cargando' : playing ? 'Pausar' : 'Reproducir'}
-            onPress={togglePlayback}
-            className="h-10 w-10 items-center justify-center rounded-full bg-primary active:opacity-80"
-          >
-            {cargando ? (
+          <IconButton label={destinoEscucha.remoto ? 'Traer música a este dispositivo' : cargando ? 'Pausar carga' : playing ? 'Pausar' : 'Reproducir'} symbol={playing && !destinoEscucha.remoto ? 'pause.fill' : 'play.fill'} onPress={togglePlayback} lado={40} size={16} variant="primary" busy={cargando} icon={cargando ? (
               <ActivityIndicator size="small" color={ICON_COLOR.onPrimary} />
-            ) : playing ? (
+            ) : playing && !destinoEscucha.remoto ? (
               <IconPause size={16} color={ICON_COLOR.onPrimary} />
             ) : (
               <IconPlay size={16} color={ICON_COLOR.onPrimary} />
-            )}
-          </Pressable>
+            )} />
           {wide ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Siguiente"
-              onPress={playNext}
-              className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-            >
-              <IconNext size={17} color={ICON_COLOR.muted} />
-            </Pressable>
+            <IconButton label="Siguiente" symbol="forward.end.fill" onPress={playNext} lado={36} size={17} icon={<IconNext size={17} color={ICON_COLOR.muted} />} />
           ) : null}
           {wide ? <BotonRepetir size={16} lado={36} /> : null}
         </View>
@@ -574,18 +565,19 @@ export function NowPlayingBar({
       {/* Contrapeso del bloque de la izquierda, para que los controles queden
           centrados en la pantalla y no corridos por el largo del título. */}
       <View className="min-w-0 flex-1 flex-row items-center justify-end gap-1">
+        <EstadoDispositivo compacto />
         {wide ? (
           <>
             <Toggle
               label="Ver el disco girando"
               active={view === 'disc'}
-              onPress={() => toggleView('disc')}
+              onPress={() => ponerCara('disc')}
               icon={IconDisc}
             />
             <Toggle
               label="Ver solo la letra"
               active={view === 'lyrics'}
-              onPress={() => toggleView('lyrics')}
+              onPress={() => ponerCara('lyrics')}
               icon={IconLyrics}
             />
             {/*
@@ -600,7 +592,7 @@ export function NowPlayingBar({
               /* Abre la cara del Jam en el panel de al lado (o su pantalla,
                  si el ancho no da para panel). Crear es un botón de adentro. */
               onPress={() => {
-                if (width >= PANEL_PX) toggleView('jam')
+                if (width >= PANEL_PX) ponerCara('jam')
                 else router.push('/jam')
               }}
               icon={IconUsers}
@@ -608,7 +600,7 @@ export function NowPlayingBar({
             <Volume value={volume} onChange={setVolume} />
           </>
         ) : (
-          <Text className="text-muted-foreground text-[11px] tabular-nums">
+          <Text className="text-muted-foreground text-caption2 tabular-nums">
             {formatClock(positionMs)}
           </Text>
         )}
@@ -660,10 +652,10 @@ export function NowPlayingBar({
               </View>
             )}
             <View className="min-w-0 flex-1 gap-0.5">
-              <Text className="text-foreground text-[13px] font-semibold" numberOfLines={1}>
+              <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>
                 {current.title}
               </Text>
-              {lineaEstado({ espejoEn, error, artist: current.artist, artistId: current.artistId })}
+              {lineaEstado({ estadoRemoto, error, artist: current.artist, artistId: current.artistId })}
             </View>
             {/* El corazón, junto a lo que suena — misma regla que en la
                 franja sin vidrio. Compacta no entra: lo que queda es saber qué
@@ -675,37 +667,15 @@ export function NowPlayingBar({
               cualquier reproductor. Ver `ui/Transport`. */}
           <View className="flex-row items-center gap-1">
             {compacto ? null : <BotonAleatorio size={16} lado={36} />}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Anterior"
-              onPress={playPrevious}
-              className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-            >
-              <IconPrevious size={17} color={ICON_COLOR.muted} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={cargando ? 'Cargando' : playing ? 'Pausar' : 'Reproducir'}
-              onPress={togglePlayback}
-              className="h-10 w-10 items-center justify-center rounded-full bg-primary active:opacity-80"
-            >
-              {cargando ? (
+            <IconButton label="Anterior" symbol="backward.end.fill" onPress={playPrevious} lado={36} size={17} icon={<IconPrevious size={17} color={ICON_COLOR.muted} />} />
+            <IconButton label={destinoEscucha.remoto ? 'Traer música a este dispositivo' : cargando ? 'Pausar carga' : playing ? 'Pausar' : 'Reproducir'} symbol={playing && !destinoEscucha.remoto ? 'pause.fill' : 'play.fill'} onPress={togglePlayback} lado={40} size={16} variant="primary" busy={cargando} icon={cargando ? (
                 <ActivityIndicator size="small" color={ICON_COLOR.onPrimary} />
-              ) : playing ? (
+              ) : playing && !destinoEscucha.remoto ? (
                 <IconPause size={16} color={ICON_COLOR.onPrimary} />
               ) : (
                 <IconPlay size={16} color={ICON_COLOR.onPrimary} />
-              )}
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Siguiente"
-              onPress={playNext}
-              disabled={last}
-              className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-            >
-              <IconNext size={17} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />
-            </Pressable>
+              )} />
+            <IconButton label="Siguiente" symbol="forward.end.fill" onPress={playNext} disabled={last} lado={36} size={17} icon={<IconNext size={17} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />} />
             {compacto ? null : <BotonRepetir size={16} lado={36} />}
           </View>
 
@@ -721,12 +691,13 @@ export function NowPlayingBar({
               />
             </View>
           ) : compacto ? null : (
-            <Text className="text-muted-foreground text-[11px] tabular-nums">
+            <Text className="text-muted-foreground text-caption2 tabular-nums">
               {formatClock(positionMs)}
             </Text>
           )}
 
           <View className="flex-row items-center justify-end gap-1">
+            <EstadoDispositivo compacto />
             {/* Sin botón propio: es la otra puerta al menú de al lado. Se monta
                 recién al abrirse, para no dejar una pieza colgada sin usar. */}
             {clicBarra.punto ? (
@@ -742,13 +713,13 @@ export function NowPlayingBar({
                 <Toggle
                   label="Ver el disco girando"
                   active={view === 'disc'}
-                  onPress={() => toggleView('disc')}
+                  onPress={() => ponerCara('disc')}
                   icon={IconDisc}
                 />
                 <Toggle
                   label="Ver solo la letra"
                   active={view === 'lyrics'}
-                  onPress={() => toggleView('lyrics')}
+                  onPress={() => ponerCara('lyrics')}
                   icon={IconLyrics}
                 />
                 <Toggle
@@ -757,7 +728,7 @@ export function NowPlayingBar({
                   /* La misma regla que en la franja sin vidrio: el panel de
                      al lado si existe, la pantalla si no. */
                   onPress={() => {
-                    if (width >= PANEL_PX) toggleView('jam')
+                    if (width >= PANEL_PX) ponerCara('jam')
                     else router.push('/jam')
                   }}
                   icon={IconUsers}
@@ -797,21 +768,8 @@ function Toggle({
   onPress: () => void
   icon: (props: { size?: number; color?: string }) => React.ReactElement
 }) {
-  const tip = useConTooltip(label)
-  return (
-    <Pressable
-      {...tip.gestos}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      className="h-9 w-9 items-center justify-center rounded-full active:bg-muted"
-    >
-      {/* Encendido va en blanco, que es el acento del sistema; apagado en el
-          gris de lo inactivo. Ver docs/DESIGN.md. */}
-      <Icon size={16} color={active ? ICON_COLOR.foreground : ICON_COLOR.muted} />
-    </Pressable>
-  )
+  return <IconButton label={label} symbol={Icon === IconLyrics ? 'quote.bubble' : Icon === IconDisc ? 'opticaldisc' : Icon === IconUsers ? 'person.2' : 'list.bullet'}
+    selected={active} onPress={onPress} muted={!active} icon={<Icon size={20} color={active ? ICON_COLOR.foreground : ICON_COLOR.muted} />} />
 }
 
 /**
@@ -839,7 +797,7 @@ function Volume({
 
   return (
     <View className={angosto ? 'flex-row items-center gap-1' : 'flex-row items-center gap-1.5'}>
-      <Pressable
+      <BotonSuperficie
         accessibilityRole="button"
         accessibilityLabel={muted ? 'Devolver el sonido' : 'Silenciar'}
         onPress={() => {
@@ -860,7 +818,7 @@ function Volume({
         ) : (
           <IconVolume size={16} color={ICON_COLOR.muted} />
         )}
-      </Pressable>
+      </BotonSuperficie>
       {/* Angosta la línea es más corta, pero sigue siendo la misma barra
           arrastrable: lo que se pierde es recorrido, no el control. */}
       <View style={{ width: angosto ? 60 : 88 }}>

@@ -100,7 +100,7 @@ test('disparadores iOS ofrecen 44pt y un área de interacción explícita para i
 const index = readFileSync('app/index.tsx', 'utf8')
 const start = index.indexOf('function ConversationSidebar(')
 const source = index.slice(start, index.indexOf('\nfunction EmptyThread(', start))
-const globals = Object.fromEntries(['View', 'Text', 'Panel', 'Pressable', 'Avatar', 'ActivityIndicator', 'BotonVidrio', 'CampoBusquedaLateral', 'FlatList', 'FilaCuenta', 'ScrollArea', 'Vacio', 'IconCollapseLeft', 'IconNewConversation', 'CabeceraLateral', 'BotonLateral', 'IconInbox', 'IconCheck', 'IconClose'].map((k) => [k, k]))
+const globals = Object.fromEntries(['CabeceraChats', 'CargaChats', 'FilaConversacion', 'FilaSolicitudChat', 'TituloSeccionChats', 'BotonSuperficie', 'IconButton', 'View', 'Text', 'Panel', 'Pressable', 'Avatar', 'ActivityIndicator', 'BotonVidrio', 'CampoBusquedaLateral', 'FlatList', 'FilaCuenta', 'ScrollArea', 'Vacio', 'IconCollapseLeft', 'IconNewConversation', 'CabeceraLateral', 'BotonLateral', 'IconInbox', 'IconCheck', 'IconClose'].map((k) => [k, k]))
 Object.assign(globals, { TECLADO_FISICO: true, ICON_COLOR: {}, usePiso: () => 8, useTecho: () => 16, useColapso: () => ({}), contactLabel: (c) => c.username, contactTitle: (c) => c.displayName || c.username, formatMessageDate: () => 'Hoy', invitacionEnTexto: () => false })
 const { ConversationSidebar } = cargar(`${source}\nexport { ConversationSidebar }`, {}, globals)
 const props = { conversations: [], requests: [], filtered: true, consulta: 'ana', activePairId: null, hovered: false, onCollapse() {}, onSelect() {}, onRespond() {}, onNew() {}, onBuscar() {}, onAbrirCuenta() {} }
@@ -111,7 +111,7 @@ test('contactos: carga no presenta vacío ni resultados viejos; errores/mínimo 
   const loading = renderSidebar({ buscandoCuentas: true, cuentas: [ana] })
   assert.equal(loading.ListEmptyComponent, null)
   assert.equal(nodos(loading.ListFooterComponent, 'FilaCuenta').length, 0)
-  assert.equal(nodos(loading.ListFooterComponent, 'View').find((n) => n.props.accessibilityRole === 'progressbar').props.accessibilityLabel, 'Buscando contactos…')
+  assert.equal(nodos(loading.ListFooterComponent, 'CargaChats')[0].props.texto, 'Buscando contactos…')
   const error = 'Escribí al menos 3 letras.'
   const empty = renderSidebar({ errorBusqueda: error })
   assert.equal(empty.ListEmptyComponent.props.detalle, error)
@@ -121,9 +121,9 @@ test('contactos: carga no presenta vacío ni resultados viejos; errores/mínimo 
 test('contactos: solicitudes coincidentes se deduplican y acciones conservan destinatario', () => {
   const accepted = []
   const ui = renderSidebar({ requests: [{ ...ana, solicitud: 'recibida' }, { ...ana, id: 'pepe', username: 'pepe', displayName: 'Pepe' }], cuentas: [ana], onRespond: (...args) => accepted.push(args) })
-  assert.equal(nodos(ui.ListHeaderComponent, 'Avatar').length, 1)
+  assert.equal(nodos(ui.ListHeaderComponent, 'FilaSolicitudChat').length, 1)
   assert.equal(ui.ListFooterComponent, null)
-  nodos(ui.ListHeaderComponent, 'Pressable')[0].props.onPress()
+  nodos(ui.ListHeaderComponent, 'FilaSolicitudChat')[0].props.onAceptar()
   assert.equal(accepted[0][0].id, 'ana')
   assert.equal(accepted[0][1], true)
   const accounts = renderSidebar({ cuentas: [ana] })
@@ -132,8 +132,8 @@ test('contactos: solicitudes coincidentes se deduplican y acciones conservan des
   assert.equal(row.props.onSolicitar, undefined)
   const conv = { pairId: 'par', contact: ana, lastMessageAt: null, lastMessageText: 'Mensaje', unreadCount: 2 }
   const rendered = accounts.renderItem({ item: conv })
-  assert.equal(nodos(rendered, 'Avatar')[0].props.size, 36)
-  assert.ok(nodos(rendered, 'Text').some((n) => n.props.children === '@ana · Contacto'))
+  assert.equal(rendered.props.compacto, true)
+  assert.equal(rendered.props.detalle, '@ana · Contacto')
 })
 
 
@@ -197,6 +197,23 @@ test('con el módulo UIKit el menú deja de pasar por SwiftUI y arma el mismo re
   lamina.props.onOpen()
   lamina.props.onSelect({ nativeEvent: { id: borrar.children[0].id } })
   assert.deepEqual(clics, ['eliminar'])
+})
+
+test('cada apertura recibe IDs propios y un disparador deshabilitado llega hasta UIKit', () => {
+  const items = [{ label: 'Repetida', onPress: () => {} }]
+  const primera = contextual.prepararMenuContextual(items)
+  const segunda = contextual.prepararMenuContextual(items)
+  assert.notEqual(primera.items[0].children[0].id, segunda.items[0].children[0].id)
+
+  const ui = expand(MenuUIKit({ items, disabled: true }))
+  assert.equal(nodos(ui, 'BotonMenuNativo')[0].props.disabled, true)
+})
+
+test('la capa compartida entrega a iOS las opciones disabled sin ocultarlas', () => {
+  const source = readFileSync('src/ui/Menu.tsx', 'utf8')
+  assert.match(source, /<MenuNativo items=\{items\}/)
+  assert.doesNotMatch(source, /items=\{usable\}/)
+  assert.doesNotMatch(source, /key=\{item\.label\}/)
 })
 
 test('sin disparador propio, el glifo lo dibuja el sistema en un área de 44', () => {

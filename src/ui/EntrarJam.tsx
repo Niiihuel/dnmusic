@@ -1,5 +1,6 @@
+import { EntradaTexto } from './EntradaTexto'
 import { useState } from 'react'
-import { Pressable, Text, TextInput, useWindowDimensions, View } from 'react-native'
+import { Text, useWindowDimensions, View , type StyleProp, type ViewStyle} from 'react-native'
 import { useRouter } from 'expo-router'
 import { codigoDeJam } from '../lib/invitarJam'
 import { AccionSocial } from './Social'
@@ -14,7 +15,7 @@ import { AccionSocial } from './Social'
  * puerta de siempre (`app/jam/[code]`), donde se elige dónde escuchar y se
  * entra. Vive en el estado vacío del Jam, al lado de «Iniciar».
  */
-export function EntrarConCodigo({ compacta = false }: { compacta?: boolean }) {
+export function EntrarConCodigo({ compacta = false, style }: { compacta?: boolean; style?: StyleProp<ViewStyle> }) {
   const router = useRouter()
   const { width } = useWindowDimensions()
   const densa = compacta && width >= 780
@@ -35,7 +36,7 @@ export function EntrarConCodigo({ compacta = false }: { compacta?: boolean }) {
   }
 
   if (!abierto) {
-    return <AccionSocial label="Entrar con un código" compacta={compacta} secundaria onPress={() => setAbierto(true)} />
+    return <AccionSocial label="Entrar con un código" compacta={compacta} secundaria style={style} onPress={() => setAbierto(true)} />
   }
 
   return (
@@ -46,7 +47,7 @@ export function EntrarConCodigo({ compacta = false }: { compacta?: boolean }) {
        * para comparar contra lo que te mandaron. Mayúsculas siempre — así los
        * genera el servidor— y el campo acepta también el link entero pegado.
        */}
-      <TextInput
+      <EntradaTexto
         value={valor}
         onChangeText={(v) => {
           setValor(v)
@@ -64,7 +65,7 @@ export function EntrarConCodigo({ compacta = false }: { compacta?: boolean }) {
         className="text-foreground bg-card px-4 text-center font-semibold"
       />
       <Text
-        className={`text-center text-[13px] leading-5 ${
+        className={`text-center text-footnote leading-5 ${
           error ? 'text-foreground' : 'text-muted-foreground'
         }`}
       >
@@ -73,36 +74,10 @@ export function EntrarConCodigo({ compacta = false }: { compacta?: boolean }) {
           : 'Pegá el link o escribí el código que te pasaron.'}
       </Text>
       <View className="flex-row items-center gap-2">
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            setAbierto(false)
-            setValor('')
-            setError(false)
-          }}
-          style={{ minHeight: densa ? 36 : 44, borderRadius: densa ? 10 : 16, paddingVertical: densa ? 8 : 12 }}
-          className="justify-center bg-muted px-4 active:opacity-80"
-        >
-          <Text className="text-foreground text-[15px] font-semibold">Cancelar</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Entrar al Jam"
-          onPress={entrar}
-          disabled={!valor.trim()}
-          style={{ minHeight: densa ? 36 : 44, borderRadius: densa ? 10 : 16, paddingVertical: densa ? 8 : 12 }}
-          className={`flex-1 justify-center px-5 ${
-            valor.trim() ? 'bg-primary active:opacity-80' : 'bg-muted'
-          }`}
-        >
-          <Text
-            className={`text-center text-[15px] font-semibold ${
-              valor.trim() ? 'text-primary-foreground' : 'text-muted-foreground'
-            }`}
-          >
-            Entrar
-          </Text>
-        </Pressable>
+        <View style={{ flex: 1 }}><AccionSocial label="Cancelar" secundaria onPress={() => {
+          setAbierto(false); setValor(''); setError(false)
+        }} /></View>
+        <View style={{ flex: 1 }}><AccionSocial label="Entrar al Jam" onPress={entrar} disabled={!valor.trim()} /></View>
       </View>
     </View>
   )

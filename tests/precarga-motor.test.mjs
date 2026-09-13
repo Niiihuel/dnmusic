@@ -2,31 +2,36 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import { ventanaPrecarga } from '../src/lib/politicaPrecarga.ts'
 const source=ts.transpileModule(readFileSync('src/ui/usePrecargaCola.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText
 const flush=async()=>{for(let i=0;i<6;i++)await new Promise(r=>setImmediate(r))}
 const track=id=>({id,videoId:id,audioPath:`${id}.m4a`})
-function montar({disk=true}={}){
+function montar({disk=true, platform='web', network='amplia',failSigning=false}={}){
  const hooks=[],effects=[],timers=new Map(),downloads=[],sources=[],protectedPaths=[],priorities=[]
+ let signatures=0
  let cursor=0,sequence=0,statusListener,ready=true,online=true,automatic=true,current=track('a')
  const player={addListener(_,fn){statusListener=fn;return{remove(){statusListener=null}}}}
  const deps={
-  react:{useRef(value){const n=cursor++;return hooks[n]??(hooks[n]={current:value})},useState(initial){const n=cursor++;if(!(n in hooks))hooks[n]=initial;return[hooks[n],fn=>{hooks[n]=typeof fn==='function'?fn(hooks[n]):fn}]},useEffect(fn,dependencies){const n=cursor++,old=hooks[n];if(!old||dependencies.some((d,i)=>!Object.is(d,old.dependencies[i])))effects.push(()=>{old?.cleanup?.();hooks[n]={dependencies,cleanup:fn()}})}},
-  'react-native':{Platform:{OS:'web'}},
+  react:{useRef(value){const n=cursor++;return hooks[n]??(hooks[n]={current:value})},useState(initial){const n=cursor++;if(!(n in hooks))hooks[n]=typeof initial==='function'?initial():initial;return[hooks[n],fn=>{hooks[n]=typeof fn==='function'?fn(hooks[n]):fn}]},useEffect(fn,dependencies){const n=cursor++,old=hooks[n];if(!dependencies||!old||dependencies.some((d,i)=>!Object.is(d,old.dependencies[i])))effects.push(()=>{old?.cleanup?.();hooks[n]={dependencies,cleanup:fn()}})}},
+  'react-native':{Platform:{OS:platform}},
   '../state/ajustes':{useAjustes:()=>({precargaAutomatica:automatic,precargaDatos:false}),useAjustesCargados:()=>ready},
-  '../state/redPrecarga':{useRedPrecarga:()=>online},
+  '../state/redPrecarga':{useTipoRedPrecarga:()=>online?network:'no'},
+  '../lib/politicaPrecarga':{ventanaPrecarga},
   '../state/playback':{getPlaybackState:()=>({tracks:[current],index:0,manual:null}),completarCancion(){}},
-  '../services/music':{resolveSong:async t=>({path:`${t.id}.m4a`,url:`https://audio/${t.id}`}),signedUrl:async path=>`https://audio/${path}`},
+  '../services/music':{resolveSong:async t=>({path:`${t.id}.m4a`,url:`https://audio/${t.id}`}),signedUrl:async path=>{signatures++;if(failSigning)throw Error('sin firma');return`https://audio/${path}`}},
   '../state/descargas':{HAY_DESCARGAS:disk,rutaLocal:()=>null,priorizarReproduccion:v=>priorities.push(v),protegerDescargas:paths=>protectedPaths.push(paths),prepararCache:(t,signal)=>new Promise(resolve=>{downloads.push({track:t,signal,resolve});signal.addEventListener('abort',()=>resolve(null),{once:true})})},
-  '../lib/prepararBuffer':{prepararBuffer:async()=>{sources.push('buffer');return'blob:prepared'},liberarBuffer:uri=>sources.push(['release',uri])},
+  '../lib/prepararBuffer':{prepararBuffer:async uri=>{sources.push('buffer');return platform==='web'?'blob:prepared':uri},liberarBuffer:uri=>sources.push(['release',uri])},
  }
  const exports={}
  new Function('exports','require','setTimeout','clearTimeout',source)(exports,k=>{assert.ok(k in deps,k);return deps[k]},fn=>{timers.set(++sequence,fn);return sequence},id=>timers.delete(id))
  let props={current,proximas:[track('b'),track('c')],url:'https://audio/a',player,wantPlay:true,mudo:false,remember:(...v)=>sources.push(v),olvidar:(...v)=>sources.push(['forget',...v])}
  return{downloads,sources,priorities,protectedPaths,
+  unmount(){for(const hook of hooks)hook?.cleanup?.()},
   render(patch={}){props={...props,...patch};current=props.current;cursor=0;exports.usePrecargaCola(props);effects.splice(0).forEach(fn=>fn())},
   status(s={isLoaded:true,isBuffering:false,playing:true}){statusListener?.(s)},
   async clock(){const tasks=[...timers.values()];timers.clear();tasks.forEach(fn=>fn());await flush()},
   settings(values){if('ready'in values)ready=values.ready;if('online'in values)online=values.online;if('automatic'in values)automatic=values.automatic},
+  get signatures(){return signatures},
   get timers(){return timers.size},
  }
 }
@@ -56,4 +61,48 @@ test('un disco sin espacio no dispara un buffer adicional fuera de la cuota',asy
  const h=montar();h.render();h.status();h.render();await h.clock()
  h.downloads[0].resolve(null);await flush();h.downloads[1].resolve(null);await flush()
  assert.deepEqual(h.sources,[])
+})
+
+test('metadata y nuevas referencias equivalentes no cancelan una descarga en curso',async()=>{
+ const h=montar();h.render();h.status();h.render();await h.clock()
+ const primera=h.downloads[0]
+ h.render({current:{...track('a'),title:'nuevo título'},proximas:[{...track('b'),title:'metadatos'},track('c')]})
+ assert.equal(primera.signal.aborted,false);assert.equal(h.timers,0)
+ primera.resolve('local:b');await flush();assert.equal(h.downloads.length,2)
+ h.unmount();assert.equal(h.downloads[1].signal.aborted,true);assert.deepEqual(h.protectedPaths.at(-1),[])
+})
+
+test('iOS calienta sólo el próximo AVPlayerItem local y libera buffers al desmontar',async()=>{
+ const h=montar({platform:'ios'});h.render();h.status();h.render();await h.clock()
+ h.downloads[0].resolve('local:b');await flush()
+ assert.deepEqual(h.sources,[['b','local:b'],'buffer'])
+ h.downloads[1].resolve('local:c');await flush();assert.equal(h.sources.filter(x=>x==='buffer').length,1)
+ h.unmount();assert.ok(h.sources.some(x=>Array.isArray(x)&&x[0]==='release'&&x[1]==='local:b'))
+ assert.ok(h.sources.some(x=>Array.isArray(x)&&x[0]==='forget'&&x[1]==='b'))
+ assert.deepEqual(h.protectedPaths.at(-1),[])
+})
+
+test('ventana nativa amplía canciones cortas, datos autorizados conservan máximo dos',async()=>{
+ for(const [network,total] of [['amplia',5],['datos',2]]){
+  const h=montar({network});h.render({proximas:['b','c','d','e','f'].map(id=>({...track(id),durationMs:60000}))})
+  h.status();h.render();await h.clock()
+  for(let i=0;i<total;i++){assert.ok(h.downloads[i]);h.downloads[i].resolve(`local:${i}`);await flush()}
+  assert.equal(h.downloads.length,total);h.unmount()
+ }
+})
+
+
+test('errores especulativos reintentan una vez y no generan un bucle al renderizar',async()=>{
+ const h=montar({disk:false,failSigning:true});h.render({proximas:[track('b')]});h.status();h.render()
+ await h.clock();assert.equal(h.signatures,1);assert.equal(h.timers,1)
+ await h.clock();assert.equal(h.signatures,2);assert.equal(h.timers,0)
+ h.render({proximas:[{...track('b'),title:'cambio visual'}]});await h.clock()
+ assert.equal(h.signatures,2);h.unmount()
+})
+
+
+test('Android prepara disco sin duplicar la canción completa en memoria nativa',async()=>{
+ const h=montar({platform:'android'});h.render();h.status();h.render();await h.clock()
+ h.downloads[0].resolve('local:b');await flush();h.downloads[1].resolve('local:c');await flush()
+ assert.deepEqual(h.sources,[]);h.unmount()
 })

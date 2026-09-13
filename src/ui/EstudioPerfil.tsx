@@ -1,5 +1,9 @@
+import { FilaSocial } from './FilaSocial'
+import { SelectorCatalogo } from './SelectorCatalogo'
+import { AccionSocial } from './Social'
+import { IconButton } from './IconButton'
 import { memo, useDeferredValue, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ActivityIndicator, FlatList, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
 import type { Profile } from '../services/profile'
 import { useCatalogoDiscord, seleccionPaqueteDiscord, type PiezaDiscord, type TipoPiezaDiscord, type PaqueteDiscord } from '../services/discordCatalogo'
@@ -23,7 +27,7 @@ export const TIPOS_ESTILO: TipoPiezaDiscord[] = ['marco', 'placa', 'efecto', 'ma
 export function estiloDelPerfil(p: Profile): EstiloPerfil {
   return { marco: p.marco ?? null, placa: p.placa ?? null, efecto: p.efecto ?? null, marcoPerfil: p.marcoPerfil ?? null }
 }
-export const TITULOS_ESTILO: Record<TipoPiezaDiscord, string> = {
+const TITULOS_ESTILO: Record<TipoPiezaDiscord, string> = {
   marco: 'Avatar', placa: 'Placa de nombre', efecto: 'Efecto', marcoPerfil: 'Marco de estadísticas',
 }
 type FiltroTipo = TipoPiezaDiscord | 'paquete'
@@ -132,16 +136,10 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
           </SuperficiePerfil>}
       </View>
       <View style={{ gap: 4 }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Tu combinación" accessibilityState={{ expanded: verCombinacion }}
-          onPress={() => setVerCombinacion(!verCombinacion)} style={[s.entre, { minHeight: 44 }]}>
-          <Text style={s.texto}>Tu combinación</Text><IconChevronDown size={16} color="#aaa" />
-        </Pressable>
+        <AccionSocial label={verCombinacion ? 'Ocultar tu combinación' : 'Tu combinación'} secundaria onPress={() => setVerCombinacion(!verCombinacion)} />
         {verCombinacion ? TIPOS_ESTILO.map(t => <View key={t} style={s.seleccion}>
-          <Pressable accessibilityRole="button" onPress={() => { filtro(() => { setTipo(t); setColeccion('todas') }); setVerPrevia(false) }} style={{ flex: 1, gap: 3, paddingVertical: 8 }}>
-            <Text style={s.secundario}>{TITULOS_ESTILO[t]}</Text><Text style={s.texto} numberOfLines={1}>{nombrePieza(estilo[t])}</Text>
-          </Pressable>
-          {estilo[t] ? <Pressable disabled={ocupado} accessibilityRole="button" accessibilityLabel={`Quitar ${TITULOS_ESTILO[t].toLowerCase()}`} style={s.redondo}
-            onPress={() => { onCambiar({ ...estilo, [t]: null }); setComparar(false) }}><IconClose size={14} color="#b3b3b3" /></Pressable> : null}
+          <View style={{ flex: 1 }}><FilaSocial titulo={nombrePieza(estilo[t])} detalle={TITULOS_ESTILO[t]} onPress={() => { filtro(() => { setTipo(t); setColeccion('todas') }); setVerPrevia(false) }} /></View>
+          {estilo[t] ? <IconButton label={`Quitar ${TITULOS_ESTILO[t].toLowerCase()}`} symbol="xmark" disabled={ocupado} onPress={() => { onCambiar({ ...estilo, [t]: null }); setComparar(false) }} icon={<IconClose size={14} color="#b3b3b3" />} /> : null}
         </View>) : null}
       </View>
       <Text style={s.secundario}>{cambiados ? `${cambiados} ${cambiados === 1 ? 'pieza modificada' : 'piezas modificadas'}.` : 'Probá tu combinación.'}</Text>
@@ -156,11 +154,7 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
             <Pildora discreta texto="Discord" activa={origen === 'discord'} onPress={() => filtro(() => { setOrigen('discord'); setColeccion('todas') })} />
             <Pildora discreta texto="DMusic y propias" activa={origen === 'dmusic'} onPress={() => filtro(() => { setOrigen('dmusic'); setColeccion('todas'); if (tipo === 'paquete' || tipo === 'marcoPerfil') setTipo('marco') })} />
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel={dosPaneles ? (previaAbierta ? 'Ocultar vista previa' : 'Mostrar vista previa') : 'Ver vista previa del perfil'}
-            accessibilityState={{ expanded: dosPaneles ? previaAbierta : verPrevia }}
-            onPress={() => dosPaneles ? setPreviaAbierta(!previaAbierta) : setVerPrevia(true)} style={s.icono}>
-            {dosPaneles ? previaAbierta ? <IconCollapseRight size={19} color="#aaa" /> : <IconExpandRight size={19} color="#aaa" /> : <IconEye size={20} color="#eee" />}
-          </Pressable>
+          <IconButton label={dosPaneles ? (previaAbierta ? 'Ocultar vista previa' : 'Mostrar vista previa') : 'Ver vista previa del perfil'} symbol="eye" selected={dosPaneles ? previaAbierta : verPrevia} onPress={() => dosPaneles ? setPreviaAbierta(!previaAbierta) : setVerPrevia(true)} icon={dosPaneles ? previaAbierta ? <IconCollapseRight size={19} color="#aaa" /> : <IconExpandRight size={19} color="#aaa" /> : <IconEye size={20} color="#eee" />} />
         </View>
         <SearchField density="compact" value={buscar} onChangeText={v => filtro(() => setBuscar(v))} placeholder="Buscar una pieza o colección" />
         <View style={s.fila}>
@@ -214,46 +208,14 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
   </View>
 }
 
-function Pildora({ texto, activa = false, onPress, pequena = false, discreta = false }: { texto: string; activa?: boolean; onPress: () => void; pequena?: boolean; discreta?: boolean }) {
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected: activa }} onPress={onPress}
-    style={{ paddingHorizontal: pequena ? 12 : 14, minHeight: 44, justifyContent: 'center', alignItems: 'center', borderRadius: discreta ? 0 : 24, borderBottomWidth: discreta && activa ? 2 : 0, borderBottomColor: '#fff', backgroundColor: discreta ? 'transparent' : activa ? '#f1f1f1' : '#242424' }}>
-    <Text style={{ color: discreta && activa ? '#fff' : activa ? '#121212' : '#c8c8c8', fontSize: pequena ? 13 : 14, fontWeight: activa ? '700' : '500' }}>{texto}</Text>
-  </Pressable>
+function Pildora({ texto, activa = false, onPress, pequena = false }: { texto: string; activa?: boolean; onPress: () => void; pequena?: boolean; discreta?: boolean }) {
+  return <AccionSocial label={texto} selected={activa} secundaria={!activa} compacta={pequena} expandida={false} onPress={onPress} />
 }
 function MenuSelector({ label, texto, items }: { label: string; texto: string; items: MenuItem[] }) {
   return <Menu label={label} items={items} trigger={
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, backgroundColor: '#242424' }}>
       <Text numberOfLines={1} style={s.texto}>{texto}</Text><IconChevronDown size={14} color="#aaa" />
     </View>} />
-}
-function SelectorCatalogo({ etiqueta, valor, opciones, onChange }: { etiqueta: string; valor: string; opciones: { id: string; nombre: string }[]; onChange: (id: string) => void }) {
-  const [abierto, setAbierto] = useState(false)
-  const [busqueda, setBusqueda] = useState('')
-  const resultados = opciones.filter(o => normalizar(o.nombre).includes(normalizar(busqueda)))
-  const cerrar = () => { setAbierto(false); setBusqueda('') }
-  if (opciones.length <= 8) return <MenuSelector label={etiqueta} texto={opciones.find(o => o.id === valor)?.nombre ?? etiqueta}
-    items={opciones.map(o => ({ label: o.nombre, selected: o.id === valor, onPress: () => onChange(o.id) }))} />
-  return <>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${etiqueta}: ${opciones.find(o => o.id === valor)?.nombre}`} accessibilityState={{ expanded: abierto }} onPress={() => setAbierto(true)}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#242424', flexShrink: 1 }}>
-      <Text numberOfLines={1} style={[s.texto, { flexShrink: 1 }]}>{opciones.find(o => o.id === valor)?.nombre}</Text><IconChevronDown size={14} color="#aaa" />
-    </Pressable>
-    <Modal transparent visible={abierto} animationType="fade" onRequestClose={cerrar}>
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#0009' }}>
-        <Pressable style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Cerrar filtros" onPress={cerrar} />
-        <View accessibilityViewIsModal style={{ width: '100%', maxWidth: 440, maxHeight: '80%', backgroundColor: '#202020', borderRadius: 20, padding: 16, gap: 12 }}>
-          <View style={s.entre}><Text style={s.titulo}>{etiqueta}</Text><Pressable accessibilityRole="button" accessibilityLabel="Cerrar selector" onPress={cerrar} style={s.redondo}><IconClose size={18} color="#fff" /></Pressable></View>
-          {opciones.length > 8 ? <SearchField value={busqueda} onChangeText={setBusqueda} placeholder="Buscar colección" /> : null}
-          <FlatList data={resultados} keyExtractor={o => o.id} keyboardShouldPersistTaps="handled" style={{ flexGrow: 0 }}
-            ListEmptyComponent={<Text style={s.secundario}>No encontramos esa colección.</Text>}
-            renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityState={{ selected: valor === item.id }} onPress={() => { onChange(item.id); cerrar() }}
-              style={{ minHeight: 48, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: valor === item.id ? '#353535' : 'transparent', borderRadius: 10 }}>
-              <Text style={[s.texto, { flexShrink: 1 }]}>{item.nombre}</Text>{valor === item.id ? <IconCheck size={16} color="#fff" /> : null}
-            </Pressable>} />
-        </View>
-      </View>
-    </Modal>
-  </>
 }
 function MarcaSeleccion() { return <View style={s.check}><IconCheck size={12} color="#121212" /></View> }
 const TarjetaPieza = memo(function TarjetaPieza({ opcion: o, elegida, nombre, avatarPath, ocupado, onPress }: { opcion: Opcion; elegida: boolean; nombre: string; avatarPath: string | null; ocupado: boolean; onPress: () => void }) {

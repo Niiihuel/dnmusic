@@ -1,8 +1,133 @@
+diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_modules/expo-audio/ios/AudioComponentRegistry.swift
+--- a/node_modules/expo-audio/ios/AudioComponentRegistry.swift
++++ b/node_modules/expo-audio/ios/AudioComponentRegistry.swift
+@@ -1,5 +1,8 @@
+ import AVFoundation
+ import Foundation
++#if os(iOS)
++import UIKit
++#endif
+ 
+ class AudioComponentRegistry {
+   private var players = [String: AudioPlayer]()
+@@ -11,8 +14,67 @@
+ 
+   private let registryQueue = DispatchQueue(label: "expo.audio.registry", attributes: .concurrent)
+ 
++  #if os(iOS)
++  private var transitionTask: UIBackgroundTaskIdentifier = .invalid
++  private var transitionDeadline: DispatchWorkItem?
++  private var transitionGeneration = 0
++  #endif
++
+   init() {}
+ 
++  deinit {
++    #if os(iOS)
++    transitionDeadline?.cancel()
++    let task = transitionTask
++    if task != .invalid {
++      DispatchQueue.main.async { UIApplication.shared.endBackgroundTask(task) }
++    }
++    #endif
++  }
++
++  // Own the task in the registry: JS replaces/releases the finished player
++  // before starting its successor. Never keep silent audio playing as a bridge.
++  func beginPlaybackTransition() {
++    #if os(iOS)
++    guard Thread.isMainThread else {
++      DispatchQueue.main.async { self.beginPlaybackTransition() }
++      return
++    }
++    guard UIApplication.shared.applicationState == .background,
++      transitionTask == .invalid else { return }
++
++    transitionGeneration += 1
++    let generation = transitionGeneration
++    transitionTask = UIApplication.shared.beginBackgroundTask(withName: "ExpoAudio playback transition") { [weak self] in
++      guard let self, self.transitionGeneration == generation else { return }
++      self.endPlaybackTransition()
++    }
++    guard transitionTask != .invalid else { return }
++    let task = transitionTask
++    let deadline = DispatchWorkItem { [weak self] in
++      guard let self, self.transitionTask == task else { return }
++      self.endPlaybackTransition()
++    }
++    transitionDeadline = deadline
++    DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: deadline)
++    #endif
++  }
++
++  func endPlaybackTransition() {
++    #if os(iOS)
++    guard Thread.isMainThread else {
++      DispatchQueue.main.async { self.endPlaybackTransition() }
++      return
++    }
++    transitionDeadline?.cancel()
++    transitionDeadline = nil
++    guard transitionTask != .invalid else { return }
++    let task = transitionTask
++    transitionTask = .invalid
++    UIApplication.shared.endBackgroundTask(task)
++    #endif
++  }
++
+   func add(_ player: AudioPlayer) {
+     registryQueue.async(flags: .barrier) {
+       self.players[player.id] = player
+@@ -54,6 +116,7 @@
+   #endif
+ 
+   func removeAll() {
++    endPlaybackTransition()
+     registryQueue.async(flags: .barrier) {
+       self.players.values.forEach { $0.owningRegistry = nil }
+       self.players.removeAll()
+diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-audio/ios/AudioModule.swift
+--- a/node_modules/expo-audio/ios/AudioModule.swift
++++ b/node_modules/expo-audio/ios/AudioModule.swift
+@@ -107,6 +107,7 @@
+     }
+ 
+     OnAppEntersForeground {
++      registry.endPlaybackTransition()
+       if !shouldPlayInBackground {
+         resumeAllPlayers()
+       }
+@@ -242,7 +243,7 @@
+       }
+ 
+       Function("pause") { player in
+-        player.ref.pause()
++        player.pause()
+         if !player.keepAudioSessionActive {
+           deactivateSession()
+         }
+@@ -600,6 +601,11 @@
+         case .doNotMix, .mixWithOthers:
+           playable.pause()
+         }
++      } else if let player = playable as? AudioPlayer, player.keepAudioSessionActive {
++        // A persistent player can be waiting for JS recovery after an error.
++        // Cancel that intent without adding it to the system resume set.
++        player.wasPlaying = false
++        player.pause()
+       }
+     }
+ 
 diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-audio/ios/AudioPlayer.swift
-index 0742943..7fc3c98 100644
 --- a/node_modules/expo-audio/ios/AudioPlayer.swift
 +++ b/node_modules/expo-audio/ios/AudioPlayer.swift
-@@ -50,6 +50,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -47,9 +47,13 @@
+   private var timeToken: Any?
+   private var cancellables = Set<AnyCancellable>()
+   private var endObserver: NSObjectProtocol?
++  private var failureObserver: NSObjectProtocol?
++  private weak var failedItem: AVPlayerItem?
++  private var playbackFailure: String?
  
    private var audioProcessor: AudioTapProcessor?
    private var tapInstalled = false
@@ -10,7 +135,7 @@ index 0742943..7fc3c98 100644
    private var shouldInstallAudioTap = false
    weak var owningRegistry: AudioComponentRegistry?
    var onPlaybackComplete: (() -> Void)?
-@@ -125,7 +126,8 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -125,7 +129,8 @@
          shouldInstallAudioTap = true
        }
      } else {
@@ -20,7 +145,56 @@ index 0742943..7fc3c98 100644
        shouldInstallAudioTap = false
      }
    }
-@@ -246,9 +248,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -133,10 +138,14 @@
+   func currentStatus() -> [String: Any?] {
+     let currentDuration = ref.status == .readyToPlay ? duration : 0.0
+     let rate = isPlaying ? ref.rate : currentRate
++    let itemFailed = ref.currentItem?.status == .failed
++    let error = ref.currentItem?.error?.localizedDescription
++      ?? (ref.currentItem != nil && failedItem === ref.currentItem ? playbackFailure : nil)
++      ?? (itemFailed ? "Unknown playback error" : nil)
+     return [
+       "id": id,
+       "currentTime": currentTime,
+-      "playbackState": statusToString(status: ref.status),
++      "playbackState": itemFailed || error != nil ? "failed" : statusToString(status: ref.status),
+       "timeControlStatus": timeControlStatusString(status: ref.timeControlStatus),
+       "reasonForWaitingToPlay": reasonForWaitingToPlayString(status: ref.reasonForWaitingToPlay),
+       "mute": ref.isMuted,
+@@ -150,7 +159,7 @@
+       "isBuffering": isBuffering,
+       "isLive": isLive,
+       "currentOffsetFromLive": currentOffsetFromLive,
+-      "error": nil
++      "error": error
+     ]
+   }
+ 
+@@ -198,6 +207,15 @@
+   }
+ 
+   private func setupPublisher() {
++    ref.publisher(for: \.timeControlStatus)
++      .receive(on: DispatchQueue.main)
++      .sink { [weak self] status in
++        guard let self, self.keepAudioSessionActive,
++          status == .playing, self.isPlaying else { return }
++        self.owningRegistry?.endPlaybackTransition()
++      }
++      .store(in: &cancellables)
++
+     ref.publisher(for: \.currentItem?.status)
+       .sink { [weak self] status in
+         guard let self, let status else {
+@@ -228,6 +246,7 @@
+         guard let self else {
+           return
+         }
++        self.addPlaybackFailureNotification()
+         if self.isLooping {
+           self.enqueueNextLoopItem()
+           self.addPlaybackEndNotification()
+@@ -246,9 +265,7 @@
      removeQueuedLoopItems()
      ref.pause()
  
@@ -31,7 +205,7 @@ index 0742943..7fc3c98 100644
      replacePlayerItem(with: item)
  
      if wasSamplingEnabled {
-@@ -267,9 +267,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -267,9 +284,7 @@
      removeQueuedLoopItems()
      ref.pause()
  
@@ -42,7 +216,7 @@ index 0742943..7fc3c98 100644
      let item = AudioUtils.createAVPlayerItem(from: source)
      replacePlayerItem(with: item)
  
-@@ -320,9 +318,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -320,9 +335,7 @@
  
    private func teardownPlayer() {
      removeQueuedLoopItems()
@@ -53,7 +227,20 @@ index 0742943..7fc3c98 100644
      if let timeToken {
        ref.removeTimeObserver(timeToken)
        self.timeToken = nil
-@@ -358,7 +354,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -331,6 +344,12 @@
+       NotificationCenter.default.removeObserver(endObserver)
+       self.endObserver = nil
+     }
++    if let failureObserver {
++      NotificationCenter.default.removeObserver(failureObserver)
++      self.failureObserver = nil
++    }
++    failedItem = nil
++    playbackFailure = nil
+     cancellables.removeAll()
+     ref.pause()
+   }
+@@ -358,7 +377,7 @@
        return
      }
  
@@ -62,7 +249,7 @@ index 0742943..7fc3c98 100644
        tapInstalled = true
        return
      }
-@@ -370,6 +366,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -370,6 +389,7 @@
      audioProcessor = AudioTapProcessor(player: ref)
      let success = audioProcessor?.installTap() ?? false
      tapInstalled = success
@@ -70,7 +257,7 @@ index 0742943..7fc3c98 100644
  
      if success {
        audioProcessor?.sampleBufferCallback = { [weak self] buffer, frameCount, timestamp in
-@@ -400,6 +397,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -400,6 +420,7 @@
  
    private func uninstallTap() {
      tapInstalled = false
@@ -78,3 +265,108 @@ index 0742943..7fc3c98 100644
      audioProcessor?.uninstallTap()
      audioProcessor?.sampleBufferCallback = nil
    }
+@@ -439,6 +460,32 @@
+     }
+   }
+ 
++  private func addPlaybackFailureNotification() {
++    if let failureObserver {
++      NotificationCenter.default.removeObserver(failureObserver)
++      self.failureObserver = nil
++    }
++    guard let item = ref.currentItem else { return }
++
++    // A terminal failure during playback has its own notification. Observe it
++    // as well as item.status so JS can recover a stream that stopped early.
++    failureObserver = NotificationCenter.default.addObserver(
++      forName: AVPlayerItem.failedToPlayToEndTimeNotification,
++      object: item,
++      queue: .main
++    ) { [weak self] notification in
++      guard let self,
++        let failedItem = notification.object as? AVPlayerItem,
++        failedItem === self.ref.currentItem else {
++        return
++      }
++      let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError
++      self.failedItem = failedItem
++      self.playbackFailure = error?.localizedDescription ?? failedItem.error?.localizedDescription ?? "Playback failed before the end"
++      self.updateStatus(with: [:])
++    }
++  }
++
+   private func addPlaybackEndNotification() {
+     if let endObserver {
+       NotificationCenter.default.removeObserver(endObserver)
+@@ -447,7 +494,7 @@
+     endObserver = NotificationCenter.default.addObserver(
+       forName: .AVPlayerItemDidPlayToEndTime,
+       object: nil,
+-      queue: nil
++      queue: .main
+     ) { [weak self] notification in
+       guard let self,
+         let finishedItem = notification.object as? AVPlayerItem else {
+@@ -460,6 +507,11 @@
+       }
+ 
+       if !self.isLooping {
++        // The next item is selected in JS, which can outlive this player.
++        // Request a short native transition window before emitting its end.
++        if self.keepAudioSessionActive {
++          self.owningRegistry?.beginPlaybackTransition()
++        }
+         let currentTime = finishedItem.duration.seconds
+         self.updateStatus(with: [
+           "playing": false,
+@@ -497,6 +549,10 @@
+ 
+   func pause() {
+     ref.pause()
++    if keepAudioSessionActive {
++      owningRegistry?.endPlaybackTransition()
++    }
++    updateStatus(with: ["didJustPause": true])
+   }
+ 
+   func resumePlayback() {
+diff --git a/node_modules/expo-audio/src/AudioPlayer.web.ts b/node_modules/expo-audio/src/AudioPlayer.web.ts
+--- a/node_modules/expo-audio/src/AudioPlayer.web.ts
++++ b/node_modules/expo-audio/src/AudioPlayer.web.ts
+@@ -375,7 +375,15 @@
+     };
+ 
+     media.onended = () => {
++      this.isPlaying = false;
+       lastEmitTime = 0;
++      // Deliver completion even when the final timeupdate was throttled or JS
++      // animation frames are suspended in a hidden browser tab.
++      this.emit(PLAYBACK_STATUS_UPDATE, {
++        ...getStatusFromMedia(media, this.id),
++        playing: false,
++        didJustFinish: true,
++      });
+       mediaSessionController.updatePlaybackState(this);
+     };
+ 
+diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/expo-audio/ios/MediaController.swift
+--- a/node_modules/expo-audio/ios/MediaController.swift
++++ b/node_modules/expo-audio/ios/MediaController.swift
+@@ -246,7 +246,7 @@
+         return .commandFailed
+       }
+ 
+-      player.ref.pause()
++      player.pause()
+       return .success
+     }
+ 
+@@ -256,7 +256,7 @@
+       }
+ 
+       if player.isPlaying {
+-        player.ref.pause()
++        player.pause()
+       } else {
+         player.play(at: Float(player.currentRate > 0 ? player.currentRate : 1.0))
+       }

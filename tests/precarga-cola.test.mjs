@@ -64,3 +64,18 @@ test('tocar el próximo tema adopta la extracción aunque React limpie primero l
   fin.resolve('mismo archivo')
   assert.equal(await actual,'mismo archivo');assert.equal(pedidos,1)
 })
+
+test('ventana temporal respeta duración, tope por red y soporte de disco',async()=>{
+ const {ventanaPrecarga,clasificarRedPrecarga}=await import('../src/lib/politicaPrecarga.ts')
+ const songs=Array.from({length:9},(_,i)=>({...track(String(i)),durationMs:120000}))
+ assert.equal(ventanaPrecarga(songs,'amplia',true).length,5)
+ assert.equal(ventanaPrecarga(songs.map(t=>({...t,durationMs:400000})),'amplia',true).length,2)
+ assert.equal(ventanaPrecarga(songs.map(t=>({...t,durationMs:NaN})),'amplia',true).length,4)
+ assert.equal(ventanaPrecarga(songs,'datos',true).length,2)
+ assert.equal(ventanaPrecarga(songs,'amplia',false).length,2)
+ assert.deepEqual(ventanaPrecarga(songs,'no',true),[])
+ assert.equal(clasificarRedPrecarga({conectada:true,segura:true,datosPermitidos:false}),'amplia')
+ assert.equal(clasificarRedPrecarga({conectada:true,segura:false,datosPermitidos:false}),'no')
+ assert.equal(clasificarRedPrecarga({conectada:true,segura:false,datosPermitidos:true}),'datos')
+ for(const extra of [{conectada:false},{ahorro:true},{lenta:true}])assert.equal(clasificarRedPrecarga({conectada:true,segura:true,datosPermitidos:true,...extra}),'no')
+})
