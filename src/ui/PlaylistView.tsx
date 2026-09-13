@@ -1,3 +1,4 @@
+import { Glass } from './Glass'
 import { BotonSuperficie } from './BotonSuperficie'
 import { NativeMediaRow } from '../../modules/media-controls'
 import { IconButton } from './IconButton'
@@ -462,6 +463,8 @@ export function PlaylistView({
   /* El encabezado del teléfono flota: la cabecera de la lista arranca debajo
      y pasa por detrás del velo al desplazar. En escritorio vale 0. */
   const techo = useTecho()
+  const angosto = useAngosto()
+  const toolbarIOS = Platform.OS === 'ios' && angosto
   const colapso = useColapso()
   /*
    * De qué imagen sale el color de la cabecera: la portada propia si la hay,
@@ -645,13 +648,23 @@ export function PlaylistView({
 
   return (
     <Panel className="flex-1">
+      {toolbarIOS ? <View style={{ paddingTop: 8, backgroundColor: '#121212' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 }}>
+          <IconButton label="Volver a playlists" symbol="chevron.left" variant="glass" onPress={onClose} />
+          <Glass radius={24}><View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 }}>
+            {(playlist.colaborativa ? onVerGente : onColaborar) ? <IconButton label="Colaborar en la playlist" symbol="person.badge.plus" onPress={() => (playlist.colaborativa ? onVerGente : onColaborar)?.()} /> : null}
+            <IconButton label={publica ? "Compartir playlist" : "Compartir: la playlist es privada"} symbol="square.and.arrow.up" disabled={!publica} onPress={() => { if (publica) void compartirLista(playlist.id, playlist.name) }} />
+            <Menu items={menu} label={`Opciones de ${playlist.name}`} />
+          </View></Glass>
+        </View>
+      </View> : null}
       <View className="min-h-0 flex-1">
         <FlatList
           renderScrollComponent={(props) => (
             <ScrollArea {...props} stableIndicator contentKey={`${playlist.id}:${visibles.length}`} />
           )}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           data={visibles}
           keyExtractor={(t) => t.id}
           initialNumToRender={18}
@@ -663,9 +676,13 @@ export function PlaylistView({
           /* Lo que ocupan el reproductor y las pestañas: la última canción
              tiene que quedar al alcance, aunque las de arriba pasen por
              detrás del material. Arriba, lo mismo con el encabezado. */
-          contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
+          contentContainerStyle={{ paddingTop: toolbarIOS ? 0 : techo, paddingBottom: piso }}
           {...colapso}
           ListHeaderComponent={
+            <>
+            {/* El scroll nativo oculta progresivamente el campo bajo la barra
+                fija y lo recupera al volver al inicio; no desmonta el filtro. */}
+            {toolbarIOS ? <CampoBusquedaColeccion contexto="lista" abierto={buscando} filtro={filtro} onFiltro={setFiltro} onCerrar={alternarBuscar} siempreVisible /> : null}
             <Header
               playlist={playlist}
               tint={tint}
@@ -681,6 +698,7 @@ export function PlaylistView({
               opcionesDescarga={opcionesDescarga}
               onPlay={() => (total > 0 ? play(isMine ? soundingIndex : 0) : undefined)}
               onPickCover={onPickCover}
+              toolbarIOS={toolbarIOS}
               buscando={buscando}
               filtro={filtro}
               onBuscar={alternarBuscar}
@@ -694,6 +712,7 @@ export function PlaylistView({
 
               {total > 0 ? <TrackColumnHeader /> : null}
             </Header>
+            </>
           }
           /*
            * Las sugerencias van como pie de la misma FlatList, no como un
@@ -866,6 +885,7 @@ function Header({
   opcionesDescarga,
   onPlay,
   onPickCover,
+  toolbarIOS,
   buscando,
   filtro,
   onBuscar,
@@ -888,6 +908,7 @@ function Header({
   onPlay: () => void
   onPickCover: () => void
   /** El campo de búsqueda de la lista está abierto. */
+  toolbarIOS: boolean
   buscando: boolean
   filtro: string
   /** Abrir o cerrar la búsqueda (al cerrar, limpia el filtro). */
@@ -911,7 +932,7 @@ function Header({
         kind="Lista"
         tint={tint}
         bleedTop={bleedTop}
-        search={Platform.OS === 'ios' ? <CampoBusquedaColeccion contexto="lista" abierto={buscando} filtro={filtro}
+        search={Platform.OS === 'ios' && !toolbarIOS ? <CampoBusquedaColeccion contexto="lista" abierto={buscando} filtro={filtro}
           onFiltro={onFiltro} onCerrar={onBuscar} siempreVisible /> : undefined}
         /* Publicada se dice arriba, al lado del rótulo: es qué clase de lista
            es, no un dato más de la lista. */
@@ -994,7 +1015,7 @@ function Header({
               onFiltro={onFiltro}
             /> : null}
             <BotonDescarga total={total} bajado={bajado} onPress={onDescarga} opciones={opcionesDescarga} />
-            <Menu items={menu} label={`Opciones de ${playlist.name}`} size={17} />
+            {!toolbarIOS ? <Menu items={menu} label={`Opciones de ${playlist.name}`} size={17} /> : null}
             {Platform.OS !== 'ios' && playlist.colaborativa && onVerGente ? (
               <ColaboradoresDeLista
                 playlistId={playlist.id}

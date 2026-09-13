@@ -18,7 +18,7 @@ export function TrackRow(props: ComponentProps<typeof Respaldo>) {
       onActivate={onPlay} style={{ flex: 1, height: Math.max(68, 42 * fontScale + 16) }} />
     <View style={{ minWidth: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>{trailing}</View>
   </View>
-  return menu?.length ? <MantenerApretado items={menu}>{fila}</MantenerApretado> : fila
+  return menu?.length ? <MantenerApretado items={menu} preview={{ title, subtitle: artist, artwork }} >{fila}</MantenerApretado> : fila
 }
 
 // En iOS las filas son contenido, no columnas de escritorio.

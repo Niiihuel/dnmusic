@@ -4,7 +4,7 @@ import { runInNewContext } from 'node:vm'
 import test from 'node:test'
 import ts from 'typescript'
 
-function story({ lyrics = true, text = 'Una dedicatoria', platform = 'ios' } = {}) {
+function story({ lyrics = true, text = 'Una dedicatoria', platform = 'ios', artwork = false } = {}) {
   let cursor = 0
   const states = [], played = [], seeks = [], translations = []
   const song = { title: 'Tema', artist: 'Artista', videoId: 'fixture', startMs: 1000, durationMs: 15000,
@@ -31,7 +31,7 @@ function story({ lyrics = true, text = 'Una dedicatoria', platform = 'ios' } = {
       posicionSV: { value: 2000 }, toggle: async id => played.push(id), seek: async (...args) => seeks.push(args) }) }
     if (name.endsWith('/Onda')) return { Onda: 'Onda', usePicos: () => null }
     if (name.endsWith('/invitacionJam')) return { invitacionEnTexto: () => null }
-    if (name.endsWith('/artwork')) return { artworkSource: () => null }
+    if (name.endsWith('/artwork')) return { artworkSource: () => artwork ? 'https://example.test/cover.jpg' : null }
     if (name.endsWith('/music')) return { LYRIC_LANGS: [{ value: 'off', label: 'Original' }, { value: 'es', label: 'Español' }],
       translateLyrics: async (...args) => translations.push(args) }
     if (name.endsWith('/icons')) return { ...generic, ICON_COLOR: {} }
@@ -81,4 +81,17 @@ test('fragmento sin letra conserva reproducción y no presenta traducción vací
   assert.ok(!nodes.some(n => n.props?.triggerSymbol === 'character.bubble'))
   await nodes.find(n => n.props?.label === 'Pausar').props.onPress()
   assert.deepEqual(f.played, ['message'])
+})
+
+
+test('fragmentos reutilizan la portada del reproductor y un slider, sin visualizador', async () => {
+  const f = story({ artwork: true })
+  const nodes = f.render()
+  assert.ok(nodes.some(n => n.type === 'PlayerArtwork' && n.props.playing === true))
+  assert.ok(nodes.some(n => n.type === 'PlayerBackdrop'))
+  assert.ok(!nodes.some(n => n.type === 'Onda' || n.type === 'SongDisc'))
+  await nodes.find(n => n.type === 'SeekBar').props.onSeek(0.4)
+  assert.equal(f.seeks.length, 1)
+  assert.equal(f.seeks[0][0], 'message')
+  assert.equal(f.seeks[0][2], 0.4)
 })

@@ -11,6 +11,7 @@ import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { avisar } from '../state/aviso'
 import { usePlaybackState } from '../state/playback'
+import { FadedLyrics } from './FadedLyrics'
 import { Lyrics, type LyricsSize } from './Lyrics'
 import { LyricsTranslationMenu } from './LyricsTranslationMenu'
 import { ICON_COLOR, IconMusic } from './icons'
@@ -204,15 +205,7 @@ export function LyricsView({
   if (size === 'xl' && translationPlacement === 'footer') {
     return (
       <View style={{ flex: 1, minHeight: 0, paddingHorizontal: 24 }}>
-        <View style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          {letra}
-          <LinearGradient pointerEvents="none"
-            colors={[`rgba(${fondo},0.38)`, `rgba(${fondo},0)`]}
-            style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 24 }} />
-          <LinearGradient pointerEvents="none"
-            colors={[`rgba(${fondo},0)`, `rgba(${fondo},0.38)`]}
-            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 24 }} />
-        </View>
+        <FadedLyrics>{letra}</FadedLyrics>
         {traductor ? <View style={{ minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' }}>{traductor}</View> : null}
       </View>
     )

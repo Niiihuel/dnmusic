@@ -26,6 +26,8 @@ import { createStore, useStore } from './store'
 
 export type Tooltip = {
   texto: string
+  owner?: string
+  anchor?: HTMLElement
   /** Dónde está el botón, en coordenadas de la ventana. */
   x: number
   y: number
@@ -36,7 +38,7 @@ export type Tooltip = {
 const store = createStore<{ tip: Tooltip | null }>({ tip: null })
 
 /** Cuánto se espera antes de mostrarlo, viniendo de frío. */
-const ESPERA_MS = 700
+const ESPERA_MS = 120
 /** Cuánto dura la ventana en la que el siguiente aparece sin esperar. */
 const GRACIA_MS = 300
 /**
@@ -52,6 +54,7 @@ const CRUCE_MS = 120
 let relojAbrir: ReturnType<typeof setTimeout> | null = null
 let relojCerrar: ReturnType<typeof setTimeout> | null = null
 let ultimoCierre = 0
+let pendingOwner: string | undefined
 
 function frenar() {
   if (relojAbrir) clearTimeout(relojAbrir)
@@ -63,6 +66,7 @@ function frenar() {
 /** El cursor entró a un botón: con espera, salvo que venga de otro recién. */
 export function pedirTooltip(tip: Tooltip) {
   frenar()
+  pendingOwner = tip.owner
   const seguido = Date.now() - ultimoCierre < GRACIA_MS
   if (seguido || store.get().tip) {
     store.set({ tip })
@@ -77,11 +81,13 @@ export function pedirTooltip(tip: Tooltip) {
 /** El teclado llegó al botón: sin espera. */
 export function mostrarTooltipYa(tip: Tooltip) {
   frenar()
+  pendingOwner = tip.owner
   store.set({ tip })
 }
 
 /** El cursor se fue. Se apaga tras el cruce, salvo que lo retengan. */
-export function soltarTooltip() {
+export function soltarTooltip(owner?: string) {
+  if (owner && owner !== pendingOwner && owner !== store.get().tip?.owner) return
   if (relojAbrir) {
     clearTimeout(relojAbrir)
     relojAbrir = null
@@ -110,7 +116,9 @@ export function retenerTooltip() {
  * persona acaba de decidir, y quedarse sería estorbar el resultado. Escape es lo
  * que pide la APG y el criterio 1.4.13 («descartable»).
  */
-export function cerrarTooltip() {
+export function cerrarTooltip(owner?: string) {
+  if (owner && owner !== pendingOwner && owner !== store.get().tip?.owner) return
+  pendingOwner = undefined
   frenar()
   if (store.get().tip) {
     ultimoCierre = Date.now()

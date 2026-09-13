@@ -19,6 +19,8 @@ function fixture() {
     react: { useState: initial => { const i = cursor++; states[i] ??= initial; return [states[i], next => { states[i] = next }] }, useEffect: efecto => efectos.push(efecto) },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'react-native': { View: 'RNView', Image: 'RNImage', useWindowDimensions: () => ({ width: 390 }) },
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    './BarraCambiosPerfil': { BarraCambiosPerfil: 'BarraCambiosPerfil' },
     '@expo/ui/swift-ui': natives, '@expo/ui/swift-ui/modifiers': modifiers,
     './Avatar': { Avatar: 'Avatar' }, './Marco': { Marco: 'Marco' }, './TarjetaPerfil': { TarjetaPerfil: 'TarjetaPerfil' }, './PerfilPublico': { FondoPerfil: 'FondoPerfil' },
     '../services/showcases': { esVideo: url => url.endsWith('.mp4') },
@@ -43,16 +45,18 @@ const isDisabled = node => node.props.modifiers?.some(m => m.name === 'disabled'
 test('iOS conserva el borrador al navegar y guarda desde todas las secciones sólo cuando corresponde', () => {
   const f = fixture()
   let ui = f.render()
-  assert.ok(ui.filter(n => n.type === 'Button' && n.props.label === 'Guardar').every(isDisabled))
+  assert.equal(ui.find(n => n.type === 'BarraCambiosPerfil').props.visible, false)
+  assert.equal(ui.filter(n => n.type === 'Button' && n.props.label === 'Guardar').length, 0, 'no duplica Guardar en la cabecera')
   ui.find(n => n.type === 'NavigationStack').props.onPathChange(['identidad'])
   ui = f.render({ cambiado: true })
   assert.deepEqual(ui.find(n => n.type === 'NavigationStack').props.path, ['identidad'])
-  const save = ui.find(n => n.type === 'Button' && n.props.label === 'Guardar')
-  assert.equal(isDisabled(save), false)
-  save.props.onPress()
+  const bar = ui.find(n => n.type === 'BarraCambiosPerfil')
+  assert.equal(bar.props.visible, true)
+  assert.equal(bar.props.puedeGuardar, true)
+  bar.props.onGuardar()
   assert.deepEqual(f.acciones, ['guardar'])
-  assert.ok(f.render({ cambiado: true, puedeGuardar: false }).filter(n => n.type === 'Button' && n.props.label === 'Guardar').every(isDisabled))
-  assert.ok(f.render({ cambiado: true, ocupado: true }).filter(n => n.type === 'Button' && n.props.label === 'Guardar').every(isDisabled))
+  assert.equal(f.render({ cambiado: true, puedeGuardar: false }).find(n => n.type === 'BarraCambiosPerfil').props.puedeGuardar, false)
+  assert.equal(f.render({ cambiado: true, ocupado: true }).find(n => n.type === 'BarraCambiosPerfil').props.ocupado, true)
 })
 
 test('privacidad edita el borrador con los valores reales y no guarda una fila por separado', () => {

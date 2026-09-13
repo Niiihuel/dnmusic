@@ -214,3 +214,36 @@ test('búsqueda persistente de playlist entra sin teclado y cancelar limpia sin 
   ui = h.render('CampoBusquedaColeccion', { ...props, siempreVisible: true })
   assert.equal(nodes(ui, 'NativeSearch').length, 1)
 })
+
+
+test('la vista previa contextual recibe metadatos y abrirla no ejecuta acciones del menú', () => {
+  const h = load('src/ui/MenuContextualColeccion.tsx', menuDeps)
+  const calls = []
+  const preview = { title: 'Álbum', subtitle: 'Artista', artwork: 'https://example.test/cover.jpg' }
+  const ui = h.render('MenuContextualColeccion', { children: jsx('AlbumRow', {}), preview,
+    onPreviewPress: () => calls.push('abrir'), items: [{ label: 'Eliminar', onPress: () => calls.push('eliminar') }] })
+  const native = nodes(ui, 'NativeContext')[0]
+  assert.equal(native.props.preview, preview)
+  native.props.onPreviewPress()
+  assert.deepEqual(calls, ['abrir'])
+})
+
+test('buscador de playlist participa del scroll bajo la barra fija y conserva el campo montado', () => {
+  const source = ts.createSourceFile('PlaylistView.tsx', readFileSync('src/ui/PlaylistView.tsx', 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let scrollingSearch = 0
+  function visit(node) {
+    if (ts.isJsxAttribute(node) && node.name.getText(source) === 'ListHeaderComponent') {
+      function field(child) {
+        if (ts.isJsxSelfClosingElement(child) && child.tagName.getText(source) === 'CampoBusquedaColeccion') {
+          assert.ok(child.attributes.properties.some(p => ts.isJsxAttribute(p) && p.name.getText(source) === 'siempreVisible'))
+          scrollingSearch++
+        }
+        ts.forEachChild(child, field)
+      }
+      field(node)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  assert.equal(scrollingSearch, 1)
+})

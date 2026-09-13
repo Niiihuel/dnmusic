@@ -1,3 +1,4 @@
+import { superficieInteractivaWeb, artworkInteractivoWeb } from './estadoControl'
 import { BotonSuperficie } from './BotonSuperficie'
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import {
@@ -526,6 +527,7 @@ function TarjetaCuadrada({
   const [over, setOver] = useState(false)
   return (
     <BotonSuperficie
+      {...superficieInteractivaWeb('card')}
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
@@ -534,9 +536,9 @@ function TarjetaCuadrada({
       style={{ width: lado }}
       className="gap-2"
     >
-      <View
+      <View {...artworkInteractivoWeb()}
         className="items-center justify-center overflow-hidden rounded-lg bg-card"
-        style={{ width: lado, height: lado, opacity: over ? 0.8 : 1 }}
+        style={{ width: lado, height: lado, opacity: Platform.OS === 'web' ? 1 : over ? 0.8 : 1 }}
       >
         {tapa ?? <IconMusic size={26} color={ICON_COLOR.muted} />}
       </View>
@@ -618,10 +620,10 @@ function SongRow({
   const isCurrent = current?.videoId === item.id
 
   const fila = (
-    <View
+    <View {...superficieInteractivaWeb('row')}
       onPointerEnter={() => setOver(true)}
       onPointerLeave={() => setOver(false)}
-      className={`flex-row items-center gap-3 rounded-lg p-1.5 ${over ? 'bg-muted' : ''}`}
+      className={`flex-row items-center gap-3 rounded-lg p-1.5 ${Platform.OS !== 'web' && over ? 'bg-muted' : ''}`}
     >
       <BotonSuperficie
         accessibilityRole="button"
@@ -669,7 +671,7 @@ function SongRow({
     </View>
   )
   return Platform.OS === 'ios' && menu.length
-    ? <MantenerApretado items={menu}>{fila}</MantenerApretado>
+    ? <MantenerApretado items={menu} preview={{ title: item.title, subtitle: item.subtitle, artwork: item.artworkUrl ? proxiedImage(item.artworkUrl) : undefined }}>{fila}</MantenerApretado>
     : fila
 }
 
@@ -840,6 +842,7 @@ function TarjetaDestacada({
   const [over, setOver] = useState(false)
   return (
     <BotonSuperficie
+      {...superficieInteractivaWeb('card')}
       accessibilityRole="button"
       accessibilityLabel={`${tarjeta.motivo}: ${tarjeta.titulo}`}
       onPress={tarjeta.onPress}
@@ -849,10 +852,10 @@ function TarjetaDestacada({
       style={{ width: ancho, height: alto }}
     >
       {tarjeta.tapa ? (
-        <Image
+        <Image {...artworkInteractivoWeb()}
           source={{ uri: proxiedImage(artworkUrlAtSize(tarjeta.tapa, 640)) }}
           resizeMode="cover"
-          style={[StyleSheet.absoluteFill, { opacity: over ? 0.85 : 1 }]}
+          style={[StyleSheet.absoluteFill, { opacity: Platform.OS === 'web' ? 1 : over ? 0.85 : 1 }]}
         />
       ) : (
         <View className="flex-1 items-center justify-center">
@@ -1180,6 +1183,7 @@ function TarjetaConNombre({
   const [over, setOver] = useState(false)
   return (
     <BotonSuperficie
+      {...superficieInteractivaWeb('card')}
       accessibilityRole="button"
       accessibilityLabel={sonando ? `Pausar ${nombre}` : `Reproducir ${nombre}`}
       onPress={onPress}
@@ -1188,14 +1192,14 @@ function TarjetaConNombre({
       className="gap-2 active:opacity-80"
       style={{ width: lado }}
     >
-      <View
+      <View {...artworkInteractivoWeb()}
         className="items-center justify-center overflow-hidden rounded-lg bg-card"
         style={{ width: lado, height: lado }}
       >
         {tapa ? (
           <Image
             source={{ uri: proxiedImage(artworkUrlAtSize(tapa, 400)) }}
-            style={{ width: lado, height: lado, opacity: over ? 0.85 : 1 }}
+            style={{ width: lado, height: lado, opacity: Platform.OS === 'web' ? 1 : over ? 0.85 : 1 }}
           />
         ) : (
           <IconMusic size={26} color={ICON_COLOR.muted} />
@@ -1286,7 +1290,10 @@ function TarjetaArtista({
   onPress?: () => void
 }) {
   return (
+    <MantenerApretado items={onPress ? [{ label: 'Ir al artista', sfSymbol: 'music.microphone', onPress }] : []}
+      preview={{ title: nombre, subtitle: 'Artista', artwork: tapa ? proxiedImage(tapa) : undefined }} onPreviewPress={onPress}>
     <BotonSuperficie
+      {...superficieInteractivaWeb('card')}
       accessibilityRole="button"
       accessibilityLabel={nombre}
       onPress={onPress}
@@ -1294,7 +1301,7 @@ function TarjetaArtista({
       className="items-center gap-2 active:opacity-80"
       style={{ width: ARTISTA_LADO }}
     >
-      <View
+      <View {...artworkInteractivoWeb()}
         className="items-center justify-center overflow-hidden bg-card"
         style={{ width: ARTISTA_LADO, height: ARTISTA_LADO, borderRadius: ARTISTA_LADO / 2 }}
       >
@@ -1311,6 +1318,7 @@ function TarjetaArtista({
         {nombre}
       </Text>
     </BotonSuperficie>
+    </MantenerApretado>
   )
 }
 
@@ -1415,6 +1423,7 @@ function GeneroCard({
   const alto = Math.round(width * GENERO_RATIO)
   return (
     <BotonSuperficie
+      {...superficieInteractivaWeb('card')}
       accessibilityRole="button"
       accessibilityLabel={genero.name}
       onPress={onPress}
@@ -1423,12 +1432,12 @@ function GeneroCard({
       style={{ width }}
       className="active:opacity-80"
     >
-      <View className="overflow-hidden rounded-lg bg-card" style={{ width, height: alto }}>
+      <View {...artworkInteractivoWeb()} className="overflow-hidden rounded-lg bg-card" style={{ width, height: alto }}>
         {genero.artworkUrl ? (
           <Image
             source={{ uri: proxiedImage(artworkUrlAtSize(genero.artworkUrl, 400)) }}
             resizeMode="cover"
-            style={{ width, height: alto, opacity: over ? 0.75 : 1 }}
+            style={{ width, height: alto, opacity: Platform.OS === 'web' ? 1 : over ? 0.75 : 1 }}
           />
         ) : (
           <View className="flex-1 items-center justify-center">

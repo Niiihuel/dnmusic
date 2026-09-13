@@ -1151,6 +1151,7 @@ function SessionGate() {
       {/* Elegir una canción y recortarla son pasos del mismo formulario. */}
       <Stack.Screen name="song" options={HOJA_SOCIAL} />
       {/* iOS presenta una pantalla completa; el gesto de letras no cierra el player. */}
+      <Stack.Screen name="dispositivos" options={HOJA_SOCIAL} />
       <Stack.Screen name="playing" options={Platform.OS === 'ios' ? {
         presentation: 'fullScreenModal', animation: 'slide_from_bottom', gestureEnabled: false,
         contentStyle: { backgroundColor: '#121212' },

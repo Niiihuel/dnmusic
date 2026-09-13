@@ -1,4 +1,6 @@
+import { superficieInteractivaWeb } from './estadoControl'
 import { ScrollArea } from './ScrollArea'
+import { ES_WEB, vidrioCss } from './Glass'
 import { useState } from 'react'
 import { Image, Platform, Pressable, Text, View } from 'react-native'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
@@ -109,6 +111,7 @@ export function SearchDropdown({
 
   return (
     <View
+      {...(ES_WEB && !embedded ? { dataSet: { dnGlass: 'regular', dnGlassDropdown: 'true' } } : {})}
       /*
        * Embebida **no lleva tarjeta**.
        *
@@ -132,6 +135,7 @@ export function SearchDropdown({
           ? undefined
           : {
               maxHeight: MAX_H,
+              ...(ES_WEB ? vidrioCss() : {}),
               // Sombra pesada: sobre casi negro, una sutil no se ve y el panel
               // parece pegado al fondo en vez de flotar.
               boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
@@ -256,7 +260,8 @@ function ResultadoFila({
          * excepción — la carátula, que se oscurece y muestra el play,
          * ya dice de sobra cuál fila se va a accionar.
          */
-        className={`flex-row items-center gap-1 rounded-lg pr-1 ${over ? 'bg-muted' : ''}`}
+        {...superficieInteractivaWeb('row')}
+        className={`flex-row items-center gap-1 rounded-lg pr-1 ${Platform.OS !== 'web' && over ? 'bg-muted' : ''}`}
       >
         <Pressable
           accessibilityRole="button"
@@ -352,7 +357,7 @@ function ResultadoFila({
   )
 
   if (!items.length) return fila
-  return <MantenerApretado items={items}>{fila}</MantenerApretado>
+  return <MantenerApretado items={items} preview={{ title: track.title, subtitle: track.artist, artwork: track.artworkUrl ? proxiedImage(track.artworkUrl) : undefined }}>{fila}</MantenerApretado>
 }
 
 function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => void }) {
@@ -361,13 +366,16 @@ function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => v
      responde sin CORS y deja el hueco en blanco (ver `proxiedImage`). */
   const photo = artist.photoUrl ? proxiedImage(artworkUrlAtSize(artist.photoUrl, 96)) : ''
   return (
+    <MantenerApretado items={[{ label: 'Ir al artista', sfSymbol: 'music.microphone', onPress }]}
+      preview={{ title: artist.name, subtitle: 'Artista', artwork: photo }} onPreviewPress={onPress}>
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Ir a ${artist.name}`}
       onPress={onPress}
       onPointerEnter={() => setOver(true)}
       onPointerLeave={() => setOver(false)}
-      className={`flex-row items-center gap-3 rounded-lg p-2 ${over ? 'bg-muted' : ''}`}
+      {...superficieInteractivaWeb('row')}
+      className={`flex-row items-center gap-3 rounded-lg p-2 ${Platform.OS !== 'web' && over ? 'bg-muted' : ''}`}
     >
       {photo ? (
         <Image source={{ uri: photo }} className="h-11 w-11 rounded-full bg-muted" />
@@ -385,6 +393,7 @@ function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => v
         </Text>
       </View>
     </Pressable>
+    </MantenerApretado>
   )
 }
 

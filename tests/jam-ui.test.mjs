@@ -34,6 +34,8 @@ const cabecera = cargar('src/ui/EncabezadoHoja.tsx', {
   './icons': { ICON_COLOR: {}, IconCheck: 'IconCheck', IconClose: 'IconClose', IconChevronLeft: 'IconChevronLeft' },
 })
 const social = cargar('src/ui/Social.tsx', {
+  './CopyFeedback': { CopyFeedback: 'CopyFeedback' },
+  '../state/copia': { useEstadoCopia: () => 'idle' },
   'react/jsx-runtime': runtime, 'react-native': rn,
   './EncabezadoHoja': cabecera,
   './icons': { ICON_COLOR: {} },

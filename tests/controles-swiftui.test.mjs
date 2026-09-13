@@ -166,3 +166,26 @@ test('cuentas iOS separa visitar perfil, elegir y aceptar sin cambiar destinatar
   assert.equal(actions.length, 1)
   assert.equal(actions[0].props.onPress, undefined)
 })
+
+
+test('barra de cambios: guardar requiere borrador válido y restablecer espera la confirmación', () => {
+  const calls = []
+  const h = harness('src/ui/BarraCambiosPerfil.ios.tsx', {
+    'react-native': { View: 'View', Platform: { Version: 26 } },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
+  })
+  const props = { visible: false, onGuardar: () => calls.push('guardar'), onRestablecer: () => calls.push('restablecer') }
+  assert.equal(h.render('BarraCambiosPerfil', props), null)
+  function walk(n) { return !n || typeof n !== 'object' ? [] : Array.isArray(n) ? n.flatMap(walk) : [n, ...walk(n.props?.children)] }
+  const button = (ui, label) => walk(ui).find(n => n.type === 'Button' && n.props.label === label)
+  let ui = h.render('BarraCambiosPerfil', { ...props, visible: true })
+  button(ui, 'Guardar').props.onPress()
+  assert.deepEqual(calls, ['guardar'])
+  assert.equal(button(ui, 'Restablecer').props.onPress, undefined, 'el disparador no descarta cambios')
+  walk(ui).find(n => n.type === 'Button' && n.props.role === 'destructive').props.onPress()
+  assert.deepEqual(calls, ['guardar', 'restablecer'])
+  for (const patch of [{ ocupado: true }, { puedeGuardar: false }]) {
+    ui = h.render('BarraCambiosPerfil', { ...props, visible: true, ...patch })
+    assert.equal(button(ui, 'Guardar').props.onPress, undefined)
+  }
+})

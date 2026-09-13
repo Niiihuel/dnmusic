@@ -7,7 +7,7 @@ import { ScrollArea as ScrollView } from '../../src/ui/ScrollArea'
 import { volver } from '../../src/lib/volver'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { pistaDeResultado } from '../../src/lib/pistas'
-import { compartirCancion } from '../../src/lib/compartir'
+import { compartirCancion, linkDe } from '../../src/lib/compartir'
 import { useColorPortada } from '../../src/lib/colorPortada'
 import { resolveSong, type TrackResult } from '../../src/services/music'
 import { tarjetaDe, type Tarjeta } from '../../src/services/compartidos'
@@ -202,7 +202,7 @@ export default function CancionCompartida() {
                           router.push('/lista/elegir')
                         }} lado={44} size={18} icon={<IconPlus size={18} color={ICON_COLOR.muted} />} />
 
-                      <IconButton label="Compartir el link" symbol="square.and.arrow.up" onPress={() =>
+                      <IconButton expandible copyText={linkDe('cancion', tarjeta.id)} label="Compartir el link" symbol="square.and.arrow.up" onPress={() =>
                           void compartirCancion({
                             videoId: tarjeta.id,
                             title: tarjeta.titulo,

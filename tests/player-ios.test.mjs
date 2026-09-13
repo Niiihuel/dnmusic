@@ -25,7 +25,7 @@ function component(path, dependencies) {
     if (name.endsWith('/icons')) return new Proxy({ ICON_COLOR: {} }, { get: (target, key) => target[key] ?? String(key) })
     return new Proxy({}, { get: (_, key) => String(key) })
   })
-  return { render(name, props) { index = 0; const result = exports[name](props); while (effects.length) effects.shift()(); return result } }
+  return { render(name, props) { index = 0; let result = exports[name](props); if (result?.type === 'SafeAreaProvider') result = result.props.children.type(result.props.children.props); while (effects.length) effects.shift()(); return result } }
 }
 
 const modifiers = new Proxy({}, { get: (_, key) => value => ({ name: key, value }) })
@@ -42,7 +42,7 @@ test('iOS conserva letras y controles durante cambios de posición; solo cerrar 
     '../src/lib/volver': { volver: () => calls.push('close') },
     'react-native-gesture-handler': { Gesture: { Pan: () => gesture }, GestureDetector: 'GestureDetector' },
     'react-native-reanimated': { default: { View: 'Animated.View' }, Easing: { in: value => value, out: value => value }, useSharedValue: value => ({ value }), useAnimatedStyle: () => ({}), withTiming: () => assert.fail('iOS usa la animación de la ruta'), withSpring: value => value },
-    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34 }), SafeAreaView: 'SafeAreaView' },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34 }), SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider' },
     '../src/state/shell': { usePiso: () => 140 },
     '../src/ui/Dispositivos.shared': { useDestinoEscucha: () => ({ remoto: false }) },
     '../src/lib/artwork': { artworkSource: () => null },

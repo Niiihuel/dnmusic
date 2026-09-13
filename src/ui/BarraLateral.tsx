@@ -1,6 +1,7 @@
+import { SharedLayoutBg } from './SharedLayoutBg'
 import type { SearchFieldHandle } from './SearchField.types'
 import { useState, type ReactNode, type RefObject } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Platform, Pressable, Text, View } from 'react-native'
 import type { Playlist } from '../services/playlists'
 import { useTermino } from '../state/busqueda'
 import { useCuantosMeGusta } from '../state/gustos'
@@ -151,6 +152,7 @@ export function BarraLateral({
       </View>
 
       <ScrollArea className="min-h-0 flex-1" contentContainerClassName="gap-1 px-2" contentContainerStyle={{ paddingBottom: piso }}>
+        <SharedLayoutBg className="dn-sidebar-items">
         <FilaLateral icono={IconHome} label="Inicio" activa={seccion === 'inicio'} onPress={onInicio} />
         <FilaLateral
           icono={IconInbox}
@@ -209,6 +211,7 @@ export function BarraLateral({
             ))
           )}
         </Seccion>
+      </SharedLayoutBg>
       </ScrollArea>
 
       {/*
@@ -334,6 +337,7 @@ function FilaLateral({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      {...(Platform.OS === 'web' ? { dataSet: { dnSharedItem: '', dnHover: 'none' } } : {})}
       accessibilityState={{ selected: activa }}
       onPress={onPress}
       className={`h-[30px] flex-row items-center gap-2.5 rounded-md px-2 ${
@@ -386,6 +390,7 @@ function FilaLista({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Abrir la lista ${playlist.name}`}
+        {...(Platform.OS === 'web' ? { dataSet: { dnSharedItem: '', dnHover: 'none' } } : {})}
         accessibilityState={{ selected: activa }}
         onPress={onPress}
         className={`h-[30px] flex-row items-center gap-2.5 rounded-md px-2 ${

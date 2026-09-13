@@ -1,7 +1,7 @@
 import { BotonSuperficie } from './BotonSuperficie'
 import { IconButton } from './IconButton'
 import { useEffect, useRef, useState } from 'react'
-import { Image, Text, View } from 'react-native'
+import { Platform, Image, Text, View } from 'react-native'
 import { sugerenciasParaLista } from '../services/recomendaciones'
 import type { PlaylistTrack } from '../services/playlists'
 import { proxiedImage, type TrackResult } from '../services/music'
@@ -9,7 +9,7 @@ import { artworkUrlAtSize } from '../lib/artwork'
 import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { EstadoTapa } from './CoverState'
 import { SkeletonList } from './Skeleton'
-import { estadoControlWeb } from './estadoControl'
+import { estadoControlWeb, superficieInteractivaWeb } from './estadoControl'
 import { ICON_COLOR, IconMusic, IconPlus } from './icons'
 
 /**
@@ -156,7 +156,7 @@ function Fila({
   const isCurrent = current?.videoId === track.videoId
 
   return (
-    <View className="flex-row items-center gap-1 rounded-lg pr-1">
+    <View {...superficieInteractivaWeb('row')} className="flex-row items-center gap-1 rounded-lg pr-1">
       <BotonSuperficie
         {...estadoControlWeb('row')}
         accessibilityRole="button"
@@ -165,7 +165,7 @@ function Fila({
         onPress={() => (isCurrent ? togglePlayback() : onPlay())}
         onPointerEnter={() => setOver(true)}
         onPointerLeave={() => setOver(false)}
-        className={`min-w-0 flex-1 flex-row items-center gap-3 rounded-lg p-2 ${over ? 'bg-muted' : ''}`}
+        className={`min-w-0 flex-1 flex-row items-center gap-3 rounded-lg p-2 ${Platform.OS !== 'web' && over ? 'bg-muted' : ''}`}
       >
         <View className="h-11 w-11 overflow-hidden rounded bg-muted">
           {track.artworkUrl ? (

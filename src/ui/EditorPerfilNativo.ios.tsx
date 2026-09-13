@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Image as RNImage, useWindowDimensions, View } from 'react-native'
-import { Button, ConfirmationDialog, Form, Host, HStack, Image, Label, NavigationDestination, NavigationLink, NavigationStack, ProgressView, RNHostView, Section, Spacer, Text, TextField, Toggle, Toolbar, VStack, useNativeState } from '@expo/ui/swift-ui'
+import { Button, Form, Host, HStack, Image, Label, NavigationDestination, NavigationLink, NavigationStack, ProgressView, RNHostView, Section, Spacer, Text, TextField, Toggle, Toolbar, VStack, useNativeState } from '@expo/ui/swift-ui'
 import { accessibilityLabel, autocorrectionDisabled, background, disabled, font, foregroundStyle, frame, lineLimit, listRowBackground, listRowSeparator, navigationTitle, padding, scrollContentBackground, scrollDismissesKeyboard, submitLabel, textContentType, textFieldStyle, textInputAutocapitalization, tint, toggleStyle } from '@expo/ui/swift-ui/modifiers'
 import type { SFSymbol } from 'sf-symbols-typescript'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { BarraCambiosPerfil } from './BarraCambiosPerfil'
 import { Avatar } from './Avatar'
 import { Marco } from './Marco'
 import { TarjetaPerfil } from './TarjetaPerfil'
@@ -33,6 +35,7 @@ const descripciones = [
 export function EditorPerfilNativo(props: EditorPerfilNativoProps) {
   const { perfil, ocupado, piso, onAbrir } = props
   const anchoPrevia = Math.max(180, Math.min(340, useWindowDimensions().width - 80))
+  const [altoBarra, setAltoBarra] = useState(112)
   const [path, setPath] = useState<string[]>([])
   const nombre = perfil.displayName?.trim() || perfil.username
   const tieneFondo = !!perfil.bannerPath
@@ -41,19 +44,16 @@ export function EditorPerfilNativo(props: EditorPerfilNativoProps) {
     return <Toolbar>
       <Form modifiers={[navigationTitle(titulo), scrollContentBackground('hidden'), background(FONDO), scrollDismissesKeyboard('interactively')]}>
         {children}
-        <EstadoBorrador {...props} />
-        <Text modifiers={[frame({ height: piso }), listRowBackground('clear'), listRowSeparator('hidden')]}>{' '}</Text>
+        <Text modifiers={[frame({ height: piso + (props.cambiado || props.ocupado || props.error ? altoBarra + 16 : 0) }), listRowBackground('clear'), listRowSeparator('hidden')]}>{' '}</Text>
       </Form>
       <Toolbar.Content>
         {principal ? <Button label="Listo" role="cancel" onPress={props.onVolver} modifiers={[disabled(ocupado), accessibilityLabel('Volver al perfil')]} /> : null}
-        <Button label={props.guardando ? 'Guardando…' : 'Guardar'} onPress={props.onGuardar}
-          modifiers={[disabled(!props.cambiado || !props.puedeGuardar || ocupado), accessibilityLabel('Guardar cambios del perfil')]} />
       </Toolbar.Content>
     </Toolbar>
   }
 
-  return <View style={{ flex: 1, backgroundColor: FONDO }}>
-    <Host style={{ flex: 1 }} useViewportSizeMeasurement colorScheme="dark" seedColor="#FFFFFF">
+  return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: FONDO }}>
+    <Host style={{ flex: 1 }} ignoreSafeArea="container" colorScheme="dark" seedColor="#FFFFFF">
       <NavigationStack path={path} onPathChange={setPath}>
         {pantalla('Editar perfil', <>
           <Section footer={<Text>Los cambios se muestran en la vista previa. Guardalos cuando estés conforme.</Text>}>
@@ -103,7 +103,7 @@ export function EditorPerfilNativo(props: EditorPerfilNativoProps) {
         </NavigationDestination>
         <NavigationDestination value="estilo">
           {pantalla('Apariencia', <>
-            <Section footer={<Text>Combiná decoraciones de DMusic, de Discord o tus propias piezas. El borrador conserva lo que pruebes.</Text>}>
+            <Section footer={<Text>Elegí decoraciones de Discord. El borrador conserva lo que pruebes.</Text>}>
               <Accion titulo="Personalizar perfil" detalle="Abrir el probador de decoraciones" symbol="sparkles" onPress={() => onAbrir('/profile/marco')} ocupado={ocupado} lleva />
             </Section>
             <Section title="Tu estilo">
@@ -141,7 +141,10 @@ export function EditorPerfilNativo(props: EditorPerfilNativoProps) {
         </NavigationDestination>
       </NavigationStack>
     </Host>
-  </View>
+    <BarraCambiosPerfil visible={props.cambiado} ocupado={ocupado} error={props.error}
+      puedeGuardar={props.puedeGuardar} onRestablecer={props.onRestablecer} onGuardar={props.onGuardar}
+      abajo={piso} onAltura={setAltoBarra} />
+  </SafeAreaView>
 }
 
 function FotoPerfil({ perfil, tamano }: Pick<EditorPerfilNativoProps, 'perfil'> & { tamano: number }) {
@@ -188,19 +191,6 @@ function Campo({ titulo, editor, maxLength, multiline = false, usuario = false }
         ...(usuario ? [textContentType('username')] : []), ...(multiline ? [lineLimit({ min: 2, max: 5 })] : [])]} />
   </Section>
 }
-
-function EstadoBorrador({ cambiado, ocupado, guardando, error, onRestablecer }: EditorPerfilNativoProps) {
-  if (!cambiado && !ocupado && !error) return null
-  return <Section title="Cambios del perfil" footer={error ? <Text>{error}</Text> : undefined}>
-    <HStack modifiers={fila}>{ocupado ? <ProgressView /> : null}<Text>{guardando ? 'Guardando cambios…' : ocupado ? 'Preparando tu perfil…' : 'Tenés cambios sin guardar'}</Text></HStack>
-    {cambiado ? <ConfirmationDialog title="¿Restablecer el perfil?" titleVisibility="visible">
-      <ConfirmationDialog.Trigger><Button label="Restablecer cambios" systemImage="arrow.counterclockwise" role="destructive" modifiers={[...fila, disabled(ocupado)]} /></ConfirmationDialog.Trigger>
-      <ConfirmationDialog.Message><Text>Se recuperará tu último perfil guardado, incluidas las piezas del mosaico.</Text></ConfirmationDialog.Message>
-      <ConfirmationDialog.Actions><Button label="Restablecer" role="destructive" onPress={onRestablecer} /><Button label="Cancelar" role="cancel" /></ConfirmationDialog.Actions>
-    </ConfirmationDialog> : null}
-  </Section>
-}
-
 
 /** Mantiene los enlaces directos a un campo dentro del mismo formulario nativo. */
 export function CampoPerfilNativo({ cual, editor, piso, onVolver }: CampoPerfilNativoProps) {

@@ -1,3 +1,5 @@
+import { superficieInteractivaWeb } from './estadoControl'
+import { Glass } from './Glass'
 import { BotonSuperficie } from './BotonSuperficie'
 import { NativeMediaRow } from '../../modules/media-controls'
 import { artworkSource } from '../lib/artwork'
@@ -42,6 +44,7 @@ export function PlaylistLibrary({
   soundingId,
   showCollapse,
   onCollapse,
+  onBack,
   onOpen,
   onCreate,
   onOpenGustos,
@@ -57,6 +60,7 @@ export function PlaylistLibrary({
   /** Se muestra el botón de contraer: el panel está bajo el cursor. */
   showCollapse: boolean
   onCollapse: () => void
+  onBack?: () => void
   onOpen: (playlist: Playlist) => void
   onCreate: () => Promise<void>
   /** Abre «Tus me gusta». Sin esto la fila fija no se dibuja. */
@@ -74,6 +78,8 @@ export function PlaylistLibrary({
   error: string | null
 }) {
   const [busy, setBusy] = useState(false)
+  const [orden, setOrden] = useState<'recientes' | 'nombre'>('recientes')
+  const ordenadas = playlists?.slice().sort((a, b) => orden === 'nombre' ? a.name.localeCompare(b.name, 'es') : (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0))
   const cuantosGustos = useCuantosMeGusta()
   /* En el teléfono esto es la pestaña «Listas» y llega hasta el borde: la
      última tiene que quedar arriba de lo que flota. */
@@ -108,7 +114,23 @@ export function PlaylistLibrary({
 
   return (
     <Panel tone="lateral" className="flex-1">
-      <View className="flex-row items-center justify-between gap-4 px-4 pb-2" style={{ paddingTop: techo }}>
+      {Platform.OS === 'ios' && suelto ? <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, gap: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <IconButton label="Volver" symbol="chevron.left" onPress={onBack ?? onCollapse} variant="glass" />
+          <Glass radius={24}><View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 }}>
+            <IconButton label="Nueva playlist" symbol="plus" onPress={() => void create()} busy={busy} disabled={busy} />
+            <Menu label="Ordenar playlists" triggerSymbol="line.3.horizontal.decrease" items={[
+              { label: 'Actualizadas recientemente', selected: orden === 'recientes', onPress: () => setOrden('recientes') },
+              { label: 'Título', selected: orden === 'nombre', onPress: () => setOrden('nombre') },
+            ]} />
+            <Menu label="Opciones de playlists" items={[
+              { label: 'Nueva playlist', sfSymbol: 'plus', onPress: () => void create(), disabled: busy },
+              ...(onImportar ? [{ label: 'Traer de Spotify', sfSymbol: 'square.and.arrow.down' as const, onPress: onImportar }] : []),
+            ]} />
+          </View></Glass>
+        </View>
+        <Text accessibilityRole="header" style={{ color: '#FFFFFF', fontSize: 34, fontWeight: '700' }}>Playlists</Text>
+      </View> : <View className="flex-row items-center justify-between gap-4 px-4 pb-2" style={{ paddingTop: techo }}>
         <AnimatedSidebarTitle
           visible={showCollapse}
           label="Contraer las listas"
@@ -133,7 +155,7 @@ export function PlaylistLibrary({
           <IconButton label="Nueva lista" symbol="plus" onPress={() => void create()} disabled={busy} busy={busy}
             disableWhileBusy variant="glass" size={15} icon={<IconPlus size={15} color={ICON_COLOR.foreground} />} />
         </View>
-      </View>
+      </View>}
 
       {error ? <Text className="px-4 pb-2 text-destructive text-caption1">{error}</Text> : null}
 
@@ -144,7 +166,7 @@ export function PlaylistLibrary({
       ) : (
         <FlatList
           renderScrollComponent={(props) => <ScrollArea {...props} />}
-          data={playlists}
+          data={Platform.OS === 'ios' ? ordenadas : playlists}
           keyExtractor={(p) => p.id}
           className="min-h-0 flex-1"
           contentContainerClassName="gap-0.5 px-2"
@@ -320,7 +342,7 @@ function FilaLista({
       artworks={covers} selected={abierta} sounding={sonando} playing={playing}
       label={`Abrir ${playlist.name}, ${playlist.tracks} canciones${playlist.visibilidad === 'publica' ? ', lista pública' : ''}`}
       onActivate={() => onOpen(playlist)} style={{ height: Math.max(76, 42 * fontScale + 16), width: '100%' }} />
-    return menu?.length ? <MantenerApretado items={menu}>{row}</MantenerApretado> : row
+    return menu?.length ? <MantenerApretado items={menu} preview={{ title: playlist.name, subtitle: "Playlist", detail: `${playlist.tracks} canciones`, artwork: covers[0] }} onPreviewPress={() => onOpen(playlist)}>{row}</MantenerApretado> : row
   }
 
 
@@ -328,6 +350,7 @@ function FilaLista({
     <View {...clic.gestos}>
       <BotonSuperficie
         accessibilityRole="button"
+        {...superficieInteractivaWeb('row')}
         accessibilityState={{ selected: abierta }}
         onPress={() => onOpen(playlist)}
         onLongPress={Platform.OS === 'ios' && menu?.length ? () => {} : undefined}

@@ -1,9 +1,11 @@
+import { attachSmoothScroll } from './smoothScroll.web'
 import { forwardRef, useContext, useCallback, useEffect, useId, useRef, type KeyboardEvent, type PointerEvent } from 'react'
 import { ScrollView, View, type ScrollViewProps } from 'react-native'
 import { ScrollAreaTecho } from './ScrollAreaContext'
 
 type ScrollAreaProps = ScrollViewProps & {
   /** Mantiene estable el tamaño visual del pulgar cuando una lista virtual monta filas por tandas. */
+  smooth?: boolean
   stableIndicator?: boolean
   /** Reinicia la medida estable al cambiar de colección. */
   contentKey?: string | number
@@ -19,14 +21,15 @@ export function geometriaScrollbar(viewport: number, contenido: number, offset: 
 }
 
 /**
- * Mismo contrato/ref que ScrollView. El scroll sigue siendo nativo; sólo el
- * indicador es nuestro, sobre el contenido y sin carril que reserve ancho.
+ * Mismo contrato/ref que ScrollView. Lenis suaviza el scroll de escritorio
+ * dentro de este viewport; touch y movimiento reducido siguen siendo nativos.
+ * El indicador se superpone al contenido sin reservar un carril.
  * No introduce fondos, degradados ni límites de altura propios.
  */
 export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function ScrollArea({
   children, style, scrollIndicatorInsets, className = '', onScroll, onContentSizeChange, horizontal,
   scrollEventThrottle = 16, showsVerticalScrollIndicator = true, scrollEnabled = true,
-  stableIndicator = false, contentKey = 'default', ...props
+  stableIndicator = false, contentKey = 'default', smooth = true, ...props
 }, forwardedRef) {
   const techoPanel = useContext(ScrollAreaTecho)
   const insetTop = scrollIndicatorInsets?.top ?? techoPanel
@@ -36,6 +39,7 @@ export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function Scrol
   const viewport = useRef<HTMLElement | null>(null)
   const track = useRef<HTMLDivElement>(null)
   const thumb = useRef<HTMLDivElement>(null)
+  const smoothing = useRef<ReturnType<typeof attachSmoothScroll> | null>(null)
   const drag = useRef<{ y: number; offset: number; pointer: number } | null>(null)
   const frame = useRef<number | null>(null)
   const id = useId()
@@ -84,8 +88,12 @@ export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function Scrol
     // Escuchar el nodo mantiene la barra sincronizada también con scrollTo y
     // con el teclado, sin redibujar React por cada evento de desplazamiento.
     node.addEventListener('scroll', solicitarMedida, { passive: true })
+    const engine = smooth && scrollEnabled ? attachSmoothScroll(node) : null
+    smoothing.current = engine
     medir()
     return () => {
+      engine?.destroy()
+      smoothing.current = null
       observer.disconnect()
       node.removeEventListener('scroll', solicitarMedida)
       node.classList.remove('dn-scroll-viewport')
@@ -99,11 +107,12 @@ export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function Scrol
         if (pointer !== undefined && rail.hasPointerCapture(pointer)) rail.releasePointerCapture(pointer)
       }
     }
-  }, [horizontal, id, medir, solicitarMedida])
+  }, [horizontal, id, medir, solicitarMedida, smooth, scrollEnabled])
 
   function presionar(event: PointerEvent<HTMLDivElement>) {
     if (!indicadorActivo || event.button !== 0 || !viewport.current) return
     event.preventDefault()
+    smoothing.current?.stop()
     event.currentTarget.focus()
     event.currentTarget.setPointerCapture(event.pointerId)
     medir()
@@ -137,7 +146,8 @@ export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function Scrol
     }
     if (!(event.key in destinos)) return
     event.preventDefault()
-    node.scrollTop = destinos[event.key]
+    if (smoothing.current) smoothing.current.scrollTo(destinos[event.key])
+    else node.scrollTop = destinos[event.key]
     solicitarMedida()
   }
   // Las filas horizontales conservan su presentación/indicador nativos.

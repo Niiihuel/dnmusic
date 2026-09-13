@@ -1,4 +1,4 @@
-import { ScrollView } from 'react-native'
+import { ScrollArea as ScrollView } from './ScrollArea'
 import { FilaAccion, FilaAjuste, FilaDato, FilaInterruptor, FilaOpciones, GrupoAjustes } from './Ajustes'
 import type { FilaAgrupada, ListaAgrupadaProps, SeccionAgrupada } from './ListaAgrupada.types'
 
@@ -67,6 +67,7 @@ function Fila({ fila, ultima }: { fila: FilaAgrupada; ultima: boolean }) {
     }
     return (
       <FilaAccion
+        copyText={fila.copyText}
         iconoPlano
         rotulo={fila.rotulo}
         onPress={fila.onPress}

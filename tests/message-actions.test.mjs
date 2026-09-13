@@ -164,31 +164,32 @@ test('deletion requires confirmation; cancel never calls the server; failure is 
   assert.equal(other.requests.length, 0)
 })
 
-test('a bubble exposes the same actions via native hold and visible menu; recipients cannot edit or delete', () => {
+test('native bubbles use hold and VoiceOver actions without a phone overflow button; recipients cannot edit or delete', () => {
   const symbols = new Proxy({}, { get: (_, key) => String(key) })
   const { ChatBubble } = load('src/ui/ChatBubble.tsx', {
+    'expo-linear-gradient': { LinearGradient: 'LinearGradient' },
     'react-native': { View: 'View', Text: 'Text', Pressable: 'Pressable', Image: 'Image', Platform: { OS: 'ios' }, StyleSheet: { absoluteFill: {} } },
     './Menu': { Menu: 'Menu', MantenerApretado: 'MantenerApretado' },
     './useClicDerecho': { useClicDerecho: () => ({ gestos: { onContextMenu() {} }, punto: null, cerrar() {} }) },
     '../lib/portapapeles': { copiarAlPortapapeles: async () => true }, '../state/aviso': { avisar() {} },
     './IconButton': { IconButton: 'IconButton' }, './CancionCompartida': { CancionCompartida: 'CancionCompartida' }, './InvitacionJam': { InvitacionJam: 'InvitacionJam' },
     '../lib/artwork': { artworkSource: () => null }, './MessageCard': { formatMessageDate: () => '10:00' },
-    './Onda': { Onda: 'Onda', usePicos: () => null }, './SeekBar': { SeekBar: 'SeekBar', formatClock: () => '0:00' },
+    '../lib/teclado': { TECLADO_FISICO: false }, './SeekBar': { SeekBar: 'SeekBar', formatClock: () => '0:00' },
     './icons': symbols, './estadoControl': { estadoControlWeb: () => ({}) },
   })
   let opened = 0, edited = 0
   const props = { message: message(), mine: true, userId: 'author', onPress: () => opened++, onPlay() {}, onSeek() {}, onEdit: () => edited++, onDelete() {} }
   const nodes = tree(ChatBubble(props))
   const hold = nodes.find(node => node.type === 'MantenerApretado').props
-  const menu = nodes.find(node => node.type === 'Menu').props
-  assert.equal(hold.items, menu.items)
-  assert.notEqual(menu.sinDisparador, true, 'keyboard and VoiceOver have a visible alternative')
-  assert.equal(nodes.some(node => typeof node.props.onContextMenu === 'function'), true)
-  nodes.find(node => node.type === 'Pressable').props.onLongPress()
+  assert.ok(!nodes.some(node => node.type === 'Menu'))
+  const text = nodes.find(node => node.type === 'Pressable').props
+  text.onLongPress()
   assert.equal(opened, 0)
-  menu.items.find(item => item.label === 'Editar mensaje').onPress()
+  const edit = text.accessibilityActions.find(action => action.label === 'Editar mensaje')
+  text.onAccessibilityAction({ nativeEvent: { actionName: edit.name } })
   assert.equal(edited, 1)
-  const recipient = tree(ChatBubble({ ...props, mine: false, userId: 'recipient' })).find(node => node.type === 'Menu').props
+  assert.ok(hold.items.some(item => item.label === 'Editar mensaje'))
+  const recipient = tree(ChatBubble({ ...props, mine: false, userId: 'recipient' })).find(node => node.type === 'MantenerApretado').props
   assert.ok(!recipient.items.some(item => item.label === 'Editar mensaje' || item.destructive))
 })
 

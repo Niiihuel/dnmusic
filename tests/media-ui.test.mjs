@@ -26,7 +26,7 @@ const byLabel = (ui, label) => nodes(ui, n => n.props?.accessibilityLabel === la
 
 test('duración/corazón ocupan una sola columna; hover y teclado muestran like sin reproducir', () => {
   let plays = 0, likes = 0
-  const h = harness('src/ui/TrackRow.shared.tsx', { 'react-native': rn, '../state/playback': { usePlaybackCargada: () => true }, './useClicDerecho': { useClicDerecho: () => ({ gestos: {}, punto: null }) }, './SeekBar': { formatClock: () => '3:00' }, './estadoControl': { estadoControlWeb: modo => ({ dataSet: { dnHover: modo } }) } })
+  const h = harness('src/ui/TrackRow.shared.tsx', { 'react-native': rn, '../state/playback': { usePlaybackCargada: () => true }, './useClicDerecho': { useClicDerecho: () => ({ gestos: {}, punto: null }) }, './SeekBar': { formatClock: () => '3:00' }, './estadoControl': harness('src/ui/estadoControl.ts', { 'react-native': rn }).exports })
   const props = { index: 0, title: 'Tema', artist: 'Artista', artwork: null, durationMs: 180000, sounding: false, playing: false,
     onPlay: () => plays++, gusto: jsx('Pressable', { accessibilityLabel: 'Me gusta', onPress: () => likes++ }) }
   let ui = h.render('TrackRow', props)
@@ -48,7 +48,7 @@ test('duración/corazón ocupan una sola columna; hover y teclado muestran like 
   ui.props.onPointerEnter()
   ui = h.render('TrackRow', props)
   assert.equal(nodes(ui, n => n.props?.children === '3:00')[0].props.style.opacity, 0)
-  assert.match(ui.props.className, /bg-muted/)
+  assert.equal(ui.props.dataSet.dnSurface, 'row', 'web aplica el material de hover por CSS sobre la fila')
   assert.equal(nodes(ui, n => n.props?.style?.position === 'absolute' && n.props?.style?.inset === 0)[0].props.pointerEvents, 'auto')
   byLabel(ui, 'Me gusta').props.onPress()
   assert.equal(likes, 1)

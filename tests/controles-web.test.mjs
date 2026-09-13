@@ -44,6 +44,22 @@ function botonesVidrioHTML() {
   return { markup, css: rn.StyleSheet.getSheet().textContent }
 }
 
+function expandiblesHTML() {
+  const exports = {}
+  const { outputText } = ts.transpileModule(readFileSync('src/ui/ExpandableButton.web.tsx', 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+  })
+  new Function('exports', 'require', outputText)(exports, id => id === '../state/copia' ? { useEstadoCopia: () => 'idle' } : id === './ActionSwap' ? { ActionSwap: ({ children }) => children } : id === './icons' ? { IconCheck: () => null } : require(id))
+  return renderToStaticMarkup(React.createElement('div', { id: 'expandibles', style: { display: 'flex', gap: 12 } },
+    ...[
+      { id: 'expand-toggle', label: 'Notificaciones' },
+      { id: 'expand-action', label: 'Compartir el link', onPress() {} },
+      { id: 'expand-disabled', label: 'No disponible', onPress() {}, disabled: true },
+    ].map(({ id, ...props }) => React.createElement('div', { id, key: id },
+      React.createElement(exports.ExpandableButton, { icon: '+', ...props }))),
+  ))
+}
+
 // Chrome propio sin cuenta, extensiones ni conexión con la sesión del usuario.
 const chrome = process.env.CHROME_BIN ?? '/run/current-system/sw/bin/google-chrome'
 // One deadline for startup, HTTP, WebSocket and CDP; CI shares CPUs with other tests.
@@ -163,13 +179,15 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   const evaluate = async expression => { const r = await send('Runtime.evaluate', { expression, returnByValue: true }); if (r.exceptionDetails) throw Error(JSON.stringify(r.exceptionDetails)); return r.result.value }
   const css = readFileSync('global.css', 'utf8')
   const vidrio = botonesVidrioHTML()
-  const html = `<style>${vidrio.css}</style><style>${css}</style><style>body{background:#121212;color:white}#active,#disabled,#aria,#child,#busy,#backdrop,#primary,#link,#outer,#inner{display:inline-block;margin:12px;padding:12px;border:0;border-radius:12px;background-color:#181818;color:white} .viewport{height:80px;width:160px;overflow:auto}.content{height:500px}.hidden-native{scrollbar-width:none}</style>
-    <button id="active">Icono</button><button id="disabled" disabled>Icono</button><div id="aria" role="button" aria-disabled="true">Icono</div><div aria-disabled="true"><button id="child">Icono</button></div>
-    <button id="busy" aria-busy="true">Icono</button><button id="backdrop" data-dn-hover="none">Cerrar</button><button id="primary" data-dn-hover="inverse">Guardar</button><svg id="decorative" width="24" height="24"><circle r="10"/></svg><a id="link" href="#">Abrir</a><div id="role-link" role="link" tabindex="0">Enlace RN sin href</div>
+  const html = `<style>${vidrio.css}</style><style>${css}</style><style>body{background:#121212;color:white}#hitbox,#content-card{background:transparent;border:0}#active,#disabled,#aria,#child,#busy,#backdrop,#primary,#link,#outer,#inner{display:inline-block;margin:12px;padding:12px;border:0;border-radius:12px;background-color:#181818;color:white} .viewport{height:80px;width:160px;overflow:auto}.content{height:500px}.hidden-native{scrollbar-width:none}</style>
+    <button id="active" data-dn-hover="normal">Icono</button><button id="disabled" data-dn-hover="normal" disabled>Icono</button><div id="aria" data-dn-hover="normal" role="button" aria-disabled="true">Icono</div><div aria-disabled="true"><button id="child" data-dn-hover="normal">Icono</button></div>
+    <button id="busy" data-dn-hover="normal" aria-busy="true">Icono</button><button id="backdrop" data-dn-hover="none">Cerrar</button><button id="primary" data-dn-hover="inverse">Guardar</button><svg id="decorative" width="24" height="24"><circle r="10"/></svg><a id="link" data-dn-hover="normal" href="#">Abrir</a><div id="role-link" data-dn-hover="normal" role="link" tabindex="0">Enlace RN sin href</div>
     <div style="border-radius:8px;background:#303030"><button id="row" data-dn-hover="row">Reproducir canción</button></div>
-    <div id="outer" role="button">Fila<button id="inner">Menú</button></div>
+    <div id="outer" role="button">Fila<button id="inner" data-dn-hover="normal">Menú</button></div>
+    <div id="content-row" data-dn-surface="row" style="border-radius:12px"><button id="hitbox">Reproducir canción</button><button data-dn-hover="normal">Opciones</button></div>
+    <button id="content-card" data-dn-surface="card"><div id="artwork" data-dn-artwork style="height:80px;width:80px;background:#333;opacity:.8;border-radius:12px"></div><span>Tu radio</span></button>
     <div id="native" class="viewport"><div class="content"></div></div><div id="hidden" class="viewport hidden-native"><div class="content"></div></div>
-    ${vidrio.markup}<div class="dn-scroll-area"><div id="custom" class="dn-scrollbar"><div id="thumb" class="dn-scrollbar-thumb"></div></div></div>`
+    ${vidrio.markup}${expandiblesHTML()}<div class="dn-scroll-area"><div id="custom" class="dn-scrollbar"><div id="thumb" class="dn-scrollbar-thumb"></div></div></div>`
   await send('Page.enable')
   const { frameTree } = await send('Page.getFrameTree')
   await send('Page.setDocumentContent', { frameId: frameTree.frame.id, html })
@@ -179,7 +197,7 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'hover', value: 'hover' }, { name: 'pointer', value: 'fine' }] })
   const { root } = await send('DOM.getDocument')
   const ids = {}
-  for (const id of ['active', 'disabled', 'aria', 'child', 'busy', 'backdrop', 'primary', 'decorative', 'link', 'role-link', 'outer', 'inner', 'row']) ids[id] = (await send('DOM.querySelector', { nodeId: root.nodeId, selector: `#${id}` })).nodeId
+  for (const id of ['active', 'disabled', 'aria', 'child', 'busy', 'backdrop', 'primary', 'decorative', 'link', 'role-link', 'outer', 'inner', 'row', 'content-row', 'hitbox', 'content-card', 'artwork']) ids[id] = (await send('DOM.querySelector', { nodeId: root.nodeId, selector: `#${id}` })).nodeId
   assert.equal(await evaluate('matchMedia("(hover: hover) and (pointer: fine)").matches'), true)
   const style = (id, prop, pseudo = '') => evaluate(`getComputedStyle(document.getElementById(${JSON.stringify(id)}), ${JSON.stringify(pseudo)})[${JSON.stringify(prop)}]`)
   for (const id of ['active', 'primary', 'link', 'role-link']) {
@@ -201,6 +219,20 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   assert.match(await style('inner', 'backgroundImage'), /linear-gradient/)
   await send('CSS.forcePseudoState', { nodeId: ids.row, forcedPseudoClasses: ['hover'] })
   assert.equal(await style('row', 'backgroundImage'), 'none', 'la reproducción no pinta otro rectángulo dentro de la fila')
+  // La fila contiene reproducción y acciones: no son dos cajas de hover.
+  await send('CSS.forcePseudoState', { nodeId: ids['content-row'], forcedPseudoClasses: ['hover'] })
+  await send('CSS.forcePseudoState', { nodeId: ids.hitbox, forcedPseudoClasses: ['hover'] })
+  await new Promise(resolve => setTimeout(resolve, 220))
+  assert.notEqual(await style('content-row', 'backgroundColor'), 'rgba(0, 0, 0, 0)')
+  assert.equal(await style('hitbox', 'backgroundImage'), 'none')
+  assert.equal(await style('hitbox', 'backgroundColor'), 'rgba(0, 0, 0, 0)')
+  const cardRect = await evaluate('JSON.stringify(document.getElementById("content-card").getBoundingClientRect())')
+  await send('CSS.forcePseudoState', { nodeId: ids['content-card'], forcedPseudoClasses: ['hover'] })
+  await new Promise(resolve => setTimeout(resolve, 250))
+  assert.equal(await style('content-card', 'backgroundImage'), 'none')
+  assert.equal(await style('artwork', 'opacity'), '1')
+  assert.equal(await style('artwork', 'filter'), 'brightness(1.1)')
+  assert.equal(await evaluate('JSON.stringify(document.getElementById("content-card").getBoundingClientRect())'), cardRect)
   await send('CSS.forcePseudoState', { nodeId: ids.row, forcedPseudoClasses: ['focus', 'focus-visible'] })
   assert.equal(await style('row', 'outlineWidth'), '2px', 'reproducción conserva foco accesible')
   for (const id of ['glass-profile', 'glass-list']) {
@@ -219,7 +251,7 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
     await send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['focus', 'focus-visible'] })
     assert.equal(await read('outlineStyle'), 'none', 'no duplica el foco dentro del botón')
     assert.equal(await surface('outlineWidth'), '2px', 'el foco sigue visible en la superficie completa')
-    assert.equal(await surface('borderRadius'), '22px', 'conserva el contorno redondeado')
+    assert.equal(await surface('borderRadius'), '999px', 'los botones de vidrio conservan el contorno de cápsula')
     await send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] })
     assert.equal(await surface('outlineStyle'), 'none')
   }
@@ -227,6 +259,35 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   await send('CSS.forcePseudoState', { nodeId: disabledGlass, forcedPseudoClasses: ['hover', 'focus', 'focus-visible'] })
   assert.equal(await evaluate("getComputedStyle(document.querySelector('#glass-disabled [data-dn-hover]')).backgroundImage"), 'none')
   assert.equal(await evaluate("getComputedStyle(document.querySelector('#glass-disabled [data-dn-hover]').parentElement).outlineStyle"), 'none')
+  // El ancho debe crecer con texto real y volver a 44px, sin escalar la etiqueta.
+  await send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 850, deviceScaleFactor: 1, mobile: false })
+  const width = id => evaluate(`document.querySelector('#${id} button').getBoundingClientRect().width`)
+  const settle = () => new Promise(resolve => setTimeout(resolve, 360))
+  assert.equal(await width('expand-toggle'), 44)
+  assert.equal(await width('expand-action'), 44)
+  const action = (await send('DOM.querySelector', { nodeId: root.nodeId, selector: '#expand-action button' })).nodeId
+  await send('CSS.forcePseudoState', { nodeId: action, forcedPseudoClasses: ['hover'] })
+  await settle()
+  assert.ok(await width('expand-action') > 120, 'hover revela la acción completa')
+  await send('CSS.forcePseudoState', { nodeId: action, forcedPseudoClasses: ['focus', 'focus-visible'] })
+  await settle()
+  assert.ok(await width('expand-action') > 120, 'teclado también revela la acción')
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('#expand-action button')).outlineWidth"), '2px')
+  const disabled = (await send('DOM.querySelector', { nodeId: root.nodeId, selector: '#expand-disabled button' })).nodeId
+  await send('CSS.forcePseudoState', { nodeId: disabled, forcedPseudoClasses: ['hover'] })
+  await settle()
+  assert.equal(await width('expand-disabled'), 44, 'disabled no expande')
+  await evaluate("document.querySelector('#expand-toggle button').dataset.expanded = 'true'")
+  await settle()
+  assert.ok(await width('expand-toggle') > 120, 'estado expandido conserva ancho intrínseco')
+  await send('CSS.forcePseudoState', { nodeId: action, forcedPseudoClasses: [] })
+  await settle()
+  assert.equal(await width('expand-action'), 44, 'vuelve al círculo sin hueco residual')
+  assert.match(await evaluate("getComputedStyle(document.querySelector('#expand-action button')).backdropFilter"), /blur\(22px\)/)
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }, { name: 'prefers-reduced-transparency', value: 'reduce' }] })
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.dn-expandable-label')).transitionDuration"), '0s')
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.dn-expandable')).backdropFilter"), 'none')
+  await send('Emulation.setEmulatedMedia', { features: [] })
   assert.equal(await style('native', 'scrollbarColor'), 'auto')
   assert.equal(await style('native', 'width', '::-webkit-scrollbar'), '14px')
   assert.equal(await style('native', 'display', '::-webkit-scrollbar-button'), 'none')

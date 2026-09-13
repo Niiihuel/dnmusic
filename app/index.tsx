@@ -558,7 +558,7 @@ export default function Home() {
    * dos casos el techo vale 0.
    */
   const arriba = useSafeAreaInsets()
-  const sinHeader = !suelto || (!music && chatAbierto)
+  const sinHeader = !suelto || (!music && chatAbierto) || (Platform.OS === 'ios' && music && (view.kind === 'playlist' || view.kind === 'library'))
   const headerFlota = suelto && !sinHeader
   const techo = useTecho()
   useEffect(() => {
@@ -2572,6 +2572,7 @@ export default function Home() {
             <PlaylistLibrary
               playlists={playlists}
               openId={null}
+              onBack={() => canGoBack ? goBack() : setTab('inicio')}
               soundingId={soundingPlaylistId}
               showCollapse={false}
               onCollapse={() => undefined}
@@ -2602,7 +2603,7 @@ export default function Home() {
                 <AlbumPanel
                   albumId={collection.id}
                   kind={collection.kind}
-                  onBack={goBack}
+                  onBack={() => canGoBack ? goBack() : setTab('inicio')}
                   menuFor={(track, artwork) => menuForTrack(albumTrackAsResult(track, artwork))}
                   /* El disco entero como cola, no la primera suelta: es la
                      misma promesa que una playlist. Ver `playAlbum`. */
@@ -2628,7 +2629,7 @@ export default function Home() {
               >
                 <ArtistPage
                   artistId={view.id}
-                  onBack={goBack}
+                  onBack={() => canGoBack ? goBack() : setTab('inicio')}
                   onPlaySong={(song: ArtistSong) => void playSearchResult(song)}
                   onOpenAlbum={(item: HomeItem) =>
                     go({
@@ -2790,7 +2791,7 @@ export default function Home() {
                       /* En el teléfono la barra de desplazamiento no aporta y
                          se dibuja sobre las burbujas. */
                       showsVerticalScrollIndicator={!suelto}
-                      contentContainerClassName="gap-2 p-4"
+                      contentContainerClassName="p-4"
                       contentContainerStyle={{
                         flexGrow: 1,
                         justifyContent: 'flex-end',
@@ -2814,9 +2815,12 @@ export default function Home() {
                           <EmptyThread contactName={contactName} />
                         )
                       }
-                      renderItem={({ item }) => (
+                      renderItem={({ item, index: messageIndex }) => (
                         <ChatBubble
                           message={item}
+                          previous={messages[messageIndex - 1]}
+                          next={messages[messageIndex + 1]}
+                          onDetails={() => showDetail ? setSelectedId(item.id) : openMessage(item.id)}
                           mine={isSentBy(item, myUid)}
                           userId={myUid}
                           onEdit={() => requestMessageAction('edit', item)}

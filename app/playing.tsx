@@ -25,7 +25,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { abrirArtista, usePiso } from '../src/state/shell'
 import { LinearGradient } from 'expo-linear-gradient'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { haySelectorDeSalida, SelectorDeSalida, hayVolumenDelSistema, VolumenDelSistema } from '../modules/audio-route'
 import { artworkSource } from '../src/lib/artwork'
 import { resultadoDePista } from '../src/lib/pistas'
@@ -59,6 +59,8 @@ import { BotonMeGusta } from '../src/ui/BotonMeGusta'
 import { Menu, type MenuItem } from '../src/ui/Menu'
 import { ES_WEB } from '../src/ui/Glass'
 import { SeekBar } from '../src/ui/SeekBar'
+import { PlayerArtwork } from '../src/ui/PlayerArtwork'
+import { PlayerBackdrop } from '../src/ui/PlayerBackdrop'
 import { SongDisc } from '../src/ui/SongDisc'
 import {
   ICON_COLOR,
@@ -116,6 +118,10 @@ const CONTROLES_FADE_MS = 240
  * desde el mini reproductor y sus gestos hasta completar el port de Android.
  */
 export default function Playing() {
+  return <SafeAreaProvider><PlayingContent /></SafeAreaProvider>
+}
+
+function PlayingContent() {
   const destinoEscucha = useDestinoEscucha()
   const router = useRouter()
   const { tracks, index, manual, wantPlay, positionMs, durationMs } = usePlaybackState()
@@ -560,10 +566,7 @@ export default function Playing() {
     const artworkSize = Math.max(120, Math.min(anchoVentana - 64, 360, alturaVentana - insets.top - insets.bottom - 390))
     return (
       <View style={{ flex: 1, backgroundColor: '#101010' }}>
-        {artwork ? <Image source={{ uri: artwork }} blurRadius={50}
-          style={[StyleSheet.absoluteFill, { opacity: 0.55, transform: [{ scale: 1.25 }] }]} /> : null}
-        <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0.42)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)']}
-          style={StyleSheet.absoluteFill} />
+        <PlayerBackdrop uri={artwork} />
         <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, width: '100%', maxWidth: COLUMNA, alignSelf: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 44 }}>
             <IconButton label="Cerrar reproductor" symbol="chevron.down" onPress={cerrar} lado={44} size={20} />
@@ -591,7 +594,7 @@ export default function Playing() {
             <>
               <View style={{ flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
                 {view === 'disc' ? <SongDisc artworkUrl={track.artworkUrl} artworkPath={track.artworkPath} title={track.title} playing={wantPlay && !destinoEscucha.remoto} size={artworkSize} />
-                  : artwork ? <View style={{ width: artworkSize }}><TapaGrande uri={artwork} playing={wantPlay && !destinoEscucha.remoto} /></View>
+                  : artwork ? <View style={{ width: artworkSize }}><PlayerArtwork uri={artwork} playing={wantPlay && !destinoEscucha.remoto} /></View>
                     : <IconMusic size={64} color={ICON_COLOR.muted} />}
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 12 }}>
@@ -803,7 +806,7 @@ export default function Playing() {
                   size={300}
                 />
               ) : artwork ? (
-                <TapaGrande uri={artwork} playing={wantPlay} />
+                <PlayerArtwork uri={artwork} playing={wantPlay} />
               ) : (
                 <View
                   className="w-full items-center justify-center rounded-2xl bg-card"
@@ -839,46 +842,6 @@ export default function Playing() {
       </Animated.View>
       </View>
     </GestureDetector>
-  )
-}
-
-/** El resorte de la tapa: crece decidida al sonar, se recoge suave al pausar. */
-const RESORTE_TAPA = { damping: 17, stiffness: 190, mass: 0.9 }
-
-/**
- * La carátula grande, que **respira con la reproducción**.
- *
- * Es la terminación de Apple Music: sonando, la tapa está a tamaño pleno y
- * despegada del fondo por una sombra profunda; en pausa se recoge y la sombra
- * se acerca. La pantalla dice el estado sin que haya que mirar el botón — la
- * música «se achica» cuando se calla.
- *
- * La sombra vive en el contenedor animado y el redondeo en los dos: recortar
- * y proyectar en la misma capa se pelean (el mismo motivo documentado en el
- * drawer de `_layout`). Todo por `style`: NativeWind no procesa `className`
- * sobre componentes animados.
- */
-function TapaGrande({ uri, playing }: { uri: string; playing: boolean }) {
-  const respira = useAnimatedStyle(() => ({
-    transform: [{ scale: withSpring(playing ? 1 : 0.82, RESORTE_TAPA) }],
-  }))
-  return (
-    <Animated.View
-      style={[
-        {
-          width: '100%',
-          borderRadius: 16,
-          boxShadow: '0 22px 56px rgba(0,0,0,0.55)',
-        },
-        respira,
-      ]}
-    >
-      <Image
-        source={{ uri }}
-        className="w-full rounded-2xl bg-card"
-        style={{ aspectRatio: 1 }}
-      />
-    </Animated.View>
   )
 }
 

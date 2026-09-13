@@ -11,7 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { artworkSource } from '../../src/lib/artwork'
-import { compartirLista } from '../../src/lib/compartirLista'
+import { compartirLista, linkDeLista } from '../../src/lib/compartirLista'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { volver } from '../../src/lib/volver'
 import {
@@ -319,7 +319,7 @@ export default function ListaPublica() {
                         </BotonSuperficie>
                       )}
 
-                      <IconButton label="Compartir el link" symbol="square.and.arrow.up" onPress={() => void compartirLista(lista.playlist.id, lista.playlist.name)} lado={44} size={18} icon={<IconShare size={18} color={ICON_COLOR.muted} />} />
+                      <IconButton expandible copyText={linkDeLista(lista.playlist.id)} label="Compartir el link" symbol="square.and.arrow.up" onPress={() => void compartirLista(lista.playlist.id, lista.playlist.name)} lado={44} size={18} icon={<IconShare size={18} color={ICON_COLOR.muted} />} />
                     </>
                   }
                 />

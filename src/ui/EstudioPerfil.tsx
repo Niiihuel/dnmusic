@@ -20,7 +20,7 @@ import { SearchField } from './SearchField'
 import { ScrollArea } from './ScrollArea'
 import { BotonHoja } from './EncabezadoHoja'
 import { Menu, type MenuItem } from './Menu'
-import { IconCheck, IconChevronDown, IconClose, IconEye, IconPlus, IconSparkles, IconCollapseRight, IconExpandRight } from './icons'
+import { IconCheck, IconChevronDown, IconClose, IconEye, IconSparkles, IconCollapseRight, IconExpandRight } from './icons'
 
 export type EstiloPerfil = Record<TipoPiezaDiscord, string | null>
 export const TIPOS_ESTILO: TipoPiezaDiscord[] = ['marco', 'placa', 'efecto', 'marcoPerfil']
@@ -36,20 +36,17 @@ const normalizar = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g,
 const TAM_PAGINA = 30
 
 /** Probador sin persistencia propia: seleccionar nunca escribe en la cuenta. */
-export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambiar, tipoInicial = 'marco', onSubir, subiendo = false, ocupado = false }: {
+export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambiar, tipoInicial = 'marco', ocupado = false }: {
   perfil: Profile
   perfilOriginal?: Profile
   estilo: EstiloPerfil
   onCambiar: (valor: EstiloPerfil) => void
   tipoInicial?: FiltroTipo
-  onSubir?: (tipo: 'marco' | 'efecto') => void
-  subiendo?: boolean
   ocupado?: boolean
 }) {
   const { catalogo, cargando, error, reintentar } = useCatalogoDiscord()
   const propias = useDecoraciones()
   const [tipo, setTipo] = useState<FiltroTipo>(tipoInicial)
-  const [origen, setOrigen] = useState<'discord' | 'dmusic'>('discord')
   const [coleccion, setColeccion] = useState('todas')
   const [buscar, setBuscar] = useState('')
   const consulta = useDeferredValue(normalizar(buscar.trim()))
@@ -74,9 +71,10 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
     ...PLACAS.map(p => ({ id: p.id, nombre: p.nombre, tipo: 'placa' as const, coleccion: 'DMusic', coleccionId: 'dmusic' })),
     ...(propias ?? []).map(p => ({ id: p.id, nombre: p.nombre, tipo: p.tipo, coleccion: p.familia, coleccionId: p.familia, imagen: p })),
   ], [propias])
-  const todas = useMemo<Opcion[]>(() => origen === 'discord'
-    ? [...(catalogo?.piezas ?? []).map(p => ({ ...p, discord: p })), ...(catalogo?.paquetes ?? []).map(p => ({ ...p, tipo: 'paquete' as const, paquete: p }))]
-    : originales, [origen, catalogo, originales])
+  const todas = useMemo<Opcion[]>(() => [
+    ...(catalogo?.piezas ?? []).map(p => ({ ...p, discord: p })),
+    ...(catalogo?.paquetes ?? []).map(p => ({ ...p, tipo: 'paquete' as const, paquete: p })),
+  ], [catalogo])
   const colecciones = useMemo(() => {
     const disponibles = new Set(todas.filter(p => p.tipo === tipo).flatMap(p => [p.coleccionId, ...(p.discord?.coleccionIds ?? [])]))
     return (catalogo?.colecciones ?? []).filter(c => disponibles.has(c.id)).slice().reverse()
@@ -150,23 +148,20 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
     <View testID="catalogo-perfil" style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', backgroundColor: '#121212' }}>
       <View testID="filtros-catalogo-perfil" style={{ flexShrink: 0, zIndex: 1, backgroundColor: '#121212', padding: 16, paddingBottom: 8, gap: 12 }}>
         <View style={s.entre}>
-          <View style={s.fila}>
-            <Pildora discreta texto="Discord" activa={origen === 'discord'} onPress={() => filtro(() => { setOrigen('discord'); setColeccion('todas') })} />
-            <Pildora discreta texto="DMusic y propias" activa={origen === 'dmusic'} onPress={() => filtro(() => { setOrigen('dmusic'); setColeccion('todas'); if (tipo === 'paquete' || tipo === 'marcoPerfil') setTipo('marco') })} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <SearchField density="compact" value={buscar} onChangeText={v => filtro(() => setBuscar(v))} placeholder="Buscar una pieza o colección" />
           </View>
           <IconButton label={dosPaneles ? (previaAbierta ? 'Ocultar vista previa' : 'Mostrar vista previa') : 'Ver vista previa del perfil'} symbol="eye" selected={dosPaneles ? previaAbierta : verPrevia} onPress={() => dosPaneles ? setPreviaAbierta(!previaAbierta) : setVerPrevia(true)} icon={dosPaneles ? previaAbierta ? <IconCollapseRight size={19} color="#aaa" /> : <IconExpandRight size={19} color="#aaa" /> : <IconEye size={20} color="#eee" />} />
         </View>
-        <SearchField density="compact" value={buscar} onChangeText={v => filtro(() => setBuscar(v))} placeholder="Buscar una pieza o colección" />
-        <View style={s.fila}>
-          <SelectorCatalogo etiqueta="Tipo de decoración" valor={tipo} opciones={[...TIPOS_ESTILO, ...(origen === 'discord' ? ['paquete' as const] : [])].map(t => ({ id: t, nombre: t === 'paquete' ? 'Paquetes' : TITULOS_ESTILO[t] }))}
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          <SelectorCatalogo etiqueta="Tipo de decoración" valor={tipo} opciones={[...TIPOS_ESTILO, 'paquete' as const].map(t => ({ id: t, nombre: t === 'paquete' ? 'Paquetes' : TITULOS_ESTILO[t] }))}
             onChange={t => filtro(() => { setTipo(t as FiltroTipo); setColeccion('todas') })} />
-          {origen === 'discord' ? <SelectorCatalogo etiqueta="Colección" valor={coleccion} opciones={[{ id: 'todas', nombre: 'Todas las colecciones' }, ...colecciones]}
-            onChange={id => filtro(() => setColeccion(id))} /> : null}
+          <SelectorCatalogo etiqueta="Colección" valor={coleccion} opciones={[{ id: 'todas', nombre: 'Todas las colecciones' }, ...colecciones]}
+            onChange={id => filtro(() => setColeccion(id))} />
         </View>
       </View>
       <FlatList key={columnas} ref={listaRef} data={[
           ...(tipo !== 'paquete' ? [{ id: '__ninguna', nombre: '', coleccion: '', coleccionId: '', tipo }] : []),
-          ...(origen === 'dmusic' && (tipo === 'marco' || tipo === 'efecto') && onSubir ? [{ id: '__subir', nombre: '', coleccion: '', coleccionId: '', tipo }] : []),
           ...visible,
         ]} numColumns={columnas}
         keyExtractor={o => o.id} extraData={estilo} style={{ flex: 1, minHeight: 0, overflow: 'hidden', backgroundColor: '#121212' }}
@@ -179,21 +174,17 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
             onPress={() => { onCambiar({ ...estilo, [tipo]: null }); setComparar(false) }} style={[s.item, !seleccion ? s.elegido : null]}>
             <View style={s.imagen}><IconClose size={24} color="#777" /></View><Text style={s.itemNombre}>Sin decoración</Text><Text style={s.itemDetalle}>Dejarlo simple</Text>
             {!seleccion ? <MarcaSeleccion /> : null}
-          </Pressable> : o.id === '__subir' ? <Pressable accessibilityRole="button" disabled={subiendo || ocupado}
-            accessibilityLabel="Subir tu decoración" onPress={() => { if (tipo === 'marco' || tipo === 'efecto') onSubir?.(tipo) }} style={s.item}>
-            <View style={s.imagen}>{subiendo ? <ActivityIndicator color="#fff" /> : <IconPlus size={24} color="#ccc" />}</View>
-            <Text style={s.itemNombre}>Subir la tuya</Text><Text style={s.itemDetalle}>PNG, WebP o GIF</Text>
           </Pressable> : <TarjetaPieza opcion={o} elegida={seleccionado(o)} nombre={nombre} avatarPath={perfil.avatarPath} ocupado={ocupado} onPress={() => elegir(o)} />}
         ListHeaderComponent={<View style={{ gap: 16 }}>
-        {cargando && origen === 'discord' ? <View style={s.estado}><ActivityIndicator color="#fff" /><Text style={s.secundario}>Abriendo el catálogo…</Text></View> : null}
-        {error && origen === 'discord' ? <View style={s.estado}><Text style={s.texto}>No se pudo abrir el catálogo.</Text><Pildora texto="Reintentar" onPress={reintentar} /></View> : null}
+        {cargando ? <View style={s.estado}><ActivityIndicator color="#fff" /><Text style={s.secundario}>Abriendo el catálogo…</Text></View> : null}
+        {error ? <View style={s.estado}><Text style={s.texto}>No se pudo abrir el catálogo.</Text><Pildora texto="Reintentar" onPress={reintentar} /></View> : null}
         <View style={s.entre}><Text style={s.seccion}>{tipo === 'paquete' ? 'PAQUETES' : TITULOS_ESTILO[tipo].toUpperCase()}</Text><Text style={s.secundario}>{lista.length} opciones</Text></View>
         </View>}
         ListFooterComponent={<View style={{ gap: 16 }}>
         {!cargando && !error && lista.length === 0 ? <View style={s.estado}><IconSparkles size={24} color="#888" /><Text style={s.texto}>No encontramos piezas</Text><Text style={s.secundario}>Probá otro nombre o cambiá los filtros.</Text>
           <Pildora texto="Limpiar filtros" onPress={() => filtro(() => { setBuscar(''); setColeccion('todas') })} /></View> : null}
         {visible.length < lista.length ? <View style={s.estado} accessibilityLiveRegion="polite"><ActivityIndicator color="#aaa" /><Text style={s.secundario}>Cargando más piezas…</Text></View> : null}
-        {origen === 'discord' && catalogo ? <Text style={s.nota}>Catálogo de Discord · {catalogo.actualizado.slice(0, 10)}. Las colecciones nuevas pueden tardar en aparecer.</Text> : null}
+        {catalogo ? <Text style={s.nota}>Catálogo de Discord · {catalogo.actualizado.slice(0, 10)}. Las colecciones nuevas pueden tardar en aparecer.</Text> : null}
       </View>} />
     </View>
   )

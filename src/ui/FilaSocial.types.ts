@@ -1,4 +1,5 @@
 export type FilaSocialProps = {
+  copyText?: string
   titulo: string
   detalle?: string
   fontFamily?: string

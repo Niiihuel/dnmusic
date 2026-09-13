@@ -6,7 +6,7 @@ import { useClicDerecho } from './useClicDerecho'
 import { PlayingBars } from './PlayingBars'
 import { usePlaybackCargada } from '../state/playback'
 import { formatClock } from './SeekBar'
-import { estadoControlWeb } from './estadoControl'
+import { estadoControlWeb, superficieInteractivaWeb } from './estadoControl'
 import { ICON_COLOR, IconMusic, IconPause, IconPlay } from './icons'
 
 /** Debajo de esto la tabla deja de ser una tabla. Igual que en `Panel`. */
@@ -127,6 +127,7 @@ export function TrackRow({
 
   const fila = (
     <View
+      {...superficieInteractivaWeb('row')}
       onFocus={() => setFocused(true)}
       onBlur={(event) => {
         const current = event.currentTarget as unknown as { contains?: (target: unknown) => boolean }
@@ -138,7 +139,7 @@ export function TrackRow({
       {...clic.gestos}
       className={`flex-row items-center rounded-lg px-2 ${suelto ? 'gap-3 py-2' : 'gap-4 py-2'} ${
         inset ? (suelto ? 'mx-3' : 'mx-6') : ''
-      } ${hovered ? 'bg-muted' : sounding ? 'bg-card' : ''}`}
+      } ${Platform.OS !== 'web' && hovered ? 'bg-muted' : sounding ? 'bg-card' : ''}`}
     >
       {/*
        * **Toda la fila** es lo tocable, no solo el número.
@@ -313,7 +314,7 @@ export function TrackRow({
   // El callback de onLongPress suprime onPress al soltar; en iOS el menú y
   // su gesto los administra SwiftUI, sin abrir una segunda hoja desde JS.
   return Platform.OS === 'ios' && menu?.length
-    ? <MantenerApretado items={menu}>{fila}</MantenerApretado>
+    ? <MantenerApretado items={menu} preview={{ title, subtitle: artist, artwork }}>{fila}</MantenerApretado>
     : fila
 }
 

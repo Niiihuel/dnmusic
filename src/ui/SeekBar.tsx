@@ -1,6 +1,6 @@
 import { formatClock } from './tiempos'
 import { useState } from 'react'
-import { Text, View, type ViewStyle } from 'react-native'
+import { Platform, Text, View, type ViewStyle } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, { runOnJS, useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 import { HAY_VIDRIO } from './Glass'
@@ -132,6 +132,16 @@ export function SeekBar({
 
       <GestureDetector gesture={Gesture.Race(pan, tap)}>
         <View
+          {...(Platform.OS === 'web' ? {
+            tabIndex: 0, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(shown * 100),
+            onKeyDown: (e: { key: string; preventDefault: () => void }) => {
+              const next = e.key === 'Home' ? 0 : e.key === 'End' ? 1
+                : e.key === 'ArrowRight' || e.key === 'ArrowUp' ? shown + 0.05
+                : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? shown - 0.05 : null
+              if (next === null) return
+              e.preventDefault(); commit(Math.max(0, Math.min(1, next)))
+            },
+          } as object : {})}
           accessibilityRole="adjustable"
           accessibilityLabel={`Posición de ${label}`}
           accessibilityValue={{ min: 0, max: 100, now: Math.round(shown * 100) }}

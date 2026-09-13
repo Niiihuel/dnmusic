@@ -1,3 +1,4 @@
+import { CopyFeedback } from './CopyFeedback'
 import { createContext, useContext, type ReactNode } from 'react'
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native'
 import type { SFSymbol } from 'sf-symbols-typescript'
@@ -321,6 +322,7 @@ export function FilaTexto({
  */
 export function FilaAccion({
   rotulo,
+  copyText,
   onPress,
   destacada = false,
   disabled = false,
@@ -329,6 +331,7 @@ export function FilaAccion({
   iconoPlano = false,
   ultima = false,
 }: {
+  copyText?: string
   rotulo: string
   onPress: () => void
   destacada?: boolean
@@ -349,20 +352,20 @@ export function FilaAccion({
       onPress={onPress}
       className={`flex-row items-center ${activa ? 'active:bg-muted' : ''} ${compacto ? 'gap-2.5 pl-3' : 'gap-3 pl-4'}`}
     >
-      {icono ? compacto || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : null}
+      {copyText === undefined && icono ? compacto || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : null}
       <View
         className={`${compacto ? 'min-h-[44px] gap-2.5 py-2 pr-3' : 'min-h-[52px] gap-3 py-2.5 pr-4'} min-w-0 flex-1 flex-row items-center ${
           ultima ? '' : 'border-b border-muted'
         }`}
       >
-        <Text
+        {copyText !== undefined ? <CopyFeedback text={copyText} label={rotulo} icon={icono} /> : <Text
           className={`min-w-0 flex-1 ${compacto ? 'text-subheadline' : 'text-body'} ${
             activa ? 'text-foreground' : 'text-muted-foreground/60'
           } ${destacada ? 'font-semibold' : ''}`}
           numberOfLines={1}
         >
           {rotulo}
-        </Text>
+        </Text>}
         {busy ? <ActivityIndicator color={ICON_COLOR.muted} /> : null}
       </View>
     </Pressable>

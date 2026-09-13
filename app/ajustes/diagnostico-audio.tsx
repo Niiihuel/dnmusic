@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { View } from 'react-native'
+import { Platform, View } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
@@ -50,7 +50,7 @@ export default function DiagnosticoAudio() {
       pie: resultado ?? 'Se conservan los últimos 30 eventos. No se guardan títulos, usuarios, URLs ni credenciales. El informe sólo se copia si lo pedís.',
       filas: [
         { tipo: 'dato', id: 'total', rotulo: cargado ? 'Eventos registrados' : 'Leyendo historial', valor: cargado ? String(incidencias.length) : '…' },
-        { tipo: 'accion', id: 'copiar', rotulo: 'Copiar informe', symbol: 'doc.on.doc', onPress: () => { void ejecutar('copiar') }, disabled: !cargado || ocupado || !incidencias.length },
+        { tipo: 'accion', id: 'copiar', copyText: Platform.OS === 'web' ? crearInformeDiagnosticoAudio() : undefined, rotulo: 'Copiar informe', symbol: 'doc.on.doc', onPress: () => { void ejecutar('copiar') }, disabled: !cargado || ocupado || !incidencias.length },
         { tipo: 'accion', id: 'limpiar', rotulo: 'Borrar historial local', symbol: 'trash', destructiva: true, onPress: () => { void ejecutar('limpiar') }, disabled: !cargado || ocupado || (!incidencias.length && !error) },
       ],
     },

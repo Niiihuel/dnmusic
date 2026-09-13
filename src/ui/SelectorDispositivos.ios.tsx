@@ -1,4 +1,5 @@
-import { Modal } from 'react-native'
+import { useEffect } from 'react'
+import { useRouter } from 'expo-router'
 import { cerrarSelectorDispositivos, useSelectorDispositivos } from '../state/escucha'
 import { usePanelDispositivos } from './Dispositivos.shared'
 import { BotonHoja, EncabezadoHoja } from './EncabezadoHoja'
@@ -11,9 +12,16 @@ import type { FilaAgrupada } from './ListaAgrupada.types'
  * ni los errores que llegan después desde el servidor. */
 export function SelectorDispositivos() {
   const abierto = useSelectorDispositivos()
-  const panel = usePanelDispositivos()
+  const router = useRouter()
+  useEffect(() => {
+    if (abierto) router.navigate('/dispositivos')
+  }, [abierto, router])
+  return null
+}
 
-  if (!abierto) return null
+export function PanelDispositivos({ onCerrar }: { onCerrar: () => void }) {
+  const panel = usePanelDispositivos()
+  useEffect(() => () => cerrarSelectorDispositivos(), [])
 
   const filas: FilaAgrupada[] = panel.filas.map((fila) => ({
     tipo: 'accion',
@@ -34,19 +42,11 @@ export function SelectorDispositivos() {
   }))
 
   return (
-    <Modal
-      visible
-      animationType="slide"
-      presentationStyle="formSheet"
-      allowSwipeDismissal
-      onRequestClose={cerrarSelectorDispositivos}
-      accessibilityLabel="Escuchar en"
-    >
-      <Hoja titulo="Escuchar en" onCerrar={cerrarSelectorDispositivos}>
+    <Hoja titulo="Escuchar en" onCerrar={onCerrar}>
         <EncabezadoHoja
           titulo="Escuchar en"
           sobre={panel.resumen}
-          izquierda={<BotonHoja tipo="cerrar" label="Cerrar el selector de dispositivos" onPress={cerrarSelectorDispositivos} />}
+          izquierda={<BotonHoja tipo="cerrar" label="Cerrar el selector de dispositivos" onPress={onCerrar} />}
           velo={false}
         />
         <ListaAgrupada
@@ -73,7 +73,6 @@ export function SelectorDispositivos() {
             }] : []),
           ]}
         />
-      </Hoja>
-    </Modal>
+    </Hoja>
   )
 }

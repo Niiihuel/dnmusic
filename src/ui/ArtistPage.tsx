@@ -1,7 +1,8 @@
+import { superficieInteractivaWeb, artworkInteractivoWeb } from './estadoControl'
 import { BotonSuperficie } from './BotonSuperficie'
 import { IconButton } from './IconButton'
 import { useEffect, useState } from 'react'
-import { Image, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { Image, Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { artworkSource, artworkUrlAtSize } from '../lib/artwork'
 import {
@@ -18,7 +19,7 @@ import { useTecho } from '../state/shell'
 import { addShowcase } from '../services/showcases'
 import { getSupabase } from '../lib/supabase'
 import { avisar } from '../state/aviso'
-import { Menu, type MenuItem } from './Menu'
+import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { Skeleton, SkeletonList } from './Skeleton'
 import { TrackRow } from './TrackRow'
 import { ICON_COLOR, IconClose, IconMusic, IconPause, IconPlay, IconUser } from './icons'
@@ -407,7 +408,11 @@ function Releases({
 function Tile({ item, lado, onPress }: { item: HomeItem; lado: number; onPress: () => void }) {
   const [over, setOver] = useState(false)
   return (
+    <MantenerApretado items={[{ label: 'Ir al álbum', sfSymbol: 'square.stack', onPress }]}
+      preview={{ title: item.title, subtitle: item.subtitle ?? 'Álbum', detail: item.year ? String(item.year) : undefined,
+        artwork: item.artworkUrl ? proxiedImage(item.artworkUrl) : undefined }} onPreviewPress={onPress}>
     <BotonSuperficie
+      {...superficieInteractivaWeb('card')}
       accessibilityRole="button"
       accessibilityLabel={item.title}
       onPress={onPress}
@@ -418,9 +423,9 @@ function Tile({ item, lado, onPress }: { item: HomeItem; lado: number; onPress: 
     >
       <View className="overflow-hidden rounded-lg bg-card" style={{ width: lado, height: lado }}>
         {item.artworkUrl ? (
-          <Image
+          <Image {...artworkInteractivoWeb()}
             source={{ uri: proxiedImage(artworkUrlAtSize(item.artworkUrl, 400)) }}
-            style={{ width: lado, height: lado, opacity: over ? 0.75 : 1 }}
+            style={{ width: lado, height: lado, opacity: Platform.OS === 'web' ? 1 : over ? 0.75 : 1 }}
           />
         ) : (
           <View className="flex-1 items-center justify-center">
@@ -435,5 +440,6 @@ function Tile({ item, lado, onPress }: { item: HomeItem; lado: number; onPress: 
         {item.year ? <Text className="text-muted-foreground text-caption1">{item.year}</Text> : null}
       </View>
     </BotonSuperficie>
+    </MantenerApretado>
   )
 }

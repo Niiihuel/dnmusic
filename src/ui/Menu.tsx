@@ -1,3 +1,8 @@
+import { MenuKeyboardScope } from './MenuKeyboardScope'
+import { CopyFeedback } from './CopyFeedback'
+import { copiarAlPortapapeles } from '../lib/portapapeles'
+import { avisar } from '../state/aviso'
+import { SharedLayoutBg } from './SharedLayoutBg'
 import { estadoControlWeb } from './estadoControl'
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
@@ -24,6 +29,8 @@ export { HAY_MENU_NATIVO } from './MenuNativo'
 
 export type MenuItem = {
   label: string
+  /** En PC confirma la copia dentro de la fila antes de cerrar. */
+  copyText?: string
   /** Qué hace. Las que solo abren un submenú no llevan nada. */
   onPress?: () => void
   /** El ícono del menú de respaldo: web, Android. */
@@ -104,91 +111,8 @@ const MARGIN = 8
 /** Radio del panel. El de los menús de iOS 26, que redondean más que antes. */
 const RADIO = 20
 
-/**
- * La curva de todo el menú: salida firme, sin rebote.
- *
- * Antes la apertura usaba un resorte con sobrepaso (`0.34, 1.56, 0.64, 1`) de
- * 420 ms, y encima cada fila entraba escalonada 22 ms detrás de la anterior:
- * con ocho opciones, la última terminaba de aparecer a casi medio segundo del
- * clic. Sobre un menú eso no se lee como carácter sino como lentitud, y el
- * rebote de una superficie con desenfoque se ve como un foco que no encuentra
- * el plano — el material no rebota.
- *
- * Un menú del sistema aparece **de una**: escala corta, sin sobrepaso, y el
- * contenido ya está ahí. Eso es lo que hacen estos números.
- */
-const SECO = 'cubic-bezier(0.22, 1, 0.36, 1)'
-const ABRE_MS = 180
-const CIERRA_MS = 120
-
-/*
- * La animación va en **CSS de verdad**, inyectado una sola vez.
- *
- * react-native-web deja pasar `animation-duration` o `animation-delay` como
- * estilos sueltos, pero no registra keyframes desde un estilo en línea: el
- * panel quedaba con `animation-name: none` y nada se movía. Los keyframes
- * viven en una hoja global y cada pieza elige el suyo con un atributo
- * `data-anim` — el mismo truco de cualquier librería CSS, sin pelearse con el
- * compilador de estilos de RNW.
- *
- * El blur que «aparecía después y se veía disparejo» era un problema de capas:
- * el Modal entraba con fade, y en CSS un ancestro con `opacity` en transición
- * **anula el `backdrop-filter`** de sus descendientes hasta llegar a 1 — el
- * menú se dibujaba sin vidrio y el blur caía de golpe al final. La regla que
- * sale de ahí: la opacidad de un ancestro del vidrio no se anima nunca. El
- * propio panel anima su desenfoque (0 → 18px) y su fondo; el material no
- * rebota aunque la forma sí — un blur con resorte se ve como un foco que no
- * encuentra el plano.
- */
-if (ES_WEB && typeof document !== 'undefined') {
-  const hoja = document.createElement('style')
-  hoja.textContent = `
-@keyframes dn-menu-sube { from { transform: scale(.96) translateY(4px) } }
-@keyframes dn-menu-baja { from { transform: scale(.96) translateY(-4px) } }
-@keyframes dn-menu-va-arriba { to { transform: scale(.97) translateY(2px) } }
-@keyframes dn-menu-va-abajo { to { transform: scale(.97) translateY(-2px) } }
-@keyframes dn-menu-material { from {
-  backdrop-filter: blur(0px) saturate(100%);
-  -webkit-backdrop-filter: blur(0px) saturate(100%);
-  background-color: rgba(28,28,28,0);
-} }
-@keyframes dn-menu-material-va { to {
-  backdrop-filter: blur(0px) saturate(100%);
-  -webkit-backdrop-filter: blur(0px) saturate(100%);
-  background-color: rgba(28,28,28,0);
-} }
-@keyframes dn-menu-contenido { from { opacity: 0 } }
-@keyframes dn-menu-contenido-va { to { opacity: 0 } }
-
-[data-anim="menu-abre-arriba"] {
-  transform-origin: bottom right;
-  animation: dn-menu-sube ${ABRE_MS}ms ${SECO} both, dn-menu-material ${ABRE_MS}ms ease-out both;
-}
-[data-anim="menu-abre-abajo"] {
-  transform-origin: top right;
-  animation: dn-menu-baja ${ABRE_MS}ms ${SECO} both, dn-menu-material ${ABRE_MS}ms ease-out both;
-}
-[data-anim="menu-cierra-arriba"] {
-  transform-origin: bottom right;
-  animation: dn-menu-va-arriba ${CIERRA_MS}ms ${SECO} both, dn-menu-material-va ${CIERRA_MS}ms ${SECO} both;
-}
-[data-anim="menu-cierra-abajo"] {
-  transform-origin: top right;
-  animation: dn-menu-va-abajo ${CIERRA_MS}ms ${SECO} both, dn-menu-material-va ${CIERRA_MS}ms ${SECO} both;
-}
-/*
- * El contenido entra **entero y de una**, no fila por fila.
- *
- * El escalonado era la mitad de lo que hacía lento al menú: cada opción
- * esperaba a la anterior y el panel terminaba de armarse mucho después de
- * haber llegado. Un fade corto del bloque alcanza para que el texto no
- * aparezca de golpe sobre un panel que todavía está escalando.
- */
-[data-anim="contenido-abre"] { animation: dn-menu-contenido ${ABRE_MS}ms ease-out both; }
-[data-anim="contenido-cierra"] { animation: dn-menu-contenido-va ${CIERRA_MS}ms ${SECO} both; }
-`
-  document.head.appendChild(hoja)
-}
+/** Compartido con global.css; la salida conserva el panel hasta terminar. */
+const CIERRA_MS = 150
 
 /** El `data-anim` del panel, según hacia dónde abre y si se está yendo. */
 function animPanel(cerrando: boolean, above: boolean): Record<string, string> | undefined {
@@ -217,7 +141,7 @@ function Filas({
 }) {
   if (ES_WEB) {
     return (
-      <View
+      <View accessibilityRole="menu"
         {...({ dataSet: animContenido(cerrando) } as object)}
         style={
           {
@@ -228,7 +152,7 @@ function Filas({
           } as unknown as ViewStyle
         }
       >
-        {children}
+        <SharedLayoutBg>{children}</SharedLayoutBg>
       </View>
     )
   }
@@ -337,6 +261,9 @@ export function Menu({
    * golpe era la mitad de lo que lo hacía sentir pegado.
    */
   const [cerrando, setCerrando] = useState(false)
+  const salida = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const copiaActiva = useRef(0)
+  useEffect(() => () => { copiaActiva.current++; if (salida.current) clearTimeout(salida.current) }, [])
   /*
    * La entrada del panel en **Android**, con Animated: ahí no hay CSS. En web
    * la animación vive en los estilos (`vidrioAnimado`, `filaAnimada`): correr
@@ -408,6 +335,7 @@ export function Menu({
   }
 
   const openMenu = () => {
+    copiaActiva.current++
     ref.current?.measureInWindow((x, y, w, h) => {
       setAnchor({ x, y, w, h })
       setSub(null)
@@ -469,6 +397,11 @@ export function Menu({
   )
 
   const cerrar = () => {
+    // Escape puede llegar tanto desde el scope como desde Modal.
+    // No cancelar el temporizador de salida en esa segunda notificación.
+    if (cerrando) return
+    copiaActiva.current++
+    if (salida.current) clearTimeout(salida.current)
     /* Si lo abrió un punto —click derecho o pulsación larga— quien lo guarda
        tiene que soltarlo, o el menú volvería a nacer abierto en el mismo
        lugar. Va **después** de la despedida y no antes: soltarlo primero lo
@@ -479,10 +412,10 @@ export function Menu({
      * panel los keyframes de salida y recién al terminar se cierra el Modal.
      * La acción elegida ya corrió — el menú se va mientras la app responde.
      */
-    if (ES_WEB) {
+    if (ES_WEB && !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       if (cerrando) return
       setCerrando(true)
-      setTimeout(() => {
+      salida.current = setTimeout(() => {
         setOpen(false)
         setSub(null)
         setCerrando(false)
@@ -497,6 +430,17 @@ export function Menu({
 
   /** Ejecuta una fila y cierra. La que tiene submenú lo abre en vez de correr. */
   const elegir = (item: MenuItem, i: number) => {
+    if (cerrando) return
+    const operation = ++copiaActiva.current
+    if (salida.current) clearTimeout(salida.current)
+    if (ES_WEB && item.copyText !== undefined) {
+      void copiarAlPortapapeles(item.copyText).then(ok => {
+        if (operation !== copiaActiva.current) return
+        if (ok) salida.current = setTimeout(() => { if (operation === copiaActiva.current) cerrar() }, 800)
+        else avisar('No se pudo copiar. Podés volver a intentarlo.', true)
+      })
+      return
+    }
     /* La fila con submenú no ejecuta nada: lo abre o lo cierra.
        Es lo que la hace funcionar igual con dedo y con cursor. */
     if (item.items?.length) {
@@ -513,8 +457,10 @@ export function Menu({
       <Pressable
         ref={ref}
         {...tip.gestos}
+        {...estadoControlWeb(trigger ? 'none' : 'normal')}
         accessibilityRole="button"
         accessibilityLabel={label}
+        {...(ES_WEB ? { 'aria-haspopup': 'menu' } as object : {})}
         accessibilityState={{ expanded: open, disabled }}
         disabled={disabled}
         onPress={openMenu}
@@ -543,7 +489,7 @@ export function Menu({
         {/* El fondo que cierra va como hermano del menú: envolviéndolo, cada
             opción quedaría dentro de un Pressable y en web eso genera un
             <button> dentro de otro <button>. */}
-        <View className="flex-1">
+        <MenuKeyboardScope onClose={cerrar} subMenu={sub} onCloseSub={() => setSub(null)}>
           <Pressable
             accessibilityRole="button"
             {...estadoControlWeb('none')}
@@ -595,6 +541,7 @@ export function Menu({
             dataSet={animPanel(cerrando, above)}
             style={{
               maxHeight: menuH,
+              ...(ES_WEB ? { transformOrigin: `${Math.max(0, Math.min(MENU_W, ancla.x + ancla.w / 2 - left))}px ${above ? 'bottom' : 'top'}` } : {}),
               boxShadow: `0 12px 32px rgba(0,0,0,0.55), ${BORDE_REFERENTE}`,
             }}
           >
@@ -652,6 +599,7 @@ export function Menu({
               dataSet={animPanel(cerrando, false)}
               style={{
                 maxHeight: subMaxH,
+                ...(ES_WEB ? { transformOrigin: subLeft < left ? 'right top' : 'left top' } : {}),
                 boxShadow: `0 12px 32px rgba(0,0,0,0.55), ${BORDE_REFERENTE}`,
               }}
             >
@@ -663,6 +611,7 @@ export function Menu({
                       item={item}
                       abierto={false}
                       onPress={() => {
+                        if (cerrando) return
                         cerrar()
                         item.onPress?.()
                       }}
@@ -673,7 +622,7 @@ export function Menu({
             </Glass>
             </Animated.View>
           ) : null}
-        </View>
+        </MenuKeyboardScope>
       </Modal>
     </>
   )
@@ -698,24 +647,26 @@ function Divisor() {
 function Fila({ item, abierto, onPress }: { item: MenuItem; abierto: boolean; onPress: () => void }) {
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={ES_WEB ? 'menuitem' : 'button'}
+      {...(ES_WEB && item.items?.length ? { 'aria-haspopup': 'menu' } as object : {})}
       accessibilityState={
         item.items?.length ? { expanded: abierto } : item.selected !== undefined ? { selected: item.selected } : undefined
       }
       onPress={onPress}
+      {...(ES_WEB ? { dataSet: { dnSharedItem: '', dnHover: 'none' } } : {})}
       style={{ height: altoFila(item) }}
       className={`mx-1.5 flex-row items-center gap-3 rounded-xl px-3 active:bg-white/15 ${
         abierto ? 'bg-white/10' : ''
       }`}
     >
-      {item.icon ? <View className="w-5 items-center">{item.icon}</View> : null}
+      {item.icon && !(ES_WEB && item.copyText !== undefined) ? <View className="w-5 items-center">{item.icon}</View> : null}
       <View className="min-w-0 flex-1">
-        <Text
+        {ES_WEB && item.copyText !== undefined ? <CopyFeedback text={item.copyText} label={item.label} icon={item.icon} /> : <Text
           numberOfLines={1}
           className={`text-subheadline ${item.destructive ? 'text-muted-foreground' : 'text-foreground'}`}
         >
           {item.label}
-        </Text>
+        </Text>}
         {item.subtitle ? (
           <Text numberOfLines={1} className="text-muted-foreground text-caption1">
             {item.subtitle}
@@ -746,7 +697,7 @@ function FilaRapidas({ items, onElegir }: { items: MenuItem[]; onElegir: (item: 
       {items.map((item, index) => (
         <Pressable
           key={`${index}:${item.label}`}
-          accessibilityRole="button"
+          accessibilityRole={ES_WEB ? 'menuitem' : 'button'}
           accessibilityLabel={item.label}
           accessibilityState={item.selected !== undefined ? { selected: item.selected } : undefined}
           onPress={() => onElegir(item)}
@@ -770,7 +721,12 @@ function FilaRapidas({ items, onElegir }: { items: MenuItem[]; onElegir: (item: 
 }
 
 /** Pulsación larga nativa en iOS; menú anclado propio en las otras plataformas. */
-export function MantenerApretado({ items, children }: { items: MenuItem[]; children: ReactNode }) {
+export function MantenerApretado({ items, children, preview, onPreviewPress, previewCornerRadius }: {
+  items: MenuItem[]; children: ReactNode
+  previewCornerRadius?: number
+  preview?: import('../../modules/collection-controls').CollectionPreview
+  onPreviewPress?: () => void
+}) {
   const [punto, setPunto] = useState<{ x: number; y: number } | null>(null)
 
   const gesto = useMemo(
@@ -790,7 +746,7 @@ export function MantenerApretado({ items, children }: { items: MenuItem[]; child
   )
 
   if (HAY_MENU_NATIVO && items.length) {
-    return <MenuNativo items={items} longPress fullWidth>{children}</MenuNativo>
+    return <MenuNativo items={items} previewCornerRadius={previewCornerRadius} preview={preview} onPreviewPress={onPreviewPress} longPress fullWidth>{children}</MenuNativo>
   }
 
   return (

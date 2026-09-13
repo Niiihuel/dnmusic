@@ -153,14 +153,31 @@ textarea:focus {
   outline: none;
 }
 
-/* Controles habilitados: una señal de hover y foco común, sin seleccionar
-   SVG ni imágenes decorativas. Los botones vacíos son velos/hitboxes, no iconos.
-   El velo se compone sobre el color existente; no cambia medidas ni desplaza texto. */
+/* El componente decide qué superficie responde: nunca pintar todos los enlaces
+   o botones por su rol, porque muchos son hitboxes dentro de una fila/tarjeta. */
 [data-dn-hover='inverse'] { --dn-hover-color: var(--color-primary-foreground); }
 @media (hover: hover) and (pointer: fine) {
-  :is(button, a[href], [role='link'], [role='button'], [role='menuitem'], [role='tab'], [role='radio'], [role='switch'], [role='checkbox']):not(:empty):not(input):not(textarea):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([data-dn-hover='none']):not([data-dn-hover='glass']):not([data-dn-hover='row']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *):not(:has(:is(button, a[href], [role='link'], [role='button'], [role='menuitem']):hover)):hover {
-    background-image: linear-gradient(rgb(var(--dn-hover-color, var(--color-foreground)) / 0.08), rgb(var(--dn-hover-color, var(--color-foreground)) / 0.08));
+  :is([data-dn-hover='normal'], [data-dn-hover='inverse']):not(:empty):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *) {
+    --dn-hover-opacity: 0;
+    background-image: linear-gradient(rgb(var(--dn-hover-color, var(--color-foreground)) / var(--dn-hover-opacity)), rgb(var(--dn-hover-color, var(--color-foreground)) / var(--dn-hover-opacity)));
+    transition: --dn-hover-opacity 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1);
   }
+  :is([data-dn-hover='normal'], [data-dn-hover='inverse']):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):hover { --dn-hover-opacity: 0.07; }
+}
+/* Una fila completa tiene una sola superficie; los botones internos conservan
+   su foco y sus acciones sin añadir otra franja rectangular. */
+[data-dn-surface='row'] { transition: background-color 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+[data-dn-surface='card'] { border-radius: 12px; }
+[data-dn-surface='card'] [data-dn-artwork] { opacity: 1 !important; transition: filter 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+@media (hover: hover) and (pointer: fine) {
+  [data-dn-surface='row']:not([aria-disabled='true']):hover,
+  [data-dn-surface='row']:has(:focus-visible) { background-color: rgb(var(--color-foreground) / 0.055); }
+  [data-dn-surface='card']:not([aria-disabled='true']):hover [data-dn-artwork],
+  [data-dn-surface='card']:focus-visible [data-dn-artwork] { filter: brightness(1.1); }
+}
+[data-dn-surface='card']:focus-visible { outline: 2px solid rgb(var(--color-ring) / 0.8) !important; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  [data-dn-surface], [data-dn-artwork], [data-dn-hover] { transition: none !important; }
 }
 /* El foco de teclado sigue visible en enlaces y controles; el mouse no deja
    un anillo. Los TextInput conservan su indicador dentro del campo. */
@@ -267,4 +284,219 @@ textarea:focus {
 .dn-no-arrastrar {
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+/* Liquid Glass de escritorio. El material y su movimiento viven en el mismo
+   nodo; fundir un padre impediría muestrear el contenido detrás del panel. */
+:root {
+  --dn-glass-fill: rgb(30 30 33 / 0.48);
+  --dn-glass-solid: #242426;
+  --dn-control-edge: rgb(255 255 255 / 0.22);
+  --dn-control-edge-hover: rgb(255 255 255 / 0.34);
+  --dn-glass-sheen: inset 0 0 0 1px var(--dn-control-edge), inset 0 1px 0 rgb(255 255 255 / 0.38), inset 0 -1px 0 rgb(255 255 255 / 0.08);
+  --dn-glass-spring: cubic-bezier(0.22, 1.12, 0.36, 1);
+}
+html[data-theme='light'] {
+  --dn-glass-fill: rgb(248 248 250 / 0.72);
+  --dn-glass-solid: #f4f4f6;
+  --dn-control-edge: rgb(0 0 0 / 0.16);
+  --dn-control-edge-hover: rgb(0 0 0 / 0.26);
+  --dn-glass-sheen: inset 0 0 0 1px var(--dn-control-edge), inset 0 1px 0 rgb(255 255 255 / 0.95), inset 0 -1px 0 rgb(0 0 0 / 0.08);
+}
+@media (min-width: 780px) {
+  [data-dn-glass] {
+    backdrop-filter: blur(22px) saturate(155%) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(155%) !important;
+  }
+  [data-dn-glass='regular'] {
+    background-color: var(--dn-glass-fill) !important;
+    box-shadow: var(--dn-glass-sheen), 0 6px 20px rgb(0 0 0 / 0.20) !important;
+  }
+  /* El aro se dibuja hacia dentro: conserva medidas y no reaparece como
+     un segundo rectángulo sobre el hitbox del botón. */
+  [data-dn-glass='tinted'] {
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.6), 0 4px 14px rgb(0 0 0 / 0.18) !important;
+  }
+  :is([data-dn-hover='normal'], [data-dn-hover='inverse']) {
+    border-radius: 999px !important;
+    box-shadow: inset 0 0 0 1px var(--dn-control-edge);
+  }
+  [data-dn-hover='inverse'] { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.14); }
+  [data-dn-glass]:has(> [data-dn-hover='glass']),
+  [role='button'] > [data-dn-glass], .dn-expandable {
+    border-radius: 999px !important;
+  }
+  [data-dn-glass][data-anim], [data-dn-glass-dropdown] {
+    border-radius: 26px !important;
+  }
+  [data-dn-glass][data-dn-tooltip] { border-radius: 16px !important; }
+  [data-dn-shared-item]:not(.dn-segment) { border-radius: 16px; }
+  .dn-segmented { box-shadow: var(--dn-glass-sheen); }
+  .dn-segment-selected { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.4), 0 2px 6px rgb(0 0 0 / 0.12); }
+  [data-dn-glass]:has(> [data-dn-hover='glass']),
+  [role='button']:has(> [data-dn-glass]) {
+    transition: scale 240ms var(--dn-glass-spring), box-shadow 180ms ease;
+  }
+  [data-dn-glass]:has(> [data-dn-hover='glass']:not([aria-disabled='true']):active),
+  [role='button']:not([aria-disabled='true']):has(> [data-dn-glass]):active {
+    scale: 0.97;
+  }
+}
+[data-dn-glass-chevron] { transition: rotate 280ms var(--dn-glass-spring); }
+[aria-expanded='true'] [data-dn-glass-chevron] { rotate: 180deg; }
+
+@keyframes dn-glass-unfold {
+  from { clip-path: inset(0 0 80% 0 round 26px); transform: translateY(-5px) scale(0.88, 0.94); }
+  to { clip-path: inset(0 round 26px); transform: none; }
+}
+@keyframes dn-glass-unfold-up {
+  from { clip-path: inset(80% 0 0 0 round 26px); transform: translateY(5px) scale(0.88, 0.94); }
+  to { clip-path: inset(0 round 26px); transform: none; }
+}
+@keyframes dn-glass-close { to { opacity: 0; transform: scale(0.94); } }
+@keyframes dn-glass-content { from { opacity: 0; translate: 0 3px; } }
+[data-anim='menu-abre-arriba'] { animation: dn-glass-unfold-up 300ms var(--dn-glass-spring) backwards; }
+[data-anim='menu-abre-abajo'], [data-dn-glass-dropdown] {
+  transform-origin: top center;
+  animation: dn-glass-unfold 300ms var(--dn-glass-spring) backwards;
+}
+[data-anim='menu-cierra-arriba'], [data-anim='menu-cierra-abajo'] {
+  animation: dn-glass-close 150ms ease-in both;
+  pointer-events: none;
+}
+[data-anim='contenido-abre'] { animation: dn-glass-content 180ms ease-out both; }
+[data-anim='contenido-cierra'] { opacity: 0; transition: opacity 100ms ease; }
+
+.dn-expandable {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  flex-shrink: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  min-height: var(--dn-control-size, 44px);
+  background: var(--dn-glass-fill);
+  color: rgb(var(--color-foreground));
+  box-shadow: var(--dn-glass-sheen);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  font: inherit;
+  cursor: pointer;
+  transition: scale 240ms var(--dn-glass-spring), box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dn-expandable:disabled { opacity: 0.4; cursor: default; }
+.dn-expandable:not(:disabled):active { scale: 0.97; }
+.dn-expandable:focus-visible { outline: 2px solid rgb(var(--color-ring) / 0.8) !important; outline-offset: -2px; }
+.dn-expandable-icon {
+  display: grid;
+  place-items: center;
+  width: var(--dn-control-size, 44px);
+  height: var(--dn-control-size, 44px);
+  flex-shrink: 0;
+}
+.dn-expandable-label {
+  filter: blur(4px);
+  display: grid;
+  grid-template-columns: 0fr;
+  opacity: 0;
+  transition: grid-template-columns 380ms var(--dn-glass-spring), opacity 180ms ease, filter 240ms ease;
+}
+.dn-expandable-label > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.dn-expandable[data-expanded='true'] .dn-expandable-label,
+.dn-expandable[data-reveal-on-hover='true']:not(:disabled):focus-visible .dn-expandable-label {
+  grid-template-columns: 1fr;
+  opacity: 1;
+  filter: blur(0px);
+}
+.dn-expandable-label > span::after { content: ''; display: inline-block; width: 16px; }
+@media (hover: hover) and (pointer: fine) {
+  .dn-expandable[data-reveal-on-hover='true']:not(:disabled):hover .dn-expandable-label {
+    grid-template-columns: 1fr;
+    opacity: 1;
+    filter: blur(0px);
+  }
+}
+/* Con dedo, las acciones muestran su nombre sin exigir hover. */
+@media (hover: none) {
+  .dn-expandable[data-reveal-on-hover='true'] .dn-expandable-label { grid-template-columns: 1fr; opacity: 1; filter: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  [data-dn-glass='regular'] { background-color: var(--dn-glass-solid) !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  [data-dn-glass] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  [data-dn-glass='regular'] { background-color: var(--dn-glass-solid) !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-dn-glass], [data-anim], [data-dn-glass-chevron], .dn-expandable,
+  .dn-expandable-label, [role='button']:has(> [data-dn-glass]) {
+    animation: none !important;
+    transition: none !important;
+    scale: none !important;
+  }
+}
+
+/* Fondos compartidos y estados de acción en PC. */
+.dn-shared-group { position: relative; min-width: 0; }
+.dn-shared-bg { position: absolute; top: 0; left: 0; pointer-events: none; background: rgb(var(--color-foreground) / 0.06); }
+[data-dn-shared-group] [data-dn-shared-item] { background-image: none !important; transition: color 140ms ease; }
+[data-dn-shared-group] [data-dn-shared-item]:not([aria-selected='true']):hover { background-color: transparent !important; }
+.dn-segmented { border-radius: 999px; padding: 4px; background: rgb(var(--color-card)); }
+.dn-segmented-options { display: flex; position: relative; }
+.dn-segment { position: relative; flex: 1; min-width: 0; min-height: 36px; border: 0; border-radius: 999px; padding: 6px 12px; background: transparent; color: rgb(var(--color-muted-foreground)); cursor: pointer; font: inherit; }
+.dn-segment-selected { position: absolute; inset: 0; border-radius: inherit; background: rgb(var(--color-primary)); pointer-events: none; }
+.dn-segment-label { position: relative; font-size: 13px; line-height: 18px; font-weight: 600; }
+.dn-segment[aria-checked='true'] { color: rgb(var(--color-primary-foreground)); }
+.dn-segment:focus-visible { outline: 2px solid rgb(var(--color-ring)); outline-offset: 2px; }
+.dn-action-swap { position: relative; display: inline-grid; vertical-align: middle; align-items: center; }
+.dn-action-reserve, .dn-action-value { grid-area: 1 / 1; }
+.dn-action-reserve { visibility: hidden; pointer-events: none; }
+.dn-action-value { display: inline-flex; align-items: center; gap: 8px; justify-content: center; }
+.dn-tooltip {
+  position: absolute; pointer-events: auto; width: max-content; max-width: min(260px, calc(100vw - 16px));
+  padding: 7px 11px; border-radius: 12px; color: rgb(var(--color-foreground));
+  font: 500 12px/16px system-ui, sans-serif; text-align: center; overflow-wrap: anywhere;
+}
+[data-dn-glass][data-dn-tooltip] { background-color: var(--dn-glass-solid) !important; }
+[data-dn-tooltip-pointer] { position: absolute; width: 8px; height: 8px; transform: rotate(45deg); background: var(--dn-glass-solid); pointer-events: none; }
+/* El hover no cambia medidas ni añade una segunda caja al vidrio. */
+@media (hover: hover) and (pointer: fine) {
+  :is([data-dn-hover='normal'], .dn-expandable):not(:disabled):not([aria-disabled='true']):hover { --dn-control-edge: var(--dn-control-edge-hover); }
+  [data-dn-glass]:has(> [data-dn-hover='glass']:not([aria-disabled='true']):hover) {
+    --dn-control-edge: var(--dn-control-edge-hover);
+    box-shadow: var(--dn-glass-sheen), inset 0 0 0 999px rgb(var(--color-foreground) / 0.035), 0 6px 20px rgb(0 0 0 / 0.20) !important;
+  }
+  [data-dn-hover='glass'] { transition: color 160ms ease; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dn-shared-bg, .dn-tooltip, .dn-segment-selected, .dn-action-value { animation: none !important; transition: none !important; }
+}
+
+@property --dn-hover-opacity { syntax: '<number>'; inherits: false; initial-value: 0; }
+.dn-sidebar-items { display: flex; flex-direction: column; gap: 4px; }
+.dn-scroll-viewport.lenis { scroll-behavior: auto !important; }
+@media (prefers-reduced-motion: reduce) {
+  :is(button, a[href], [role='button'], [role='radio'], [role='tab']) { transition-duration: 0s !important; }
+}
+
+/* Flecha interior del chat: aparece con mouse/foco y permanece al abrir el menú. */
+@media (hover: hover) and (pointer: fine) {
+  [data-chat-actions="true"] { opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+  [data-chat-bubble="true"]:hover [data-chat-actions="true"],
+  [data-chat-bubble="true"]:focus-within [data-chat-actions="true"],
+  [data-chat-bubble="true"]:has([aria-expanded="true"]) [data-chat-actions="true"] { opacity: 1; pointer-events: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-chat-actions="true"] { transition: none; }
 }

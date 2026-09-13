@@ -35,8 +35,8 @@ export default function PersonasJam() {
       contentContainerStyle={{ padding: 20, paddingBottom: modal ? 24 : piso, gap: 24 }}>
       <View className="gap-3">
         <Text className="text-muted-foreground text-subheadline leading-6">Compartí la invitación para sumar a tus amigos a la misma cola.</Text>
-        <AccionSocial label={ES_WEB ? 'Copiar enlace de invitación' : 'Compartir invitación'} onPress={() => void invitarAlJam(jam.code)} />
-        <AccionSocial label={`Copiar código ${jam.code}`} secundaria onPress={() => void copiarAlPortapapeles(jam.code).then(ok => avisar(ok ? 'Código copiado' : `Código: ${jam.code}`))} />
+        <AccionSocial copyText={ES_WEB && jam ? linkDeJam(jam.code) : undefined} label={ES_WEB ? 'Copiar enlace de invitación' : 'Compartir invitación'} onPress={() => void invitarAlJam(jam.code)} />
+        <AccionSocial copyText={ES_WEB ? jam.code : undefined} label={`Copiar código ${jam.code}`} secundaria onPress={() => void copiarAlPortapapeles(jam.code).then(ok => avisar(ok ? 'Código copiado' : `Código: ${jam.code}`))} />
         <AccionSocial label={qr ? 'Ocultar código QR' : 'Mostrar código QR'} secundaria onPress={() => setQr(!qr)} />
         {qr ? <View className="items-center gap-3"><View className="rounded-2xl bg-white p-5"><QRCode value={linkDeJam(jam.code)} size={164} backgroundColor="#fff" color="#121212" /></View><Text className="text-muted-foreground text-footnote">Escanealo con la cámara para abrir la invitación.</Text></View> : null}
       </View>

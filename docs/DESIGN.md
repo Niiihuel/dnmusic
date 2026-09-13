@@ -506,3 +506,74 @@ Las rutas con listas o contenido flexible (Spotify, recorte, tipografía) usan
 al sistema deducir la altura intrínseca. El fondo de la hoja es opaco y sólo su
 contenido se desplaza. En escritorio se conserva el modal centrado de `Hoja`.
 Referencia: [Expo Router: Stack](https://docs.expo.dev/router/advanced/stack/).
+
+## Liquid Glass en PC
+
+`Glass` y `GlassAnimado` exponen `data-dn-glass`. `global.css` define el
+material de escritorio (desde 780 px): desenfoque y saturación constantes,
+filo de luz y sombra. Los controles de PC usan un aro interior continuo de 1 px,
+visible también en reposo; los botones de icono son círculos y los de texto
+cápsulas (`999px`). Los menús y desplegables tienen radio de 26 px. El aro
+pertenece a la superficie exterior, nunca al hitbox interior ni a cada fila.
+No se anima el blur ni se añaden filtros SVG globales.
+El respaldo sin `backdrop-filter`, y Reducir transparencia, usan fondo sólido.
+
+`Popover` comparte en web la superficie, el posicionamiento y el cierre de
+`Menu`. Los menús y submenús se despliegan desde su ancla en 300 ms; el contenido
+entra junto, sin escalonar filas. La salida dura 150 ms. Reducir movimiento
+suprime las animaciones y cierra inmediatamente. `SearchDropdown` aplica el
+material sólo cuando flota; los resultados embebidos siguen siendo contenido.
+
+`ExpandableButton` ofrece icono → píldora al hacer clic, con `expanded`,
+`defaultExpanded` y `onExpandedChange`. Escape lo contrae. Si recibe `onPress`,
+el clic ejecuta esa acción y la etiqueta aparece con hover o foco de teclado;
+en pantallas táctiles queda visible. `IconButton expandible` usa esta variante
+en web (por ejemplo, Compartir en canción y lista). Aplicarla donde haya espacio
+horizontal; los controles dentro de una superficie de vidrio conservan su
+variante transparente para no apilar materiales.
+
+
+## Movimiento compartido en PC
+
+Las variantes `.web.tsx` usan Motion; las piezas nativas conservan su implementación.
+`SharedLayoutBg` dibuja un solo fondo que sigue a las filas con
+`data-dn-shared-item`, tanto con puntero como con foco. Se aplica a los menús y
+la navegación lateral. El fondo permanece al cruzar huecos internos y solo
+sale al abandonar el grupo. Reentrar durante su salida continúa el movimiento;
+los descendientes de una opción no reinician el resorte. Las medidas descuentan
+el `scale` de entrada del menú. El borde y el relleno de los botones usan la
+misma curva de salida suave de beUI. `Segmentado.web` comparte la cápsula seleccionada y
+admite flechas, Home y End. Los controles simples optan por `estadoControlWeb('normal')`
+o `inverse`; no hay un fondo global por el solo hecho de tener rol de botón.
+`superficieInteractivaWeb('row')` ilumina la fila completa, sin otra caja en
+su hitbox interior. Las tarjetas usan `card` y `artworkInteractivoWeb()` para
+resaltar solo la portada con brillo suave, sin variar opacidad, tamaño ni
+posición del texto. Los grupos compartidos no suman otro fondo sobre el deslizante.
+
+El tooltip mantiene su indicador. Abre tras 120 ms y no repite la espera al
+recorrer controles vecinos. Cada control tiene un propietario: desmontar otro
+botón no lo cierra. La medida real del texto coloca la caja y su punta; el foco
+se relaciona con `aria-describedby`. Escape, scroll, resize y perder la ventana
+lo descartan. Se puede cruzar del botón al tooltip para leerlo.
+
+`ActionSwap` cambia texto e iconos con una transición corta. `CopyFeedback`
+se suscribe al resultado de `copiarAlPortapapeles`: pendiente, copiado o error.
+Las acciones compartidas admiten `copyText`; deben recibir exactamente el texto
+que copia su callback. El éxito dura dos segundos; una respuesta vieja no
+sobrescribe una copia posterior. El texto se libera después y no se persiste.
+Jam, invitaciones a listas, enlaces de canción/lista e informes usan esta señal.
+`MenuItem.copyText` también confirma dentro del menú (por ejemplo, copiar un
+mensaje); cierra tras mostrar el éxito y permite reintentar cuando falla.
+Los textos salientes se ocultan del árbol accesible durante la animación.
+
+`ScrollArea` suaviza la rueda mediante Lenis por viewport y conserva la barra
+propia, el arrastre y las referencias de ScrollView. `smooth={false}` opta por
+scroll nativo. Touch, zoom y los campos editables conservan su gesto; Reducir
+movimiento destruye el motor activo. El bucle de animación se detiene al quedar
+quieto. El adaptador de `scrollTo` distingue `{top,left,behavior}` (DOM/Lenis)
+de `{x,y,animated}` (RN web), y restaura el método al desmontarse.
+
+Referencias: [Shared Layout Background](https://beui.dev/components/motion/shared-layout-bg),
+[Tooltip](https://beui.dev/components/motion/tooltip),
+[Action Swap](https://beui.dev/components/motion/action-swap) y
+[Scroll Animation](https://beui.dev/components/motion/scroll-animation).

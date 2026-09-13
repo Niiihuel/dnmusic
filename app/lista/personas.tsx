@@ -1,9 +1,10 @@
+import { CopyFeedback } from '../../src/ui/CopyFeedback'
 import { BotonSuperficie } from '../../src/ui/BotonSuperficie'
 import { IconButton } from '../../src/ui/IconButton'
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { invitarAColaborar } from '../../src/lib/compartirLista'
+import { invitarAColaborar, linkParaColaborar } from '../../src/lib/compartirLista'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { volver } from '../../src/lib/volver'
 import { searchContacts, type ContactResult } from '../../src/services/contacts'
@@ -230,10 +231,12 @@ export default function PersonasDeLista() {
               onPress={() => void invitarAColaborar(id, nombre || 'la lista')}
               className="h-12 flex-row items-center justify-center gap-2 rounded-full bg-primary px-6 active:opacity-80"
             >
+              {ES_WEB ? <CopyFeedback text={linkParaColaborar(id)} label="Copiar el link" color={ICON_COLOR.onPrimary} /> : <>
               <IconShare size={16} color={ICON_COLOR.onPrimary} />
               <Text className="text-primary-foreground text-subheadline font-semibold">
                 {ES_WEB ? 'Copiar el link' : 'Compartir el link'}
               </Text>
+              </>}
             </BotonSuperficie>
 
             {/* Buscar por nombre es solo del dueño, como sumar a mano en la base. */}

@@ -163,6 +163,7 @@ export default function Compartir() {
             }
           />
           <FilaAccion
+            copyText={ES_WEB ? enlace : undefined}
             rotulo="Copiar el link"
             icono={<IconCopiar size={17} color={ICON_COLOR.muted} />}
             busy={ocupado}
@@ -171,7 +172,7 @@ export default function Compartir() {
               void accion(async () => {
                 const copiado = await copiarAlPortapapeles(enlace)
                 avisar(copiado ? 'Link copiado.' : `Compartí el link ${enlace}`)
-                cerrar()
+                if (!ES_WEB) cerrar()
               })
             }
           />
