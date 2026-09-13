@@ -19,7 +19,11 @@ workflow se inicia manualmente y valida secretos en Linux antes de usar el Mac.
    - `preview`: distribución interna para los iPhones registrados en el perfil.
 4. Dejá **Subir a TestFlight** desactivado para generar solamente el IPA.
 5. Al terminar, descargá `dnmusic-ios-<perfil>-<ejecución>` desde **Artifacts**.
-   El archivo se conserva 7 días. El IPA de producción no se instala directamente
+   El archivo se conserva 7 días. Si se agotó el cupo de artifacts, el workflow
+   guarda el IPA en un **borrador de Release** del mismo repositorio; el enlace
+   aparece en el resumen del job. Es privado y no actualiza la app de escritorio.
+   Esos borradores no vencen automáticamente: podés borrarlos cuando no los necesites.
+   El IPA de producción no se instala directamente
    desde Safari: necesita TestFlight/App Store.
 
 El build instala las dependencias con `npm ci` (incluidos los parches), genera
@@ -83,7 +87,7 @@ App Store automáticamente.
 
 Si usás una clave propia en GitHub, se decodifica en una carpeta temporal con permisos privados; nunca se
 incluye en los artifacts y se borra al finalizar el job. Si falla únicamente el
-envío, el IPA queda descargable y podés usar **Re-run failed jobs** para reintentar
+envío, el IPA queda descargable (artifact o borrador de Release) y podés usar **Re-run failed jobs** para reintentar
 sin volver a compilar. Si la validación inicial falla por secretos faltantes,
 corregilos y ejecutá nuevamente.
 

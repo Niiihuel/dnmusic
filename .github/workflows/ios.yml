@@ -55,6 +55,11 @@ jobs:
   compilar:
     name: Compilar IPA en macOS
     needs: validar
+    permissions:
+      contents: write # Permite guardar el IPA en un borrador privado si falta cupo de artifacts.
+    outputs:
+      ipa-storage: ${{ steps.storage.outputs.kind }}
+      ipa-release: ${{ steps.storage.outputs.release }}
     runs-on: macos-26
     timeout-minutes: 90
     env:
@@ -90,6 +95,8 @@ jobs:
             --non-interactive --freeze-credentials --output "$RUNNER_TEMP/dnmusic.ipa"
           test -s "$RUNNER_TEMP/dnmusic.ipa"
       - name: Guardar IPA descargable
+        id: artifact
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dnmusic-ios-${{ inputs.profile }}-${{ github.run_number }}
@@ -97,12 +104,39 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
-      - name: Resumen
+      - name: Guardar IPA como borrador de Release si artifacts no está disponible
+        if: ${{ steps.artifact.outcome == 'failure' }}
         env:
+          GH_TOKEN: ${{ github.token }}
+          IPA_RELEASE_TAG: ios-build-${{ github.run_id }}-${{ github.run_attempt }}
           IOS_PROFILE: ${{ inputs.profile }}
         run: |
+          printf '%s\n' "IPA de iOS ($IOS_PROFILE), commit $GITHUB_SHA." \
+            'Borrador generado porque GitHub Actions no pudo guardar el artifact.' \
+            'Podés descargar el IPA desde Assets. No publicar este borrador como release de escritorio.' \
+            > "$RUNNER_TEMP/ios-release-notes.md"
+          gh release create "$IPA_RELEASE_TAG" "$RUNNER_TEMP/dnmusic.ipa#dnmusic.ipa" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
+            --title "iOS · $IOS_PROFILE · $GITHUB_RUN_NUMBER" \
+            --notes-file "$RUNNER_TEMP/ios-release-notes.md"
+      - name: Resumen y ubicación del IPA
+        id: storage
+        env:
+          IOS_PROFILE: ${{ inputs.profile }}
+          ARTIFACT_OUTCOME: ${{ steps.artifact.outcome }}
+          IPA_RELEASE_TAG: ios-build-${{ github.run_id }}-${{ github.run_attempt }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
           echo "### IPA generado" >> "$GITHUB_STEP_SUMMARY"
-          echo "Perfil: $IOS_PROFILE. Descargalo desde Artifacts de esta ejecución." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ARTIFACT_OUTCOME" = success ]; then
+            echo 'kind=artifact' >> "$GITHUB_OUTPUT"
+            echo "Perfil: $IOS_PROFILE. Descargalo desde Artifacts de esta ejecución." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'kind=release' >> "$GITHUB_OUTPUT"
+            echo "release=$IPA_RELEASE_TAG" >> "$GITHUB_OUTPUT"
+            RELEASE_URL=$(gh release view "$IPA_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)
+            echo "Artifacts no disponible. Descargá el IPA desde el [borrador de Release]($RELEASE_URL)." >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "La compilación corrió en GitHub macOS con EAS local." >> "$GITHUB_STEP_SUMMARY"
           echo "Un IPA production requiere TestFlight/App Store; preview sólo funciona en los iPhones del perfil de firma." >> "$GITHUB_STEP_SUMMARY"
 
@@ -128,10 +162,20 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
       - name: Instalar dependencias
         run: npm ci
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - if: ${{ needs.compilar.outputs.ipa-storage == 'artifact' }}
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: dnmusic-ios-${{ inputs.profile }}-${{ github.run_number }}
           path: ${{ runner.temp }}/ipa
+      - name: Descargar IPA del borrador de Release
+        if: ${{ needs.compilar.outputs.ipa-storage == 'release' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IPA_RELEASE_TAG: ${{ needs.compilar.outputs.ipa-release }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/ipa"
+          gh release download "$IPA_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern dnmusic.ipa --dir "$RUNNER_TEMP/ipa"
       - name: Preparar autenticación de App Store Connect
         env:
           IOS_PROFILE: ${{ inputs.profile }}
