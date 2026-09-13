@@ -38,9 +38,9 @@ En [Settings → Secrets and variables → Actions](https://github.com/Niiihuel/
 | Secreto | Cuándo hace falta | Contenido |
 |---|---|---|
 | `EXPO_TOKEN` | Siempre | Token de Expo con acceso al proyecto y sus credenciales |
-| `ASC_API_KEY_ID` | Sólo TestFlight | Key ID de App Store Connect |
-| `ASC_API_KEY_ISSUER_ID` | Sólo TestFlight | Issuer ID de App Store Connect |
-| `ASC_API_KEY_P8_BASE64` | Sólo TestFlight | Contenido del archivo `.p8`, codificado en base64 |
+| `ASC_API_KEY_ID` | TestFlight con clave propia | Key ID de App Store Connect |
+| `ASC_API_KEY_ISSUER_ID` | TestFlight con clave propia | Issuer ID de App Store Connect |
+| `ASC_API_KEY_P8_BASE64` | TestFlight con clave propia | Contenido del archivo `.p8`, codificado en base64 |
 
 No subas tokens, certificados ni archivos `.p8` al repositorio ni los pegues en
 el chat. Para guardar una clave desde Linux sin imprimirla en la terminal:
@@ -64,7 +64,13 @@ el provisioning profile desde `eas credentials`. Cambiar capacidades de iOS
 
 ## Envío opcional a TestFlight
 
-Creá una **Team API Key** con rol **App Manager** en App Store Connect → Users
+Por defecto, EAS Submit reutiliza la API Key para envíos que ya esté guardada
+en Expo. No hace falta duplicarla en GitHub. Si todavía no está configurada,
+podés prepararla con `eas credentials --platform ios` → perfil production →
+App Store Connect, o usar los tres secretos `ASC_API_KEY_*` de GitHub.
+
+Para usar estos secretos, creá una **Team API Key** con rol **App Manager** en
+App Store Connect → Users
 and Access → Integrations → App Store Connect API. Necesitás permiso para crear
 la clave; guardá sus tres valores en los secretos indicados arriba. El proyecto
 ya define `ascAppId` y `appleTeamId` en `eas.json`.
@@ -75,7 +81,7 @@ Apple. Esto sigue utilizando el servicio de envío de Expo, pero no sus builds
 en la nube. Apple todavía tiene que procesar el binario; no se publica en la
 App Store automáticamente.
 
-La clave se decodifica en una carpeta temporal con permisos privados; nunca se
+Si usás una clave propia en GitHub, se decodifica en una carpeta temporal con permisos privados; nunca se
 incluye en los artifacts y se borra al finalizar el job. Si falla únicamente el
 envío, el IPA queda descargable y podés usar **Re-run failed jobs** para reintentar
 sin volver a compilar. Si la validación inicial falla por secretos faltantes,

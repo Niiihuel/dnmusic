@@ -10,6 +10,8 @@ export function validarEntorno(env) {
   if (!['true', 'false'].includes(env.SUBMIT_TESTFLIGHT)) throw new Error('La opción TestFlight debe ser true o false.')
   if (env.SUBMIT_TESTFLIGHT === 'true') {
     if (env.IOS_PROFILE !== 'production') throw new Error('TestFlight requiere el perfil production; preview es instalación interna.')
+    // Sin overrides, EAS Submit reutiliza la clave guardada en Expo.
+    if (!hayClaveLocal(env)) return
     for (const name of ['ASC_API_KEY_ID', 'ASC_API_KEY_ISSUER_ID', 'ASC_API_KEY_P8_BASE64']) {
       if (!env[name]?.trim()) throw new Error(`Para TestFlight falta el secreto ${name}. Podés compilar sin activar TestFlight.`)
     }
@@ -17,6 +19,10 @@ export function validarEntorno(env) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(env.ASC_API_KEY_ISSUER_ID)) throw new Error('ASC_API_KEY_ISSUER_ID no tiene un formato válido.')
     leerClave(env.ASC_API_KEY_P8_BASE64)
   }
+}
+
+function hayClaveLocal(env) {
+  return ['ASC_API_KEY_ID', 'ASC_API_KEY_ISSUER_ID', 'ASC_API_KEY_P8_BASE64'].some(name => env[name]?.trim())
 }
 
 function leerClave(encoded) {
@@ -37,12 +43,15 @@ export function prepararSubmit(env, projectRoot = process.cwd()) {
   const config = JSON.parse(readFileSync(path, 'utf8'))
   const production = config.submit?.production?.ios
   if (!production?.ascAppId) throw new Error('Falta submit.production.ios.ascAppId en eas.json.')
-  const dir = join(env.RUNNER_TEMP, 'dnmusic-apple')
-  mkdirSync(dir, { recursive: true, mode: 0o700 })
-  const keyPath = join(dir, `AuthKey_${env.ASC_API_KEY_ID}.p8`)
-  writeFileSync(keyPath, leerClave(env.ASC_API_KEY_P8_BASE64), { mode: 0o600 })
-  config.submit.github = { ios: { ...production, ascApiKeyPath: keyPath,
-    ascApiKeyId: env.ASC_API_KEY_ID, ascApiKeyIssuerId: env.ASC_API_KEY_ISSUER_ID } }
+  config.submit.github = { ios: { ...production } }
+  if (hayClaveLocal(env)) {
+    const dir = join(env.RUNNER_TEMP, 'dnmusic-apple')
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    const keyPath = join(dir, `AuthKey_${env.ASC_API_KEY_ID}.p8`)
+    writeFileSync(keyPath, leerClave(env.ASC_API_KEY_P8_BASE64), { mode: 0o600 })
+    Object.assign(config.submit.github.ios, { ascApiKeyPath: keyPath,
+      ascApiKeyId: env.ASC_API_KEY_ID, ascApiKeyIssuerId: env.ASC_API_KEY_ISSUER_ID })
+  }
   writeFileSync(path, JSON.stringify(config, null, 2) + '\n')
 }
 

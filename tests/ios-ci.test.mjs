@@ -74,3 +74,17 @@ test('configuración incompleta falla antes de escribir una clave privada', t =>
   assert.equal(existsSync(join(root, 'dnmusic-apple')), false)
   assert.throws(() => prepararSubmit(base, root), /RUNNER_TEMP/)
 })
+
+
+test('sin claves locales, TestFlight reutiliza la configuración remota sin crear archivos de claves', t => {
+  const root = mkdtempSync(join(tmpdir(), 'dnmusic-ios-test-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const ios = { ascAppId: '12345', appleTeamId: 'TEAM123456' }
+  writeFileSync(join(root, 'eas.json'), JSON.stringify({ submit: { production: { ios } } }))
+  const env = { ...base, SUBMIT_TESTFLIGHT: 'true', RUNNER_TEMP: root }
+  assert.doesNotThrow(() => validarEntorno(env))
+  prepararSubmit(env, root)
+  const config = JSON.parse(readFileSync(join(root, 'eas.json'), 'utf8'))
+  assert.deepEqual(config.submit.github.ios, ios)
+  assert.equal(existsSync(join(root, 'dnmusic-apple')), false)
+})
