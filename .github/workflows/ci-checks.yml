@@ -31,12 +31,6 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
 
-      - name: Lint
-        run: npx eslint .
-
-      - name: App tests
-        run: node --test tests/*.test.mjs
-
       - name: Music service — types
         working-directory: server
         run: npm test
@@ -47,3 +41,10 @@ jobs:
       - name: Escritorio — types
         working-directory: desktop
         run: npm test
+
+      # Las pruebas del servicio importan su salida dist: compilar antes del lint.
+      - name: Lint
+        run: npx eslint .
+
+      - name: App tests
+        run: node --test tests/*.test.mjs
