@@ -14,14 +14,16 @@ test('message actions enforce author, membership, approval, receipts and scrubbi
   docker(['run', '--pull=never', '--rm', '-d', '--name', container, '--network=none',
     '--tmpfs', '/var/lib/postgresql/data', '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', 'postgres:17'])
   try {
+    // PostgreSQL inicia primero un servidor temporal sólo por socket durante initdb.
+    // Esperar TCP evita aceptar ese servidor justo antes de que se reinicie.
     for (let attempt = 0; ; attempt++) {
-      try { docker(['exec', container, 'pg_isready', '-U', 'postgres']); break } catch (error) {
+      try { docker(['exec', container, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres']); break } catch (error) {
         if (attempt >= 60) throw error
         await setTimeout(250)
       }
     }
     const sql = ['tests/sql/message-actions-fixture.sql', 'supabase/migrations/20260924000000_message_actions.sql',
       'tests/sql/message-actions-assertions.sql'].map(path => readFileSync(path, 'utf8')).join('\n')
-    docker(['exec', '-i', container, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q'], sql)
+    docker(['exec', '-i', container, 'psql', '-h', '127.0.0.1', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q'], sql)
   } finally { docker(['rm', '-f', container]) }
 })
