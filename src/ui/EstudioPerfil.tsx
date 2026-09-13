@@ -1,3 +1,4 @@
+import { FiltrosCatalogoPerfil } from './FiltrosCatalogoPerfil'
 import { FilaSocial } from './FilaSocial'
 import { SelectorCatalogo } from './SelectorCatalogo'
 import { AccionSocial } from './Social'
@@ -146,7 +147,14 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
   )
   const explorar = (
     <View testID="catalogo-perfil" style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', backgroundColor: '#121212' }}>
-      <View testID="filtros-catalogo-perfil" style={{ flexShrink: 0, zIndex: 1, backgroundColor: '#121212', padding: 16, paddingBottom: 8, gap: 12 }}>
+      <View testID="filtros-catalogo-perfil" style={{ flexShrink: 0, zIndex: 1, backgroundColor: '#121212', paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 4 : 16, paddingBottom: 8, gap: Platform.OS === 'ios' ? 8 : 12 }}>
+        {Platform.OS === 'ios' ? <FiltrosCatalogoPerfil tipo={tipo}
+          tipos={[...TIPOS_ESTILO, 'paquete' as const].map(t => ({ id: t, nombre: t === 'paquete' ? 'Paquetes' : TITULOS_ESTILO[t] }))}
+          onTipo={t => filtro(() => { setTipo(t as FiltroTipo); setColeccion('todas') })}
+          buscar={buscar} onBuscar={v => filtro(() => setBuscar(v))}
+          coleccion={coleccion} colecciones={[{ id: 'todas', nombre: 'Todas las colecciones' }, ...colecciones]}
+          onColeccion={id => filtro(() => setColeccion(id))} ocupado={ocupado}
+          onPrevia={() => dosPaneles ? setPreviaAbierta(!previaAbierta) : setVerPrevia(true)} /> : <>
         <View style={s.entre}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <SearchField density="compact" value={buscar} onChangeText={v => filtro(() => setBuscar(v))} placeholder="Buscar una pieza o colección" />
@@ -159,6 +167,7 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
           <SelectorCatalogo etiqueta="Colección" valor={coleccion} opciones={[{ id: 'todas', nombre: 'Todas las colecciones' }, ...colecciones]}
             onChange={id => filtro(() => setColeccion(id))} />
         </View>
+        </>}
       </View>
       <FlatList key={columnas} ref={listaRef} data={[
           ...(tipo !== 'paquete' ? [{ id: '__ninguna', nombre: '', coleccion: '', coleccionId: '', tipo }] : []),
@@ -168,7 +177,7 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
         contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} removeClippedSubviews={false}
         renderScrollComponent={props => <ScrollArea {...props} />}
         contentContainerStyle={{ padding: 16, paddingTop: 8, gap: 10 }} columnWrapperStyle={{ gap: 10 }}
-        keyboardShouldPersistTaps="handled" initialNumToRender={15} maxToRenderPerBatch={12} windowSize={5}
+        keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} initialNumToRender={15} maxToRenderPerBatch={12} windowSize={5}
         onEndReachedThreshold={0.6} onEndReached={() => { if (visible.length < lista.length) setPaginas(n => n + 1) }}
         renderItem={({ item: o }) => o.id === '__ninguna' ? <Pressable accessibilityRole="button" accessibilityLabel={`Sin decoración de ${TITULOS_ESTILO[tipo as TipoPiezaDiscord].toLowerCase()}`} accessibilityState={{ selected: !seleccion, disabled: ocupado }} disabled={ocupado}
             onPress={() => { onCambiar({ ...estilo, [tipo]: null }); setComparar(false) }} style={[s.item, !seleccion ? s.elegido : null]}>

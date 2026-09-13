@@ -85,8 +85,25 @@ test('iOS: filtros fijos y catálogo opaco no dejan pasar filas ni ajustan dos v
   assert.equal(lista.props.contentInsetAdjustmentBehavior, 'never')
   assert.equal(lista.props.automaticallyAdjustContentInsets, false)
   assert.equal(lista.props.removeClippedSubviews, false)
-  f.label(ui, 'Ver vista previa del perfil').props.onPress(); ui = f.render()
+  ui.find(n => n.type === 'FiltrosCatalogoPerfil').props.onPrevia(); ui = f.render()
   const previa = ui.find(n => n.type === 'ScrollArea')
   assert.equal(previa.props.contentInsetAdjustmentBehavior, 'never')
   assert.ok(previa.props.contentContainerStyle.paddingBottom >= 20)
+})
+
+
+test('iOS: cambiar de tab reinicia la colección y mantiene el borrador y la búsqueda', () => {
+  const f = fixture('ios'); f.setWidth(390)
+  const filters = () => f.render().find(n => n.type === 'FiltrosCatalogoPerfil').props
+  assert.equal(f.render().some(n => n.type === 'SelectorCatalogo'), false)
+  filters().onBuscar('Aurora')
+  filters().onColeccion('cosmos')
+  assert.equal(filters().coleccion, 'cosmos')
+  filters().onTipo('marcoPerfil')
+  assert.equal(filters().tipo, 'marcoPerfil')
+  assert.equal(filters().coleccion, 'todas')
+  assert.equal(filters().buscar, 'Aurora')
+  assert.equal(f.draft.marco, 'discord:nuevo')
+  filters().onPrevia()
+  assert.equal(f.render().find(n => n.type === 'FondoEstiloPerfil').props.perfil.marco, 'discord:nuevo')
 })

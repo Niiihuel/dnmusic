@@ -201,3 +201,45 @@ test('barra de cambios: guardar requiere borrador válido y restablecer espera l
     assert.equal(button(ui, 'Guardar').props.onPress, undefined)
   }
 })
+
+
+test('categorías nativas: conserva selección, filtra colecciones y bloquea cambios durante guardado', () => {
+  const calls = []
+  const h = harness('src/ui/FiltrosCatalogoPerfil.ios.tsx', {
+    'react-native': { View: 'View', useWindowDimensions: () => ({ width: 390, fontScale: 1 }) },
+    './SearchField': { SearchField: 'SearchField' }, './Menu': { Menu: 'Menu' }, './IconButton': { IconButton: 'IconButton' },
+  })
+  const props = { tipo: 'marco', tipos: [{ id: 'marco', nombre: 'Marco de la foto' }, { id: 'efecto', nombre: 'Efecto del perfil' }],
+    onTipo: v => calls.push(v), buscar: '', onBuscar: v => calls.push(v), coleccion: 'cosmos',
+    colecciones: [{ id: 'todas', nombre: 'Todas las colecciones' }, { id: 'cosmos', nombre: 'Cosmos' }],
+    onColeccion: v => calls.push(v), onPrevia: () => calls.push('previa') }
+  let ui = h.render('FiltrosCatalogoPerfil', props)
+  const picker = find(ui, 'Picker')
+  assert.equal(picker.props.selection, 'marco')
+  picker.props.onSelectionChange(null); picker.props.onSelectionChange('desconocido')
+  assert.deepEqual(calls, [])
+  picker.props.onSelectionChange('efecto')
+  const menu = find(ui, 'Menu')
+  assert.equal(menu.props.label, 'Colección: Cosmos')
+  assert.equal(menu.props.items[1].selected, true)
+  menu.props.items[0].onPress()
+  find(ui, 'SearchField').props.onChangeText('aurora')
+  find(ui, 'IconButton').props.onPress()
+  assert.deepEqual(calls, ['efecto', 'todas', 'aurora', 'previa'])
+  ui = h.render('FiltrosCatalogoPerfil', { ...props, ocupado: true })
+  find(ui, 'Picker').props.onSelectionChange('efecto')
+  find(ui, 'Menu').props.items[0].onPress()
+  assert.equal(calls.length, 4)
+})
+
+test('categorías con texto grande usan símbolos con nombres completos para VoiceOver', () => {
+  const h = harness('src/ui/FiltrosCatalogoPerfil.ios.tsx', {
+    'react-native': { View: 'View', useWindowDimensions: () => ({ width: 390, fontScale: 1.6 }) },
+    './SearchField': { SearchField: 'SearchField' }, './Menu': { Menu: 'Menu' }, './IconButton': { IconButton: 'IconButton' },
+  })
+  const ui = h.render('FiltrosCatalogoPerfil', { tipo: 'marcoPerfil', tipos: [{ id: 'marcoPerfil', nombre: 'Marco de estadísticas' }], colecciones: [] })
+  const image = find(ui, 'Image')
+  assert.equal(image.props.systemName, 'square.grid.2x2')
+  assert.equal(image.props.modifiers.find(m => m.kind === 'accessibilityLabel').args[0], 'Marco de estadísticas')
+  assert.equal(image.props.modifiers.find(m => m.kind === 'tag').args[0], 'marcoPerfil')
+})
