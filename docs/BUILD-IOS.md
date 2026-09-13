@@ -1,7 +1,8 @@
 # Build de iOS
 
-La app es Expo, así que el build lo hace **EAS** en la nube. No hace falta una
-Mac, ni Xcode, ni certificados a mano.
+La app es Expo y puede compilarse con **EAS Cloud** o en **GitHub Actions**
+con EAS local. Para compilar sin cupo de EAS Cloud, seguí la
+[guía de GitHub Actions](BUILD-IOS-GITHUB.md). No necesitás una Mac propia.
 
 Esto reemplaza al pipeline viejo (`fastlane` + `xcodegen` + runner macOS), que
 compilaba el scaffold Swift `DanyApp/` — otra app, borrada junto con las flores.
@@ -82,13 +83,12 @@ El plan gratuito de EAS trae una cantidad limitada de builds por mes y cola
 compartida (la espera en hora pico puede ser larga). Los cupos cambian seguido:
 mirá `expo.dev/pricing` antes de planificar una tanda.
 
-## Por qué no GitHub Actions
+## Alternativa: GitHub Actions
 
-Se puede: `expo prebuild` + CocoaPods + fastlane en un runner `macos-15`. Pero
-en repo privado los runners macOS gastan minutos a **10×** —los 2000 gratis son
-~200 minutos de macOS, y un build con pods son 15-25— y encima hay que mantener
-a mano los certificados con `match`, que es la parte que más se rompe.
+Ya está disponible el workflow manual **iOS — compilar**, que usa un runner
+macOS y los certificados guardados en EAS. Genera un IPA descargable y permite
+subirlo a TestFlight opcionalmente. La compilación consume minutos de GitHub,
+no builds de EAS Cloud.
 
-Si algún día querés que buildee solo al pushear, el camino es un workflow que
-**llame a EAS** (`eas build --non-interactive`), no que compile en Actions. Lo
-mejor de los dos: la automatización de Actions y las credenciales de EAS.
+Consultá [BUILD-IOS-GITHUB.md](BUILD-IOS-GITHUB.md) para ejecutarlo, configurar
+los secretos y distinguir los perfiles de distribución.
