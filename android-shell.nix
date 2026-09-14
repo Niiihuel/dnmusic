@@ -4,7 +4,8 @@ let
   pkgs = import <nixpkgs> { config = { allowUnfree = true; android_sdk.accept_license = true; }; };
   android = pkgs.androidenv.composeAndroidPackages {
     platformVersions = [ "36" ];
-    buildToolsVersions = [ "36.0.0" ];
+    # Expo/AGP también resuelve 35.0.0; declararlo evita escribir en el SDK inmutable.
+    buildToolsVersions = [ "35.0.0" "36.0.0" ];
     cmakeVersions = [ "3.22.1" ];
     includeNDK = true;
     ndkVersions = [ "27.1.12297006" ];

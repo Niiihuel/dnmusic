@@ -4,7 +4,7 @@ DMusic conserva su lógica de reproducción, biblioteca, chat, perfil, sesión y
 
 ## Qué instalar
 
-- Android Studio, con SDK Platform **Android 16 / API 36**, SDK Build-Tools **36.0.0**, Platform-Tools (ADB), Android Emulator y una imagen **Google APIs x86_64 API 36** para esta PC Linux x86_64.
+- Android Studio, con SDK Platform **Android 16 / API 36**, SDK Build-Tools **35.0.0 y 36.0.0**, Platform-Tools (ADB), Android Emulator y una imagen **Google APIs x86_64 API 36** para esta PC Linux x86_64.
 - **JDK 17** para Gradle. Kotlin, el plugin de Compose y Gradle se resuelven con el proyecto; no necesitan instalación manual.
 - Para compilar también hacen falta NDK **27.1.12297006** y CMake **3.22.1** (el SDK Manager/Gradle los instala según el proyecto generado).
 - Un emulador creado en Android Studio → Device Manager, o un teléfono con opciones de desarrollador y depuración USB. En el teléfono hay que autorizar la huella de esta computadora.
@@ -20,6 +20,8 @@ nix-shell android-shell.nix
 npm run android:doctor
 android-studio
 ```
+
+Si Android Studio abre **SDK Components Setup** con las casillas deshabilitadas, pulsá **Cancel**: detectó el SDK inmutable de Nix y ya tiene los componentes declarados por el proyecto. No elijas un dispositivo remoto para probar localmente; en Device Manager usá un AVD local como `DMusic_Pixel_API_36`.
 
 Dentro de Android Studio, usá el SDK que muestra `echo "$ANDROID_HOME"`. Ese SDK lo administra Nix; no intentes instalar paquetes escribiendo en `/nix/store`. Creá el dispositivo virtual en Device Manager con la imagen instalada y encendelo. Dejá el IDE abierto y usá otra terminal entrando también con `nix-shell android-shell.nix` para ejecutar los comandos de la app. Los datos del emulador quedan en tu usuario. Si tu canal de Nixpkgs todavía no contiene esos paquetes, actualizá el canal o usá Android Studio con un SDK administrado por vos; no cambies versiones de Gradle/NDK al azar.
 
