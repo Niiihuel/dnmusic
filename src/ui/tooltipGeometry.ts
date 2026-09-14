@@ -28,3 +28,14 @@ export function geometriaTooltip(
   const punta = Math.max(12, Math.min(centro - left - 4, ancho - 20))
   return { arriba, left, ancho, punta }
 }
+
+/** Un solo contorno para el cuerpo y la punta: no superponer un rombo sin borde. */
+export function contornoTooltip(width: number, height: number, pointer: number, above: boolean) {
+  const left = 0.5, right = width - 0.5
+  const top = above ? 0.5 : 6.5, bottom = above ? height - 6.5 : height - 0.5
+  const r = Math.min(12, (bottom - top) / 2, width / 2 - 1)
+  const x = Math.max(r + 6, Math.min(pointer, width - r - 6))
+  const upper = above ? '' : `H ${x - 6} L ${x - 1} 1 Q ${x} 0 ${x + 1} 1 L ${x + 6} ${top}`
+  const lower = above ? `H ${x + 6} L ${x + 1} ${height - 1} Q ${x} ${height} ${x - 1} ${height - 1} L ${x - 6} ${bottom}` : ''
+  return `M ${left + r} ${top} ${upper} H ${right - r} Q ${right} ${top} ${right} ${top + r} V ${bottom - r} Q ${right} ${bottom} ${right - r} ${bottom} ${lower} H ${left + r} Q ${left} ${bottom} ${left} ${bottom - r} V ${top + r} Q ${left} ${top} ${left + r} ${top} Z`
+}

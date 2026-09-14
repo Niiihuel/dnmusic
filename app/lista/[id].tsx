@@ -27,7 +27,7 @@ import {
 import { avisar } from '../../src/state/aviso'
 import { useUser } from '../../src/state/session'
 import { Aterrizaje } from '../../src/ui/Aterrizaje'
-import { playQueue, togglePlayback, usePlaybackTrack, useWantPlay } from '../../src/state/playback'
+import { playCollection, playQueue, togglePlayback, usePlaybackTrack, useWantPlay } from '../../src/state/playback'
 import { abrirLista, usePiso } from '../../src/state/shell'
 import { Avatar } from '../../src/ui/Avatar'
 import { BotonVolver } from '../../src/ui/BotonVolver'
@@ -263,7 +263,7 @@ export default function ListaPublica() {
                     <>
                       <IconButton label={
                           algunaSuena && suena ? 'Pausar' : `Reproducir ${lista.playlist.name}`
-                        } symbol={algunaSuena && suena ? 'pause.fill' : 'play.fill'} onPress={() => (algunaSuena ? togglePlayback() : play(0))} disabled={total === 0} lado={56} size={20} variant="primary" icon={algunaSuena && suena ? (
+                        } symbol={algunaSuena && suena ? 'pause.fill' : 'play.fill'} onPress={() => (algunaSuena ? togglePlayback() : playCollection(tracks, null))} disabled={total === 0} lado={56} size={20} variant="primary" icon={algunaSuena && suena ? (
                           <IconPause
                             size={20}
                             color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}

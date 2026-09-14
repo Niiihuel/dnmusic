@@ -95,6 +95,7 @@ function hoja(track) {
     '../src/lib/compartir': {
       linkDe: (que, id) => `https://dnmusic-app.vercel.app/${que}/${id}`,
       compartirCancion: async (t) => compartidos.push(['link', t.videoId]),
+      copiarEnlaceCancion: async () => true,
     },
     '../src/lib/portapapeles': { copiarAlPortapapeles: async () => true },
     '../src/lib/colorPortada': { useColorPortada: () => '#334455' },

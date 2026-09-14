@@ -7,13 +7,13 @@ diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_mod
 +#if os(iOS)
 +import UIKit
 +#endif
- 
+
  class AudioComponentRegistry {
    private var players = [String: AudioPlayer]()
 @@ -11,8 +14,67 @@
- 
+
    private let registryQueue = DispatchQueue(label: "expo.audio.registry", attributes: .concurrent)
- 
+
 +  #if os(iOS)
 +  private var transitionTask: UIBackgroundTaskIdentifier = .invalid
 +  private var transitionDeadline: DispatchWorkItem?
@@ -21,7 +21,7 @@ diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_mod
 +  #endif
 +
    init() {}
- 
+
 +  deinit {
 +    #if os(iOS)
 +    transitionDeadline?.cancel()
@@ -80,7 +80,7 @@ diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_mod
        self.players[player.id] = player
 @@ -54,6 +116,7 @@
    #endif
- 
+
    func removeAll() {
 +    endPlaybackTransition()
      registryQueue.async(flags: .barrier) {
@@ -91,7 +91,7 @@ diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-a
 +++ b/node_modules/expo-audio/ios/AudioModule.swift
 @@ -107,6 +107,7 @@
      }
- 
+
      OnAppEntersForeground {
 +      registry.endPlaybackTransition()
        if !shouldPlayInBackground {
@@ -99,7 +99,7 @@ diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-a
        }
 @@ -242,7 +243,7 @@
        }
- 
+
        Function("pause") { player in
 -        player.ref.pause()
 +        player.pause()
@@ -117,25 +117,63 @@ diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-a
 +        player.pause()
        }
      }
- 
+
 diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-audio/ios/AudioPlayer.swift
 --- a/node_modules/expo-audio/ios/AudioPlayer.swift
 +++ b/node_modules/expo-audio/ios/AudioPlayer.swift
-@@ -47,9 +47,13 @@
+@@ -23,7 +23,15 @@
+     ref.rate == 0.0
+   }
+   var samplingEnabled = false
+-  var keepAudioSessionActive = false
++  var keepAudioSessionActive = false {
++    didSet {
++      // A cached item may already be ready before this option is assigned.
++      // Prepare the visual tap before playback, including background starts.
++      if keepAudioSessionActive && !isPlaying {
++        installTap()
++      }
++    }
++  }
+
+   var isLooping = false {
+     didSet {
+@@ -47,9 +55,13 @@
    private var timeToken: Any?
    private var cancellables = Set<AnyCancellable>()
    private var endObserver: NSObjectProtocol?
 +  private var failureObserver: NSObjectProtocol?
 +  private weak var failedItem: AVPlayerItem?
 +  private var playbackFailure: String?
- 
+
    private var audioProcessor: AudioTapProcessor?
    private var tapInstalled = false
 +  private weak var sampledItem: AVPlayerItem?
    private var shouldInstallAudioTap = false
    weak var owningRegistry: AudioComponentRegistry?
    var onPlaybackComplete: (() -> Void)?
-@@ -125,7 +129,8 @@
+@@ -100,6 +112,9 @@
+   }
+
+   func play(at rate: Float) {
++    if keepAudioSessionActive && !isPlaying {
++      installTap()
++    }
+     ref.actionAtItemEnd = isLooping ? .advance : .pause
+     if isLooping {
+       enqueueNextLoopItem()
+@@ -119,13 +134,19 @@
+     }
+     samplingEnabled = enabled
+     if enabled {
++      // Foreground only enables delivery of samples from the prepared tap.
++      // Never rebuild a playing persistent item's audioMix for a visual.
++      if keepAudioSessionActive && isPlaying {
++        return
++      }
+       if isLoaded {
+         installTap()
+       } else {
          shouldInstallAudioTap = true
        }
      } else {
@@ -145,7 +183,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
        shouldInstallAudioTap = false
      }
    }
-@@ -133,10 +138,14 @@
+@@ -133,10 +154,14 @@
    func currentStatus() -> [String: Any?] {
      let currentDuration = ref.status == .readyToPlay ? duration : 0.0
      let rate = isPlaying ? ref.rate : currentRate
@@ -161,7 +199,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
        "timeControlStatus": timeControlStatusString(status: ref.timeControlStatus),
        "reasonForWaitingToPlay": reasonForWaitingToPlayString(status: ref.reasonForWaitingToPlay),
        "mute": ref.isMuted,
-@@ -150,7 +159,7 @@
+@@ -150,7 +175,7 @@
        "isBuffering": isBuffering,
        "isLive": isLive,
        "currentOffsetFromLive": currentOffsetFromLive,
@@ -169,10 +207,10 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
 +      "error": error
      ]
    }
- 
-@@ -198,6 +207,15 @@
+
+@@ -198,22 +223,31 @@
    }
- 
+
    private func setupPublisher() {
 +    ref.publisher(for: \.timeControlStatus)
 +      .receive(on: DispatchQueue.main)
@@ -186,7 +224,27 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      ref.publisher(for: \.currentItem?.status)
        .sink { [weak self] status in
          guard let self, let status else {
-@@ -228,6 +246,7 @@
+           return
+         }
+         if status == .readyToPlay {
++          if shouldInstallAudioTap || samplingEnabled || keepAudioSessionActive {
++            installTap()
++            shouldInstallAudioTap = false
++          }
+           self.updateStatus(with: [
+             "isLoaded": true
+           ])
+           if self.isLooping {
+             self.enqueueNextLoopItem()
+           }
+-          if shouldInstallAudioTap || samplingEnabled {
+-            installTap()
+-            shouldInstallAudioTap = false
+-          }
+         }
+         if status == .failed {
+           self.updateStatus(with: [
+@@ -228,12 +262,14 @@
          guard let self else {
            return
          }
@@ -194,30 +252,39 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
          if self.isLooping {
            self.enqueueNextLoopItem()
            self.addPlaybackEndNotification()
-@@ -246,9 +265,7 @@
+         }
+-        if self.samplingEnabled && self.isLoaded {
+-          self.uninstallTap()
++        if (self.samplingEnabled || self.keepAudioSessionActive) && self.isLoaded {
++          // installTap is idempotent for the same AVPlayerItem. A ready-item
++          // event followed by currentItem must not tear down its fresh mix.
+           self.installTap()
+         }
+       }
+@@ -246,9 +282,7 @@
      removeQueuedLoopItems()
      ref.pause()
- 
+
 -    if samplingEnabled {
 -      uninstallTap()
 -    }
 +    uninstallTap()
      replacePlayerItem(with: item)
- 
+
      if wasSamplingEnabled {
-@@ -267,9 +284,7 @@
+@@ -267,9 +301,7 @@
      removeQueuedLoopItems()
      ref.pause()
- 
+
 -    if samplingEnabled {
 -      uninstallTap()
 -    }
 +    uninstallTap()
      let item = AudioUtils.createAVPlayerItem(from: source)
      replacePlayerItem(with: item)
- 
-@@ -320,9 +335,7 @@
- 
+
+@@ -320,9 +352,7 @@
+
    private func teardownPlayer() {
      removeQueuedLoopItems()
 -    if samplingEnabled {
@@ -227,7 +294,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      if let timeToken {
        ref.removeTimeObserver(timeToken)
        self.timeToken = nil
-@@ -331,6 +344,12 @@
+@@ -331,6 +361,12 @@
        NotificationCenter.default.removeObserver(endObserver)
        self.endObserver = nil
      }
@@ -240,35 +307,35 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      cancellables.removeAll()
      ref.pause()
    }
-@@ -358,7 +377,7 @@
+@@ -358,7 +394,7 @@
        return
      }
- 
+
 -    guard audioProcessor?.isTapInstalled != true else {
 +    guard audioProcessor?.isTapInstalled != true || sampledItem !== ref.currentItem else {
        tapInstalled = true
        return
      }
-@@ -370,6 +389,7 @@
+@@ -370,6 +406,7 @@
      audioProcessor = AudioTapProcessor(player: ref)
      let success = audioProcessor?.installTap() ?? false
      tapInstalled = success
 +    sampledItem = success ? ref.currentItem : nil
- 
+
      if success {
        audioProcessor?.sampleBufferCallback = { [weak self] buffer, frameCount, timestamp in
-@@ -400,6 +420,7 @@
- 
+@@ -400,6 +437,7 @@
+
    private func uninstallTap() {
      tapInstalled = false
 +    sampledItem = nil
      audioProcessor?.uninstallTap()
      audioProcessor?.sampleBufferCallback = nil
    }
-@@ -439,6 +460,32 @@
+@@ -439,6 +477,32 @@
      }
    }
- 
+
 +  private func addPlaybackFailureNotification() {
 +    if let failureObserver {
 +      NotificationCenter.default.removeObserver(failureObserver)
@@ -298,7 +365,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
    private func addPlaybackEndNotification() {
      if let endObserver {
        NotificationCenter.default.removeObserver(endObserver)
-@@ -447,7 +494,7 @@
+@@ -447,7 +511,7 @@
      endObserver = NotificationCenter.default.addObserver(
        forName: .AVPlayerItemDidPlayToEndTime,
        object: nil,
@@ -307,9 +374,9 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      ) { [weak self] notification in
        guard let self,
          let finishedItem = notification.object as? AVPlayerItem else {
-@@ -460,6 +507,11 @@
+@@ -460,6 +524,11 @@
        }
- 
+
        if !self.isLooping {
 +        // The next item is selected in JS, which can outlive this player.
 +        // Request a short native transition window before emitting its end.
@@ -319,8 +386,8 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
          let currentTime = finishedItem.duration.seconds
          self.updateStatus(with: [
            "playing": false,
-@@ -497,6 +549,10 @@
- 
+@@ -497,6 +566,10 @@
+
    func pause() {
      ref.pause()
 +    if keepAudioSessionActive {
@@ -328,14 +395,14 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
 +    }
 +    updateStatus(with: ["didJustPause": true])
    }
- 
+
    func resumePlayback() {
 diff --git a/node_modules/expo-audio/src/AudioPlayer.web.ts b/node_modules/expo-audio/src/AudioPlayer.web.ts
 --- a/node_modules/expo-audio/src/AudioPlayer.web.ts
 +++ b/node_modules/expo-audio/src/AudioPlayer.web.ts
 @@ -375,7 +375,15 @@
      };
- 
+
      media.onended = () => {
 +      this.isPlaying = false;
        lastEmitTime = 0;
@@ -348,22 +415,22 @@ diff --git a/node_modules/expo-audio/src/AudioPlayer.web.ts b/node_modules/expo-
 +      });
        mediaSessionController.updatePlaybackState(this);
      };
- 
+
 diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/expo-audio/ios/MediaController.swift
 --- a/node_modules/expo-audio/ios/MediaController.swift
 +++ b/node_modules/expo-audio/ios/MediaController.swift
 @@ -246,7 +246,7 @@
          return .commandFailed
        }
- 
+
 -      player.ref.pause()
 +      player.pause()
        return .success
      }
- 
+
 @@ -256,7 +256,7 @@
        }
- 
+
        if player.isPlaying {
 -        player.ref.pause()
 +        player.pause()

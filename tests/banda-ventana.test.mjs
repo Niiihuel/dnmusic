@@ -18,9 +18,10 @@ function cargar({ overlay = true, visible = true, web = true, rect = { x: 138, y
   })
   const exports = {}
   new Function('exports', 'require', 'navigator', outputText)(exports, id => {
+    if (id === './CapaControlesVentana') return { CapaControlesVentana: 'Portal' }
     if (id === './Glass') return { ES_WEB: web }
     if (id === 'react-native') return { View: 'View' }
-    if (id === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }) }
+    if (id === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) }
     if (id === 'react') return { useSyncExternalStore(subscribe, getSnapshot) {
       snapshot = getSnapshot
       unsubscribe ??= subscribe(() => updates++)
@@ -94,4 +95,52 @@ test('native window controls and header drag exclusions are retained', () => {
   const css = readFileSync('global.css', 'utf8')
   assert.match(css, /\.dn-arrastrar[\s\S]*?-webkit-app-region:\s*drag/)
   assert.match(css, /\.dn-no-arrastrar[\s\S]*?-webkit-app-region:\s*no-drag/)
+})
+
+test('Linux reserva 32px y coloca minimizar, maximizar/restaurar y cerrar a la derecha', async () => {
+  let current, cleanup, listener
+  const actions = []
+  const bridge = {
+    controlesPropios: true,
+    estado: async () => ({ maximizada: false, pantallaCompleta: false }),
+    accion: async action => { actions.push(action) },
+    alCambiar: fn => { listener = fn; return () => { listener = null } },
+  }
+  const exports = {}, jsx = (type, props) => ({ type, props })
+  const output = ts.transpileModule(readFileSync('src/ui/BandaVentana.tsx', 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText
+  new Function('exports','require','globalThis','navigator',output)(exports, id => {
+    if(id === './CapaControlesVentana') return { CapaControlesVentana: 'Portal' }
+    if(id === './Glass') return { ES_WEB: true }
+    if(id === 'react-native') return { View: 'View', Pressable: 'Pressable' }
+    if(id === 'react/jsx-runtime') return { jsx, jsxs: jsx }
+    if(id === 'react') return {
+      useSyncExternalStore: (_, read) => read(),
+      useState: initial => { current ??= initial; return [current, value => { current = value }] },
+      useEffect: fn => { cleanup ??= fn() },
+    }
+    throw Error(id)
+  }, { dnmusicEscritorio: { ventana: bridge } }, {})
+  const render = () => { const child = exports.BandaVentana(); return child.type(child.props) }
+  let row = render()
+  assert.equal(exports.HAY_BANDA_VENTANA, true)
+  assert.equal(row.props.style.height, 32)
+  assert.equal(row.props.style.flexShrink, 0)
+  const [drag, portal] = row.props.children
+  assert.equal(portal.type, 'Portal')
+  const controls = portal.props.children
+  assert.equal(drag.props.style.right, 138)
+  assert.equal(controls.props.style.right, 0)
+  assert.equal(controls.props.style.position, 'fixed')
+  assert.ok(controls.props.style.zIndex > 1000, 'controles sobre los portales de modales')
+  assert.deepEqual(controls.props.children.map(b => b.props.accessibilityLabel), ['Minimizar ventana','Maximizar ventana','Cerrar ventana'])
+  for(const button of controls.props.children) button.props.onPress()
+  await Promise.resolve()
+  assert.deepEqual(actions, ['minimizar','maximizar','cerrar'])
+  listener({ maximizada: true, pantallaCompleta: false })
+  row = render(); assert.equal(row.props.children[1].props.children.props.children[1].props.accessibilityLabel, 'Restaurar ventana')
+  listener({ maximizada: true, pantallaCompleta: true }); assert.equal(render(), null)
+  listener({ maximizada: false, pantallaCompleta: false }); assert.ok(render())
+  cleanup(); assert.equal(listener, null)
 })

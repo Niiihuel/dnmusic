@@ -71,6 +71,7 @@ function scrollFixture(props = {}) {
   const effects = [], frames = new Map(), observed = [], listeners = new Map()
   let frameId = 0, disconnected = false
   const modulo = cargar('src/ui/ScrollArea.web.tsx', {
+    './SharedLayoutBg': { SharedLayoutBg: 'SharedLayoutBg' },
     './smoothScroll.web': { attachSmoothScroll: node => ({ stop() {}, destroy() {}, scrollTo(top) { node.scrollTop = top } }) },
     react: { forwardRef: (fn) => fn, useContext: () => props.techoPanel ?? 0, useRef: (current) => ({ current }), useCallback: (f) => f, useEffect: (f) => effects.push(f), useId: () => 'scroll-test' },
     'react-native': { ScrollView: 'ScrollView', View: 'View' },

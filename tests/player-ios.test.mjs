@@ -65,7 +65,7 @@ test('iOS conserva letras y controles durante cambios de posición; solo cerrar 
   const lyrics = children(tree, node => node.type === 'LyricsView')[0]
   assert.equal(lyrics.props.onTap, undefined, 'tocar un verso no oculta la interfaz')
   lyrics.props.onPickLine(30000)
-  children(tree, node => node.props?.label === 'Cerrar reproductor')[0].props.onPress()
+  children(tree, node => node.type === 'PlayerHeader')[0].props.onClose()
   assert.deepEqual(calls, [['seek', 30000], 'close'])
 })
 

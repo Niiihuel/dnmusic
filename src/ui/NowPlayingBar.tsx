@@ -753,7 +753,7 @@ export function NowPlayingBar({
 
 /** Ancho explícito: el volumen y el transporte no se mueven al recibir hover o foco. */
 function AnchoPildora({ compacto, children }: { compacto: boolean; children: React.ReactNode }) {
-  return <View style={{ width: '100%', maxWidth: compacto ? 640 : 1080, alignSelf: 'center' }}>{children}</View>
+  return <View {...(ES_WEB ? { dataSet: { dnPlayerFrame: '' } } : {})} style={{ width: '100%', maxWidth: compacto ? 640 : 1080, alignSelf: 'center' }}>{children}</View>
 }
 
 /** Botón que enciende y apaga una vista del panel derecho. */

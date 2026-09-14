@@ -8,6 +8,7 @@ const flush=async()=>{for(let i=0;i<6;i++)await new Promise(r=>setImmediate(r))}
 const track=id=>({id,videoId:id,audioPath:`${id}.m4a`})
 function montar({disk=true, platform='web', network='amplia',failSigning=false}={}){
  const hooks=[],effects=[],timers=new Map(),downloads=[],sources=[],protectedPaths=[],priorities=[]
+ const resolved=[],completed=[],cached=new Map()
  let signatures=0
  let cursor=0,sequence=0,statusListener,ready=true,online=true,automatic=true,current=track('a')
  const player={addListener(_,fn){statusListener=fn;return{remove(){statusListener=null}}}}
@@ -17,15 +18,15 @@ function montar({disk=true, platform='web', network='amplia',failSigning=false}=
   '../state/ajustes':{useAjustes:()=>({precargaAutomatica:automatic,precargaDatos:false}),useAjustesCargados:()=>ready},
   '../state/redPrecarga':{useTipoRedPrecarga:()=>online?network:'no'},
   '../lib/politicaPrecarga':{ventanaPrecarga},
-  '../state/playback':{getPlaybackState:()=>({tracks:[current],index:0,manual:null}),completarCancion(){}},
-  '../services/music':{resolveSong:async t=>({path:`${t.id}.m4a`,url:`https://audio/${t.id}`}),signedUrl:async path=>{signatures++;if(failSigning)throw Error('sin firma');return`https://audio/${path}`}},
-  '../state/descargas':{HAY_DESCARGAS:disk,rutaLocal:()=>null,priorizarReproduccion:v=>priorities.push(v),protegerDescargas:paths=>protectedPaths.push(paths),prepararCache:(t,signal)=>new Promise(resolve=>{downloads.push({track:t,signal,resolve});signal.addEventListener('abort',()=>resolve(null),{once:true})})},
+  '../state/playback':{getPlaybackState:()=>({tracks:[current],index:0,manual:null}),completarCancion:(...args)=>completed.push(args)},
+  '../services/music':{resolveSong:async t=>{resolved.push(t.videoId);return{path:`${t.id}.m4a`,url:`https://audio/${t.id}`,artworkPath:null,durationMs:180000}},signedUrl:async path=>{signatures++;if(failSigning)throw Error('sin firma');return`https://audio/${path}`}},
+  '../state/descargas':{HAY_DESCARGAS:disk,rutaLocal:path=>cached.get(path)??null,priorizarReproduccion:v=>priorities.push(v),protegerDescargas:paths=>protectedPaths.push(paths),prepararCache:(t,signal)=>new Promise(resolve=>{downloads.push({track:t,signal,resolve:uri=>{if(uri)cached.set(t.audioPath,uri);resolve(uri)}});signal.addEventListener('abort',()=>resolve(null),{once:true})})},
   '../lib/prepararBuffer':{prepararBuffer:async uri=>{sources.push('buffer');return platform==='web'?'blob:prepared':uri},liberarBuffer:uri=>sources.push(['release',uri])},
  }
  const exports={}
  new Function('exports','require','setTimeout','clearTimeout',source)(exports,k=>{assert.ok(k in deps,k);return deps[k]},fn=>{timers.set(++sequence,fn);return sequence},id=>timers.delete(id))
  let props={current,proximas:[track('b'),track('c')],url:'https://audio/a',player,wantPlay:true,mudo:false,remember:(...v)=>sources.push(v),olvidar:(...v)=>sources.push(['forget',...v])}
- return{downloads,sources,priorities,protectedPaths,
+ return{downloads,sources,priorities,protectedPaths,resolved,completed,
   unmount(){for(const hook of hooks)hook?.cleanup?.()},
   render(patch={}){props={...props,...patch};current=props.current;cursor=0;exports.usePrecargaCola(props);effects.splice(0).forEach(fn=>fn())},
   status(s={isLoaded:true,isBuffering:false,playing:true}){statusListener?.(s)},
@@ -105,4 +106,39 @@ test('Android prepara disco sin duplicar la canción completa en memoria nativa'
  const h=montar({platform:'android'});h.render();h.status();h.render();await h.clock()
  h.downloads[0].resolve('local:b');await flush();h.downloads[1].resolve('local:c');await flush()
  assert.deepEqual(h.sources,[]);h.unmount()
+})
+
+
+test('resultados sin audio se resuelven en orden mientras suena la actual; conserva resolución sin espacio',async()=>{
+ const h=montar({platform:'ios'})
+ h.render({proximas:[{...track('b'),audioPath:''},{...track('c'),audioPath:''}]})
+ await h.clock();assert.deepEqual(h.resolved,[])
+ h.status();h.render();await h.clock()
+ assert.deepEqual(h.resolved,['b']);assert.equal(h.completed[0][0],'b')
+ assert.equal(h.completed[0][1].audioPath,'b.m4a')
+ h.downloads[0].resolve(null);await flush()
+ assert.deepEqual(h.resolved,['b','c']);assert.equal(h.completed[1][0],'c')
+ h.downloads[1].resolve('local:c');await flush()
+ assert.equal(h.downloads.length,2);h.unmount()
+})
+
+
+test('iOS repone la ventana durante diez canciones sin necesitar un regreso a foreground',async()=>{
+ const h=montar({platform:'ios'})
+ const cola=Array.from({length:10},(_,i)=>({...track(String(i)),durationMs:60000}))
+ let entregadas=0
+ for(let actual=0;actual<cola.length;actual++){
+  h.render({current:cola[actual],proximas:cola.slice(actual+1,actual+6),url:`local:${actual}`})
+  h.status();h.render();await h.clock()
+  while(entregadas<h.downloads.length){
+   const descarga=h.downloads[entregadas++]
+   assert.equal(descarga.signal.aborted,false)
+   descarga.resolve(`local:${descarga.track.id}`);await flush()
+  }
+  if(actual<cola.length-1){
+   assert.ok(h.sources.some(x=>Array.isArray(x)&&x[0]===String(actual+1)&&x[1]===`local:${actual+1}`))
+  }
+ }
+ assert.deepEqual(h.downloads.map(d=>d.track.id),['1','2','3','4','5','6','7','8','9'])
+ h.unmount()
 })

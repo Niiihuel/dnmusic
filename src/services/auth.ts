@@ -68,7 +68,8 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
 export async function logOut(): Promise<void> {
   await cancelarGoogle()
   callbackEnCurso = null
-  const { error } = await getSupabase().auth.signOut()
+  // Salir de este dispositivo no debe revocar las sesiones de las otras computadoras.
+  const { error } = await getSupabase().auth.signOut({ scope: 'local' })
   if (error) throw error
 }
 

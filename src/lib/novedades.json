@@ -1,5 +1,31 @@
 [
   {
+    "version": "1.15.2",
+    "fecha": "14 de septiembre de 2026",
+    "titulo": "Compartí música y seguí escuchando.",
+    "cambios": [
+      "La música compartida en el chat usa el mismo encabezado y fondo que el reproductor completo. Las dedicatorias largas se pueden leer enteras al desplazar la pantalla.",
+      "Mejoramos la edición de mensajes y sus opciones en el chat.",
+      "En iPhone, cambiar el nombre de una lista usa una hoja nativa con teclado, botones y mensajes de error integrados.",
+      "Las canciones elegidas desde una búsqueda forman una cola y preparan las siguientes, como las listas. El aleatorio puede empezar por cualquier canción.",
+      "Ajustamos la preparación de audio en segundo plano y evitamos cambiar el procesamiento de sonido al volver a abrir la app.",
+      "Corregimos la posición de reproducción compartida entre dispositivos y el cálculo del tiempo enviado a Discord."
+    ]
+  },
+  {
+    "version": "1.15.1",
+    "fecha": "13 de septiembre de 2026",
+    "titulo": "Un escritorio más fluido.",
+    "cambios": [
+      "Los modales de computadora comparten un diseño de vidrio, bordes redondeados y animaciones al abrir, cerrar o cambiar su contenido.",
+      "Corregimos los fondos de hover para que cubran las filas completas y se muevan entre controles. Las tarjetas tienen más espacio alrededor y las flechas de los carruseles usan vidrio con borde.",
+      "Los tooltips conservan su indicador dentro del contorno de vidrio y esperan medio segundo sobre cada botón antes de aparecer.",
+      "La barra de progreso responde al arrastrarla sin actualizar toda la interfaz. El reproductor anima el cambio entre su tamaño compacto y expandido.",
+      "Discord recibe también la música de los Jam reproducida en esta computadora. Mostramos la cuenta detectada, mejoramos los reintentos y evitamos que un fallo al guardar la preferencia impida publicar la canción.",
+      "Cerrar sesión afecta solamente al dispositivo donde lo hacés, para conservar abiertas tus otras sesiones."
+    ]
+  },
+  {
     "version": "1.15.0",
     "fecha": "13 de septiembre de 2026",
     "titulo": "Tu música, más cerca.",

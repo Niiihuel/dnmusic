@@ -95,3 +95,22 @@ test('fragmentos reutilizan la portada del reproductor y un slider, sin visualiz
   assert.equal(f.seeks[0][0], 'message')
   assert.equal(f.seeks[0][2], 0.4)
 })
+
+
+test('el encabezado compartido usa el del reproductor y conserva el destinatario', () => {
+ const nodes = story().render()
+ const header = nodes.find(n => n.type === 'PlayerHeader')
+ assert.equal(header.props.title, 'Para friend')
+ assert.equal(header.props.closeLabel, 'Volver al chat')
+ assert.ok(!nodes.some(n => n.type === 'CabeceraSocial'))
+})
+test('la frase conserva saltos y palabras largas dentro del scroll, con altura libre', () => {
+ const text = 'Una frase\n\n' + 'Larga'.repeat(300)
+ const nodes = story({text,platform:'web'}).render()
+ const note = nodes.find(n => n.type === 'Text' && n.props.children === text)
+ assert.equal(note.props.numberOfLines, undefined)
+ assert.equal(note.props.style.overflowWrap, 'anywhere')
+ assert.equal(note.props.style.height, undefined)
+ assert.equal(note.props.style.maxHeight, undefined)
+ assert.ok(nodes.some(n => n.type === 'ScrollView'))
+})

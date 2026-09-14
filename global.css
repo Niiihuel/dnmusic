@@ -157,12 +157,12 @@ textarea:focus {
    o botones por su rol, porque muchos son hitboxes dentro de una fila/tarjeta. */
 [data-dn-hover='inverse'] { --dn-hover-color: var(--color-primary-foreground); }
 @media (hover: hover) and (pointer: fine) {
-  :is([data-dn-hover='normal'], [data-dn-hover='inverse']):not(:empty):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *) {
+  :is([data-dn-hover='normal'], [data-dn-hover='inverse'], [data-dn-hover='surface']):not(:empty):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *) {
     --dn-hover-opacity: 0;
     background-image: linear-gradient(rgb(var(--dn-hover-color, var(--color-foreground)) / var(--dn-hover-opacity)), rgb(var(--dn-hover-color, var(--color-foreground)) / var(--dn-hover-opacity)));
     transition: --dn-hover-opacity 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1);
   }
-  :is([data-dn-hover='normal'], [data-dn-hover='inverse']):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):hover { --dn-hover-opacity: 0.07; }
+  :is([data-dn-hover='normal'], [data-dn-hover='inverse'], [data-dn-hover='surface']):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):hover { --dn-hover-opacity: 0.07; }
 }
 /* Una fila completa tiene una sola superficie; los botones internos conservan
    su foco y sus acciones sin añadir otra franja rectangular. */
@@ -290,6 +290,8 @@ textarea:focus {
    nodo; fundir un padre impediría muestrear el contenido detrás del panel. */
 :root {
   --dn-glass-fill: rgb(30 30 33 / 0.48);
+  --dn-tooltip-fill: rgb(36 36 40 / 0.78);
+  --dn-tooltip-edge: rgb(255 255 255 / 0.34);
   --dn-glass-solid: #242426;
   --dn-control-edge: rgb(255 255 255 / 0.22);
   --dn-control-edge-hover: rgb(255 255 255 / 0.34);
@@ -298,6 +300,8 @@ textarea:focus {
 }
 html[data-theme='light'] {
   --dn-glass-fill: rgb(248 248 250 / 0.72);
+  --dn-tooltip-fill: rgb(248 248 250 / 0.85);
+  --dn-tooltip-edge: rgb(0 0 0 / 0.2);
   --dn-glass-solid: #f4f4f6;
   --dn-control-edge: rgb(0 0 0 / 0.16);
   --dn-control-edge-hover: rgb(0 0 0 / 0.26);
@@ -305,8 +309,8 @@ html[data-theme='light'] {
 }
 @media (min-width: 780px) {
   [data-dn-glass] {
-    backdrop-filter: blur(22px) saturate(155%) !important;
     -webkit-backdrop-filter: blur(22px) saturate(155%) !important;
+    backdrop-filter: blur(22px) saturate(155%) !important;
   }
   [data-dn-glass='regular'] {
     background-color: var(--dn-glass-fill) !important;
@@ -319,9 +323,7 @@ html[data-theme='light'] {
   }
   :is([data-dn-hover='normal'], [data-dn-hover='inverse']) {
     border-radius: 999px !important;
-    box-shadow: inset 0 0 0 1px var(--dn-control-edge);
   }
-  [data-dn-hover='inverse'] { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.14); }
   [data-dn-glass]:has(> [data-dn-hover='glass']),
   [role='button'] > [data-dn-glass], .dn-expandable {
     border-radius: 999px !important;
@@ -381,8 +383,8 @@ html[data-theme='light'] {
   background: var(--dn-glass-fill);
   color: rgb(var(--color-foreground));
   box-shadow: var(--dn-glass-sheen);
-  backdrop-filter: blur(18px) saturate(160%);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
   font: inherit;
   cursor: pointer;
   transition: scale 240ms var(--dn-glass-spring), box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -435,7 +437,7 @@ html[data-theme='light'] {
   [data-dn-glass='regular'] { background-color: var(--dn-glass-solid) !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  [data-dn-glass] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  [data-dn-glass] { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
   [data-dn-glass='regular'] { background-color: var(--dn-glass-solid) !important; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -448,7 +450,7 @@ html[data-theme='light'] {
 }
 
 /* Fondos compartidos y estados de acción en PC. */
-.dn-shared-group { position: relative; min-width: 0; }
+.dn-shared-group { position: relative; min-width: 0; display: flex; flex-direction: column; align-items: stretch; }
 .dn-shared-bg { position: absolute; top: 0; left: 0; pointer-events: none; background: rgb(var(--color-foreground) / 0.06); }
 [data-dn-shared-group] [data-dn-shared-item] { background-image: none !important; transition: color 140ms ease; }
 [data-dn-shared-group] [data-dn-shared-item]:not([aria-selected='true']):hover { background-color: transparent !important; }
@@ -465,11 +467,19 @@ html[data-theme='light'] {
 .dn-action-value { display: inline-flex; align-items: center; gap: 8px; justify-content: center; }
 .dn-tooltip {
   position: absolute; pointer-events: auto; width: max-content; max-width: min(260px, calc(100vw - 16px));
-  padding: 7px 11px; border-radius: 12px; color: rgb(var(--color-foreground));
+  padding: 9px 12px 15px; border-radius: 0; color: rgb(var(--color-foreground));
   font: 500 12px/16px system-ui, sans-serif; text-align: center; overflow-wrap: anywhere;
 }
-[data-dn-glass][data-dn-tooltip] { background-color: var(--dn-glass-solid) !important; }
-[data-dn-tooltip-pointer] { position: absolute; width: 8px; height: 8px; transform: rotate(45deg); background: var(--dn-glass-solid); pointer-events: none; }
+[data-dn-glass][data-dn-tooltip] {
+  background-color: var(--dn-tooltip-fill) !important;
+  background-image: linear-gradient(145deg, rgb(255 255 255 / 0.10), transparent 60%);
+  border-radius: 0 !important;
+  -webkit-backdrop-filter: blur(22px) saturate(155%);
+  backdrop-filter: blur(22px) saturate(155%);
+  box-shadow: none !important;
+}
+[data-dn-tooltip][data-side="below"] { padding: 15px 12px 9px; }
+[data-dn-tooltip-outline] { position: absolute; inset: 0; pointer-events: none; }
 /* El hover no cambia medidas ni añade una segunda caja al vidrio. */
 @media (hover: hover) and (pointer: fine) {
   :is([data-dn-hover='normal'], .dn-expandable):not(:disabled):not([aria-disabled='true']):hover { --dn-control-edge: var(--dn-control-edge-hover); }
@@ -500,3 +510,78 @@ html[data-theme='light'] {
 @media (prefers-reduced-motion: reduce) {
   [data-chat-actions="true"] { transition: none; }
 }
+
+/* La cápsula conserva su material mientras cambia de ancho. */
+[data-dn-player-frame] { transition: max-width 360ms cubic-bezier(0.22, 1, 0.36, 1); }
+.dn-seek { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+.dn-seek-time { width: 32px; flex-shrink: 0; color: rgb(var(--color-muted-foreground)); font: 11px/16px system-ui; font-variant-numeric: tabular-nums; }
+.dn-seek-time:last-child { text-align: right; }
+.dn-seek-input {
+  --dn-seek-progress: 0%; appearance: none; -webkit-appearance: none;
+  flex: 1; min-width: 0; width: 100%; height: 24px; margin: 0; padding: 0;
+  border: 0; border-radius: 999px; background: transparent; cursor: pointer;
+  touch-action: pan-y; outline: none;
+}
+.dn-seek-input::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 999px;
+  background: linear-gradient(to right, rgb(var(--color-foreground)) var(--dn-seek-progress), rgb(var(--color-foreground) / 0.24) var(--dn-seek-progress));
+}
+.dn-seek-input::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none; width: 12px; height: 12px;
+  margin-top: -4px; border: 0; border-radius: 50%; background: rgb(var(--color-foreground));
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); transition: transform 140ms ease-out;
+}
+.dn-seek-input::-moz-range-track { height: 4px; border-radius: 999px; background: rgb(var(--color-foreground) / 0.24); }
+.dn-seek-input::-moz-range-progress { height: 4px; border-radius: 999px; background: rgb(var(--color-foreground)); }
+.dn-seek-input::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: rgb(var(--color-foreground)); box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); }
+.dn-seek-input:is(:hover, :active)::-webkit-slider-thumb { transform: scale(1.15); }
+.dn-seek-input:focus-visible { outline: 2px solid rgb(var(--color-ring)); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  [data-dn-player-frame], .dn-seek-input::-webkit-slider-thumb { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  [data-dn-glass][data-dn-tooltip] { background: var(--dn-glass-solid) !important; backdrop-filter: none !important; }
+}
+@supports not (backdrop-filter: blur(1px)) {
+  [data-dn-glass][data-dn-tooltip] { background: var(--dn-glass-solid) !important; }
+}
+
+/* El fondo se comparte dentro de cada lista/carrusel, sin cruzar paneles. */
+.dn-shared-scroll { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.dn-shared-carousel { display: flex; flex-direction: row; align-items: flex-start; }
+[data-dn-shared-targets] > .dn-shared-bg { background: rgb(var(--color-foreground) / 0.07); }
+[data-dn-shared-targets] :is([data-dn-surface='row'], [data-dn-hover='surface']) { background-image: none !important; }
+[data-dn-shared-targets] :is([data-dn-surface='row'], [data-dn-hover='surface']):not([aria-selected='true']):not([aria-checked='true']):hover { background-color: transparent !important; }
+/* Un hitbox dentro de una fila no dibuja otra franja sobre el fondo móvil. */
+[data-dn-surface='row'] [data-dn-hover='surface'] { background-image: none !important; }
+
+/* PC dialogs: beUI morphing-modal geometry, shared by routes and local dialogs. */
+.dn-modal-stage { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; isolation: isolate; }
+.dn-modal-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.24); -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%); }
+.dn-modal-panel { position: relative; max-width: calc(100vw - 48px); max-height: calc(100dvh - 48px); border: 1px solid rgba(255,255,255,.16); border-radius: 24px; background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 48%), #19191c; color: #f5f5f5; box-shadow: 0 24px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05); overflow: hidden; outline: none; }
+.dn-modal-size { position: relative; max-height: calc(100dvh - 50px); overflow: hidden; }
+.dn-modal-content { position: relative; display: flex; flex-direction: column; max-height: calc(100dvh - 50px); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent; }
+.dn-modal-view, .dn-modal-view-inner { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.dn-modal-view-inner > .bg-background, .dn-modal-view-inner > .bg-card { background-color: transparent; }
+.dn-modal-panel [data-dn-modal-header] { background: transparent; }
+.dn-modal-panel [inert] { pointer-events: none; }
+
+/* Las filas RN Web deben estirarse dentro del grupo HTML de hover. */
+.dn-settings-rows { display: flex; flex-direction: column; align-items: stretch; width: 100%; }
+.dn-settings-rows > [data-dn-surface] { width: 100%; align-self: stretch; }
+
+/* Controles Linux: orden Windows, sin bordes decorativos ni eventos de arrastre. */
+.dn-linux-titlebar { background: #101010; }
+.dn-window-button { width: 46px; height: 32px; align-items: center; justify-content: center; background: #101010; color: #b3b3b3; cursor: default; }
+.dn-window-button:hover { background: #292929; color: #fff; }
+.dn-window-button:active { background: #383838; }
+.dn-window-button.dn-window-close:hover { background: #c42b1c; color: #fff; }
+.dn-window-button.dn-window-close:active { background: #a82418; }
+.dn-window-icon { width: 10px; height: 10px; position: relative; }
+.dn-window-minimize::after { content: ''; position: absolute; top: 5px; width: 10px; height: 1px; background: currentColor; }
+.dn-window-maximize { border: 1px solid currentColor; }
+.dn-window-restore::before, .dn-window-restore::after { content: ''; position: absolute; width: 8px; height: 8px; border: 1px solid currentColor; }
+.dn-window-restore::before { top: -1px; right: -1px; }
+.dn-window-restore::after { bottom: -1px; left: -1px; background: #101010; }
+.dn-window-cross::before, .dn-window-cross::after { content: ''; position: absolute; top: 5px; left: -2px; width: 14px; height: 1px; background: currentColor; transform: rotate(45deg); }
+.dn-window-cross::after { transform: rotate(-45deg); }

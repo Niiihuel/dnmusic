@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { cerrarTooltip, retenerTooltip, soltarTooltip, useTooltip, type Tooltip as TooltipData } from '../state/tooltip'
 import { CapaTooltip } from './CapaTooltip'
-import { geometriaTooltip } from './tooltipGeometry'
+import { contornoTooltip, geometriaTooltip } from './tooltipGeometry'
 import { SPRING_LAYOUT } from './motion.web'
 export { useConTooltip } from './useConTooltip'
 export { geometriaTooltip } from './tooltipGeometry'
@@ -50,13 +50,14 @@ function Rotulo({ tip }: { tip: TooltipData }) {
   }, [tip.anchor, id])
   const g = geometriaTooltip(tip, window.innerWidth, window.innerHeight, size)
   const top = g.arriba ? Math.max(8, tip.y - (size?.height ?? 28) - 6) : tip.y + tip.h + 6
+  const outline = size ? contornoTooltip(size.width, size.height, g.punta + 4, g.arriba) : undefined
   return <motion.div ref={ref} id={id} role="tooltip" data-dn-glass="regular" data-dn-tooltip=""
-    className="dn-tooltip" onPointerEnter={() => retenerTooltip()} onPointerLeave={() => soltarTooltip(tip.owner)}
+    data-side={g.arriba ? 'above' : 'below'} className="dn-tooltip" onPointerEnter={() => retenerTooltip()} onPointerLeave={() => soltarTooltip(tip.owner)}
     initial={{ opacity: 0, scale: reduce ? 1 : 0.92, left: g.left, top }}
     animate={{ opacity: 1, scale: 1, left: g.left, top }}
     exit={{ opacity: 0, scale: reduce ? 1 : 0.96, pointerEvents: 'none' }}
     transition={reduce ? { duration: 0 } : { ...SPRING_LAYOUT, opacity: { duration: 0.12 } }}
-    style={{ transformOrigin: `${g.punta + 4}px ${g.arriba ? 'bottom' : 'top'}` }}>
+    style={{ transformOrigin: `${g.punta + 4}px ${g.arriba ? 'bottom' : 'top'}`, visibility: size ? 'visible' : 'hidden', clipPath: outline ? `path('${outline}')` : undefined }}>
     <AnimatePresence initial={false} mode="popLayout">
       <motion.span key={tip.texto} style={{ display: 'block' }}
         initial={{ opacity: 0, filter: reduce ? 'none' : 'blur(3px)' }}
@@ -64,6 +65,8 @@ function Rotulo({ tip }: { tip: TooltipData }) {
         {tip.texto}
       </motion.span>
     </AnimatePresence>
-    <span aria-hidden="true" data-dn-tooltip-pointer="" style={{ left: g.punta, ...(g.arriba ? { bottom: -3 } : { top: -3 }) }} />
+    {outline ? <svg aria-hidden="true" data-dn-tooltip-outline="" width={size?.width} height={size?.height}>
+      <path d={outline} fill="none" stroke="var(--dn-tooltip-edge)" strokeWidth={1.5} />
+    </svg> : null}
   </motion.div>
 }

@@ -1,7 +1,7 @@
 import { Platform } from 'react-native'
 
 /** Sólo RN web serializa dataSet; los controles nativos no reciben props DOM. */
-export function estadoControlWeb(modo: 'normal' | 'none' | 'inverse' | 'glass' | 'row') {
+export function estadoControlWeb(modo: 'normal' | 'none' | 'inverse' | 'glass' | 'row' | 'surface') {
   return Platform.OS === 'web' ? { dataSet: { dnHover: modo } } : {}
 }
 

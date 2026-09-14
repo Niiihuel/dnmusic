@@ -3,7 +3,7 @@ import { ScrollArea } from './ScrollArea'
 import { ES_WEB, vidrioCss } from './Glass'
 import { useState } from 'react'
 import { Image, Platform, Pressable, Text, View } from 'react-native'
-import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
+import { togglePlayback, usePlaybackCargada, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { useKeyboardH, usePiso } from '../state/shell'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { useClicDerecho } from './useClicDerecho'
@@ -100,6 +100,7 @@ export function SearchDropdown({
    */
   const current = usePlaybackTrack()
   const wantPlay = useWantPlay()
+  const cargada = usePlaybackCargada()
   /* Los resultados terminan justo antes del teclado: si siguen por debajo, los
      últimos quedan tapados y no hay forma de llegar a ellos sin cerrarlo. */
   const teclado = useKeyboardH()
@@ -182,7 +183,7 @@ export function SearchDropdown({
               track={r}
               sounding={current?.videoId === r.videoId}
               playing={wantPlay}
-              busy={pendingId === r.videoId}
+              busy={pendingId === r.videoId || (current?.videoId === r.videoId && wantPlay && !cargada)}
               alwaysSelect={alwaysSelect}
               onSelect={onSelect}
               onQuickAdd={onQuickAdd}

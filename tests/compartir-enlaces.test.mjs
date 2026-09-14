@@ -143,3 +143,17 @@ test('si publicar falla, la canción se comparte igual', async () => {
   await c.compartirCancion({ videoId: 'abc123', title: 'Tema', artist: 'Artista' })
   assert.deepEqual(hechos, ['copiar', 'aviso'])
 })
+
+
+test('copiar el link también publica primero la portada y devuelve el resultado real', async () => {
+  const { compartir: c, hechos } = caja()
+  assert.equal(await c.copiarEnlaceCancion({ videoId: 'abc123', title: 'Tema', artist: 'Artista' }), true)
+  assert.deepEqual(hechos, ['publicar', 'copiar'])
+})
+
+test('publicar informa los errores del RPC en lugar de simular éxito', async () => {
+  const c = cargar('src/services/compartidos.ts', {
+    '../lib/supabase': { getSupabase: () => ({ rpc: async () => ({ error: Error('sin acceso') }) }) },
+  })
+  await assert.rejects(c.publicarCancion({ videoId: 'abc', title: 'Tema', artist: 'Artista' }), /sin acceso/)
+})

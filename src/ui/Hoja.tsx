@@ -13,6 +13,7 @@ import { useIsFocused } from 'expo-router/react-navigation'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { volver } from '../lib/volver'
 import { ES_WEB } from './Glass'
+import { ModalEscritorio } from './ModalEscritorio'
 
 /**
  * Hasta dónde crece el contenido adentro de una hoja, en una ventana ancha.
@@ -30,8 +31,6 @@ const ESCRITORIO_PX = 780
 
 /** Lo que tarda en subir y en volver a bajar. Los mismos de «Sonando». */
 const SUBE_MS = 380
-/** El modal aparece más rápido que la hoja: no viaja, solo se presenta. */
-const MODAL_MS = 200
 /** La franja de app que queda a la vista por encima de la hoja. */
 const TOPE = 48
 
@@ -87,12 +86,14 @@ export function Hoja({
   anchoMaximo = ANCHO_HOJA,
   titulo,
   onCerrar,
+  vista,
 }: {
   onCerrar?: () => void
   children: ReactNode
   medida?: MedidaHoja
   anchoMaximo?: number
   titulo?: string
+  vista?: string
 }) {
   const ancho = useWindowDimensions().width >= ESCRITORIO_PX
   if (!ES_WEB) return <View collapsable={false}
@@ -101,7 +102,7 @@ export function Hoja({
   </View>
   if (ancho)
     return (
-      <Modal medida={medida} anchoMaximo={anchoMaximo} titulo={titulo} onCerrar={onCerrar}>
+      <Modal vista={vista} medida={medida} anchoMaximo={anchoMaximo} titulo={titulo} onCerrar={onCerrar}>
         {children}
       </Modal>
     )
@@ -111,9 +112,7 @@ export function Hoja({
 /**
  * El modal de escritorio: velo + tarjeta centrada.
  *
- * Aparece con un fundido y un acercamiento corto (0.96 → 1): la escala es lo
- * que lo hace leerse como algo que **se presenta** y no como algo que ya estaba
- * y parpadeó. Escape y el click afuera lo cierran — los dos idiomas del
+ * Comparte el marco y el resorte de los demás diálogos de PC. Escape y el click afuera lo cierran — los dos idiomas del
  * escritorio para «esto no era».
  */
 function Modal({
@@ -122,76 +121,25 @@ function Modal({
   anchoMaximo,
   titulo,
   onCerrar,
+  vista,
 }: {
   onCerrar?: () => void
   children: ReactNode
   medida: MedidaHoja
   anchoMaximo: number
   titulo?: string
+  vista?: string
 }) {
   const router = useRouter()
   const enfocado = useIsFocused()
   const { height } = useWindowDimensions()
-  const reducirMovimiento = useReducedMotion()
-  const entrada = useSharedValue(reducirMovimiento ? 1 : 0)
-
-  useEffect(() => {
-    entrada.value = withTiming(1, { duration: reducirMovimiento ? 0 : MODAL_MS, easing: Easing.out(Easing.cubic) })
-  }, [entrada, reducirMovimiento])
-
   // Navegar primero permite que usePreventRemove conserve visible el borrador.
   const cerrar = onCerrar ?? (() => volver(router, '/'))
-
-  // ModalSistema administra foco, Escape y el orden de las hojas apiladas.
-  const velo = useAnimatedStyle(() => ({ opacity: entrada.value * 0.45 }))
-  const tarjeta = useAnimatedStyle(() => ({
-    opacity: entrada.value,
-    transform: [{ scale: 0.96 + entrada.value * 0.04 }],
-  }))
-
-  /* La altura del modal lleno: casi toda la ventana, sin llegar a los bordes.
-     Fija y no `maxHeight` porque adentro casi todo es `flex-1`, y un flex
-     dentro de un padre de altura automática colapsa a cero. */
   const alto = Math.min(Math.round(height * 0.82), 720)
-
-  return (
-    <ModalSistema visible={enfocado} transparent animationType="none" onRequestClose={cerrar} accessibilityLabel={titulo}>
-    <View style={{ flex: 1 }}>
-      <Animated.View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }, velo]}
-      />
-      <Pressable
-        accessibilityRole="button"
-        {...estadoControlWeb('none')}
-        accessibilityLabel="Cerrar"
-        onPress={cerrar}
-        style={StyleSheet.absoluteFill}
-      />
-      <View
-        pointerEvents="box-none"
-        style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}
-      >
-        <Animated.View
-          style={[
-            {
-              width: anchoMaximo,
-              maxWidth: '92%' as const,
-              borderRadius: 28,
-              overflow: 'hidden',
-              backgroundColor: '#18181b',
-              boxShadow: '0 24px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)',
-              ...(medida === 'llena' ? { height: alto } : { maxHeight: alto }),
-            },
-            tarjeta,
-          ]}
-        >
-          {children}
-        </Animated.View>
-      </View>
-    </View>
-    </ModalSistema>
-  )
+  return <ModalEscritorio visible={enfocado} titulo={titulo} onCerrar={cerrar}
+    ancho={anchoMaximo} alto={medida === 'llena' ? alto : undefined} vista={vista}>
+    {children}
+  </ModalEscritorio>
 }
 
 /**

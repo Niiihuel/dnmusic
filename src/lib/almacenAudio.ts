@@ -5,6 +5,7 @@ import { excluirDeCopias } from '../../modules/backup-exclusion'
 export const RESERVA_AUDIO = 300 * 1024 * 1024
 export type AudioLocal = { key: string; uri: string; bytes: number }
 export type ProgresoAudio = { bytesWritten: number; totalBytes: number }
+export type UsoTransferenciaAudio = 'descarga' | 'reproduccion'
 export type PausaAudio = DownloadPauseState
 export type TransferenciaAudio = {
   resultado: Promise<AudioLocal | null>
@@ -113,7 +114,7 @@ export async function quitarPausa(pausa?: PausaAudio) {
 }
 
 /** Un archivo sólo aparece en listarAudio después del movimiento final. */
-export function transferirAudio(key: string, url: string, onProgress: (p: ProgresoAudio) => void, pausa?: PausaAudio): TransferenciaAudio {
+export function transferirAudio(key: string, url: string, onProgress: (p: ProgresoAudio) => void, pausa?: PausaAudio, uso: UsoTransferenciaAudio = 'descarga'): TransferenciaAudio {
   const puente = puenteAudio()
   if (puente) {
     const off = puente.alProgreso(p => { if (p.key === key) onProgress(p) })
@@ -132,7 +133,12 @@ export function transferirAudio(key: string, url: string, onProgress: (p: Progre
     if (anterior.exists) anterior.delete()
   }
   const destino = restaurable ? new fs.File(pausa.fileUri) : archivo(`parcial-${Date.now()}-${Math.random().toString(36).slice(2)}`)
-  const options = { sessionType: 'background' as const, onProgress }
+  // Las sesiones background pueden ser diferidas por iOS cuando el siguiente
+  // tema se solicita con la pantalla bloqueada. La precarga forma parte de la
+  // reproducción activa: usa la sesión normal mientras el audio mantiene la app.
+  // Las descargas offline siguen en la sesión que sobrevive a la suspensión.
+  const sessionType = Platform.OS === 'ios' && uso === 'reproduccion' ? 'foreground' : 'background'
+  const options = { sessionType, onProgress } as const
   let task: DownloadTask
   if (restaurable) task = fs.DownloadTask.fromSavable({ ...pausa, url }, options)
   else task = fs.File.createDownloadTask(url, destino, options)

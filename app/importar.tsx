@@ -1,3 +1,5 @@
+import { superficieInteractivaWeb, estadoControlWeb } from '../src/ui/estadoControl'
+import { SharedLayoutBg } from '../src/ui/SharedLayoutBg'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -240,7 +242,7 @@ export default function Importar() {
     .filter(({ resultado }) => filtro === 'todas' || resultado.confianza !== 'segura')
 
   return (
-    <Hoja medida={modal ? 'contenido' : 'llena'} anchoMaximo={CAP} titulo="Traer de Spotify">
+    <Hoja vista={fase} medida={modal ? 'contenido' : 'llena'} anchoMaximo={CAP} titulo="Traer de Spotify">
       <SafeAreaView className="min-h-0 bg-background" edges={Platform.OS === 'web' ? [] : ['bottom']}
         style={modal ? { height: Math.min(fase === 'revision' ? 720 : 320, height - 96) } : { flex: 1 }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="min-h-0 flex-1">
@@ -389,6 +391,7 @@ function Trabajando({
 
       {fase !== 'guardando' ? (
         <Pressable
+          {...estadoControlWeb('surface')}
           accessibilityRole="button"
           onPress={onCancelar}
           className="h-11 items-center justify-center rounded-full px-5 active:bg-muted"
@@ -442,8 +445,10 @@ function FilaResultado({
     const track = candidatoPorId(resultado, elegido)
     return (
       <Pressable
+          {...estadoControlWeb('surface')}
         accessibilityRole="button"
         accessibilityLabel={`Revisar ${resultado.pista.titulo}`}
+        {...superficieInteractivaWeb('row')}
         accessibilityState={{ expanded: false }}
         onPress={() => setAbierta(true)}
         className="min-h-14 flex-row items-center gap-3 rounded-xl py-2 active:bg-card"
@@ -486,6 +491,7 @@ function FilaResultado({
          */}
         {resultado.pista.previewUrl ? (
           <Pressable
+          {...estadoControlWeb('surface')}
             accessibilityRole="button"
             accessibilityLabel={`Escuchar el original de ${resultado.pista.titulo}`}
             onPress={() => previo.alternar(resultado.pista.previewUrl!)}
@@ -505,11 +511,13 @@ function FilaResultado({
           No encontré nada parecido. Se puede buscar a mano después, desde la lista.
         </Text>
       ) : (
+        <SharedLayoutBg targets="surfaces">
         <View className="gap-1">
           {resultado.candidatos.map((candidato) => {
             const activo = candidato.track.videoId === elegido
             return (
               <Pressable
+          {...estadoControlWeb('surface')}
                 key={candidato.track.videoId}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: activo }}
@@ -534,9 +542,11 @@ function FilaResultado({
             )
           })}
         </View>
+        </SharedLayoutBg>
       )}
 
       <Pressable
+          {...estadoControlWeb('surface')}
         accessibilityRole="button"
         accessibilityState={{ selected: elegido === null }}
         onPress={() => onElegir(null)}

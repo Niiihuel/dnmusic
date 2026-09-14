@@ -1,3 +1,4 @@
+import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { makeMutable } from 'react-native-reanimated'
 import type { PlaylistTrack } from '../services/playlists'
@@ -702,6 +703,14 @@ export function playQueue(
     error: null,
   })
   guardar(true)
+}
+
+/** Inicia una colección sin una canción elegida: el azar incluye la primera. */
+export function playCollection(tracks: PlaylistTrack[], origin: PlaybackOrigin | null) {
+  if (!tracks.length) return
+  const aleatorio = !enJam() && store.get().modoReproduccion !== 'orden'
+  const index = aleatorio ? Math.floor(Math.random() * tracks.length) : 0
+  playQueue(tracks, index, origin)
 }
 
 /** Suma a la cola manual: suena cuando termine lo de ahora. */
@@ -1426,14 +1435,28 @@ export function stopPlayback() {
  * —fuerte y molesto— y había que bajarlo de nuevo. Clave propia, un solo número.
  */
 const VOL_CLAVE = 'volume:v1'
+let guardarVolumenTimer: ReturnType<typeof setTimeout> | undefined
+function guardarVolumen() {
+  clearTimeout(guardarVolumenTimer)
+  guardarVolumenTimer = undefined
+  void AsyncStorage.setItem(VOL_CLAVE, String(store.get().volume)).catch(() => {})
+}
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => {
+    if (guardarVolumenTimer !== undefined) guardarVolumen()
+  })
+}
 
 export function setVolume(volume: number) {
   if (!Number.isFinite(volume)) return
   const v = Math.max(0, Math.min(1, volume))
+  if (store.get().volume === v) return
   store.set({ volume: v })
-  void AsyncStorage.setItem(VOL_CLAVE, String(v)).catch(() => {
-    // Sin memoria del volumen, pero suena igual.
-  })
+  // El audio responde ahora; guardar en disco espera a que termine el arrastre.
+  if (Platform.OS === 'web') {
+    clearTimeout(guardarVolumenTimer)
+    guardarVolumenTimer = setTimeout(guardarVolumen, 160)
+  } else guardarVolumen()
 }
 
 /** Devuelve el volumen de la sesión anterior. Lo llama el layout al arrancar. */

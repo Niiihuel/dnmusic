@@ -13,6 +13,7 @@ export type EstadoDiscord = {
   applicationId: string
   status: 'disabled' | 'unconfigured' | 'disconnected' | 'connecting' | 'ready' | 'published' | 'error'
   error?: string
+  account?: string
 }
 type ConfiguracionDiscord = { enabled: boolean; applicationId: string }
 type PuenteDiscord = {
@@ -58,16 +59,21 @@ async function aplicarConfiguracionDiscord(config: ConfiguracionDiscord, revocar
   preferenciasDeSesion.set(id, guardada)
   // Persistir antes del ACK: salir durante la operación no pierde una revocación.
   escritura = escritura.catch(() => {}).then(() => AsyncStorage.setItem(clave(id), JSON.stringify(guardada)))
-  const guardado = escritura
+  const guardado = escritura.then(() => true, () => false)
   try {
-    const [estado] = await Promise.all([p.configurar(solicitada), guardado])
+    const estado = await p.configurar(solicitada)
     if (v !== version || cuenta !== id || operacion !== intencion) return false
     configuracion = { enabled: estado.enabled, applicationId: estado.applicationId }
     store.set({ estado })
     publicarActual?.()
-    return true
+    // La conexión y el disco son resultados distintos: fallar al persistir no
+    // puede dejar un READY con la publicación local deshabilitada en silencio.
+    const persistido = await guardado
+    if (v !== version || cuenta !== id || operacion !== intencion) return false
+    if (!persistido) store.set({ error: 'El cambio se aplicó en esta sesión, pero no se pudo guardar para la próxima vez. Volvé a intentar.' })
+    return persistido
   } catch {
-    if (v === version && operacion === intencion) store.set({ error: 'No se pudo guardar la configuración de Discord. Volvé a intentar.' })
+    if (v === version && operacion === intencion) store.set({ error: 'No se pudo comunicar el cambio a Discord. Volvé a intentar.' })
     return false
   } finally {
     if (v === version && operacion === intencion) store.set({ guardando: false })

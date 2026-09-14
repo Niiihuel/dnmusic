@@ -201,6 +201,12 @@ la sesión borrada a los segundos de entrar—, y el reemplazo se reintenta ante
 de resignarse. Cuando algo de esto falla queda dicho en el log del proceso
 principal, que en Windows se ve con `dnmusic.exe --enable-logging`.
 
+**Cerrar sesión sólo afecta a esa instalación.** Desde la 1.15.1 se pasa
+`scope: local` a Supabase: omitirlo revocaba también las sesiones del resto de
+los dispositivos y se notaba cuando intentaban renovar su acceso. Esto corrige
+un motivo posible de cierres inesperados, pero no confirma por sí solo la causa
+en una computadora específica.
+
 **Un chunk que falta devuelve 404, no index.html.** El fallback de SPA es el
 mismo que hace `vercel.json` en la web, con el mismo corte: una ruta cae en
 index.html, un archivo con extensión que no está devuelve 404. Si le
@@ -239,40 +245,27 @@ no es un detalle.
 
 ## La ventana dibuja su propio cromo
 
-La barra de título del sistema está apagada (`titleBarStyle: 'hidden'`). Es el
-mismo argumento con el que se fueron los `dialog.showMessageBox`: una franja
-gris del sistema apoyada encima de una interfaz que se separa por luminancia y
-no por bordes se lee como otra app pegada arriba. Música de Mac no la tiene —los
-controles flotan sobre la barra lateral— y eso es lo que se busca.
+En Windows se conserva `titleBarStyle: 'hidden'` con los controles nativos de
+`titleBarOverlay` y los menús de acoplamiento del sistema. `BandaVentana` reserva
+la altura informada por `navigator.windowControlsOverlay` para que los botones
+no tapen la navegación ni los encabezados.
 
-Los botones de minimizar, maximizar y cerrar **siguen siendo los del sistema**:
-`titleBarOverlay` los conserva, teñidos con la paleta (`#121212` de fondo,
-`#B3B3B3` los símbolos, 38px de alto). Rehacerlos a mano hubiera significado
-reimplementar el comportamiento de ventana de cada escritorio, que es donde una
-barra casera se equivoca: doble click para maximizar, arrastrar contra el borde
-para acoplar, el menú del sistema con click derecho.
+En Linux la ventana usa `frame: false`: los controles propios quedan siempre a
+la derecha, en el orden minimizar, maximizar/restaurar y cerrar. Una fila de 32px
+reserva su espacio en todas las rutas, incluido el inicio de sesión. Los tres
+botones ocupan 138px y siguen accesibles sobre los modales. En pantalla completa
+se oculta la fila; al maximizar cambia el icono y la etiqueta a «Restaurar».
 
-**El cromo va encima del layout, no adentro.** El navegador dibuja esos botones
-sobre la página, así que la app llega hasta el borde de arriba y ellos flotan.
-El primer intento reservaba una fila de 38px como primer hijo del árbol y se veía
-exactamente como lo que era: una banda negra muerta cruzando toda la ventana,
-con la app empezando debajo. Ninguna fila reserva alto.
+El resto de la fila permite arrastrar con `dn-arrastrar`; los botones usan
+`dn-no-arrastrar` para recibir los clicks. Las acciones pasan por el puente
+`ventana` del preload y `desktop/src/ventana-ipc.ts`, que acepta únicamente el
+frame principal del origen de la app. Cerrar llama a `BrowserWindow.close()` y
+conserva el proceso normal de cierre y actualización. No se modifican las
+preferencias de posición de botones del escritorio Linux.
 
-Lo que sí hay que declarar es **desde dónde se arrastra**, porque sin barra de
-título nadie lo hace y la ventana queda clavada. Eso lo pone `CabeceraLateral`
-—la franja de arriba de la barra lateral, con el título de la sección, el mismo
-lugar del que se arrastra Música para Mac— con la clase `dn-arrastrar`, y sus
-controles se salen con `dn-no-arrastrar`: una zona de arrastre se come el click
-de todo lo que tenga adentro. Las clases viven en `global.css` porque
-`app-region` no existe en React Native, y `src/ui/BandaVentana.tsx` decide si
-corresponden.
-
-**No se da por sentado que el overlay exista.** `navigator.windowControlsOverlay`
-sólo existe cuando está activo, que es exactamente cuando hay botones flotando y
-una ventana sin marco; en el navegador, en la PWA y en el teléfono las dos clases
-quedan vacías. Se probó con Electron sobre Wayland en la app real: overlay
-visible, 96px reservados a la derecha para los botones y `env(titlebar-area-*)`
-publicado.
+En pestañas normales y en móvil no se dibuja ninguna banda. La presencia de la
+API de overlay por sí sola no basta: debe estar visible. Una PWA con overlay
+activo utiliza su geometría nativa.
 
 Con el cromo propio, la barra de menú dejó de estar a la vista. Los atajos de
 sus roles (`Ctrl+R`, `Ctrl+Shift+I`) siguen funcionando porque el menú se

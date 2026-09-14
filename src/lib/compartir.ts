@@ -160,6 +160,12 @@ export async function compartirCancion(track: {
   await ofrecer(enlace, `Escuchá «${track.title}»${quien} en dnmusic: ${enlace}`)
 }
 
+/** Copiar también prepara el preview antes de que el receptor pida el enlace. */
+export async function copiarEnlaceCancion(track: Parameters<typeof publicarCancion>[0]): Promise<boolean> {
+  await publicarCancion(track).catch(() => {})
+  return copiarAlPortapapeles(linkDe('cancion', track.videoId))
+}
+
 /** Pasar un perfil. Solo tiene tarjeta si está en público; ver `tarjeta_enlace`. */
 export async function compartirPerfil(usuario: string, nombre?: string | null): Promise<void> {
   const enlace = linkDe('perfil', usuario)

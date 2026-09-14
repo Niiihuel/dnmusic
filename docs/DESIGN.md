@@ -36,8 +36,9 @@ Estas convenciones rigen las pantallas nuevas y sus adaptaciones:
   Opciones, no en varias filas de botones. Los submenús agrupan duración y
   presentación del fragmento. `MenuNativo` usa SwiftUI en iOS.
 - **Una convención de hoja.** `CabeceraSocial` delega en `EncabezadoHoja`:
-  cerrar a la izquierda, título de 17 px y resumen debajo, acción a la derecha.
-  Todos los controles tienen un área de 44 px. `Hoja` limita ancho y alto en
+  en móvil, cerrar a la izquierda, título de 17 px y resumen debajo, acción a la derecha.
+  En PC, título de 20 px a la izquierda y cierre de 32 px a la derecha; volver
+  conserva su posición izquierda. En móvil el área táctil sigue siendo de 44 px. `Hoja` limita ancho y alto en
   escritorio y usa `Modal` en web para foco, Escape y capas apiladas; en iOS
   presenta el `formSheet` del sistema. La altura compacta depende del contenido.
   No se simula un tirador de arrastre en web si no existe el gesto.
@@ -350,7 +351,7 @@ hoja de elegir; en la compu, el submenú.
 
 ## Hojas
 
-Toda hoja arranca igual: **cerrar a la izquierda, el título en el medio, la
+En móvil, toda hoja arranca igual: **cerrar a la izquierda, el título en el medio, la
 acción a la derecha** (`EncabezadoHoja`), con una línea chica debajo del título
 para el resumen vivo («3 canciones a “Mi lista”»). La marca de confirmar es un
 redondel que está gris hasta que hay algo que confirmar, y se vuelve el blanco
@@ -511,11 +512,14 @@ Referencia: [Expo Router: Stack](https://docs.expo.dev/router/advanced/stack/).
 
 `Glass` y `GlassAnimado` exponen `data-dn-glass`. `global.css` define el
 material de escritorio (desde 780 px): desenfoque y saturación constantes,
-filo de luz y sombra. Los controles de PC usan un aro interior continuo de 1 px,
-visible también en reposo; los botones de icono son círculos y los de texto
+filo de luz y sombra. Las superficies de vidrio independientes (incluidas las flechas del carrusel)
+usan un aro interior continuo de 1 px, visible también en reposo. Los controles
+internos del reproductor y los tres puntos de las filas no llevan aro; los botones de icono son círculos y los de texto
 cápsulas (`999px`). Los menús y desplegables tienen radio de 26 px. El aro
 pertenece a la superficie exterior, nunca al hitbox interior ni a cada fila.
-No se anima el blur ni se añaden filtros SVG globales.
+No se anima el blur ni se añaden filtros SVG globales. En CSS, declarar
+`-webkit-backdrop-filter` antes de `backdrop-filter`: el procesador conserva
+la última declaración y Chrome necesita la propiedad sin prefijo.
 El respaldo sin `backdrop-filter`, y Reducir transparencia, usan fondo sólido.
 
 `Popover` comparte en web la superficie, el posicionamiento y el cierre de
@@ -550,7 +554,8 @@ su hitbox interior. Las tarjetas usan `card` y `artworkInteractivoWeb()` para
 resaltar solo la portada con brillo suave, sin variar opacidad, tamaño ni
 posición del texto. Los grupos compartidos no suman otro fondo sobre el deslizante.
 
-El tooltip mantiene su indicador. Abre tras 120 ms y no repite la espera al
+El tooltip integra su indicador en un único contorno, con vidrio difuminado
+y tinte suficiente para leer sobre portadas. Abre tras 500 ms en cada control, también al
 recorrer controles vecinos. Cada control tiene un propietario: desmontar otro
 botón no lo cierra. La medida real del texto coloca la caja y su punta; el foco
 se relaciona con `aria-describedby`. Escape, scroll, resize y perder la ventana
@@ -577,3 +582,42 @@ Referencias: [Shared Layout Background](https://beui.dev/components/motion/share
 [Tooltip](https://beui.dev/components/motion/tooltip),
 [Action Swap](https://beui.dev/components/motion/action-swap) y
 [Scroll Animation](https://beui.dev/components/motion/scroll-animation).
+
+
+El slider de PC usa un `input[type=range]` nativo: actualiza perilla, relleno y
+previsualización sin estado React por movimiento. Confirma la posición al soltar;
+el volumen notifica como máximo una vez por cuadro y agrupa su persistencia
+tras 160 ms de quietud (se vacía también al cerrar la página). La posición fina
+del motor sigue la perilla mediante una suscripción con limpieza. Un seek
+pendiente no acepta posiciones antiguas del motor durante hasta un segundo.
+La cápsula del reproductor anima su ancho en 360 ms y respeta Reducir movimiento.
+
+
+El hover de contenido se comparte en `ScrollArea` y `FadingRow`. Los grupos
+anidados tienen su propio fondo; entrar a uno apaga el del padre. Las filas
+se miden completas (portada, texto, padding y menú), con prioridad sobre sus
+hitboxes internos. Las tarjetas tienen 8 px de aire alrededor del fondo y radio
+20 px; el carrusel reserva ese espacio para que no se recorte. El scroll mueve
+el fondo sin retraso de resorte. `BotonSuperficie` tiene respuesta animada por
+defecto y respeta los estados explícitos `none`, `row` y `card`.
+
+## Modales de PC
+
+`Hoja` y `Dialogo` comparten `ModalEscritorio.web`, inspirado en
+[beUI Morphing Modal](https://beui.dev/components/motion/morphing-modal).
+El panel usa radio de 24 px, borde blanco fino, superficie oscura con un reflejo
+suave y fondo desenfocado a 14 px. La cabecera alinea el título a la izquierda,
+las acciones y el cierre a la derecha; el contenido mantiene un margen de 20 px.
+Confirmaciones y opciones breves usan 400–440 px; listas y editores conservan
+su ancho necesario y siempre caben en la ventana, con scroll interior.
+
+El panel aparece desde 20 px y escala .97, con resorte 420/40/.5. La altura
+compacta se mide sobre el contenido natural, sin estirar texto ni imágenes.
+`vista` identifica pasos de un flujo (por ejemplo, las fases de Spotify) y
+habilita el relevo de contenido con desplazamiento de 8 px y difuminado breve.
+No se usan el texto del borrador ni los errores como claves. Las vistas salientes
+son inertes; movimiento reducido elimina desplazamientos y animaciones.
+`Modal` de React Native Web conserva foco, Escape y orden de las capas. El cierre
+solicita primero la navegación para que `usePreventRemove` pueda preservar el borrador.
+Los menús y popovers anclados conservan su presentación propia; iOS sigue usando
+sus hojas y alertas del sistema.

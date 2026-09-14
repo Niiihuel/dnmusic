@@ -1,27 +1,10 @@
 import { createStore, useStore } from './store'
 
 /**
- * El rótulo que aparece al dejar el cursor sobre un botón de solo ícono.
- *
- * Vive en un store y lo dibuja el layout una sola vez, encima de todo — mismo
- * camino que `state/aviso`. Un tooltip por botón sería un nodo flotante por
- * cada ícono de la pantalla, y además no habría forma de sostener la **espera
- * compartida** de acá abajo, que es lo que hace que se sienta bien.
- *
- * Los tiempos son los del modelo de Radix, que es el mejor probado:
- *
- * - Al entrar se espera `ESPERA_MS`. Un rótulo que salta al instante convierte
- *   cualquier paso del mouse por la barra en un cartel parpadeando.
- * - Al salir se cierra, y queda abierta una **ventana de gracia**: si el cursor
- *   entra a otro botón antes de `GRACIA_MS`, el siguiente aparece **sin
- *   esperar**. Es la diferencia entre recorrer una barra de controles y sentir
- *   que cada botón te hace esperar de nuevo.
- * - Con el foco del teclado aparece **al toque**: ahí no hay «paso sin querer»
- *   que filtrar, y la pauta de accesibilidad pide que se vea (WAI-ARIA APG).
- *
- * No se cierra solo por tiempo, a propósito: el criterio 1.4.13 de WCAG pide que
- * lo que aparece al pasar el cursor siga visible hasta que uno se vaya o lo
- * descarte. Por eso tampoco hay un reloj de auto-cierre.
+ * Un único rótulo flotante para los botones de sólo ícono.
+ * Cada entrada del cursor espera medio segundo, incluso entre controles vecinos.
+ * Salir antes cancela la apertura; el teclado conserva la respuesta inmediata.
+ * Una vez visible se puede cruzar hacia él y leerlo sin límite de tiempo.
  */
 
 export type Tooltip = {
@@ -37,10 +20,8 @@ export type Tooltip = {
 
 const store = createStore<{ tip: Tooltip | null }>({ tip: null })
 
-/** Cuánto se espera antes de mostrarlo, viniendo de frío. */
-const ESPERA_MS = 120
-/** Cuánto dura la ventana en la que el siguiente aparece sin esperar. */
-const GRACIA_MS = 300
+/** Espera perceptible en cada control, sin aperturas instantáneas entre vecinos. */
+const ESPERA_MS = 500
 /**
  * Cuánto se lo banca abierto después de salir del botón.
  *
@@ -53,7 +34,6 @@ const CRUCE_MS = 120
 
 let relojAbrir: ReturnType<typeof setTimeout> | null = null
 let relojCerrar: ReturnType<typeof setTimeout> | null = null
-let ultimoCierre = 0
 let pendingOwner: string | undefined
 
 function frenar() {
@@ -63,15 +43,12 @@ function frenar() {
   relojCerrar = null
 }
 
-/** El cursor entró a un botón: con espera, salvo que venga de otro recién. */
+/** El cursor entró a un botón: inicia una espera completa para ese control. */
 export function pedirTooltip(tip: Tooltip) {
   frenar()
   pendingOwner = tip.owner
-  const seguido = Date.now() - ultimoCierre < GRACIA_MS
-  if (seguido || store.get().tip) {
-    store.set({ tip })
-    return
-  }
+  // Retirar el anterior evita mostrar texto de otro botón durante la espera.
+  if (store.get().tip) store.set({ tip: null })
   relojAbrir = setTimeout(() => {
     relojAbrir = null
     store.set({ tip })
@@ -96,7 +73,6 @@ export function soltarTooltip(owner?: string) {
   if (relojCerrar) clearTimeout(relojCerrar)
   relojCerrar = setTimeout(() => {
     relojCerrar = null
-    ultimoCierre = Date.now()
     store.set({ tip: null })
   }, CRUCE_MS)
 }
@@ -121,7 +97,6 @@ export function cerrarTooltip(owner?: string) {
   pendingOwner = undefined
   frenar()
   if (store.get().tip) {
-    ultimoCierre = Date.now()
     store.set({ tip: null })
   }
 }

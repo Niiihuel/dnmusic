@@ -1,5 +1,7 @@
+import { Dialogo } from './Dialogo'
+import { EncabezadoHoja, BotonHoja } from './EncabezadoHoja'
 import { useState } from 'react'
-import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Menu, type MenuItem } from './Menu'
 import { SearchField } from './SearchField'
 import { IconCheck, IconChevronDown, IconClose } from './icons'
@@ -16,18 +18,7 @@ export function SelectorCatalogo({ etiqueta, valor, opciones, onChange }: { etiq
   const [busqueda, setBusqueda] = useState('')
   const resultados = opciones.filter(o => normalizar(o.nombre).includes(normalizar(busqueda)))
   const cerrar = () => { setAbierto(false); setBusqueda('') }
-  if (opciones.length <= 8) return <MenuSelector label={etiqueta} texto={opciones.find(o => o.id === valor)?.nombre ?? etiqueta}
-    items={opciones.map(o => ({ label: o.nombre, selected: o.id === valor, onPress: () => onChange(o.id) }))} />
-  return <>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${etiqueta}: ${opciones.find(o => o.id === valor)?.nombre}`} accessibilityState={{ expanded: abierto }} onPress={() => setAbierto(true)}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#242424', flexShrink: 1 }}>
-      <Text numberOfLines={1} style={[s.texto, { flexShrink: 1 }]}>{opciones.find(o => o.id === valor)?.nombre}</Text><IconChevronDown size={14} color="#aaa" />
-    </Pressable>
-    <Modal transparent visible={abierto} animationType="fade" onRequestClose={cerrar}>
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#0009' }}>
-        <Pressable style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Cerrar filtros" onPress={cerrar} />
-        <View accessibilityViewIsModal style={{ width: '100%', maxWidth: 440, maxHeight: '80%', backgroundColor: '#202020', borderRadius: 20, padding: 16, gap: 12 }}>
-          <View style={s.entre}><Text style={s.titulo}>{etiqueta}</Text><Pressable accessibilityRole="button" accessibilityLabel="Cerrar selector" onPress={cerrar} style={s.redondo}><IconClose size={18} color="#fff" /></Pressable></View>
+  const contenido = (<>
           {opciones.length > 8 ? <SearchField value={busqueda} onChangeText={setBusqueda} placeholder="Buscar colección" /> : null}
           <FlatList data={resultados} keyExtractor={o => o.id} keyboardShouldPersistTaps="handled" style={{ flexGrow: 0 }}
             ListEmptyComponent={<Text style={s.secundario}>No encontramos esa colección.</Text>}
@@ -35,9 +26,23 @@ export function SelectorCatalogo({ etiqueta, valor, opciones, onChange }: { etiq
               style={{ minHeight: 48, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: valor === item.id ? '#353535' : 'transparent', borderRadius: 10 }}>
               <Text style={[s.texto, { flexShrink: 1 }]}>{item.nombre}</Text>{valor === item.id ? <IconCheck size={16} color="#fff" /> : null}
             </Pressable>} />
+  </>)
+  if (opciones.length <= 8) return <MenuSelector label={etiqueta} texto={opciones.find(o => o.id === valor)?.nombre ?? etiqueta}
+    items={opciones.map(o => ({ label: o.nombre, selected: o.id === valor, onPress: () => onChange(o.id) }))} />
+  return <>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${etiqueta}: ${opciones.find(o => o.id === valor)?.nombre}`} accessibilityState={{ expanded: abierto }} onPress={() => setAbierto(true)}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#242424', flexShrink: 1 }}>
+      <Text numberOfLines={1} style={[s.texto, { flexShrink: 1 }]}>{opciones.find(o => o.id === valor)?.nombre}</Text><IconChevronDown size={14} color="#aaa" />
+    </Pressable>
+    <Dialogo titulo={etiqueta} ancho={440} contenidoPC={<><EncabezadoHoja titulo={etiqueta} izquierda={<BotonHoja onPress={cerrar} />} /><View style={{ paddingHorizontal: 20, paddingBottom: 20, gap: 12, flexShrink: 1 }}>{contenido}</View></>} transparent visible={abierto} animationType="fade" onRequestClose={cerrar}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#0009' }}>
+        <Pressable style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Cerrar filtros" onPress={cerrar} />
+        <View accessibilityViewIsModal style={{ width: '100%', maxWidth: 440, maxHeight: '80%', backgroundColor: '#202020', borderRadius: 20, padding: 16, gap: 12 }}>
+          <View style={s.entre}><Text style={s.titulo}>{etiqueta}</Text><Pressable accessibilityRole="button" accessibilityLabel="Cerrar selector" onPress={cerrar} style={s.redondo}><IconClose size={18} color="#fff" /></Pressable></View>
+          {contenido}
         </View>
       </View>
-    </Modal>
+    </Dialogo>
   </>
 }
 const s = StyleSheet.create({

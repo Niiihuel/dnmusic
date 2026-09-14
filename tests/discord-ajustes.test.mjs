@@ -11,7 +11,7 @@ const modules = {
   './Ajustes': { FilaAccion: 'action', FilaDato: 'data', GrupoAjustes: 'group' },
   './DiscordIcon': { DiscordIcon: 'logo' },
   './AjustesDiscordRemoto': { AjustesDiscordRemoto: 'remote' },
-  './discordEtiquetas': { ESTADOS_DISCORD: { disabled: 'No conectado', unconfigured: 'Conexión sin configurar', disconnected: 'Discord no está disponible', connecting: 'Buscando Discord…', ready: 'Conectado · esperando música', published: 'Mostrando tu música', error: 'No se pudo conectar' } },
+  './discordEtiquetas': { ESTADOS_DISCORD: { disabled: 'No conectado', unconfigured: 'Conexión sin configurar', disconnected: 'Discord no está disponible', connecting: 'Buscando Discord…', ready: 'Conectado · esperando música', published: 'Canción enviada a Discord', error: 'No se pudo conectar' } },
 }
 const exports = {}
 new Function('exports', 'require', ts.transpileModule(readFileSync('src/ui/AjustesDiscord.tsx', 'utf8'), {
@@ -43,8 +43,8 @@ test('connecting can cancel, missing Discord can retry, connected idle differs f
   connecting[1].props.onPress(); assert.equal(changes.at(-1).enabled, false)
   assert.ok(nodes(render('disconnected'), 'action').some(n => n.props.rotulo === 'Reintentar conexión'))
   assert.equal(nodes(render('ready'), 'data')[0].props.valor, 'Conectado · esperando música')
-  assert.equal(nodes(render('published'), 'data')[0].props.valor, 'Mostrando tu música')
-  const action = nodes(render('ready'), 'action')[0]
+  assert.equal(nodes(render('published'), 'data')[0].props.valor, 'Canción enviada a Discord')
+  const action = nodes(render('ready'), 'action').find(n => n.props.rotulo === 'Desconectar Discord')
   assert.equal(action.props.rotulo, 'Desconectar Discord'); action.props.onPress()
   assert.equal(changes.at(-1).enabled, false)
 })
@@ -87,7 +87,7 @@ test('iOS sólo conecta la PC elegida mediante una acción explícita', () => {
 
 test('iOS distingue publicación, reintento y revocación sin aparentar vínculo directo', () => {
   const ui = vistaRemota([pc('published')])
-  assert.ok(nodes(ui, 'data').some(n => n.props.valor === 'Mostrando tu música'))
+  assert.ok(nodes(ui, 'data').some(n => n.props.valor === 'Canción enviada a Discord'))
   const action = nodes(ui, 'action').find(n => n.props.rotulo === 'Desconectar Discord')
   action.props.onPress()
   assert.deepEqual(llamadasRemotas.at(-1), ['pc-1', false])
@@ -106,4 +106,12 @@ test('iOS no ofrece acciones remotas sin conexión ni PCs disponibles; la espera
   assert.ok(actions.find(n => n.props.busy && n.props.disabled))
   actions.find(n => n.props.rotulo === 'Cancelar solicitud').props.onPress()
   assert.equal(llamadasRemotas.at(-1), 'cancelar')
+})
+
+test('muestra la cuenta real y permite renovar una conexión READY sin prometer visibilidad', () => {
+  const ui = exports.ContenidoDiscord({ estado: { enabled: true, applicationId: 'id', status: 'ready', account: 'amigo' }, cargado: true, guardando: false, error: null, onCambiar: v => changes.push(v) })
+  assert.ok(nodes(ui, 'data').some(n => n.props.valor === '@amigo'))
+  nodes(ui, 'action').find(n => n.props.rotulo === 'Reintentar conexión').props.onPress()
+  assert.equal(changes.at(-1), true)
+  assert.ok(nodes(ui, 'group').some(n => n.props.pie?.includes('visibilidad para tus amigos depende de Discord')))
 })

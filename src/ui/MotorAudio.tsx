@@ -45,7 +45,7 @@ import {
   useJamSilencioso,
   useJamSincronizo,
 } from '../state/jam'
-import { reportarActividadEscucha, useEscuchaEspejo } from '../state/escucha'
+import { esEscuchaEspejo, reportarActividadEscucha, useEscuchaEspejo } from '../state/escucha'
 import { saltar } from '../lib/seek'
 import { useAppActiva } from '../lib/appActiva'
 import { avisar } from '../state/aviso'
@@ -742,7 +742,7 @@ export function MotorAudio() {
       },
     })
     const sub = player.addListener('playbackStatusUpdate', (status) => {
-      if (!mismaPista()) return
+      if (!mismaPista() || mudo || esEscuchaEspejo()) return
       reportarActividadEscucha(!mudo && status.playing && status.isLoaded && !status.isBuffering && !status.error)
       // El parche distingue una pausa explícita de un fallo que también deja
       // AVPlayer en paused. Cancela la red pendiente antes de cualquier retry.
@@ -949,17 +949,17 @@ export function MotorAudio() {
    * Sin esto, la barra aparecería atrasada hasta el siguiente cuadro.
    */
   useEffect(() => {
-    if (!lease.active || !alaVista || !current) return
+    if (!lease.active || mudo || esEscuchaEspejo() || !alaVista || !current || !url || retomarMs.current !== null || saltoEnVuelo.current !== null) return
     const t = player.currentTime
     if (Number.isFinite(t)) reportProgress(t * 1000, playerTotalS(player, current) * 1000)
     /* Si mientras estuvo atrás una interrupción pausó este aparato dentro de
        un Jam, volver al frente es el momento de reengancharse: el Jam siguió
        sin nosotros y hay que sumarse donde va, no donde quedamos. */
     reanudarTrasInterrupcion()
-  }, [alaVista, current, player, lease])
+  }, [alaVista, current, player, lease, mudo, url])
 
   useEffect(() => {
-    if (!playing || !current || !alaVista) {
+    if (mudo || !playing || !current || !alaVista) {
       if (raf.current) cancelAnimationFrame(raf.current)
       raf.current = null
       return
@@ -967,7 +967,7 @@ export function MotorAudio() {
 
     const tick = () => {
       const estado = getPlaybackState()
-      if (!lease.active || (estado.manual ?? estado.tracks[estado.index])?.id !== current.id) return
+      if (!lease.active || mudo || esEscuchaEspejo() || (estado.manual ?? estado.tracks[estado.index])?.id !== current.id) return
       const t = player.currentTime
       const total = playerTotalS(player, current)
 
@@ -1021,7 +1021,7 @@ export function MotorAudio() {
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current)
     }
-  }, [playing, current, player, lease, alaVista])
+  }, [playing, current, player, lease, alaVista, mudo])
   /* La barra dibuja el botón según esto: sin la URL firmada todavía no suena
      nada, por más que la intención de quien escucha sea reproducir. El control
      remoto de un Jam cuenta como cargado con solo tener canción: acá no se

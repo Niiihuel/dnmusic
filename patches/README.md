@@ -17,6 +17,19 @@ eventos JS. En segundo plano no ejecutamos FFT ni actualizamos barras. El tap
 se libera al reemplazar la fuente o destruir el reproductor; su referencia al
 item impide reutilizarlo en otra canción.
 
+Los players persistentes (`keepAudioSessionActive`) preparan también el tap al
+cargar una canción en segundo plano, antes del aviso de lista/play. Esto cubre
+los items precargados que ya estaban listos al construir el player. Activar el
+visual con ese player sonando sólo habilita la entrega de muestras: no instala
+ni reinstala `audioMix`. Si el tap no pudo prepararse, se conserva el audio y
+el indicador queda estático hasta una oportunidad sin reproducción activa.
+Los eventos consecutivos de item/listo reutilizan el mismo tap.
+
+Verificación en dispositivo: iniciar A, bloquear, pasar a B desde lock screen,
+esperar unos segundos y abrir la app varias veces. Confirmar que B mantiene
+posición/audio sin corte, tanto con caché local como con streaming y auriculares.
+Las pruebas Linux comprueban parche y transporte JS; no miden cortes de AVPlayer.
+
 ## Errores terminales observables
 
 Además de observar `item.status`, escucha

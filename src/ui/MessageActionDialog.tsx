@@ -1,6 +1,8 @@
 import { MessageEditBar } from './MessageEditBar'
+import { Dialogo } from './Dialogo'
+import { EncabezadoHoja, BotonHoja } from './EncabezadoHoja'
 import { useEffect, useRef, useState } from 'react'
-import { KeyboardAvoidingView, Modal, Platform, ScrollView, Text, View } from 'react-native'
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { editMessage, deleteMessage } from '../services/messages'
 import { refreshConversations } from '../state/session'
@@ -64,12 +66,7 @@ export function MessageActionDialog({ target, onClose, inline = false }: { targe
 
   const ios = Platform.OS === 'ios'
   const song = target.message.song ?? target.message.sharedSong
-  return <Modal visible transparent={!ios} presentationStyle={ios ? 'pageSheet' : 'overFullScreen'}
-    animationType={ios ? 'slide' : 'fade'} onRequestClose={close}>
-    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: ios ? '#121212' : 'rgba(0,0,0,0.6)' }}>
-      <KeyboardAvoidingView behavior={ios ? 'padding' : undefined} style={{ flex: 1, justifyContent: ios ? 'flex-start' : 'center', alignItems: 'center', padding: 20 }}>
-        <View accessibilityViewIsModal style={{ width: '100%', maxWidth: 520, maxHeight: '100%', borderRadius: ios ? 0 : 24, backgroundColor: '#181818', padding: 20, gap: 16 }}>
-          <Text accessibilityRole="header" className="text-foreground text-title3 font-semibold">Editar mensaje</Text>
+  const contenido = (<>
           <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 12 }}>
             {song ? <Text className="text-muted-foreground text-footnote">{song.title} — {song.artist}</Text> : null}
             <CampoMensaje value={text} onChangeText={setText} placeholder="Mensaje" accessibilityLabel="Texto del mensaje"
@@ -82,8 +79,16 @@ export function MessageActionDialog({ target, onClose, inline = false }: { targe
               disabled={!canSave}
               onPress={() => { void submit() }} /></View>
           </View>
+  </>)
+  return <Dialogo titulo="Editar mensaje" ancho={520} contenidoPC={<><EncabezadoHoja titulo="Editar mensaje" izquierda={<BotonHoja onPress={close} disabled={busy} />} /><View style={{ paddingHorizontal: 20, paddingBottom: 20, gap: 16, flexShrink: 1 }}>{contenido}</View></>} visible transparent={!ios} presentationStyle={ios ? 'pageSheet' : 'overFullScreen'}
+    animationType={ios ? 'slide' : 'fade'} onRequestClose={close}>
+    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: ios ? '#121212' : 'rgba(0,0,0,0.6)' }}>
+      <KeyboardAvoidingView behavior={ios ? 'padding' : undefined} style={{ flex: 1, justifyContent: ios ? 'flex-start' : 'center', alignItems: 'center', padding: 20 }}>
+        <View accessibilityViewIsModal style={{ width: '100%', maxWidth: 520, maxHeight: '100%', borderRadius: ios ? 0 : 24, backgroundColor: '#181818', padding: 20, gap: 16 }}>
+          <Text accessibilityRole="header" className="text-foreground text-title3 font-semibold">Editar mensaje</Text>
+          {contenido}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
-  </Modal>
+  </Dialogo>
 }
