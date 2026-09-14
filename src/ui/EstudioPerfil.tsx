@@ -147,8 +147,8 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
   )
   const explorar = (
     <View testID="catalogo-perfil" style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', backgroundColor: '#121212' }}>
-      <View testID="filtros-catalogo-perfil" style={{ flexShrink: 0, zIndex: 1, backgroundColor: '#121212', paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 4 : 16, paddingBottom: 8, gap: Platform.OS === 'ios' ? 8 : 12 }}>
-        {Platform.OS === 'ios' ? <FiltrosCatalogoPerfil tipo={tipo}
+      <View testID="filtros-catalogo-perfil" style={{ flexShrink: 0, zIndex: 1, backgroundColor: '#121212', paddingHorizontal: 16, paddingTop: Platform.OS !== 'web' ? 4 : 16, paddingBottom: 8, gap: Platform.OS !== 'web' ? 8 : 12 }}>
+        {Platform.OS !== 'web' ? <FiltrosCatalogoPerfil tipo={tipo}
           tipos={[...TIPOS_ESTILO, 'paquete' as const].map(t => ({ id: t, nombre: t === 'paquete' ? 'Paquetes' : TITULOS_ESTILO[t] }))}
           onTipo={t => filtro(() => { setTipo(t as FiltroTipo); setColeccion('todas') })}
           buscar={buscar} onBuscar={v => filtro(() => setBuscar(v))}

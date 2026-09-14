@@ -17,7 +17,11 @@
     "ios:preview": "eas build --profile preview --platform ios",
     "ios:release": "eas build --profile production --platform ios --auto-submit",
     "lint": "expo lint",
-    "ios:build": "eas build --profile production --platform ios"
+    "ios:build": "eas build --profile production --platform ios",
+    "android:doctor": "node scripts/android-dev.mjs doctor",
+    "android:run": "node scripts/android-dev.mjs run",
+    "android:dev": "node scripts/android-dev.mjs start",
+    "android:usb": "node scripts/android-dev.mjs reverse"
   },
   "dependencies": {
     "@expo-google-fonts/bebas-neue": "^0.4.1",

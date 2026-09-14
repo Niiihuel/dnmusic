@@ -1,0 +1,31 @@
+buildscript {
+  repositories { mavenCentral() }
+  dependencies {
+    classpath("org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:${kotlinVersion}")
+  }
+}
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
+group = 'expo.modules.dnandroid'
+version = '1.0.0'
+android {
+  namespace 'expo.modules.dnandroid'
+  buildFeatures { compose true }
+}
+dependencies {
+  // SDK 57 normally links Expo UI as a precompiled artifact, not a Gradle project.
+  def expoUIProject = findProject(':expo-ui')
+  if (expoUIProject != null) {
+    implementation expoUIProject
+  } else {
+    def configPath = providers.exec {
+      workingDir rootDir
+      commandLine 'node', '--print', "require('path').join(require('path').dirname(require.resolve('@expo/ui/package.json')), 'expo-module.config.json')"
+    }.standardOutput.asText.get().trim()
+    def publication = new groovy.json.JsonSlurper().parse(new File(configPath)).android.publication
+    implementation "${publication.groupId}:${publication.artifactId}:${publication.version}"
+  }
+  implementation 'androidx.compose.foundation:foundation-android:1.10.6'
+  implementation 'androidx.compose.ui:ui-android:1.10.6'
+}
