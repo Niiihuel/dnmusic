@@ -16,7 +16,7 @@ export function IconButton({ label, symbol, onPress, disabled = false, busy = fa
       colors={{ containerColor: filled ? '#FFFFFF' : '#303032', contentColor: color,
         disabledContainerColor: '#303032', disabledContentColor: '#777777' }}
       modifiers={[size(area, area), androidAccessibility(label, busy ? 'En curso' : selected ? 'Seleccionado' : undefined)]}>
-      {busy ? <CircularProgressIndicator color={color} modifiers={[size(22, 22)]} /> :
+      {busy ? <CircularProgressIndicator color={inactive ? '#B3B3B3' : color} modifiers={[size(22, 22)]} /> :
         <AndroidIcon symbol={symbol} size={iconSize} color={inactive ? '#777777' : color} />}
     </Button>
   </AndroidHost>

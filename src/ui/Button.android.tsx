@@ -14,7 +14,7 @@ function NativeButton({ label, onPress, disabled = false, busy = false, primary 
       colors={{ containerColor: primary ? '#FFFFFF' : '#303032', contentColor: foreground,
         disabledContainerColor: '#303032', disabledContentColor: '#8B8B8F' }}
       modifiers={[fillMaxWidth(), defaultMinSize({ minHeight: 48 }), androidAccessibility(label, busy ? 'En curso' : undefined)]}>
-      {busy ? <CircularProgressIndicator color={foreground} modifiers={[size(22, 22)]} /> : <Text color={inactive ? '#8B8B8F' : foreground} style={{ fontSize: 16, fontWeight: '600' }}>{label}</Text>}
+      {busy ? <CircularProgressIndicator color="#FFFFFF" modifiers={[size(22, 22)]} /> : <Text color={inactive ? '#8B8B8F' : foreground} style={{ fontSize: 16, fontWeight: '600' }}>{label}</Text>}
     </Native>
   </AndroidHost>
 }
