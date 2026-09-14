@@ -11,6 +11,10 @@ group = 'expo.modules.dnandroid'
 version = '1.0.0'
 android {
   namespace 'expo.modules.dnandroid'
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
   buildFeatures { compose true }
 }
 dependencies {
