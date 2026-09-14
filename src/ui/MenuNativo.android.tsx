@@ -43,7 +43,8 @@ export function MenuNativo({ items, label = 'Opciones', symbol = 'ellipsis', siz
     {longPress ? <GestureDetector gesture={gesture}><View collapsable={false}>{children}</View></GestureDetector> :
       children ? <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={open}>
         <View pointerEvents="none">{children}</View></Pressable> : null}
-    <AndroidHost pointerEvents={children || longPress ? 'box-none' : 'auto'}
+    {/* The hidden popup anchor must not intercept taps on the row below it. */}
+    <AndroidHost pointerEvents={children || longPress ? 'none' : 'auto'}
       style={children || longPress ? [StyleSheet.absoluteFill, { width: 48, height: 48 }] : { width: 48, height: 48 }}>
       <DropdownMenu expanded={!disabled && stack.length > 0} onDismissRequest={close} color="#242426">
         <DropdownMenu.Trigger>{children || longPress ? <Box modifiers={[size(1, 1)]} /> :
