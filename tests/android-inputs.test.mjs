@@ -256,3 +256,59 @@ test('Android cabecera y sección social conservan cierre, acción y contenido',
   assert.ok(all(section, 'View').some(n => n.props.children === 'contenido'))
   assert.deepEqual(all(section, 'Text').map(n => n.props.children), ['Miembros', 'Elegí una cuenta'])
 })
+
+for (const component of ['EntradaTexto', 'CampoMensaje', 'SearchField']) {
+  test(`Android ${component}: cursor precargado al final, selección al escribir y borrador restaurado al cancelar`, () => {
+    const h = harness(`src/ui/${component}.android.tsx`), changes = []
+    const draft = 'Hola 🎵'
+    const props = { value: draft, placeholder: 'Texto', autoFocus: true, onChangeText: text => changes.push(text) }
+    let field = find(h.render(component, props), 'BasicTextField')
+    assert.equal(field.props.autoFocus, true)
+    assert.deepEqual(field.props.selection.get(), { start: draft.length, end: draft.length })
+
+    const typed = 'Hola otra vez 🎵'
+    input(field, typed)
+    // El usuario selecciona parte del texto; confirmar el valor desde React no debe mover el cursor.
+    const selected = { start: 5, end: 9 }
+    field.props.selection.set(selected)
+    field = find(h.render(component, { ...props, value: typed }), 'BasicTextField')
+    assert.equal(field.props.value.get(), typed)
+    assert.deepEqual(field.props.selection.get(), selected)
+
+    const editing = 'Mensaje anterior para editar'
+    field = find(h.render(component, { ...props, value: editing }), 'BasicTextField')
+    assert.equal(field.props.value.get(), editing)
+    assert.deepEqual(field.props.selection.get(), { start: editing.length, end: editing.length })
+
+    // Cancelar vuelve al mismo borrador que ya se había notificado antes de abrir la edición.
+    field = find(h.render(component, { ...props, value: typed }), 'BasicTextField')
+    assert.equal(field.props.value.get(), typed)
+    assert.deepEqual(field.props.selection.get(), { start: typed.length, end: typed.length })
+    field = find(h.render(component, { ...props, value: '' }), 'BasicTextField')
+    assert.equal(field.props.value.get(), '')
+    assert.deepEqual(field.props.selection.get(), { start: 0, end: 0 })
+    assert.deepEqual(changes, [typed], 'cargar, restaurar o limpiar desde afuera no simula pulsaciones')
+  })
+
+  test(`Android ${component}: un evento JS atrasado no borra las teclas ni la selección más recientes`, () => {
+    const h = harness(`src/ui/${component}.android.tsx`), changes = []
+    const props = { value: 'texto', placeholder: 'Texto', onChangeText: text => changes.push(text) }
+    let field = find(h.render(component, props), 'BasicTextField')
+
+    // Compose recibió A y B, pero el hilo JS todavía está procesando la notificación de A.
+    field.props.value.set('textoAB')
+    field.props.selection.set({ start: 7, end: 7 })
+    field.props.onValueChange('textoA')
+    field = find(h.render(component, { ...props, value: 'textoA' }), 'BasicTextField')
+    assert.equal(field.props.value.get(), 'textoAB', 'la confirmación atrasada no debe eliminar B')
+    assert.deepEqual(field.props.selection.get(), { start: 7, end: 7 })
+
+    // Cuando JS alcanza a Compose, tampoco debe pisar una selección hecha entretanto.
+    field.props.selection.set({ start: 2, end: 4 })
+    field.props.onValueChange('textoAB')
+    field = find(h.render(component, { ...props, value: 'textoAB' }), 'BasicTextField')
+    assert.equal(field.props.value.get(), 'textoAB')
+    assert.deepEqual(field.props.selection.get(), { start: 2, end: 4 })
+    assert.deepEqual(changes, ['textoA', 'textoAB'])
+  })
+}
