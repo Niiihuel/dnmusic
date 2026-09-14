@@ -21,7 +21,7 @@ npm run android:doctor
 android-studio
 ```
 
-Dentro de Android Studio, usá el SDK que muestra `echo "$ANDROID_HOME"`. Ese SDK lo administra Nix; no intentes instalar paquetes escribiendo en `/nix/store`. Creá el dispositivo virtual en Device Manager con la imagen instalada y encendelo. Los datos del emulador quedan en tu usuario. Si tu canal de Nixpkgs todavía no contiene esos paquetes, actualizá el canal o usá Android Studio con un SDK administrado por vos; no cambies versiones de Gradle/NDK al azar.
+Dentro de Android Studio, usá el SDK que muestra `echo "$ANDROID_HOME"`. Ese SDK lo administra Nix; no intentes instalar paquetes escribiendo en `/nix/store`. Creá el dispositivo virtual en Device Manager con la imagen instalada y encendelo. Dejá el IDE abierto y usá otra terminal entrando también con `nix-shell android-shell.nix` para ejecutar los comandos de la app. Los datos del emulador quedan en tu usuario. Si tu canal de Nixpkgs todavía no contiene esos paquetes, actualizá el canal o usá Android Studio con un SDK administrado por vos; no cambies versiones de Gradle/NDK al azar.
 
 ## Primera instalación y ciclo de trabajo
 
