@@ -88,3 +88,14 @@ test('sin claves locales, TestFlight reutiliza la configuración remota sin crea
   assert.deepEqual(config.submit.github.ios, ios)
   assert.equal(existsSync(join(root, 'dnmusic-apple')), false)
 })
+
+
+test('reenviar un IPA sólo acepta borradores de build con TestFlight production', () => {
+  const env = { ...base, SUBMIT_TESTFLIGHT: 'true', IPA_RELEASE: 'ios-build-34855453681-1' }
+  assert.doesNotThrow(() => validarEntorno(env))
+  for (const IPA_RELEASE of ['../archivo', '--latest', 'v1.15.2', 'ios-build-1-2;echo']) {
+    assert.throws(() => validarEntorno({ ...env, IPA_RELEASE }), /IPA_RELEASE/)
+  }
+  assert.throws(() => validarEntorno({ ...env, SUBMIT_TESTFLIGHT: 'false' }), /IPA_RELEASE/)
+  assert.throws(() => validarEntorno({ ...env, IOS_PROFILE: 'preview' }), /IPA_RELEASE/)
+})

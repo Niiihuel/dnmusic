@@ -97,3 +97,12 @@ corregilos y ejecutá nuevamente.
 - [Tokens de Expo](https://docs.expo.dev/accounts/programmatic-access/)
 - [Credenciales de firma](https://docs.expo.dev/app-signing/syncing-credentials/)
 - [Facturación de GitHub Actions](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
+
+## Reenviar un IPA guardado sin compilar otra vez
+
+En `iOS — compilar`, elegí `production`, activá TestFlight y completá
+`ipa_release` con el tag del borrador `ios-build-ID-INTENTO`. La compilación se
+omite y se envía ese IPA con su versión original. El job verifica que sea un
+borrador de producción del mismo repositorio. El permiso `contents: write`
+en el job de envío permite consultar borradores privados; no publica el borrador.
+Dejá el campo vacío para compilar una versión nueva.
