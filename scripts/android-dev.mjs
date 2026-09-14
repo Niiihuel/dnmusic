@@ -19,7 +19,7 @@ if (command === 'doctor') {
   const platform = existsSync(join(sdk, 'platforms/android-36/android.jar'))
   const buildTools = existsSync(join(sdk, 'build-tools/36.0.0'))
   const ndk = existsSync(join(sdk, 'ndk/27.1.12297006/source.properties'))
-  const cmake = existsSync(join(sdk, 'cmake/3.30.5'))
+  const cmake = existsSync(join(sdk, 'cmake/3.22.1'))
   let acceleration = process.platform !== 'linux'
   if (process.platform === 'linux') { try { accessSync('/dev/kvm', constants.R_OK | constants.W_OK); acceleration = true } catch {} }
   console.log(`Java: ${j.status === 0 ? (j.stderr || j.stdout).split('\n')[0] : 'falta JDK 17'}`)
@@ -27,7 +27,7 @@ if (command === 'doctor') {
   console.log(`Android SDK 36: ${platform ? 'disponible' : 'falta'} (${sdk})`)
   console.log(`Build-Tools 36.0.0: ${buildTools ? 'disponible' : 'faltan'}`)
   console.log(`NDK 27.1.12297006: ${ndk ? 'disponible' : 'falta'}`)
-  console.log(`CMake 3.30.5: ${cmake ? 'disponible' : 'falta'}`)
+  console.log(`CMake 3.22.1: ${cmake ? 'disponible' : 'falta'}`)
   if (j.status === 0 && !compatibleJava) console.log('Usá JDK 17 para la configuración de este proyecto.')
   console.log(`Virtualización: ${acceleration ? 'disponible' : 'revisar acceso a KVM o usar teléfono USB'}`)
   if (a.status === 0) console.log(tool(adb, ['devices', '-l']).stdout.trim())

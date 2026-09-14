@@ -6,10 +6,10 @@ DMusic conserva su lógica de reproducción, biblioteca, chat, perfil, sesión y
 
 - Android Studio, con SDK Platform **Android 16 / API 36**, SDK Build-Tools **36.0.0**, Platform-Tools (ADB), Android Emulator y una imagen **Google APIs x86_64 API 36** para esta PC Linux x86_64.
 - **JDK 17** para Gradle. Kotlin, el plugin de Compose y Gradle se resuelven con el proyecto; no necesitan instalación manual.
-- Para compilar también hacen falta NDK **27.1.12297006** y CMake **3.30.5** (el SDK Manager/Gradle los instala según el proyecto generado).
+- Para compilar también hacen falta NDK **27.1.12297006** y CMake **3.22.1** (el SDK Manager/Gradle los instala según el proyecto generado).
 - Un emulador creado en Android Studio → Device Manager, o un teléfono con opciones de desarrollador y depuración USB. En el teléfono hay que autorizar la huella de esta computadora.
 
-Estos números salen del catálogo de versiones de React Native instalado. No sustituirlos por versiones de preview del SDK. Se recomienda un emulador Pixel con Google APIs; un dispositivo físico evita el consumo de RAM del emulador.
+Estos números salen del catálogo de React Native instalado y de la compilación nativa comprobada en GitHub. No sustituirlos por versiones de preview del SDK. Se recomienda un emulador Pixel con Google APIs; un dispositivo físico evita el consumo de RAM del emulador.
 
 ## En esta computadora: NixOS
 
@@ -60,3 +60,5 @@ Las variantes nativas cubren campos/formularios, chat, búsqueda, botones, repro
 - Prueba física pendiente: abrir sesión, reproducir música/fragmento, buscar, arrastrar seek, cambiar pestañas desde un editor, cancelar/guardar edición de mensaje, cambiar categoría/colección, abrir y cerrar menú con Atrás, confirmar/cancelar un borrado y usar TalkBack/texto grande. Verificar que mensajes/adjuntos/borradores se conserven.
 
 Referencias: [Expo UI con Compose](https://docs.expo.dev/versions/v57.0.0/sdk/ui/jetpack-compose/), [Android Studio](https://developer.android.com/studio/install), [aceleración del emulador](https://developer.android.com/studio/run/emulator-acceleration), [clientes de desarrollo Expo](https://docs.expo.dev/develop/development-builds/introduction/).
+
+La [compilación nativa comprobada](https://github.com/Niiihuel/dnmusic/actions/runs/34796250045) terminó correctamente: módulo Kotlin, dependencias C++ y APK debug para ARM64/x86_64. GitHub agotó el cupo de artifacts y no guardó la descarga; `npm run android:run` lo genera e instala localmente. El código nativo compilado coincide con el actual; las correcciones posteriores de controles se cargan desde Metro. TypeScript, ESLint, exportación Android y 741 pruebas de app aprobados (una omitida). Esto no sustituye la comprobación visual en dispositivo indicada arriba.
