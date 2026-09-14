@@ -282,6 +282,7 @@ export default function Home() {
   const [composerError, setComposerError] = useState<string | null>(null)
   const [composerHeight, setComposerHeight] = useState(0)
   const [messageAction, setMessageAction] = useState<MessageActionTarget | null>(null)
+  const editingInline = !TECLADO_FISICO && messageAction?.kind === 'edit'
   const draft = useDraft()
   const player = useSnippetPlayer()
   // Clear a dialog when its account/chat changes, before committing another frame.
@@ -2918,6 +2919,9 @@ export default function Home() {
                       seguirTeclado,
                     ]}
                   >
+                    {editingInline && messageAction ? <MessageActionDialog inline
+                      key={`edit:${messageAction.pairId}:${messageAction.message.id}`}
+                      target={messageAction} onClose={() => setMessageAction(null)} /> : <>
                     {draft.song ? (
                       <Glass radius={14} style={HAY_VIDRIO ? {} : { backgroundColor: 'rgb(24,24,24)' }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, minHeight: 64 }}>
@@ -3034,6 +3038,7 @@ export default function Home() {
                         )}
                       </BotonVidrio>
                     </View>
+                    </>}
                   </Movible>
                 </View>
               ) : (
@@ -3124,7 +3129,7 @@ export default function Home() {
           ) : null}
         </View>
       </View>
-      {messageAction ? <MessageActionDialog key={`${messageAction.kind}:${messageAction.message.id}`}
+      {messageAction && !editingInline ? <MessageActionDialog key={`${messageAction.kind}:${messageAction.message.id}`}
         target={messageAction} onClose={() => setMessageAction(null)} /> : null}
     </SafeAreaView>
   )

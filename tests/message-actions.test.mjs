@@ -109,7 +109,7 @@ test('old backend and denied RPC leave the message unchanged and return useful e
   f.stop()
 })
 
-function dialog(kind = 'edit', userId = 'author') {
+function dialog(kind = 'edit', userId = 'author', inline = false) {
   let cursor = 0, closes = 0
   const state = [], requests = [], notices = []
   const react = {
@@ -123,10 +123,11 @@ function dialog(kind = 'edit', userId = 'author') {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../services/messages': Object.fromEntries(['editMessage', 'deleteMessage'].map(name => [name, (...args) => new Promise((resolve, reject) => requests.push({ name, args, resolve, reject }))])),
     '../state/session': { refreshConversations: async () => {} }, '../state/aviso': { avisar: (...args) => notices.push(args) },
+    './MessageEditBar': { MessageEditBar: 'MessageEditBar' },
     './CampoMensaje': { CampoMensaje: 'CampoMensaje' }, './Button': { PrimaryButton: 'PrimaryButton', GhostButton: 'GhostButton' }, './Confirmar': { Confirmar: 'Confirmar' },
   }
   const { MessageActionDialog } = load('src/ui/MessageActionDialog.tsx', mocks)
-  const render = () => { cursor = 0; return tree(MessageActionDialog({ target: { kind, pairId: 'pair', userId, message: message() }, onClose: () => closes++ })) }
+  const render = () => { cursor = 0; return tree(MessageActionDialog({ inline, target: { kind, pairId: 'pair', userId, message: message() }, onClose: () => closes++ })) }
   return { render, requests, notices, get closes() { return closes }, get: type => render().find(node => node.type === type)?.props }
 }
 
@@ -210,4 +211,55 @@ test('edit ordering preserves PostgreSQL microseconds, including normalized time
   assert.equal(newest.editedAt.getTime(), older.editedAt.getTime())
   assert.equal(model.mergeMessage(newest, older).text, 'Newest')
   assert.equal(model.mergeMessage(older, newest).text, 'Newest')
+})
+
+
+test('mobile editing stays in the composer; cancel and unchanged text never call the server', () => {
+  const d = dialog('edit', 'author', true)
+  assert.equal(d.get('Modal'), undefined)
+  assert.equal(d.get('MessageEditBar').text, 'Original')
+  assert.equal(d.get('MessageEditBar').canSave, false)
+  d.get('MessageEditBar').onSave()
+  d.get('MessageEditBar').onChangeText('  Original  ')
+  d.get('MessageEditBar').onSave()
+  assert.equal(d.requests.length, 0)
+  d.get('MessageEditBar').onChangeText('Unsent edit')
+  d.get('MessageEditBar').onCancel()
+  assert.equal(d.closes, 1)
+  assert.equal(d.requests.length, 0)
+})
+
+test('mobile edit retains text on failure, prevents duplicate saves and closes after server confirmation', async () => {
+  const d = dialog('edit', 'author', true)
+  d.get('MessageEditBar').onChangeText('Updated inline')
+  const bar = d.get('MessageEditBar')
+  bar.onSave(); bar.onSave(); bar.onCancel()
+  assert.equal(d.requests.length, 1)
+  assert.equal(d.closes, 0)
+  assert.equal(d.get('MessageEditBar').busy, true)
+  assert.deepEqual(d.requests[0].args, ['pair', 'message', 'Updated inline', 'Original'])
+  d.requests[0].reject(Error('Offline')); await flush()
+  assert.equal(d.get('MessageEditBar').text, 'Updated inline')
+  assert.equal(d.get('MessageEditBar').error, 'Offline')
+  d.get('MessageEditBar').onSave()
+  d.requests[1].resolve(message({ text: 'Updated inline' })); await flush()
+  assert.equal(d.closes, 1)
+  assert.deepEqual(d.notices, [['Mensaje editado']])
+})
+
+test('inline controls keep cancel, native multiline field and confirmation in reading order', () => {
+  const { MessageEditBar } = load('src/ui/MessageEditBar.tsx', {
+    'react-native': { Text: 'Text', View: 'View' },
+    './CampoMensaje': { CampoMensaje: 'CampoMensaje' }, './IconButton': { IconButton: 'IconButton' },
+    './icons': { IconCheck: 'IconCheck', IconClose: 'IconClose', ICON_COLOR: {} },
+  })
+  const ui = tree(MessageEditBar({ text: 'One\nTwo', onChangeText() {}, onCancel() {}, onSave() {}, busy: true, editable: true, canSave: false, error: null }))
+  const controls = ui.filter(n => n.type === 'IconButton' || n.type === 'CampoMensaje')
+  assert.deepEqual(controls.map(n => n.type), ['IconButton', 'CampoMensaje', 'IconButton'])
+  assert.equal(controls[0].props.disabled, true)
+  assert.equal(controls[1].props.value, 'One\nTwo')
+  assert.equal(controls[1].props.autoFocus, true)
+  assert.equal(controls[1].props.editable, false)
+  assert.equal(controls[2].props.symbol, 'checkmark')
+  assert.equal(controls[2].props.disabled, true)
 })

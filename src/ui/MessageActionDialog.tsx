@@ -1,3 +1,4 @@
+import { MessageEditBar } from './MessageEditBar'
 import { useEffect, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -11,7 +12,7 @@ import { Confirmar } from './Confirmar'
 import { canEditMessage, canModifyMessage, validMessageText, type MessageActionTarget } from './messageActions'
 
 /** A separate draft: editing never destroys an unsent message or its attachment. */
-export function MessageActionDialog({ target, onClose }: { target: MessageActionTarget; onClose: () => void }) {
+export function MessageActionDialog({ target, onClose, inline = false }: { target: MessageActionTarget; onClose: () => void; inline?: boolean }) {
   const [text, setText] = useState(target.message.text)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -20,11 +21,12 @@ export function MessageActionDialog({ target, onClose }: { target: MessageAction
   const alive = useRef(true)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   const editable = canEditMessage(target.message, target.userId)
+  const canSave = editable && validMessageText(target.message, text) && text.trim() !== target.message.text.trim()
   const close = () => { if (!pending.current) onClose() }
 
   const submit = async () => {
     if (pending.current || !canModifyMessage(target.message, target.userId)) return
-    if (target.kind === 'edit' && (!editable || !validMessageText(target.message, text))) return
+    if (target.kind === 'edit' && !canSave) return
     pending.current = true
     setBusy(true)
     setError(null)
@@ -57,6 +59,9 @@ export function MessageActionDialog({ target, onClose }: { target: MessageAction
     titulo="¿Eliminar este mensaje?" mensaje="Se eliminarán el texto y la música adjunta para las dos personas. No se puede deshacer."
     rotulo="Eliminar para todos" onCancelar={close} onConfirmar={() => { void submit() }} />
 
+  if (inline) return <MessageEditBar text={text} onChangeText={setText} onCancel={close}
+    onSave={() => { void submit() }} busy={busy} editable={editable} canSave={canSave} error={error} />
+
   const ios = Platform.OS === 'ios'
   const song = target.message.song ?? target.message.sharedSong
   return <Modal visible transparent={!ios} presentationStyle={ios ? 'pageSheet' : 'overFullScreen'}
@@ -74,7 +79,7 @@ export function MessageActionDialog({ target, onClose }: { target: MessageAction
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <View style={{ flex: 1 }}><GhostButton label="Cancelar" disabled={busy} onPress={close} /></View>
             <View style={{ flex: 1 }}><PrimaryButton label="Guardar cambios" busy={busy}
-              disabled={!editable || !validMessageText(target.message, text) || text.trim() === target.message.text}
+              disabled={!canSave}
               onPress={() => { void submit() }} /></View>
           </View>
         </View>
