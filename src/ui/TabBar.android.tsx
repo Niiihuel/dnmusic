@@ -1,7 +1,6 @@
 import { View } from 'react-native'
 import { NavigationBar, NavigationBarItem, Text } from '@expo/ui/jetpack-compose'
 import { fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AndroidHost, androidAccessibility } from './AndroidHost'
 import { AndroidIcon } from './AndroidIcon'
 import { IconButton } from './IconButton'
@@ -18,8 +17,7 @@ const tabs = [
 export function TabPildora({ active }: { active: Tab }) {
   const ir = useIrATab()
   const unread = usePendientesChats()
-  const insets = useSafeAreaInsets()
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingBottom: Math.max(8, insets.bottom) }}>
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 }}>
     <View style={{ flex: 1, borderRadius: 32, overflow: 'hidden', backgroundColor: '#242426' }}>
       <AndroidHost matchContents={{ vertical: true }} style={{ width: '100%', minHeight: 80 }} modifiers={[{ $type: 'dnmusicOwnedInsets' }]}>
         <NavigationBar containerColor="#242426" tonalElevation={0} modifiers={[fillMaxWidth()]}>
