@@ -27,6 +27,11 @@ function harness(path, dimensions = { width: 390, height: 844, fontScale: 1 }, o
       if (!previous || deps.some((v, i) => !Object.is(v, previous[i]))) effects.push(effect)
       states[n] = deps
     },
+    useEffect(effect, deps) {
+      const n = index++, previous = states[n]
+      if (!previous || deps.some((v, i) => !Object.is(v, previous[i]))) effects.push(effect)
+      states[n] = deps
+    },
   }
   const native = new Proxy({ useNativeState(initial) {
     const state = react.useRef(initial)
@@ -50,7 +55,7 @@ function harness(path, dimensions = { width: 390, height: 844, fontScale: 1 }, o
   const code = ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
   } }).outputText
-  new Function('exports', 'require', code)(exports, name => { if (!(name in imports)) throw Error(name); return imports[name] })
+  new Function('exports', 'require', code)(exports, name => { if (name.endsWith('.xml')) return name; if (!(name in imports)) throw Error(name); return imports[name] })
   return { render(name, props) { index = 0; const ui = exports[name](props); effects.splice(0).forEach(effect => effect()); return ui } }
 }
 
@@ -223,4 +228,64 @@ test('copiar desde menú Android conserva callback nativo y su feedback; sólo u
   await Promise.resolve()
   assert.equal(calls[1], 'otro mensaje')
   assert.equal(calls[2][1], true, 'una copia fallida se informa como error')
+})
+
+test('navegación Material integra cinco destinos, búsqueda y badge en una sola barra', () => {
+  const calls = []
+  const h = harness('src/ui/TabBar.android.tsx', undefined, {
+    './TabBar.shared': { useIrATab: () => id => calls.push(id), FilaChat: 'FilaChat' },
+    '../state/session': { usePendientesChats: () => 7 },
+  })
+  let ui = h.render('TabPildora', { active: 'listas' })
+  const host = find(ui, 'AndroidHost')
+  const items = walk(ui).filter(n => n.type === 'NavigationBarItem')
+  assert.equal(host.props.style.height, 80)
+  assert.equal(items.length, 5)
+  assert.deepEqual(items.map(item => find(find(item, 'NavigationBarItem.Label'), 'Text').props.children), ['Inicio', 'Listas', 'Chats', 'Perfil', 'Buscar'])
+  assert.deepEqual(items.map(item => item.props.selected), [false, true, false, false, false])
+  assert.equal(find(ui, 'IconButton'), undefined, 'Buscar no vive en un botón flotante separado')
+  assert.equal(walk(ui).filter(n => n.type === 'Icon').length, 5, 'los iconos pertenecen al árbol Compose')
+  assert.equal(find(ui, 'Badge').props.children.props.children, 7)
+  items[4].props.onClick()
+  assert.deepEqual(calls, ['buscar'])
+  ui = h.render('TabPildora', { active: 'buscar' })
+  assert.equal(walk(ui).filter(n => n.type === 'NavigationBarItem')[4].props.selected, true)
+})
+
+
+test('pestañas del perfil usan un selector Material y conservan el callback', () => {
+  const calls = []
+  const h = harness('src/ui/SelectorPestanasPerfil.android.tsx', undefined, {
+    './PestanasPerfil': {},
+  })
+  const ui = h.render('SelectorPestanasPerfil', { activa: 'reciente', onCambiar: id => calls.push(id) })
+  const items = walk(ui).filter(n => n.type === 'SegmentedButton')
+  assert.equal(find(ui, 'AndroidHost').props.style.width, 220)
+  assert.deepEqual(items.map(item => item.props.selected), [true, false])
+  assert.deepEqual(items.map(item => find(find(item, 'SegmentedButton.Label'), 'Text').props.children), ['Reciente', 'Space'])
+  items[1].props.onClick()
+  assert.deepEqual(calls, ['space'])
+})
+
+test('aviso Android usa SnackbarHost y limpia sólo el turno mostrado', async () => {
+  const calls = []
+  let aviso = { texto: null, turno: 3, malo: false }
+  const h = harness('src/ui/Aviso.android.tsx', undefined, {
+    '../lib/appActiva': { useAppActiva: () => true },
+    '../state/aviso': { useAviso: () => aviso, limpiarAviso: turno => calls.push(['limpiar', turno]) },
+    '../state/actualizacion': { useHayAvisoActualizacion: () => false },
+    '../state/shell': { usePiso: n => n + 80 },
+  })
+  let ui = h.render('Aviso', {})
+  const shown = []
+  find(ui, 'SnackbarHost').props.ref.current = {
+    showSnackbar: options => { shown.push(options); return Promise.resolve('dismissed') },
+  }
+  aviso = { texto: 'Cambios guardados', turno: 4, malo: false }
+  ui = h.render('Aviso', {})
+  await Promise.resolve()
+  assert.deepEqual(shown, [{ message: 'Cambios guardados', duration: 'short' }])
+  assert.deepEqual(calls, [['limpiar', 4]])
+  assert.equal(find(ui, 'View').props.style.bottom, 92)
+  assert.equal(find(ui, 'Snackbar').props.containerColor, colors.raised)
 })

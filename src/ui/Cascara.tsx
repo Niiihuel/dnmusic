@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { View } from 'react-native'
+import { Platform, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated'
 import type { Tab } from '../state/shell'
@@ -44,7 +44,7 @@ const COSTADO = 12
  * un margen queda fuera de esa medida — la fila del reproductor bajaría de
  * menos y dejaría este mismo hueco asomando contra el borde.
  */
-const RESPIRO = 6
+const RESPIRO = Platform.OS === 'android' ? 0 : 6
 /** El resorte del plegado: firme y sin rebote, como el indicador de pestañas. */
 const RESORTE = { damping: 24, stiffness: 220, mass: 0.8, overshootClamping: true }
 
@@ -257,7 +257,7 @@ export function Cascara({
         <TabPildora active={active} />
       </Animated.View>
 
-      <View style={{ height: abajo }} />
+      <View style={{ height: abajo, backgroundColor: Platform.OS === 'android' ? '#1C1B1F' : 'transparent' }} />
     </Animated.View>
   )
 }

@@ -1,6 +1,27 @@
 # Android nativo y pruebas en vivo
 
-DMusic conserva su lógica de reproducción, biblioteca, chat, perfil, sesión y sincronización en React. Los adaptadores `.android.tsx` usan controles reales de Jetpack Compose mediante `@expo/ui`, igual que los `.ios.tsx` usan SwiftUI. El módulo local `modules/android-controls` está escrito en Kotlin y aporta semántica de TalkBack dentro del árbol Compose. Los controles mantienen la paleta oscura/blanca, las superficies redondeadas y la jerarquía de DMusic. Liquid Glass pertenece a Apple: Android usa componentes Material personalizados, no ejecuta SwiftUI ni el material de iOS.
+DMusic conserva su lógica de reproducción, biblioteca, chat, perfil, sesión y sincronización en React. Los adaptadores `.android.tsx` usan controles reales de Jetpack Compose mediante `@expo/ui`, igual que los `.ios.tsx` usan SwiftUI. El módulo local `modules/android-controls` está escrito en Kotlin y aporta semántica de TalkBack dentro del árbol Compose. Los controles mantienen la paleta oscura/blanca, las superficies redondeadas y la jerarquía de DMusic.
+
+Android no llamó Liquid Glass a su renovación. Su lenguaje vigente es **Material 3 Expressive**, presentado con Android 16: amplía Material 3 con formas más expresivas, color dinámico, tipografía enfatizada, movimiento elástico y componentes adaptables. Puede usar desenfoque en partes del sistema, pero no propone una capa de vidrio universal como la de Apple. DMusic usa `@expo/ui` 57 sobre `androidx.compose.material3:material3:1.5.0-alpha17`, por lo que ya tiene las APIs Expressive; cada superficie debe adoptar el componente Material que le corresponde.
+
+## Cobertura de componentes
+
+El inventario del 14 de septiembre de 2026 encuentra **23 familias pareadas** entre SwiftUI y Compose:
+
+- navegación inferior; botones, botones de icono y volver; campos, búsqueda y composer de chat;
+- seek/volumen, transporte, progreso y reproducción de colecciones;
+- switches, segmentos, menús, confirmaciones y filas/acciones sociales;
+- encabezado de hoja, selector de catálogo, filtros y barra de guardado del perfil.
+
+Además, el aviso global usa `SnackbarHost` Material y las pestañas del perfil usan `SingleChoiceSegmentedButtonRow`. La navegación principal integra Inicio, Listas, Chats, Perfil y Buscar en una sola `NavigationBar`, con indicador y badge nativos.
+
+Todavía usan una composición React Native compartida o no tienen pantalla Android equivalente estas **21 familias**: Ajustes, AjustesNovedades, AppDrawer, AvisoCaptura, BotonSuperficie, CabeceraAcceso, CabeceraLateral, ContenidoChats, EditorPerfilNativo, FilaCuenta, GoogleOAuthButton, GoogleOAuthFeedback, HojaNombreListaNativa, ListaAgrupada, LyricsTranslationMenu, NovedadesAlAbrir, PantallaDispositivos, SelectorDispositivos, TrackRow, Traspaso, Vacio y los contenedores de listas/perfil relacionados. Que una pantalla use React Native para carátulas, burbujas o arte no es un defecto; los controles interactivos y patrones de plataforma sí deben migrarse.
+
+Orden de migración recomendado:
+
+1. `ListaAgrupada`, `AppDrawer`, `SelectorDispositivos` y `Traspaso`: hojas, listas y cambios de dispositivo.
+2. `EditorPerfilNativo`, `ContenidoChats`, `FilaCuenta` y `TrackRow`: perfil, chat y filas con interacción frecuente.
+3. Ajustes, autenticación, estados vacíos, novedades y avisos de captura.
 
 ## Qué instalar
 
