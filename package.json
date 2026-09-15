@@ -4,7 +4,7 @@
   "main": "expo-router/entry",
   "private": true,
   "scripts": {
-    "postinstall": "patch-package --error-on-fail",
+    "postinstall": "node scripts/postinstall.mjs",
     "start": "expo start",
     "dev": "expo start --dev-client",
     "web": "expo start --web",
