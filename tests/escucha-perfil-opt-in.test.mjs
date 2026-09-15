@@ -56,6 +56,7 @@ test('guardar transmite el opt-out false y omite el parÃ¡metro cuando no se tocÃ
  let sent
  const api=load('src/services/profile.ts', {
   '../lib/fuentes':{fuenteDe:()=>null},'../lib/tema':{temaDe:()=>null},
+  './storageBudget':{assertStorageBudget:async()=>{}},
   '../lib/supabase':{getSupabase:()=>({rpc:async(_name,args)=>{
    sent=args;return {data:[{user_id:'owner',username:'ana',compartir_escucha:args.p_compartir_escucha}]}
   }})},

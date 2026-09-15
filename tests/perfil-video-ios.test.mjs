@@ -108,6 +108,7 @@ function storage({ evento = 'load', status = 200, signedError } = {}) {
   }
   const api = cargar('src/services/showcases.ts', {
     '../lib/artwork': {}, '../lib/tema': {},
+    './storageBudget': { assertStorageBudget: async () => {} },
     '../lib/supabase': { SUPABASE_ANON_KEY: 'simulada', getSupabase: () => ({
       storage: { from(name) { assert.equal(name, 'showcases'); return bucket } },
       auth: { getSession: async () => ({ data: { session: { access_token: 'simulado' } } }) },

@@ -1,6 +1,7 @@
 import { fuenteDe } from '../lib/fuentes'
 import { getSupabase } from '../lib/supabase'
 import { temaDe, type Tema } from '../lib/tema'
+import { assertStorageBudget } from './storageBudget'
 
 /**
  * Perfil propio: usuario, nombre visible y foto.
@@ -254,6 +255,7 @@ export async function uploadAvatar(
   const ext = fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
   const path = `${userId}/${Date.now()}.${ext}`
 
+  await assertStorageBudget(file)
   const { error } = await getSupabase()
     .storage.from(AVATAR_BUCKET)
     .upload(path, file, { contentType: mime, upsert: true })

@@ -42,6 +42,7 @@ function fixture() {
     },
   }
   new Function('exports', 'require', serviceCode)(service, id => {
+    if (id === './storageBudget') return { assertStorageBudget: async () => {} }
     assert.equal(id, '../lib/supabase'); return { getSupabase: () => supabase }
   })
   const slots = [], hook = {}

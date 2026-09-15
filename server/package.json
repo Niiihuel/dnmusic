@@ -8,7 +8,9 @@
     "start": "node dist/index.js",
     "dev": "tsc --watch --preserveWatchOutput & node --watch dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test tests/*.test.mjs"
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "storage:audit": "npm run build && node --env-file=.env.local dist/storage-audit.js",
+    "storage:cleanup": "npm run build && node --env-file=.env.local dist/storage-audit.js --apply"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",

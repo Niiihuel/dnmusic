@@ -1,4 +1,5 @@
 import { getSupabase } from '../lib/supabase'
+import { assertStorageBudget } from './storageBudget'
 
 /**
  * Listas de reproducción propias.
@@ -364,6 +365,7 @@ export async function uploadCover(
 
   const path = `${userId}/${playlistId}-${Date.now()}.${ext}`
 
+  await assertStorageBudget(file)
   const { error } = await getSupabase()
     .storage.from(COVER_BUCKET)
     .upload(path, file, { contentType, upsert: true })

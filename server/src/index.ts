@@ -28,6 +28,7 @@ import { RUTAS_LIVIANAS, manejarLiviana } from './livianas.js'
 import { comoRequest, volcar } from './puente.js'
 import { subirPropia } from './propia.js'
 import { FFPROBE } from './binarios.js'
+import { ensureStorageBudget, StorageBudgetError } from './storage-budget.js'
 
 /**
  * Servicio de resolución de música.
@@ -309,6 +310,7 @@ async function resolverCancion(
   }
   const audio = await resolveAudio(videoId, onProgreso)
   const destino = `${videoId}.${audio.ext}`
+  await ensureStorageBudget(db, audio.bytes.length)
   const { error } = await db.storage
     .from(BUCKET)
     .upload(destino, audio.bytes, { contentType: audio.mimeType, upsert: true })
@@ -479,12 +481,18 @@ export const manejador = async (
        * calculada y quien la pidió no tiene por qué esperar a que se guarde. Si
        * no se pudo guardar, la próxima vez se calcula de nuevo y listo.
        */
-      enSegundoPlano(
-        supabase.storage.from(BUCKET).upload(ruta, JSON.stringify(onda), {
-          contentType: 'application/json',
-          upsert: true,
-        }),
-      )
+      const ondaJson = JSON.stringify(onda)
+      try {
+        await ensureStorageBudget(supabase, Buffer.byteLength(ondaJson))
+        enSegundoPlano(
+          supabase.storage.from(BUCKET).upload(ruta, ondaJson, {
+            contentType: 'application/json',
+            upsert: true,
+          }),
+        )
+      } catch {
+        // La onda ya se calculó: si no hay reserva, se entrega sin cachearla.
+      }
 
       return json(200, onda)
     }
@@ -613,6 +621,7 @@ export const manejador = async (
       }
 
       const ruta = rutaDeCuarentena(await quienEs(req), videoId)
+      await ensureStorageBudget(supabase, APORTE_MAX_BYTES)
       /* `upsert` para que un reintento no rebote contra su propio intento
          anterior: es la cuarentena de esta persona para esta canción, y lo que
          vale es el último. */
@@ -669,6 +678,7 @@ export const manejador = async (
 
       try {
         const listo = await prepararAporte(crudo, body.durationMs ?? null)
+        await ensureStorageBudget(supabase, listo.bytes.length)
         const { error } = await supabase.storage
           .from(BUCKET)
           .upload(destino, listo.bytes, { contentType: 'audio/mp4', upsert: false })
@@ -720,6 +730,7 @@ export const manejador = async (
 
       try {
         const listo = await prepararAporte(crudo, durationMs)
+        await ensureStorageBudget(supabase, listo.bytes.length)
         const { error } = await supabase.storage
           .from(BUCKET)
           .upload(path, listo.bytes, { contentType: 'audio/mp4', upsert: false })
@@ -840,6 +851,7 @@ export const manejador = async (
       if (!nombre) return json(400, { error: 'Falta el nombre del archivo' })
 
       const ruta = rutaDePropia(await quienEs(req), nombre)
+      await ensureStorageBudget(supabase, PROPIA_MAX_BYTES)
       const { data, error } = await supabase.storage
         .from(BUCKET)
         .createSignedUploadUrl(ruta, { upsert: true })
@@ -870,6 +882,8 @@ export const manejador = async (
         return json(400, { error: 'No llegó ningún archivo.' })
       }
       try {
+        // Reserva adicional para una posible tapa embebida.
+        await ensureStorageBudget(supabase, bytes.length + 5 * 1024 * 1024)
         return json(200, await subirPropia(supabase, BUCKET, bytes, nombre))
       } finally {
         limpiar()
@@ -886,6 +900,7 @@ export const manejador = async (
         return json(413, { error: 'El archivo es demasiado grande (80 MB como mucho).' })
       }
       if (!bytes.length) return json(400, { error: 'No llegó ningún archivo.' })
+      await ensureStorageBudget(supabase, bytes.length + 5 * 1024 * 1024)
       return json(200, await subirPropia(supabase, BUCKET, bytes, nombre))
     }
 
@@ -893,7 +908,7 @@ export const manejador = async (
   } catch (e) {
     // El detalle va al log del servidor; al cliente solo lo necesario.
     console.error('[flora-music]', e)
-    return json(502, { error: (e as Error).message })
+    return json(e instanceof StorageBudgetError ? 507 : 502, { error: (e as Error).message })
   }
 }
 

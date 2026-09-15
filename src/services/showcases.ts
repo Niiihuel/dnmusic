@@ -2,6 +2,7 @@ import { artworkSource } from '../lib/artwork'
 import { getSupabase, SUPABASE_ANON_KEY } from '../lib/supabase'
 import { temaDe, type Tema } from '../lib/tema'
 import type { Encuadre } from './profile'
+import { assertStorageBudget } from './storageBudget'
 
 /** Un encuadre del payload, o null. Mismo criterio que en `profile`. */
 function encuadreDe(v: unknown): Encuadre | null {
@@ -591,6 +592,7 @@ export async function uploadIlustracion(
 ): Promise<string> {
   validarIlustracion(file, mime)
   const path = rutaDeIlustracion(ownerId, fileName, mime)
+  await assertStorageBudget(file)
   const { error } = await getSupabase()
     .storage.from('showcases')
     .upload(path, file, { contentType: mime, upsert: true })
@@ -618,6 +620,7 @@ export async function uploadIlustracionConProgreso(
 ): Promise<string> {
   validarIlustracion(file, mime)
   const path = rutaDeIlustracion(ownerId, fileName, mime)
+  await assertStorageBudget(file)
   const supabase = getSupabase()
   const { data, error } = await supabase.storage
     .from('showcases')
