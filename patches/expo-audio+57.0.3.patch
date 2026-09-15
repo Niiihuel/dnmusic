@@ -1,4 +1,5 @@
 diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_modules/expo-audio/ios/AudioComponentRegistry.swift
+index 036d166..b347f2f 100644
 --- a/node_modules/expo-audio/ios/AudioComponentRegistry.swift
 +++ b/node_modules/expo-audio/ios/AudioComponentRegistry.swift
 @@ -1,5 +1,8 @@
@@ -7,13 +8,13 @@ diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_mod
 +#if os(iOS)
 +import UIKit
 +#endif
-
+ 
  class AudioComponentRegistry {
    private var players = [String: AudioPlayer]()
-@@ -11,8 +14,67 @@
-
+@@ -11,8 +14,67 @@ class AudioComponentRegistry {
+ 
    private let registryQueue = DispatchQueue(label: "expo.audio.registry", attributes: .concurrent)
-
+ 
 +  #if os(iOS)
 +  private var transitionTask: UIBackgroundTaskIdentifier = .invalid
 +  private var transitionDeadline: DispatchWorkItem?
@@ -21,7 +22,7 @@ diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_mod
 +  #endif
 +
    init() {}
-
+ 
 +  deinit {
 +    #if os(iOS)
 +    transitionDeadline?.cancel()
@@ -78,35 +79,36 @@ diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_mod
    func add(_ player: AudioPlayer) {
      registryQueue.async(flags: .barrier) {
        self.players[player.id] = player
-@@ -54,6 +116,7 @@
+@@ -54,6 +116,7 @@ class AudioComponentRegistry {
    #endif
-
+ 
    func removeAll() {
 +    endPlaybackTransition()
      registryQueue.async(flags: .barrier) {
        self.players.values.forEach { $0.owningRegistry = nil }
        self.players.removeAll()
 diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-audio/ios/AudioModule.swift
+index d265606..89d1d1f 100644
 --- a/node_modules/expo-audio/ios/AudioModule.swift
 +++ b/node_modules/expo-audio/ios/AudioModule.swift
-@@ -107,6 +107,7 @@
+@@ -107,6 +107,7 @@ public class AudioModule: Module {
      }
-
+ 
      OnAppEntersForeground {
 +      registry.endPlaybackTransition()
        if !shouldPlayInBackground {
          resumeAllPlayers()
        }
-@@ -242,7 +243,7 @@
+@@ -242,7 +243,7 @@ public class AudioModule: Module {
        }
-
+ 
        Function("pause") { player in
 -        player.ref.pause()
 +        player.pause()
          if !player.keepAudioSessionActive {
            deactivateSession()
          }
-@@ -600,6 +601,11 @@
+@@ -600,6 +601,11 @@ public class AudioModule: Module {
          case .doNotMix, .mixWithOthers:
            playable.pause()
          }
@@ -117,11 +119,12 @@ diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-a
 +        player.pause()
        }
      }
-
+ 
 diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-audio/ios/AudioPlayer.swift
+index 0742943..1188cf2 100644
 --- a/node_modules/expo-audio/ios/AudioPlayer.swift
 +++ b/node_modules/expo-audio/ios/AudioPlayer.swift
-@@ -23,7 +23,15 @@
+@@ -23,7 +23,15 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      ref.rate == 0.0
    }
    var samplingEnabled = false
@@ -135,26 +138,26 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
 +      }
 +    }
 +  }
-
+ 
    var isLooping = false {
      didSet {
-@@ -47,9 +55,13 @@
+@@ -47,9 +55,13 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
    private var timeToken: Any?
    private var cancellables = Set<AnyCancellable>()
    private var endObserver: NSObjectProtocol?
 +  private var failureObserver: NSObjectProtocol?
 +  private weak var failedItem: AVPlayerItem?
 +  private var playbackFailure: String?
-
+ 
    private var audioProcessor: AudioTapProcessor?
    private var tapInstalled = false
 +  private weak var sampledItem: AVPlayerItem?
    private var shouldInstallAudioTap = false
    weak var owningRegistry: AudioComponentRegistry?
    var onPlaybackComplete: (() -> Void)?
-@@ -100,6 +112,9 @@
+@@ -100,6 +112,9 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
    }
-
+ 
    func play(at rate: Float) {
 +    if keepAudioSessionActive && !isPlaying {
 +      installTap()
@@ -162,7 +165,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      ref.actionAtItemEnd = isLooping ? .advance : .pause
      if isLooping {
        enqueueNextLoopItem()
-@@ -119,13 +134,19 @@
+@@ -119,13 +134,19 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      }
      samplingEnabled = enabled
      if enabled {
@@ -183,7 +186,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
        shouldInstallAudioTap = false
      }
    }
-@@ -133,10 +154,14 @@
+@@ -133,10 +154,14 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
    func currentStatus() -> [String: Any?] {
      let currentDuration = ref.status == .readyToPlay ? duration : 0.0
      let rate = isPlaying ? ref.rate : currentRate
@@ -199,7 +202,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
        "timeControlStatus": timeControlStatusString(status: ref.timeControlStatus),
        "reasonForWaitingToPlay": reasonForWaitingToPlayString(status: ref.reasonForWaitingToPlay),
        "mute": ref.isMuted,
-@@ -150,7 +175,7 @@
+@@ -150,7 +175,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        "isBuffering": isBuffering,
        "isLive": isLive,
        "currentOffsetFromLive": currentOffsetFromLive,
@@ -207,10 +210,10 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
 +      "error": error
      ]
    }
-
-@@ -198,22 +223,31 @@
+ 
+@@ -198,22 +223,31 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
    }
-
+ 
    private func setupPublisher() {
 +    ref.publisher(for: \.timeControlStatus)
 +      .receive(on: DispatchQueue.main)
@@ -244,7 +247,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
          }
          if status == .failed {
            self.updateStatus(with: [
-@@ -228,12 +262,14 @@
+@@ -228,12 +262,14 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
          guard let self else {
            return
          }
@@ -261,30 +264,30 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
            self.installTap()
          }
        }
-@@ -246,9 +282,7 @@
+@@ -246,9 +282,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      removeQueuedLoopItems()
      ref.pause()
-
+ 
 -    if samplingEnabled {
 -      uninstallTap()
 -    }
 +    uninstallTap()
      replacePlayerItem(with: item)
-
+ 
      if wasSamplingEnabled {
-@@ -267,9 +301,7 @@
+@@ -267,9 +301,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      removeQueuedLoopItems()
      ref.pause()
-
+ 
 -    if samplingEnabled {
 -      uninstallTap()
 -    }
 +    uninstallTap()
      let item = AudioUtils.createAVPlayerItem(from: source)
      replacePlayerItem(with: item)
-
-@@ -320,9 +352,7 @@
-
+ 
+@@ -320,9 +352,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+ 
    private func teardownPlayer() {
      removeQueuedLoopItems()
 -    if samplingEnabled {
@@ -294,7 +297,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      if let timeToken {
        ref.removeTimeObserver(timeToken)
        self.timeToken = nil
-@@ -331,6 +361,12 @@
+@@ -331,6 +361,12 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        NotificationCenter.default.removeObserver(endObserver)
        self.endObserver = nil
      }
@@ -307,35 +310,35 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      cancellables.removeAll()
      ref.pause()
    }
-@@ -358,7 +394,7 @@
+@@ -358,7 +394,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        return
      }
-
+ 
 -    guard audioProcessor?.isTapInstalled != true else {
 +    guard audioProcessor?.isTapInstalled != true || sampledItem !== ref.currentItem else {
        tapInstalled = true
        return
      }
-@@ -370,6 +406,7 @@
+@@ -370,6 +406,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      audioProcessor = AudioTapProcessor(player: ref)
      let success = audioProcessor?.installTap() ?? false
      tapInstalled = success
 +    sampledItem = success ? ref.currentItem : nil
-
+ 
      if success {
        audioProcessor?.sampleBufferCallback = { [weak self] buffer, frameCount, timestamp in
-@@ -400,6 +437,7 @@
-
+@@ -400,6 +437,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+ 
    private func uninstallTap() {
      tapInstalled = false
 +    sampledItem = nil
      audioProcessor?.uninstallTap()
      audioProcessor?.sampleBufferCallback = nil
    }
-@@ -439,6 +477,32 @@
+@@ -439,6 +477,32 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      }
    }
-
+ 
 +  private func addPlaybackFailureNotification() {
 +    if let failureObserver {
 +      NotificationCenter.default.removeObserver(failureObserver)
@@ -365,7 +368,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
    private func addPlaybackEndNotification() {
      if let endObserver {
        NotificationCenter.default.removeObserver(endObserver)
-@@ -447,7 +511,7 @@
+@@ -447,7 +511,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      endObserver = NotificationCenter.default.addObserver(
        forName: .AVPlayerItemDidPlayToEndTime,
        object: nil,
@@ -374,9 +377,9 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      ) { [weak self] notification in
        guard let self,
          let finishedItem = notification.object as? AVPlayerItem else {
-@@ -460,6 +524,11 @@
+@@ -460,6 +524,11 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        }
-
+ 
        if !self.isLooping {
 +        // The next item is selected in JS, which can outlive this player.
 +        // Request a short native transition window before emitting its end.
@@ -386,8 +389,8 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
          let currentTime = finishedItem.duration.seconds
          self.updateStatus(with: [
            "playing": false,
-@@ -497,6 +566,10 @@
-
+@@ -497,6 +566,10 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+ 
    func pause() {
      ref.pause()
 +    if keepAudioSessionActive {
@@ -395,14 +398,37 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
 +    }
 +    updateStatus(with: ["didJustPause": true])
    }
-
+ 
    func resumePlayback() {
+diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/expo-audio/ios/MediaController.swift
+index e977f57..2d056a2 100644
+--- a/node_modules/expo-audio/ios/MediaController.swift
++++ b/node_modules/expo-audio/ios/MediaController.swift
+@@ -246,7 +246,7 @@ class MediaController {
+         return .commandFailed
+       }
+ 
+-      player.ref.pause()
++      player.pause()
+       return .success
+     }
+ 
+@@ -256,7 +256,7 @@ class MediaController {
+       }
+ 
+       if player.isPlaying {
+-        player.ref.pause()
++        player.pause()
+       } else {
+         player.play(at: Float(player.currentRate > 0 ? player.currentRate : 1.0))
+       }
 diff --git a/node_modules/expo-audio/src/AudioPlayer.web.ts b/node_modules/expo-audio/src/AudioPlayer.web.ts
+index 61db2df..8297fbf 100644
 --- a/node_modules/expo-audio/src/AudioPlayer.web.ts
 +++ b/node_modules/expo-audio/src/AudioPlayer.web.ts
-@@ -375,7 +375,15 @@
+@@ -375,7 +375,15 @@ export class AudioPlayerWeb
      };
-
+ 
      media.onended = () => {
 +      this.isPlaying = false;
        lastEmitTime = 0;
@@ -415,25 +441,4 @@ diff --git a/node_modules/expo-audio/src/AudioPlayer.web.ts b/node_modules/expo-
 +      });
        mediaSessionController.updatePlaybackState(this);
      };
-
-diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/expo-audio/ios/MediaController.swift
---- a/node_modules/expo-audio/ios/MediaController.swift
-+++ b/node_modules/expo-audio/ios/MediaController.swift
-@@ -246,7 +246,7 @@
-         return .commandFailed
-       }
-
--      player.ref.pause()
-+      player.pause()
-       return .success
-     }
-
-@@ -256,7 +256,7 @@
-       }
-
-       if player.isPlaying {
--        player.ref.pause()
-+        player.pause()
-       } else {
-         player.play(at: Float(player.currentRate > 0 ? player.currentRate : 1.0))
-       }
+ 
