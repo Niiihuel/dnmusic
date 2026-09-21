@@ -1,3 +1,4 @@
+import type { EstadoVentana } from './ventana-ipc'
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { EstadoActualizacion } from './actualizador'
 import type { Aporte } from './resolutor'
@@ -19,6 +20,16 @@ import type { ConfiguracionDiscord, EstadoDiscord, ListeningActivity } from './d
  */
 const puente = {
   version: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  ventana: {
+    controlesPropios: process.platform === 'linux',
+    estado: (): Promise<EstadoVentana> => ipcRenderer.invoke('ventana:estado'),
+    accion: (accion: 'minimizar' | 'maximizar' | 'cerrar'): Promise<void> => ipcRenderer.invoke('ventana:accion', accion),
+    alCambiar: (fn: (estado: EstadoVentana) => void): (() => void) => {
+      const listener = (_: IpcRendererEvent, estado: EstadoVentana) => fn(estado)
+      ipcRenderer.on('ventana:cambio', listener)
+      return () => ipcRenderer.removeListener('ventana:cambio', listener)
+    },
+  },
 
   /**
    * Traer la ventana al frente.

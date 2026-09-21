@@ -1,4 +1,6 @@
-import { Modal, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
+import { Dialogo } from './Dialogo'
+import { BotonHoja } from './EncabezadoHoja'
+import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter, useSegments } from 'expo-router'
 import { marcarNovedadesVistas, useNovedadesPendientes } from '../state/novedadesVistas'
 import { useAjustesCargados, usePreferencia } from '../state/ajustes'
@@ -11,15 +13,75 @@ export function NovedadesAlAbrir() {
   const usuario = useUser()
   const segmentos = useSegments() as string[]
   const router = useRouter()
-  const { height } = useWindowDimensions()
+  const { height, width } = useWindowDimensions()
+  const modalPC = Platform.OS === 'web' && width >= 780
   const mostrar = usePreferencia('novedadesAlAbrir')
   const cargados = useAjustesCargados()
   const primera = pendientes?.[0]
   const visible = !!primera && !!usuario && segmentos[0] !== 'onboarding' && segmentos[0] !== 'vincular-google' && mostrar && cargados
-  if (!visible || !primera) return null
+  if (!visible || !primera) return <Dialogo titulo="Novedades" visible={false} contenidoPC={null} />
 
+  const contenido = (
+    <ScrollView contentContainerClassName={modalPC ? "gap-5 p-5" : "gap-5 p-6"} showsVerticalScrollIndicator={false}>
+      <View className="flex-row items-center justify-between gap-3">
+        <View className="rounded-full bg-muted px-3 py-1.5">
+          <Text className="text-muted-foreground text-caption2 font-semibold">
+            dnmusic {primera.version}
+          </Text>
+        </View>
+        {modalPC ? <BotonHoja label="Cerrar las novedades" onPress={marcarNovedadesVistas} /> : <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar las novedades"
+          onPress={marcarNovedadesVistas}
+          className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+        >
+          <IconClose size={17} color={ICON_COLOR.muted} />
+        </Pressable>}
+      </View>
+      <View className="gap-2">
+        <Text
+          accessibilityRole="header"
+          className="text-foreground text-title2 font-bold"
+        >
+          {primera.titulo}
+        </Text>
+        <Text className="text-muted-foreground text-caption1">Ya está en tu app.</Text>
+      </View>
+      <View className="gap-3">
+        {primera.cambios.slice(0, 3).map((cambio, i) => (
+          <View key={i} className="flex-row gap-3">
+            <Text className="text-muted-foreground text-footnote leading-5">·</Text>
+            <Text className="min-w-0 flex-1 text-muted-foreground text-footnote leading-5">
+              {cambio}
+            </Text>
+          </View>
+        ))}
+      </View>
+      <View className="gap-2">
+        <Pressable
+          accessibilityRole="button"
+          onPress={marcarNovedadesVistas}
+          className="h-12 items-center justify-center rounded-full bg-primary active:opacity-80"
+        >
+          <Text className="text-primary-foreground text-footnote font-semibold">
+            Seguir escuchando
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            marcarNovedadesVistas()
+            router.push('/ajustes/novedades')
+          }}
+          className="min-h-11 items-center justify-center rounded-full active:bg-muted"
+        >
+          <Text className="text-muted-foreground text-footnote">Ver todos los cambios</Text>
+        </Pressable>
+      </View>
+    </ScrollView>
+  )
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={marcarNovedadesVistas}>
+    <Dialogo titulo={primera.titulo} ancho={440} contenidoPC={contenido} transparent animationType="fade" visible onRequestClose={marcarNovedadesVistas}>
       <View
         className="flex-1 items-center justify-center px-5"
         style={{ backgroundColor: 'rgba(0,0,0,0.65)' }}
@@ -39,65 +101,9 @@ export function NovedadesAlAbrir() {
             boxShadow: '0 12px 48px rgba(0,0,0,0.45)',
           }}
         >
-          <ScrollView contentContainerClassName="gap-5 p-6" showsVerticalScrollIndicator={false}>
-            <View className="flex-row items-center justify-between gap-3">
-              <View className="rounded-full bg-muted px-3 py-1.5">
-                <Text className="text-muted-foreground text-caption2 font-semibold">
-                  dnmusic {primera.version}
-                </Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Cerrar las novedades"
-                onPress={marcarNovedadesVistas}
-                className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-              >
-                <IconClose size={17} color={ICON_COLOR.muted} />
-              </Pressable>
-            </View>
-            <View className="gap-2">
-              <Text
-                accessibilityRole="header"
-                className="text-foreground text-title2 font-bold"
-              >
-                {primera.titulo}
-              </Text>
-              <Text className="text-muted-foreground text-caption1">Ya está en tu app.</Text>
-            </View>
-            <View className="gap-3">
-              {primera.cambios.slice(0, 3).map((cambio, i) => (
-                <View key={i} className="flex-row gap-3">
-                  <Text className="text-muted-foreground text-footnote leading-5">·</Text>
-                  <Text className="min-w-0 flex-1 text-muted-foreground text-footnote leading-5">
-                    {cambio}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <View className="gap-2">
-              <Pressable
-                accessibilityRole="button"
-                onPress={marcarNovedadesVistas}
-                className="h-12 items-center justify-center rounded-full bg-primary active:opacity-80"
-              >
-                <Text className="text-primary-foreground text-footnote font-semibold">
-                  Seguir escuchando
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  marcarNovedadesVistas()
-                  router.push('/ajustes/novedades')
-                }}
-                className="min-h-11 items-center justify-center rounded-full active:bg-muted"
-              >
-                <Text className="text-muted-foreground text-footnote">Ver todos los cambios</Text>
-              </Pressable>
-            </View>
-          </ScrollView>
+          {contenido}
         </View>
       </View>
-    </Modal>
+    </Dialogo>
   )
 }

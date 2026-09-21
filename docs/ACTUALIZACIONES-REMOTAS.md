@@ -78,7 +78,7 @@ nunca el nombre mutable `nihuel` ni `user_metadata`.
    desactivar, apagar el interruptor y confirmar otro guardado.
 
 Los destinos permitidos son HTTPS, sin credenciales, puertos ni fragmentos:
-releases de `github.com/Niiihuel/dnmusic-releases`, App Store/TestFlight para iOS,
+releases de `github.com/Niihuel/dnmusic-releases`, App Store/TestFlight para iOS,
 Google Play con el package `com.nihuel.dnmusic` o releases para Android, y
 `https://dnmusic-app.vercel.app/` (con query opcional) para web. Para incorporar
 otro host legítimo, ampliar a la vez el validador TypeScript y SQL y sus pruebas.

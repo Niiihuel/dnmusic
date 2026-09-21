@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { Text, View, useWindowDimensions } from 'react-native'
 import { useRouter } from 'expo-router'
 import { volver } from '../src/lib/volver'
-import { compartirCancion, linkDe } from '../src/lib/compartir'
-import { copiarAlPortapapeles } from '../src/lib/portapapeles'
+import { compartirCancion, copiarEnlaceCancion, linkDe } from '../src/lib/compartir'
 import { useColorPortada } from '../src/lib/colorPortada'
 import { cancionACompartir, soltarCancionACompartir } from '../src/state/compartir'
 import { avisar } from '../src/state/aviso'
@@ -170,7 +169,7 @@ export default function Compartir() {
             ultima
             onPress={() =>
               void accion(async () => {
-                const copiado = await copiarAlPortapapeles(enlace)
+                const copiado = await copiarEnlaceCancion(track)
                 avisar(copiado ? 'Link copiado.' : `Compartí el link ${enlace}`)
                 if (!ES_WEB) cerrar()
               })

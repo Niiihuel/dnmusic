@@ -187,6 +187,8 @@ export default function Configuracion() {
             />
           </GrupoAjustes>
           <GrupoAjustes pie="Consultá los fallos y recuperaciones recientes del audio en este dispositivo.">
+            <FilaAjuste rotulo="Ecualizador" valor="10 bandas" icono={<IconSliders size={17} color={ICON_COLOR.muted} />}
+              onPress={() => router.push('/ajustes/ecualizador' as never)} />
             <FilaAjuste rotulo="Diagnóstico de audio" vacio="" icono={<IconDisc size={17} color={ICON_COLOR.muted} />}
               onPress={() => router.push('/ajustes/diagnostico-audio')} ultima />
           </GrupoAjustes>

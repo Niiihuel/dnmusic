@@ -1,4 +1,4 @@
-import { superficieInteractivaWeb, artworkInteractivoWeb } from './estadoControl'
+import { estadoControlWeb, superficieInteractivaWeb, artworkInteractivoWeb } from './estadoControl'
 import { BotonSuperficie } from './BotonSuperficie'
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import {
@@ -627,6 +627,7 @@ function SongRow({
     >
       <BotonSuperficie
         accessibilityRole="button"
+        {...estadoControlWeb('none')}
         accessibilityLabel={isCurrent && wantPlay ? `Pausar ${item.title}` : `Reproducir ${item.title}`}
         /* Si ya es la que suena, tocarla pausa o sigue. Antes volvía a
            resolverla y arrancaba de cero, y no había forma de pausar desde

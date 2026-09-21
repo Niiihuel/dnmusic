@@ -52,3 +52,28 @@ test('hover compartido: cruza huecos y descendientes sin reiniciar; salida rever
   over(a)
   assert.equal(changes.length,count,'desmontar elimina los listeners')
 })
+
+test('superficies: la fila incluye menú y padding; scroll y grupos anidados no duplican el fondo', t => {
+  const dom = new JSDOM('<div data-dn-shared-group data-dn-shared-targets="surfaces"><div data-dn-surface="row"><button data-dn-hover="surface">Reproducir<span>Título</span></button><button class="menu">Opciones</button></div><div data-dn-shared-group><button data-dn-shared-item>Otra sección</button></div></div>')
+  const saved = new Map(['window', 'Element', 'getComputedStyle', 'ResizeObserver'].map(k => [k, Object.getOwnPropertyDescriptor(globalThis, k)]))
+  Object.assign(globalThis, { window: dom.window, Element: dom.window.Element, getComputedStyle: () => ({borderRadius:'8px'}), ResizeObserver: class {observe(){} disconnect(){}} })
+  t.after(() => { stop(); dom.window.close(); for (const [k,d] of saved) {if(d)Object.defineProperty(globalThis,k,d);else delete globalThis[k]} })
+  const exports = {}
+  new Function('exports', ts.transpileModule(readFileSync('src/ui/sharedHover.web.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText)(exports)
+  const root = dom.window.document.querySelector('[data-dn-shared-targets]'), row=root.querySelector('[data-dn-surface]'), inner=row.querySelector('button'), menu=row.querySelector('.menu')
+  Object.defineProperties(root,{offsetWidth:{value:800},offsetHeight:{value:400}})
+  root.getBoundingClientRect=()=>({left:100,top:100,width:800,height:400})
+  row.getBoundingClientRect=()=>({left:120,top:120,width:360,height:68})
+  inner.getBoundingClientRect=()=>({left:126,top:126,width:304,height:56})
+  const changes=[]
+  const stop=exports.observeSharedHover(root, b=>changes.push(b))
+  const over=n=>{const e=new dom.window.Event('pointerover',{bubbles:true});Object.defineProperty(e,'pointerType',{value:'mouse'});n.dispatchEvent(e)}
+  over(inner.querySelector('span'))
+  assert.deepEqual(changes.at(-1),{x:20,y:20,width:360,height:68,radius:'8px',first:true},'el título selecciona la fila completa, no el hitbox de 304px')
+  over(menu)
+  assert.equal(changes.length,1,'los tres puntos pertenecen al mismo fondo')
+  root.dispatchEvent(new dom.window.Event('scroll'))
+  assert.equal(changes.at(-1).immediate,true,'el fondo sigue al scroll sin un resorte atrasado')
+  over(root.querySelector('[data-dn-shared-item]'))
+  assert.equal(changes.at(-1),null,'entrar a otro grupo apaga el anterior')
+})

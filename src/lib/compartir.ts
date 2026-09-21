@@ -12,13 +12,15 @@ import { copiarAlPortapapeles } from './portapapeles'
  * común bajó acá y aquellos dos módulos quedaron con lo suyo: el mensaje que
  * acompaña a cada cosa y sus casos especiales.
  *
- * El dominio va **cableado** y no en una variable de entorno: es el que está
- * declarado en `associatedDomains` (app.json), en el
- * `apple-app-site-association` y en los rewrites de `vercel.json`, y los cuatro
- * tienen que decir lo mismo o el link deja de abrir la app. Un valor que se
- * puede cambiar por build es justo lo que no queremos acá.
+ * El dominio de producción se inyecta al compilar. El fallback conserva links
+ * de builds anteriores y evita que un entorno local sin variables fabrique
+ * URLs incompletas. `app.json` y los archivos de asociación deben apuntar al
+ * mismo host en cada release nativo.
  */
-export const SITIO = 'https://dnmusic-app.vercel.app'
+export const SITIO = (
+  (typeof process !== 'undefined' ? process.env.EXPO_PUBLIC_SITE_URL : undefined) ??
+  'https://dnmusic-app.vercel.app'
+).replace(/\/$/, '')
 
 /**
  * Las cuatro cosas que tienen link propio.
@@ -158,6 +160,12 @@ export async function compartirCancion(track: {
   const enlace = linkDe('cancion', track.videoId)
   const quien = track.artist ? ` de ${track.artist}` : ''
   await ofrecer(enlace, `Escuchá «${track.title}»${quien} en dnmusic: ${enlace}`)
+}
+
+/** Copiar también prepara el preview antes de que el receptor pida el enlace. */
+export async function copiarEnlaceCancion(track: Parameters<typeof publicarCancion>[0]): Promise<boolean> {
+  await publicarCancion(track).catch(() => {})
+  return copiarAlPortapapeles(linkDe('cancion', track.videoId))
 }
 
 /** Pasar un perfil. Solo tiene tarjeta si está en público; ver `tarjeta_enlace`. */

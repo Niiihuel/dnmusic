@@ -1,3 +1,4 @@
+import { PlayerHeader } from '../src/ui/PlayerHeader'
 import { useDestinoEscucha } from '../src/ui/Dispositivos.shared'
 import { EstadoDispositivo } from '../src/ui/EstadoDispositivo'
 import { IconButton } from '../src/ui/IconButton'
@@ -568,13 +569,7 @@ function PlayingContent() {
       <View style={{ flex: 1, backgroundColor: '#101010' }}>
         <PlayerBackdrop uri={artwork} />
         <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, width: '100%', maxWidth: COLUMNA, alignSelf: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 44 }}>
-            <IconButton label="Cerrar reproductor" symbol="chevron.down" onPress={cerrar} lado={44} size={20} />
-            <View style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
-              <Text numberOfLines={1} style={{ color: '#B3B3B3', fontSize: 12 }}>{manual ? 'En la cola' : listName || 'Sonando'}</Text>
-            </View>
-            <EstadoDispositivo compacto />
-          </View>
+          <PlayerHeader title={manual ? 'En la cola' : listName || 'Sonando'} onClose={cerrar} right={<EstadoDispositivo compacto />} />
           {conLetra ? (
             <>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 24, paddingTop: compacto ? 4 : 12, paddingBottom: 12 }}>

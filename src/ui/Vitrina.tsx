@@ -4,6 +4,7 @@ import { proxiedImage } from '../services/music'
 import { TextoPerfil as Text } from './FuentePerfil'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Image, Pressable, View, type ViewStyle } from 'react-native'
+import { Image as ExpoImage } from 'expo-image'
 import { LinearGradient } from 'expo-linear-gradient'
 import Svg, { Circle, Defs, Line, RadialGradient, Rect, Stop } from 'react-native-svg'
 import type { SharedValue } from 'react-native-reanimated'
@@ -593,9 +594,13 @@ function VitrinaImagen({ imagen, grande = false }: { imagen: ShowcaseImagen; gra
       }}
     >
       {caja > 0 ? (
-        <Image
+        <ExpoImage
           source={{ uri }}
-          resizeMode="cover"
+          contentFit="cover"
+          autoplay
+          recyclingKey={uri}
+          transition={0}
+          cachePolicy="memory-disk"
           style={estiloEncuadrado(caja, imagen.encuadre, alto)}
         />
       ) : null}

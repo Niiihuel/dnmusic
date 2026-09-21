@@ -5,7 +5,7 @@ import { clasificarRedPrecarga } from '../lib/politicaPrecarga'
 import {
   audioV1, arteGuardado, escritorioAudio, escucharRedAudio, espacioLibreAudio, estadoRedAudio,
   guardarArte, hayAlmacenAudio, limpiarParciales, listarAudio, quitarAudio, quitarPausa, RESERVA_AUDIO,
-  transferirAudio, type PausaAudio, type TransferenciaAudio,
+  transferirAudio, type PausaAudio, type TransferenciaAudio, type UsoTransferenciaAudio,
 } from '../lib/almacenAudio'
 import { resolveSong, signedUrl } from '../services/music'
 import type { PlaylistTrack } from '../services/playlists'
@@ -42,7 +42,7 @@ let limiteModificado = false
 const consumidores = new Map<string, number>()
 const cacheExplicita = new Set<string>()
 
-type Trabajo = { key: string; controller: AbortController; transferencia?: TransferenciaAudio; detener?: 'pausa' | 'cancelar' | 'prioridad' | 'red'; detenido?: Promise<void> }
+type Trabajo = { key: string; controller: AbortController; transferencia?: TransferenciaAudio; uso?: UsoTransferenciaAudio; detener?: 'pausa' | 'cancelar' | 'prioridad' | 'red'; detenido?: Promise<void> }
 function escribir(items = store.get().items) {
   const s = store.get()
   const texto = JSON.stringify({ version: 2, items, cola: s.cola, limiteCacheMB: s.limiteCacheMB })
@@ -246,7 +246,12 @@ export async function prepararCache(track: PlaylistTrack, signal?: AbortSignal):
     }
     off = store.subscribe(mirar); signal?.addEventListener('abort', abortar, { once: true }); mirar()
     const enCurso = activo && store.get().items[activo.key]
-    if (!terminado && enCurso && enCurso.estado !== 'lista' && !consumidores.has(`video:${enCurso.videoId}`)) detenerActivo('prioridad')
+    if (!terminado && enCurso && enCurso.estado !== 'lista') {
+      const necesaria = consumidores.has(`video:${enCurso.videoId}`)
+      // Si era una descarga offline ya iniciada, adoptarla también cambia la
+      // sesión al reanudar: conservar background podría dejarla esperando a iOS.
+      if (!necesaria || (activo?.transferencia && activo.uso !== 'reproduccion')) detenerActivo('prioridad')
+    }
     impulsar()
   })
 }
@@ -419,13 +424,14 @@ async function bajar(t: Trabajo) {
   if (!vigente(t)) return
   poner(t.key, { estado: 'bajando' })
   let aviso = 0, bytesTotal = 0, sinEspacio = false
+  t.uso = consumidores.has(`video:${d.videoId}`) ? 'reproduccion' : 'descarga'
   t.transferencia = transferirAudio(d.audioPath, url, ({ bytesWritten, totalBytes }) => {
     if (!vigente(t)) return
     bytesTotal = Math.max(bytesTotal, totalBytes)
     const libres = espacioLibreAudio()
     if (libres !== null && libres < RESERVA_AUDIO + Math.max(0, totalBytes - bytesWritten)) { sinEspacio = true; t.transferencia?.cancelar() }
     if (Date.now() - aviso >= 200) { aviso = Date.now(); poner(t.key, { progreso: totalBytes > 0 ? Math.min(.99, bytesWritten / totalBytes) : 0 }, false) }
-  }, d.pausa)
+  }, d.pausa, t.uso)
   const f = await t.transferencia.resultado
   if (!vigente(t)) return
   if (sinEspacio || !f || f.key !== d.audioPath || !f.uri || !Number.isFinite(f.bytes) || f.bytes <= 0 || (bytesTotal > 0 && f.bytes < bytesTotal)) {

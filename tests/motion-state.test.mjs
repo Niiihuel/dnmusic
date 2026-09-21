@@ -18,22 +18,24 @@ function stateModule(path) {
   return { api, read: () => state }
 }
 
-test('tooltip: demora corta, cruce retenible y desmontajes ajenos no cierran el actual', t => {
+test('tooltip: espera medio segundo en cada botón, conserva cruce y cancela pasos fugaces', t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 10000 })
   const { api, read } = stateModule('src/state/tooltip.ts')
   const first = { owner: 'a', texto: 'Uno', x: 0, y: 0, w: 44, h: 44 }
   api.pedirTooltip(first)
-  t.mock.timers.tick(119)
+  t.mock.timers.tick(499)
   assert.equal(read().tip, null)
   t.mock.timers.tick(1)
   assert.equal(read().tip.owner, 'a')
   api.soltarTooltip('a')
   api.pedirTooltip({ ...first, owner: 'b', texto: 'Dos' })
-  assert.equal(read().tip.owner, 'b', 'recorrer vecinos no repite la espera')
+  assert.equal(read().tip, null, 'recorrer vecinos también requiere esperar')
   api.cerrarTooltip('a')
   api.soltarTooltip('a')
-  t.mock.timers.tick(150)
-  assert.equal(read().tip.owner, 'b', 'el control anterior no borra el tooltip nuevo')
+  t.mock.timers.tick(499)
+  assert.equal(read().tip, null)
+  t.mock.timers.tick(1)
+  assert.equal(read().tip.owner, 'b', 'el control anterior no cancela la apertura nueva')
   api.soltarTooltip('b')
   t.mock.timers.tick(60)
   api.retenerTooltip()
@@ -41,6 +43,20 @@ test('tooltip: demora corta, cruce retenible y desmontajes ajenos no cierran el 
   assert.equal(read().tip.owner, 'b', 'puede cruzarse y leerse sin tiempo límite')
   api.cerrarTooltip()
   assert.equal(read().tip, null)
+  api.pedirTooltip(first)
+  t.mock.timers.tick(250)
+  api.soltarTooltip('a')
+  t.mock.timers.tick(1000)
+  assert.equal(read().tip, null, 'un paso fugaz no deja una apertura pendiente')
+  api.pedirTooltip(first)
+  t.mock.timers.tick(499)
+  assert.equal(read().tip, null, 'reentrar también espera medio segundo')
+  t.mock.timers.tick(1)
+  assert.equal(read().tip.owner, 'a')
+  api.cerrarTooltip()
+  api.mostrarTooltipYa(first)
+  assert.equal(read().tip.owner, 'a', 'el teclado conserva respuesta inmediata')
+  api.cerrarTooltip()
 })
 
 test('copiar: no confirma antes de resolver; los errores permiten reintentar y las respuestas viejas no pisan la actual', t => {

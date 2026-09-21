@@ -20,8 +20,11 @@ test('el parche se revierte y reaplica completo sin perder cambios del SDK insta
   const dir = mkdtempSync(join(tmpdir(), 'dnmusic-audio-patch-test-'))
   const files = [...patch.matchAll(/^\+\+\+ b\/(.+)$/gm)].map(match => match[1])
   assert.deepEqual([...files].sort(), [
+    'node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt',
+    'node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt',
     `${base}AudioComponentRegistry.swift`, `${base}AudioPlayer.swift`, `${base}AudioModule.swift`,
-    `${base}MediaController.swift`, 'node_modules/expo-audio/src/AudioPlayer.web.ts',
+    `${base}AudioTapProcessor.h`, `${base}AudioTapProcessor.m`, `${base}MediaController.swift`,
+    'node_modules/expo-audio/src/AudioModule.types.ts', 'node_modules/expo-audio/src/AudioPlayer.web.ts',
   ].sort())
   try {
     for (const file of files) {
@@ -94,4 +97,21 @@ test('interrupción cancela recuperación del player persistente sin marcarlo pa
   assert.match(pending, /player\.wasPlaying = false\s*player\.pause\(\)/)
   assert.doesNotMatch(pending, /interruptedPlayers\.insert|resumePlayback/)
   assert.match(interruption, /if playable\.isPlaying \{\s*interruptedPlayers\.insert/)
+})
+
+test('una canción que empieza detrás prepara el tap antes de sonar, y volver al frente sólo habilita muestras', () => {
+  const ready = section(player, '        if status == .readyToPlay {', '        if status == .failed {')
+  assert.match(ready, /shouldInstallAudioTap \|\| samplingEnabled \|\| keepAudioSessionActive/)
+  assert.ok(ready.indexOf('installTap()') < ready.indexOf('self.updateStatus'))
+  const play = section(player, '  func play(at rate:', '  func setSamplingEnabled(')
+  assert.match(play, /keepAudioSessionActive && !isPlaying/)
+  assert.ok(play.indexOf('installTap()') < play.indexOf('ref.playImmediately'))
+  const enable = section(player, '  func setSamplingEnabled(', '  func currentStatus()')
+  assert.match(enable, /samplingEnabled = enabled/)
+  assert.match(enable, /if keepAudioSessionActive && isPlaying \{\s*return\s*\}/)
+  assert.ok(enable.indexOf('if keepAudioSessionActive && isPlaying') < enable.indexOf('installTap()'))
+  assert.doesNotMatch(enable, /uninstallTap\(|\.pause\(|\.seek\(/)
+  const item = section(player, '    ref.publisher(for: \\.currentItem)', '  func replaceWithPreloadedItem(')
+  assert.doesNotMatch(item, /uninstallTap\(/)
+  assert.match(player, /self\.samplingEnabled else \{\s*return/)
 })

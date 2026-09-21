@@ -21,7 +21,7 @@ function fixture(nombre = 'Escritorio', os = 'web') {
     exports, require: () => ({ jsx, jsxs: jsx }), LATERAL_W: 210, MAX_W: 560,
     useState(initial) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], v => { states[i] = typeof v === 'function' ? v(states[i]) : v }] },
     ...Object.fromEntries(['Shell', 'SafeAreaView', 'View', 'Panel', 'CabeceraLateral', 'BotonLateral', 'BotonVolver', 'ScrollView', 'Text', 'Pressable', 'CollapsedSidebar', 'PreviaPlegable', 'IconUser', 'IconEye', 'IconEyeOff', 'IconCollapseLeft', 'IconCollapseRight', 'IconBack', 'IconChevronRight', 'KeyboardAvoidingView', 'AjustesCompactos', 'FilaSocial'].map(n => [n, n])),
-    ICON_COLOR: { foreground: 'white', muted: 'gray' }, Platform: { OS: os },
+    ScrollArea: 'ScrollView', superficieInteractivaWeb: () => ({}), ICON_COLOR: { foreground: 'white', muted: 'gray' }, Platform: { OS: os },
   })
   const previa = { type: 'PerfilBorrador', props: { nombre: 'Cambio pendiente' } }
   const sections = [
@@ -139,7 +139,7 @@ test('filas de apariencia y campos aceptan iconos directos sin cambiar el estilo
     const code = ts.transpileModule(`export ${fn.getText(file).replace(/^export /, '')}`, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText
     const exports = {}
     vm.runInNewContext(code, {
-      exports, require: () => ({ jsx, jsxs: jsx }), ICON_COLOR: { muted: 'gray' }, TITULO_CAMPO: { nombre: 'Nombre' }, useAjustesCompactos: () => false,
+      exports, require: () => ({ jsx, jsxs: jsx }), superficieInteractivaWeb: () => ({}), ICON_COLOR: { muted: 'gray' }, TITULO_CAMPO: { nombre: 'Nombre' }, useAjustesCompactos: () => false,
       /* `false` = la fila escucha el toque, que es lo que hace en web y en
          Android. En iOS lo escucha el `Toggle` del sistema y la fila deja de
          ser un Pressable; ver `src/ui/Interruptor.ios.tsx`. */

@@ -26,6 +26,8 @@ function cargar(path, imports) {
 
 const rn = { ActivityIndicator: 'ActivityIndicator', Pressable: 'Pressable', Text: 'Text', View: 'View', useWindowDimensions: () => ({ width: 390 }) }
 const cabecera = cargar('src/ui/EncabezadoHoja.tsx', {
+  react: { isValidElement: value => !!value?.type },
+  './ModalContext': { useDentroModalPC: () => false },
   'react/jsx-runtime': runtime, 'react-native': rn,
   'expo-linear-gradient': { LinearGradient: 'LinearGradient' },
   './BotonVolver': { BotonVolver: 'BotonVolver' },

@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 /**
  * La tarjeta de un link compartido: lo que se ve **antes** de entrar.
@@ -10,9 +12,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
  * se previsualiza igual que la portada de la app — el ícono y «dnmusic»— y
  * quien lo recibe no tiene forma de saber qué le mandaron.
  *
- * Hace dos cosas con la misma información, y por eso es **una** función y no
- * dos: comparten la instancia de Fluid, y con ella el shell cacheado y el
- * cliente de Supabase.
+ * Sirve el shell, el iframe, el PNG social y oEmbed con la misma lectura
+ * pública. El renderizador de imágenes se carga sólo para `modo=imagen`.
  *
  *   `/cancion/<id>`        → la misma `index.html` de siempre, con la tarjeta
  *                            puesta en el head. La app arranca igual y
@@ -27,7 +28,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
  * contra el `host`.
  */
 
-const SITIO = 'https://dnmusic-app.vercel.app'
+const SITIO = (process.env.SITE_URL ?? 'https://dnmusic-app.vercel.app').replace(/\/$/, '')
 const TITULO = 'dnmusic'
 const DESCRIPCION =
   'Escuchá tu música, armá tus listas y ponete en Jam: la misma canción, al mismo tiempo, con quien quieras.'
@@ -53,6 +54,10 @@ let shellCacheado: string | null = null
 
 async function shell(origen: string): Promise<string> {
   if (shellCacheado) return shellCacheado
+  if (process.env.WEB_DIST_DIR) {
+    shellCacheado = await readFile(join(process.env.WEB_DIST_DIR, 'index.html'), 'utf8')
+    return shellCacheado
+  }
   const res = await fetch(`${origen}/index.html`)
   if (!res.ok) throw new Error(`shell ${res.status}`)
   shellCacheado = await res.text()
@@ -116,7 +121,7 @@ function metaDeTarjeta(t: Tarjeta | null, que: string, id: string): string {
         .filter(Boolean)
         .join(' · ')
     : DESCRIPCION
-  const imagen = t?.tapa ?? `${SITIO}/icons/icon-512.png`
+  const imagen = t ? `${SITIO}/api/tarjeta?modo=imagen&que=${que}&id=${encodeURIComponent(id)}` : `${SITIO}/icons/icon-512.png`
   const canonica = `${SITIO}/${que}/${encodeURIComponent(id)}`
   /* Sin tarjeta el título es el de siempre y no «dnmusic — dnmusic»: acá caen
      también las rutas de adentro que tienen la misma forma que un link
@@ -130,6 +135,9 @@ function metaDeTarjeta(t: Tarjeta | null, que: string, id: string): string {
     <meta property="og:description" content="${escapar(bajada)}" />
     <meta property="og:url" content="${escapar(canonica)}" />
     <meta property="og:image" content="${escapar(imagen)}" />
+    <meta property="og:image:alt" content="${escapar(t ? `${titulo} · ${t.subtitulo}` : TITULO)}" />
+    ${t ? '<meta property="og:image:width" content="1200" /><meta property="og:image:height" content="630" /><meta property="og:image:type" content="image/png" />' : ''}
+    ${t ? `<link rel="alternate" type="application/json+oembed" href="${SITIO}/api/tarjeta?modo=oembed&amp;que=${que}&amp;id=${encodeURIComponent(id)}" title="${escapar(titulo)}" />` : ''}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapar(titulo)}" />
     <meta name="twitter:description" content="${escapar(bajada)}" />
@@ -161,7 +169,7 @@ function paginaEmbed(t: Tarjeta | null, que: string, id: string): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${titulo} — ${TITULO}</title>
+${metaDeTarjeta(t, que, id)}
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -171,7 +179,7 @@ function paginaEmbed(t: Tarjeta | null, que: string, id: string): string {
               background: #181818; border-radius: 16px; text-decoration: none; color: inherit; }
   a.tarjeta:hover { background: #1F1F1F; }
   .tapa { width: 104px; height: 104px; border-radius: 8px; flex: none;
-          background: #1F1F1F center/cover no-repeat; }
+          background: #1F1F1F; object-fit: cover; }
   .texto { min-width: 0; flex: 1; }
   .titulo { font-weight: 600; font-size: 17px; margin: 0 0 2px;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -185,7 +193,7 @@ function paginaEmbed(t: Tarjeta | null, que: string, id: string): string {
 </head>
 <body>
 <a class="tarjeta" href="${escapar(destino)}" target="_blank" rel="noopener">
-  <div class="tapa"${tapa ? ` style="background-image:url('${tapa}')"` : ''}></div>
+  ${tapa ? `<img class="tapa" src="${tapa}" alt="Portada" />` : '<div class="tapa" aria-hidden="true"></div>'}
   <div class="texto">
     <p class="titulo">${titulo}</p>
     <p class="sub">${bajada}</p>
@@ -202,7 +210,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const url = new URL(req.url ?? '/', origen)
   const que = url.searchParams.get('que') ?? ''
   const id = url.searchParams.get('id') ?? ''
-  const embed = url.searchParams.get('modo') === 'embed'
+  const modo = url.searchParams.get('modo') ?? ''
+  const embed = modo === 'embed'
 
   if (!COMPARTIBLES.has(que) || !id || id.length > 200) {
     res.statusCode = 404
@@ -213,7 +222,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   let tarjeta: Tarjeta | null = null
   try {
-    tarjeta = await pedirTarjeta(que, decodeURIComponent(id))
+    tarjeta = await pedirTarjeta(que, id)
   } catch {
     /* La base puede estar caída y el link tiene que abrir igual: sin tarjeta se
        sirve la app con los meta de siempre, que es exactamente lo que pasaba
@@ -222,12 +231,42 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   /*
    * Una tarjeta que ya se armó se puede reusar un rato, pero no para siempre:
-   * una lista que vuelve a privada tiene que dejar de previsualizarse. Diez
-   * minutos en el CDN y un día sirviendo lo viejo mientras se revalida es el
-   * mismo trato que le damos a las carátulas.
+   * una lista que vuelve a privada tiene que dejar de previsualizarse. El CDN
+   * sólo conserva cinco minutos, sin servir versiones
+   * vencidas. Un fallo o una tarjeta aún sin publicar no se cachean.
    */
-  res.setHeader('Cache-Control', 'public, s-maxage=600, stale-while-revalidate=86400')
+  res.setHeader('Cache-Control', tarjeta ? 'public, max-age=0, s-maxage=300' : 'no-store')
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
+
+  if (modo === 'imagen' || modo === 'oembed') {
+    if (!tarjeta) {
+      res.statusCode = 404
+      res.end('Tarjeta no disponible.')
+      return
+    }
+    if (modo === 'oembed') {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ version: '1.0', type: 'rich', title: tarjeta.titulo,
+        author_name: tarjeta.subtitulo, provider_name: TITULO, provider_url: SITIO,
+        thumbnail_url: `${SITIO}/api/tarjeta?modo=imagen&que=${que}&id=${encodeURIComponent(id)}`,
+        thumbnail_width: 1200, thumbnail_height: 630, width: 560, height: 152,
+        html: `<iframe src="${SITIO}/embed/${que}/${encodeURIComponent(id)}" width="560" height="152" frameborder="0" loading="lazy" title="${escapar(tarjeta.titulo)}"></iframe>`,
+      }))
+      return
+    }
+    try {
+      const { crearImagenTarjeta } = await import('../src/server/imagenTarjeta')
+      const imagen = await crearImagenTarjeta(tarjeta, que)
+      res.setHeader('Content-Type', 'image/png')
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+      res.end(imagen)
+    } catch {
+      res.statusCode = 503
+      res.setHeader('Cache-Control', 'no-store')
+      res.end('No se pudo generar la imagen.')
+    }
+    return
+  }
 
   if (embed) {
     /* Un embed que no se puede meter en un iframe no es un embed. Es la única

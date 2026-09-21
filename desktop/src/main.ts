@@ -1,3 +1,4 @@
+import { registrarVentana } from './ventana-ipc'
 import { app, BrowserWindow, ipcMain, Menu, safeStorage, session, shell } from 'electron'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -109,15 +110,12 @@ function crearVentana(): BrowserWindow {
      * único que hay ahí es «buscar actualizaciones» y las herramientas.
      */
     autoHideMenuBar: true,
-    /*
-     * Conserva los controles de ventana nativos (snap layouts y menú del
-     * escritorio). Su posición depende del sistema, RTL y preferencias del
-     * usuario: no se fuerza la distribución de Windows sobre Linux.
-     * BandaVentana reserva el alto y respeta el rectángulo libre que publica
-     * windowControlsOverlay; ningún logo o botón de la app queda debajo.
-     */
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#121212', symbolColor: '#B3B3B3', height: BANDA_VENTANA },
+    // Windows conserva sus controles nativos y Snap Layouts. En Linux los
+    // dibuja DMusic a la derecha, sin depender del tema/distribución del sistema.
+    ...(process.platform === 'linux' ? { frame: false } : {
+      titleBarStyle: 'hidden' as const,
+      titleBarOverlay: { color: '#121212', symbolColor: '#B3B3B3', height: BANDA_VENTANA },
+    }),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -154,6 +152,7 @@ function crearVentana(): BrowserWindow {
     },
   })
 
+  registrarVentana(ipcMain, ventana)
   ventana.once('ready-to-show', () => ventana.show())
   seguirAudioDe(ventana)
 

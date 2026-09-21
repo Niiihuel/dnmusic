@@ -5,14 +5,16 @@ import { randomUUID } from 'node:crypto'
 /** Public metadata only. Position is measured at snapshot creation, updatedAt is freshness. */
 export type ListeningActivity = {
   title: string; artist: string; durationMs: number; positionMs: number
-  updatedAt: number; expiresAt: number; trackUrl?: string; artworkUrl?: string
+  updatedAt: number; sampledAt?: number; expiresAt: number; trackUrl?: string; artworkUrl?: string
 }
 export type ConfiguracionDiscord = { enabled: boolean; applicationId: string }
 export type EstadoDiscord = ConfiguracionDiscord & {
   status: 'disabled' | 'unconfigured' | 'disconnected' | 'connecting' | 'ready' | 'published' | 'error'
   error?: string
+  /** Nombre de la sesión local; nunca se transmite al control remoto. */
+  account?: string
 }
-type Activity = { type: 2; details: string; state: string; timestamps?: { start: number; end: number }; assets?: { large_image: string; large_text: string }; buttons?: { label: string; url: string }[] }
+type Activity = { type: 2; status_display_type: 1; details: string; state: string; timestamps?: { start: number; end: number }; assets?: { large_image: string; large_text: string }; buttons?: { label: string; url: string }[] }
 type Timer = ReturnType<typeof setTimeout>
 type Dependencies = {
   connect: (path: string) => Socket; paths: string[]; now: () => number
@@ -20,7 +22,8 @@ type Dependencies = {
 }
 const MAX_FRAME = 64 * 1024
 const FRESH_MS = 65_000
-const UPDATE_MS = 15_000
+const UPDATE_MS = 5_000
+const RECONNECT_MS = 15_000
 
 export function rutasDiscord(platform = process.platform, env = process.env): string[] {
   const prefix = env.XDG_RUNTIME_DIR || env.TMPDIR || env.TMP || env.TEMP || '/tmp'
@@ -76,10 +79,15 @@ export function actividadDiscord(input: unknown, now: number): { activity: Activ
   if (!Number.isFinite(source.positionMs) || source.positionMs < 0 || !Number.isFinite(source.durationMs) || source.durationMs < 0) return null
   if (source.durationMs > 0 && source.positionMs >= source.durationMs) return null
   const duration = Math.min(source.durationMs, 24 * 60 * 60 * 1000)
-  const position = Math.min(source.positionMs, duration || source.positionMs)
+  // Una lectura remota ya trae la posición extrapolada. updatedAt sólo mide
+  // frescura; sumarlo otra vez adelantaría la canción hasta un latido completo.
+  const sampledAt = source.sampledAt ?? now
+  if (!Number.isFinite(sampledAt) || sampledAt > now + 5000 || sampledAt < now - FRESH_MS) return null
+  const position = source.positionMs + Math.max(0, now - sampledAt)
+  if (duration > 0 && position >= duration) return null
   const details = Array.from(title).length < 2 ? `♪ ${title}` : title
   const state = Array.from(artist).length < 2 ? `♫ ${artist}` : artist
-  const activity: Activity = { type: 2, details, state }
+  const activity: Activity = { type: 2, status_display_type: 1, details, state }
   if (duration > position && duration > 0) {
     const start = Math.floor((now - position) / 1000)
     activity.timestamps = { start, end: Math.floor((now - position + duration) / 1000) }
@@ -91,11 +99,23 @@ export function actividadDiscord(input: unknown, now: number): { activity: Activ
   return { activity, expiresAt: Math.min(source.expiresAt, source.updatedAt + FRESH_MS, now + FRESH_MS, duration > 0 ? now + duration - position : Infinity) }
 }
 
+/** CLOSE codes and RPC command errors have distinct numeric namespaces. */
+export function errorDiscord(value: unknown, cierre = false): string {
+  const code = value && typeof value === 'object' ? (value as { code?: unknown }).code : undefined
+  const numero = typeof code === 'number' && Number.isInteger(code) && code >= 0 && code <= 65535 ? code : undefined
+  if (cierre && numero === 4000 || !cierre && numero === 4007) return 'Discord no reconoce la aplicación de DMusic. Actualizá DMusic y volvé a conectar.'
+  if (!cierre && numero === 4006) return 'Discord no autorizó la actividad. Comprobá la sesión abierta en Discord y sus permisos de actividad.'
+  if (cierre && numero === 4002) return 'Discord limitó temporalmente las actualizaciones. Se reintentará automáticamente.'
+  return `${cierre ? 'Discord cerró la conexión' : 'Discord rechazó la actividad'}${numero !== undefined ? ` (código ${numero})` : ''}. Volvé a abrir Discord e intentá nuevamente.`
+}
+
 /** Local Discord IPC only; no OAuth, network fetch, account identifiers or audio URLs. */
 export class DiscordPresence {
   private config: ConfiguracionDiscord = { enabled: false, applicationId: '' }
   private status: EstadoDiscord['status'] = 'disabled'
   private error: string | undefined
+  private account: string | undefined
+  private scanError: string | undefined
   private socket: Socket | null = null
   private generation = 0
   private ready = false
@@ -112,7 +132,7 @@ export class DiscordPresence {
     this.dependencies = { connect: path => createConnection(path), paths: rutasDiscord(), now: Date.now,
       later: (fn, delay) => { const timer = setTimeout(fn, delay); timer.unref(); return timer }, cancel: clearTimeout, ...deps }
   }
-  estado(): EstadoDiscord { return { ...this.config, status: this.status, ...(this.error ? { error: this.error } : {}) } }
+  estado(): EstadoDiscord { return { ...this.config, status: this.status, ...(this.error ? { error: this.error } : {}), ...(this.account ? { account: this.account } : {}) } }
   private setStatus(status: EstadoDiscord['status'], error?: string): void {
     if (status === this.status && error === this.error) return
     this.status = status; this.error = error; this.changed(this.estado())
@@ -124,9 +144,11 @@ export class DiscordPresence {
       || next.applicationId !== '' && !/^[1-9]\d{16,19}$/.test(next.applicationId)) throw Error('Application ID de Discord inválido')
     if (next.enabled === this.config.enabled && next.applicationId === this.config.applicationId) {
       this.mantener = next.enabled
-      if (this.permitido() && !this.socket) {
-        if (this.work) this.dependencies.cancel(this.work)
-        this.work = undefined; this.connect(0)
+      // Una acción explícita de reintentar renueva también conexiones READY
+      // que quedaron abiertas pero no están publicando en la sesión esperada.
+      if (this.permitido()) {
+        this.close(true)
+        this.connect(0)
       }
       return this.estado()
     }
@@ -170,7 +192,7 @@ export class DiscordPresence {
     for (const timer of [this.work, this.deadline]) if (timer) this.dependencies.cancel(timer)
     this.work = this.deadline = undefined
     const socket = this.socket, wasReady = this.ready
-    this.socket = null; this.ready = false; this.awaiting = null; this.sentKey = null; this.lastSent = -Infinity
+    this.socket = null; this.ready = false; this.account = undefined; this.awaiting = null; this.sentKey = null; this.lastSent = -Infinity
     if (socket && !socket.destroyed) {
       if (clear && wasReady && socket.writable) {
         socket.end(frameDiscord(1, { cmd: 'SET_ACTIVITY', args: { pid: process.pid, activity: null }, nonce: randomUUID() }))
@@ -185,16 +207,17 @@ export class DiscordPresence {
   private reconnect(error?: string): void {
     this.close()
     this.setStatus(error ? 'error' : 'disconnected', error)
-    if (this.permitido()) this.work = this.dependencies.later(() => { this.work = undefined; if (this.permitido()) this.connect(0) }, UPDATE_MS)
+    if (this.permitido()) this.work = this.dependencies.later(() => { this.work = undefined; if (this.permitido()) this.connect(0) }, RECONNECT_MS)
   }
   private connect(index: number): void {
     if (!this.permitido()) return
-    if (index >= this.dependencies.paths.length) { this.reconnect(); return }
+    if (index === 0) this.scanError = undefined
+    if (index >= this.dependencies.paths.length) { this.reconnect(this.scanError); return }
     this.setStatus('connecting')
     const version = ++this.generation
     let socket: Socket
     try { socket = this.dependencies.connect(this.dependencies.paths[index]) }
-    catch { this.connect(index + 1); return }
+    catch (error) { this.recordSocketError(error); this.connect(index + 1); return }
     this.socket = socket
     const parser = new FramesDiscord()
     const active = () => this.generation === version && this.socket === socket
@@ -209,7 +232,7 @@ export class DiscordPresence {
     socket.on('connect', () => {
       if (active()) socket.write(frameDiscord(0, { v: 1, client_id: this.config.applicationId }))
     })
-    socket.on('error', next)
+    socket.on('error', error => { if (active()) { this.recordSocketError(error); next() } })
     socket.on('close', next)
     socket.on('data', (chunk: Buffer) => {
       if (!active()) return
@@ -217,15 +240,17 @@ export class DiscordPresence {
         for (const frame of parser.push(chunk)) {
           if (!active()) break
           if (frame.opcode === 3) { socket.write(frameDiscord(4, frame.body)); continue }
-          if (frame.opcode === 2) { this.reconnect('Discord cerró la conexión.'); break }
+          if (frame.opcode === 2) { this.reconnect(errorDiscord(JSON.parse(frame.body.toString('utf8')), true)); break }
           if (frame.opcode !== 1) continue
           const data = JSON.parse(frame.body.toString('utf8'))
           if (!data || typeof data !== 'object') throw Error('Respuesta inválida')
           if (data.evt === 'READY' && data.cmd === 'DISPATCH' && !this.ready) {
             if (this.deadline) this.dependencies.cancel(this.deadline)
-            this.deadline = undefined; this.ready = true; this.setStatus('ready'); this.flush()
+            this.deadline = undefined; this.ready = true
+            this.account = text(data.data?.user?.username) || undefined
+            this.setStatus('ready'); this.flush()
           } else if (data.evt === 'ERROR' && (!data.nonce || data.nonce === this.awaiting)) {
-            this.reconnect('Discord rechazó la conexión o la actividad. Volvé a abrir Discord e intentá nuevamente.')
+            this.reconnect(errorDiscord(data.data))
           } else if (data.cmd === 'SET_ACTIVITY' && this.awaiting && data.nonce === this.awaiting) {
             if (this.deadline) this.dependencies.cancel(this.deadline)
             this.deadline = undefined; this.awaiting = null
@@ -235,6 +260,10 @@ export class DiscordPresence {
         }
       } catch { this.reconnect('Discord envió una respuesta inválida.') }
     })
+  }
+  private recordSocketError(error: unknown): void {
+    const code = (error as NodeJS.ErrnoException | null)?.code
+    if (code === 'EACCES' || code === 'EPERM') this.scanError = 'Windows o el sistema bloqueó el acceso a Discord. Abrí DMusic y Discord con el mismo usuario y sin ejecutar una sola de las apps como administrador.'
   }
   private flush(): void {
     if (!this.ready || !this.socket) return

@@ -30,6 +30,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { restaurarVolumen, restorePlayback, usePlaybackTrack } from '../src/state/playback'
 import { cargarNovedadesVistas } from '../src/state/novedadesVistas'
 import { cargarAjustes } from '../src/state/ajustes'
+import { cargarEcualizador } from '../src/state/ecualizador'
 import { cargarDescargas } from '../src/state/descargas'
 import { reconectarJam } from '../src/state/jam'
 import { iniciarEscucha } from '../src/state/escucha'
@@ -903,6 +904,7 @@ function SessionGate() {
     startSession()
     void esOnboardingPendiente().then(setOnboardingPendiente)
     void cargarAjustes()
+    void cargarEcualizador()
     /* Antes que nada de música: es lo que decide si una canción suena del
        teléfono o de la red, y contrasta el índice contra el disco. */
     void cargarDescargas()
@@ -1096,7 +1098,8 @@ function SessionGate() {
       />
       <Stack.Screen name="ajustes/index" />
       <Stack.Screen name="ajustes/descargas" />
-          <Stack.Screen name="ajustes/diagnostico-audio" />
+      <Stack.Screen name="ajustes/ecualizador" />
+      <Stack.Screen name="ajustes/diagnostico-audio" />
       <Stack.Screen name="ajustes/bloqueados" />
       {/*
        * Sin animación: el perfil propio es una **pestaña**, aunque viva como

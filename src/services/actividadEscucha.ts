@@ -8,6 +8,8 @@ export type ListeningActivity = {
   /** Posición al crear el snapshot; updatedAt mide frescura, no el inicio. */
   positionMs: number
   updatedAt: number
+  /** Instante de la posición, distinto de la frescura del latido remoto. */
+  sampledAt: number
   expiresAt: number
   trackUrl?: string
   artworkUrl?: string
@@ -48,6 +50,6 @@ export function actividadParaCompartir({ track, sonando, autorizada, actualizado
   const videoId = typeof data.videoId === 'string' ? data.videoId : ''
   const trackUrl = /^[A-Za-z0-9_-]{11}$/.test(videoId) ? `https://music.youtube.com/watch?v=${videoId}` : undefined
   const artworkUrl = caratulaPublica(data.artworkUrl)
-  return { title, artist: texto(data.artist), durationMs, positionMs, updatedAt, expiresAt: Math.min(updatedAt + VIGENCIA_ESCUCHA_MS, durationMs > 0 ? ahora + durationMs - positionMs : Infinity),
+  return { title, artist: texto(data.artist), durationMs, positionMs, updatedAt, sampledAt: ahora, expiresAt: Math.min(updatedAt + VIGENCIA_ESCUCHA_MS, durationMs > 0 ? ahora + durationMs - positionMs : Infinity),
     ...(trackUrl ? { trackUrl } : {}), ...(artworkUrl ? { artworkUrl } : {}) }
 }

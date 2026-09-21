@@ -10,7 +10,7 @@ const entrada={track,sonando:true,autorizada:true,actualizadoEn:ahora-20000,posi
 
 test('payload compartido excluye secretos, normaliza texto y distingue posición de fecha del latido',()=>{
  const result=api.actividadParaCompartir(entrada)
- assert.deepEqual(result,{title:'Tema bonito',artist:'Artista',durationMs:180000,positionMs:24000,updatedAt:ahora-20000,expiresAt:ahora+45000,trackUrl:'https://music.youtube.com/watch?v=abcdefghijk',artworkUrl:track.artworkUrl})
+ assert.deepEqual(result,{title:'Tema bonito',artist:'Artista',durationMs:180000,positionMs:24000,updatedAt:ahora-20000,sampledAt:ahora,expiresAt:ahora+45000,trackUrl:'https://music.youtube.com/watch?v=abcdefghijk',artworkUrl:track.artworkUrl})
  assert.doesNotMatch(JSON.stringify(result),/private|secret|audioPath|artworkPath/)
 })
 test('sin permiso explícito, audio real, fecha válida o con canción terminada devuelve null',()=>{

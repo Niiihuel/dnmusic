@@ -81,7 +81,7 @@ export async function publicarCancion(track: {
   artworkUrl?: string
   durationMs?: number
 }): Promise<void> {
-  await getSupabase().rpc('publicar_cancion', {
+  const { error } = await getSupabase().rpc('publicar_cancion', {
     p_video_id: track.videoId,
     p_title: track.title,
     p_artist: track.artist,
@@ -89,4 +89,5 @@ export async function publicarCancion(track: {
     p_artwork_url: track.artworkUrl ?? '',
     p_duration_ms: Math.round(track.durationMs ?? 0),
   })
+  if (error) throw error
 }

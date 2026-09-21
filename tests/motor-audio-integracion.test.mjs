@@ -14,7 +14,7 @@ const microtasks = async () => { for (let i = 0; i < 12; i++) await Promise.reso
 // boundary mocks. Network/preload/Jam are independent of these integration cases.
 function montar({ local = true, falloFirma = false } = {}) {
   let now = 0, cursor = 0, dirty = true, timerId = 0, firmadoFalla = falloFirma
-  let engine = null, siguienteId = 0, enJam = false
+  let engine = null, siguienteId = 0, enJam = false, mirrored = false, visible = false
   const slots = [], layouts = [], effects = [], timers = new Map(), players = []
   const calls = { advance: 0, progress: [], listens: [], errors: [], signatures: 0, raf: 0, events: [] }
   let state = { tracks: ['a', 'b', 'c'].map(pista), index: 0, manual: null, upNext: [], shuffle: null,
@@ -53,11 +53,12 @@ function montar({ local = true, falloFirma = false } = {}) {
   function playerFor(source) {
     const listeners = new Set()
     const player = { id: ++siguienteId, source, currentTime: 0, duration: 180, playing: false, volume: 1,
-      playCalls: 0, pauseCalls: 0, seeks: [], replacements: [],
+      playCalls: 0, pauseCalls: 0, seeks: [], replacements: [], equalizers: [],
       play() { this.playCalls++; this.playing = true },
       pause() { this.pauseCalls++; this.playing = false },
       seekTo(seconds) { this.seeks.push(seconds); return Promise.resolve() },
       replace(next) { this.replacements.push(next); this.source = next },
+      setEqualizer(enabled, gains) { this.equalizers.push({ enabled, gains: [...gains] }) },
       setPlaybackRate: noop,
       addListener(name, fn) { assert.equal(name, 'playbackStatusUpdate'); listeners.add(fn); return { remove: () => listeners.delete(fn) } },
       callbacks() { return [...listeners] },
@@ -88,6 +89,7 @@ function montar({ local = true, falloFirma = false } = {}) {
     'react-native': { AppState: { currentState: 'background' }, Platform: { OS: 'ios' } },
     'expo-audio': { setAudioModeAsync: async () => {}, useAudioPlayer: source => react.useMemo(() => playerFor(source), [source?.uri ?? null]) },
     '../state/playback': playback,
+    '../state/ecualizador': { useEcualizador: () => ({ cargado: true, activo: false, ganancias: Array(10).fill(0) }) },
     '../state/diagnosticoAudio': { registrarIncidenciaAudio: async evento => { calls.events.push(evento) } },
     '../lib/proximasCola': { proximasCola: ({ tracks, index }, limit) => tracks.slice(index + 1, index + 1 + limit) },
     './usePrecargaCola': { usePrecargaCola: noop }, './useEspectroAudio': { useEspectroAudio: noop },
@@ -102,8 +104,8 @@ function montar({ local = true, falloFirma = false } = {}) {
       useDescargasCargadas: () => true, useDescargasError: () => null },
     '../state/jam': { jamEsperaArranqueMs: () => 0, jamPosicionObjetivoMs: () => null, jamSuena: () => false,
       rellenarJamSiFalta: noop, useJamActivo: () => enJam, useJamRevision: () => 0, useJamSilencioso: () => false, useJamSincronizo: () => false },
-    '../state/escucha': { useEscuchaEspejo: () => false, reportarActividadEscucha() {} },
-    '../lib/appActiva': { useAppActiva: () => false },
+    '../state/escucha': { useEscuchaEspejo: () => mirrored, esEscuchaEspejo: () => mirrored, reportarActividadEscucha() {} },
+    '../lib/appActiva': { useAppActiva: () => visible },
     '../state/aviso': { avisar: noop }, '../lib/mensajeError': { mensajeError: error => error.message },
   }
   const actualHelpers = { '../lib/recuperacionAudio': 'src/lib/recuperacionAudio.ts', '../lib/escuchaEfectiva': 'src/lib/escuchaEfectiva.ts',
@@ -120,7 +122,7 @@ function montar({ local = true, falloFirma = false } = {}) {
     }
     new Function('exports', 'require', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'Date', source)(
       exports, require, (fn, delay) => schedule(fn, delay), cancel, (fn, delay) => schedule(fn, delay, true), cancel,
-      () => { calls.raf++; throw Error('RAF must stay stopped in background') }, noop, { now: () => now }, fakeDate)
+      () => { calls.raf++; if (!visible) throw Error('RAF must stay stopped in background'); return calls.raf }, noop, { now: () => now }, fakeDate)
     return exports
   }
   const { MotorAudio } = load('src/ui/MotorAudio.tsx')
@@ -137,6 +139,8 @@ function montar({ local = true, falloFirma = false } = {}) {
   return {
     calls, players, render, settle,
     get state() { return state }, get player() { return players.at(-1) },
+    mirror(value) { mirrored = value; dirty = true },
+    foreground(value) { visible = value; deps['react-native'].AppState.currentState = value ? 'active' : 'background'; dirty = true },
     signingFails(value) { firmadoFalla = value },
     select(index) { setState({ index, manual: null, positionMs: 0 }) },
     wantPlay(value) { setState({ wantPlay: value }) },
@@ -258,5 +262,57 @@ test('el segundo intento conserva la posición si el player nuevo falla antes de
   await h.status(0)
   assert.equal(h.player.seeks.at(-1), 42, 'la última posición confirmada sobrevive a ambos players')
   assert.equal(h.calls.advance, 0)
+  h.unmount()
+})
+
+
+test('el teléfono espejo conserva 1:32 al volver al frente y descarta el cero del motor local', async () => {
+  const h = montar()
+  h.mirror(true); h.configure({ positionMs: 92000 }); h.render(); await h.settle()
+  h.foreground(true); await h.settle()
+  assert.equal(h.state.positionMs, 92000)
+  h.player.emit({ currentTime: 0, playing: false, isLoaded: true, timeControlStatus: 'paused' })
+  await h.settle()
+  assert.equal(h.state.positionMs, 92000)
+  h.foreground(false); await h.settle()
+  await h.status(0, { playing: false, timeControlStatus: 'paused' })
+  assert.equal(h.state.positionMs, 92000)
+  assert.equal(h.calls.progress.length, 0)
+  assert.equal(h.calls.advance, 0)
+  assert.equal(h.calls.raf, 0)
+  h.unmount()
+})
+
+test('un callback de la misma pista anterior al render tampoco pisa el espejo recién recibido', async () => {
+  const h = montar(); h.render(); await h.settle(); await h.status(20)
+  const callback = h.player.callbacks()[0]
+  h.mirror(true); h.configure({ positionMs: 90000 })
+  callback({ currentTime: 21, duration: 180, playing: false, isLoaded: true, isBuffering: false, timeControlStatus: 'paused', didJustFinish: true })
+  assert.equal(h.state.positionMs, 90000)
+  assert.equal(h.state.wantPlay, true)
+  assert.equal(h.calls.advance, 0)
+  await h.settle(); h.unmount()
+})
+
+test('volver a foreground después de cambiar de tema detrás no recrea, pausa, busca ni recarga el player', async () => {
+  const h = montar(); h.render(); await h.settle()
+  await h.status(179)
+  await h.status(180, { didJustFinish: true, playing: false })
+  assert.equal(h.state.index, 1)
+  await h.status(42)
+  const player = h.player
+  const before = { count: h.players.length, pause: player.pauseCalls, play: player.playCalls, seek: player.seeks.length, replace: player.replacements.length }
+  for (let i = 0; i < 3; i++) {
+    h.foreground(true); await h.settle()
+    assert.equal(h.state.index, 1)
+    assert.equal(h.state.positionMs, 42000)
+    assert.equal(h.player, player)
+    assert.equal(h.players.length, before.count)
+    assert.equal(player.pauseCalls, before.pause)
+    assert.equal(player.playCalls, before.play)
+    assert.equal(player.seeks.length, before.seek)
+    assert.equal(player.replacements.length, before.replace)
+    h.foreground(false); await h.settle()
+  }
   h.unmount()
 })

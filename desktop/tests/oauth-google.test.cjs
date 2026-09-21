@@ -94,7 +94,7 @@ test('IPC valida mainFrame local antes y después de esperar el navegador', asyn
 test('preload conserva audioOffline, OAuth y el almacén nativo de sesión', async () => {
   const calls = [], ipc = new EventEmitter(); ipc.invoke = async (...args) => { calls.push(args); return {} }
   let bridge
-  runInNewContext(readFileSync(require.resolve('../dist/preload.js'), 'utf8'), { exports: {}, require: id => {
+  runInNewContext(readFileSync(require.resolve('../dist/preload.js'), 'utf8'), { process: { platform: process.platform }, exports: {}, require: id => {
     assert.equal(id, 'electron'); return { contextBridge: { exposeInMainWorld: (_, b) => { bridge = b } }, ipcRenderer: ipc }
   } })
   assert.deepEqual(Object.keys(bridge.oauthGoogle), ['preparar', 'abrir', 'abrirVinculacion', 'cancelar']); assert.ok(bridge.audioOffline.descargar)

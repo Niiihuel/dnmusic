@@ -29,6 +29,7 @@ test('el estado OAuth explica el retorno automático en iOS y el navegador exter
   assert.match(texto(ios.EstadoGoogle({ activo: true, contexto: 'acceso' })), /ventana segura/)
   assert.match(texto(ios.EstadoGoogle({ activo: true, contexto: 'acceso' })), /automáticamente/)
   const pc = cargar('web', true)
+  assert.match(texto(pc.EstadoGoogle({ activo: true, contexto: 'acceso' })), /continuará en esta ventana/)
   assert.match(texto(pc.EstadoGoogle({ activo: true, contexto: 'vinculacion' })), /navegador/)
   assert.match(texto(pc.EstadoGoogle({ activo: true, contexto: 'vinculacion' })), /misma cuenta/)
   assert.equal(pc.EstadoGoogle({ activo: false, contexto: 'acceso' }), null)

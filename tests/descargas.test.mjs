@@ -17,10 +17,10 @@ function montar({ datos = new Map(), archivos = new Map(), red = { conectada: tr
     listarAudio: async () => listar ? listar() : [...archivos.values()], espacioLibreAudio: () => free,
     estadoRedAudio: async () => leerRed ? leerRed() : red, escucharRedAudio: cb => { networkChange = cb },
     quitarAudio: async k => { borrados.push(k); if (quitar) await quitar(k); archivos.delete(k) },
-    transferirAudio: (key, url, progreso, pausa) => {
+    transferirAudio: (key, url, progreso, pausa, uso) => {
       let resolve, reject
       const resultado = new Promise((a, b) => { resolve = a; reject = b })
-      const j = { key, url, pausa, progreso, cancelada: false, pausada: false,
+      const j = { key, url, pausa, progreso, uso, cancelada: false, pausada: false,
         completar(bytes = MB) { const f = { key, uri: `local:${key}`, bytes }; archivos.set(key, f); resolve(f) },
         fallar(e = new Error('falló conexión')) { reject(e) } }
       jobs.push(j)
@@ -319,4 +319,30 @@ test('portadas nunca bloquean precarga temporal ni audio pendiente del lote',asy
  h.jobs[1].completar();await tick();assert.equal(h.jobs[2].key,'c.m4a');assert.deepEqual(portadas,[])
  h.jobs[2].completar();await tick();assert.deepEqual(portadas,['arte-c'])
  assert.equal(h.items['c.m4a'].estado,'lista')
+})
+
+
+test('la cola de precarga usa transferencias de reproducción y las descargas offline conservan su sesión', async () => {
+ const h = montar(); await h.iniciar()
+ const b = h.api.prepararCache(track('b')); await tick()
+ assert.equal(h.jobs[0].uso, 'reproduccion')
+ h.jobs[0].completar(); assert.equal(await b, 'local:b.m4a'); await tick()
+ const c = h.api.prepararCache(track('c')); await tick()
+ assert.equal(h.jobs[1].uso, 'reproduccion')
+ h.jobs[1].completar(); await c; await tick()
+ h.api.descargar(track('offline')); await tick()
+ assert.equal(h.jobs[2].uso, 'descarga')
+ h.jobs[2].completar(); await tick()
+})
+test('una descarga offline adoptada como próxima canción se reanuda con sesión de reproducción', async () => {
+ const h = montar(); await h.iniciar()
+ h.api.descargar(track('b')); await tick()
+ assert.equal(h.jobs[0].uso, 'descarga')
+ const b = h.api.prepararCache(track('b')); await tick()
+ assert.equal(h.jobs[0].pausada, true)
+ assert.equal(h.jobs.length, 2)
+ assert.equal(h.jobs[1].uso, 'reproduccion')
+ assert.equal(h.jobs[1].pausa.resumeData, 'snapshot')
+ h.jobs[1].completar(); assert.equal(await b, 'local:b.m4a')
+ assert.equal(h.items['b.m4a'].temporal, false)
 })

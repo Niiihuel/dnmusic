@@ -98,6 +98,14 @@ jobs:
             echo "    gh secret set NOMBRE --repo ${{ github.repository }}"
             exit 1
           fi
+          if [ "$URL" != 'https://envoy-production-2fb6.up.railway.app' ]; then
+            echo "✗ EXPO_PUBLIC_SUPABASE_URL no apunta al Auth de Railway."
+            exit 1
+          fi
+          if [ "$MUSICA" != 'https://dnmusic-production-c3f4.up.railway.app' ]; then
+            echo "✗ EXPO_PUBLIC_MUSIC_API no apunta a la API de Railway."
+            exit 1
+          fi
 
       - name: Validar el servicio de música
         env:

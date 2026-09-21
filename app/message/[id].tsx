@@ -1,3 +1,4 @@
+import { PlayerHeader } from '../../src/ui/PlayerHeader'
 import { IconButton } from '../../src/ui/IconButton'
 import { CancionCompartida } from '../../src/ui/CancionCompartida'
 import { invitacionEnTexto } from '../../src/lib/invitacionJam'
@@ -13,7 +14,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { volver } from '../../src/lib/volver'
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
-import { CabeceraSocial, AccionSocial, SeccionSocial } from '../../src/ui/Social'
+import { CabeceraSocial, AccionSocial } from '../../src/ui/Social'
 import { SeekBar } from '../../src/ui/SeekBar'
 import { Vacio } from '../../src/ui/Vacio'
 import { PlayerArtwork } from '../../src/ui/PlayerArtwork'
@@ -62,6 +63,11 @@ const WIDE_PX = 720
  * leerse juntos, que es de lo que se trata compartir un fragmento.
  */
 const ANCHO_MAX = 1020
+const ESTILO_FRASE = { flexShrink: 0, minWidth: 0, padding: 20, borderRadius: 20,
+  backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }
+const TEXTO_FRASE = { color: '#F5F5F5', fontSize: 17, lineHeight: 27, flexShrink: 0,
+  ...(Platform.OS === 'web' ? { overflowWrap: 'anywhere' as const } : {}) }
+
 
 type StoryView = 'disc' | 'lyrics'
 
@@ -215,22 +221,21 @@ export default function MessageStory() {
       <PlayerBackdrop uri={backdrop} />
 
       <SafeAreaView className="flex-1" edges={['top', 'bottom']}>
-        <CabeceraSocial titulo={mine ? `Para ${who}` : `De ${who}`}
-          detalle={message.createdAt ? formatMessageDate(message.createdAt, true) : undefined}
-          onCerrar={() => volver(router, '/')} />
+        <PlayerHeader title={mine ? `Para ${who}` : `De ${who}`}
+          subtitle={message.createdAt ? formatMessageDate(message.createdAt, true) : undefined}
+          closeLabel="Volver al chat" onClose={() => volver(router, '/')} />
 
-        <ScrollView className="min-h-0 flex-1" contentInsetAdjustmentBehavior="never" contentContainerStyle={{ flexGrow: 1, alignItems: 'center', paddingTop: 24, paddingBottom: song ? 24 : piso }}>
+        <ScrollView className="min-h-0 flex-1" contentInsetAdjustmentBehavior="never" contentContainerStyle={{ flexGrow: 1, alignItems: 'center', paddingTop: 20, paddingBottom: song ? 32 : piso }}>
           <View
             className="w-full flex-row items-center justify-center gap-8 px-5"
             style={{ maxWidth: ANCHO_MAX }}
           >
-            {/* En ancho, la frase al costado: no le saca una sola línea a la
-              letra. Con su propio desplazamiento, así una frase larga no
-              estira la columna. */}
+            {/* La dedicatoria completa comparte el scroll con la portada.
+                No tiene altura fija ni un segundo desplazamiento anidado. */}
             {wide && song && verFrase && message.text ? (
               <View style={{ width: Math.min(300, width * 0.34) }}>
                 {invitacionEnTexto(message.text) ? <InvitacionJam texto={message.text} /> :
-                  <SeccionSocial titulo="Mensaje"><Text selectable className="text-foreground p-4 text-callout leading-6">{message.text}</Text></SeccionSocial>}
+                  <View style={ESTILO_FRASE}><Text selectable style={TEXTO_FRASE}>{message.text}</Text></View>}
               </View>
             ) : null}
 
@@ -266,11 +271,11 @@ export default function MessageStory() {
               ) : null}
 
               {(!wide || !song) && verFrase && message.text ? (
-                <View style={{ flexShrink: 0 }} className={`w-full max-w-xl ${invitacionEnTexto(message.text) ? '' : 'rounded-2xl bg-white/5 p-4'}`}>
+                <View style={invitacionEnTexto(message.text) ? { flexShrink: 0 } : ESTILO_FRASE} className="w-full max-w-xl">
                   {invitacionEnTexto(message.text) ? (
                     <InvitacionJam texto={message.text} />
                   ) : (
-                    <Text selectable className="text-foreground text-subheadline leading-6">
+                    <Text selectable style={TEXTO_FRASE}>
                       {message.text}
                     </Text>
                   )}

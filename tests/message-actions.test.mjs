@@ -124,6 +124,7 @@ function dialog(kind = 'edit', userId = 'author', inline = false) {
     '../services/messages': Object.fromEntries(['editMessage', 'deleteMessage'].map(name => [name, (...args) => new Promise((resolve, reject) => requests.push({ name, args, resolve, reject }))])),
     '../state/session': { refreshConversations: async () => {} }, '../state/aviso': { avisar: (...args) => notices.push(args) },
     './MessageEditBar': { MessageEditBar: 'MessageEditBar' },
+    './Dialogo': { Dialogo: 'Modal' }, './EncabezadoHoja': { EncabezadoHoja: 'EncabezadoHoja', BotonHoja: 'BotonHoja' },
     './CampoMensaje': { CampoMensaje: 'CampoMensaje' }, './Button': { PrimaryButton: 'PrimaryButton', GhostButton: 'GhostButton' }, './Confirmar': { Confirmar: 'Confirmar' },
   }
   const { MessageActionDialog } = load('src/ui/MessageActionDialog.tsx', mocks)

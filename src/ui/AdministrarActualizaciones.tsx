@@ -6,6 +6,7 @@ import { useAuthUser, useIsAccessAdmin } from '../state/session'
 import { listarPoliticas, guardarPolitica } from '../services/actualizacionesRemotas'
 import { PLATAFORMAS, esDestinoActualizacion, leerPolitica, type PlataformaActualizacion, type PoliticaActualizacion } from '../services/politicaActualizacion'
 import { refrescarPolitica } from '../state/politicaActualizacion'
+import { SITIO } from '../lib/compartir'
 
 const NOMBRES: Record<PlataformaActualizacion, string> = { windows: 'Windows', linux: 'Linux', macos: 'macOS', ios: 'iOS', android: 'Android', web: 'Web / PWA' }
 
@@ -106,10 +107,10 @@ function EditorPolitica({ plataforma, actual, onGuardada }: { plataforma: Plataf
   }
   const editable = !guardando && !confirmacion
   const marcadorURL = plataforma === 'web'
-    ? 'https://dnmusic-app.vercel.app/'
+    ? `${SITIO}/`
     : plataforma === 'ios'
       ? 'https://testflight.apple.com/join/…'
-      : 'https://github.com/Niiihuel/dnmusic-releases/releases/latest'
+      : 'https://github.com/Niihuel/dnmusic-releases/releases/latest'
   return <>
     <GrupoAjustes titulo="Versiones" pie="Con la mínima en 0.0.0 todas las versiones pueden continuar y el aviso queda opcional.">
       <FilaTexto rotulo="Última disponible" valor={ultima} onCambiar={setUltima} marcador="1.12.0" editable={editable} />

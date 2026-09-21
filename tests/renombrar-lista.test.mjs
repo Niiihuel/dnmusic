@@ -20,6 +20,7 @@ function montar({ os = 'web', width = 1440, guardar = async () => {} } = {}) {
     './CollectionHeader': { CollectionTitle: 'CollectionTitle', useAngosto: () => width < 640 },
     './ScrollArea': { ScrollArea: 'ScrollArea' }, './Hoja': { Hoja: 'Hoja' }, './Social': { AccionSocial: 'AccionSocial', CabeceraSocial: 'CabeceraSocial' },
     './EntradaTexto': { EntradaTexto: 'TextInput' },
+    './HojaNombreListaNativa': { HojaNombreListaNativa: 'HojaNombreListaNativa' },
     './Button': { FormError: 'FormError' }, './estadoControl': { estadoControlWeb: mode => ({ dataSet: { dnHover: mode } }) },
     './icons': { ICON_COLOR: {}, IconPencil: 'IconPencil' },
   }
@@ -121,9 +122,9 @@ for (const [os, width, inline] of [['web', 1440, true], ['web', 390, false], ['i
     const sheet = h.exports.HojaNombreLista({ editor: h.editor })
     if (inline) assert.equal(sheet, null)
     else {
-      assert.equal(nodes(sheet, 'Hoja').length, 1)
-      assert.equal(nodes(sheet, 'Modal').length, os === 'ios' ? 1 : 0)
-      if (os === 'ios') assert.equal(sheet.props.presentationStyle, 'formSheet')
+      assert.equal(nodes(sheet, 'Hoja').length, os === 'ios' ? 0 : 1)
+      assert.equal(nodes(sheet, 'Modal').length, 0)
+      if (os === 'ios') assert.equal(sheet.type, 'HojaNombreListaNativa')
       const actions = h.exports.AccionesNombreLista({ editor: h.editor })
       assert.deepEqual(nodes(actions, 'AccionSocial').map(n => n.props.label), ['Cancelar', 'Guardar'])
       assert.equal(h.llamadas.length, 0)

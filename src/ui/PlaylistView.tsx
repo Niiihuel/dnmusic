@@ -22,6 +22,7 @@ import { Sugerencias } from './Sugerencias'
 import {
   getPlaybackState,
   playAt,
+  playCollection,
   playQueue,
   syncQueue,
   togglePlayback,
@@ -703,7 +704,11 @@ export function PlaylistView({
               bajado={bajado}
               onDescarga={descargarParaOffline}
               opcionesDescarga={opcionesDescarga}
-              onPlay={() => (total > 0 ? play(isMine ? soundingIndex : 0) : undefined)}
+              onPlay={() => {
+                if (!tracks?.length) return
+                if (isMine && !hayJam) togglePlayback()
+                else playCollection(tracks, { id: playlist.id, name: playlist.name })
+              }}
               onPickCover={onPickCover}
               toolbarIOS={toolbarIOS}
               buscando={buscando}

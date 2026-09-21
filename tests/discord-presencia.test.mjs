@@ -133,3 +133,24 @@ test('alta remota provisional no se restaura al reiniciar; sólo confirmar guard
  assert.equal(JSON.parse(h.written.at(-1)[1]).enabled,true)
  closeAgain()
 })
+
+test('conexión aceptada publica aunque falle el disco; se informa que no quedó guardada', async () => {
+  const h = fixture({ write: async () => { throw Error('disk unavailable') } })
+  const close = h.api.iniciarDiscord('a'); await flush()
+  assert.equal(await h.api.configurarDiscord({ enabled: true, applicationId: '1548502947623739552' }), false)
+  await flush()
+  assert.equal(h.api.useDiscord().estado.enabled, true)
+  assert.equal(h.sent.at(-1).title, 'Tema')
+  assert.match(h.api.useDiscord().error, /esta sesión/)
+  close()
+})
+
+test('el guardado lento no demora la publicación de una conexión confirmada', async () => {
+  const disk = deferred(), h = fixture({ write: () => disk.promise })
+  const close = h.api.iniciarDiscord('a'); await flush()
+  const saving = h.api.configurarDiscord({ enabled: true, applicationId: '1548502947623739552' })
+  await flush()
+  assert.equal(h.sent.at(-1).title, 'Tema')
+  disk.resolve(); assert.equal(await saving, true)
+  close()
+})

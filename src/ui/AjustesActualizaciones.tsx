@@ -9,7 +9,7 @@ import { setPreferencia, useAjustes } from '../state/ajustes'
 import { FilaAccion, FilaDato, FilaInterruptor, GrupoAjustes } from './Ajustes'
 import { Actualizador } from './Actualizador'
 
-const DESCARGAS_PC = 'https://github.com/Niiihuel/dnmusic-releases/releases/latest'
+const DESCARGAS_PC = 'https://github.com/Niihuel/dnmusic-releases/releases/latest'
 
 /** Un enlace configurado no prueba de qué tienda vino esta instalación. */
 export function orientacionActualizacion(platform: string, destino?: string | null) {

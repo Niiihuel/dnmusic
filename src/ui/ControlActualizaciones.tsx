@@ -1,5 +1,8 @@
+import { Dialogo } from './Dialogo'
+import { useDentroModalPC } from './ModalContext'
+import { EncabezadoHoja, BotonHoja } from './EncabezadoHoja'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ActivityIndicator, BackHandler, Linking, Modal, Platform, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, BackHandler, Linking, Platform, ScrollView, Text, View } from 'react-native'
 import { ListaAjustes, GrupoAjustes, FilaAccion, FilaDato } from './Ajustes'
 import { PrimaryButton, GhostButton } from './Button'
 import { usePreferencia } from '../state/ajustes'
@@ -26,9 +29,9 @@ export function ControlActualizaciones({ children }: { children: ReactNode }) {
     return <AvisoPolitica key={`${s.politica.platform}:${s.politica.revision}`} politica={s.politica} obligatoria />
   }
   return <>{children}{tipo === 'opcional' && avisos && s.politica ? (
-    <Modal visible transparent={Platform.OS !== 'ios'} presentationStyle={Platform.OS === 'ios' ? 'formSheet' : undefined} animationType={Platform.OS === 'ios' ? 'slide' : 'fade'} onRequestClose={descartarPolitica}>
+    <Dialogo titulo="Nueva versión de DMusic" ancho={480} contenidoPC={<AvisoPolitica key={`${s.politica.platform}:${s.politica.revision}`} politica={s.politica} obligatoria={false} />} visible transparent={Platform.OS !== 'ios'} presentationStyle={Platform.OS === 'ios' ? 'formSheet' : undefined} animationType={Platform.OS === 'ios' ? 'slide' : 'fade'} onRequestClose={descartarPolitica}>
       <AvisoPolitica key={`${s.politica.platform}:${s.politica.revision}`} politica={s.politica} obligatoria={false} />
-    </Modal>
+    </Dialogo>
   ) : null}</>
 }
 
@@ -39,6 +42,7 @@ export function AvisoActualizacionSinPolitica({ children }: { children: ReactNod
 }
 
 function AvisoPolitica({ politica, obligatoria }: { politica: PoliticaActualizacion; obligatoria: boolean }) {
+  const modalPC = useDentroModalPC()
   const s = usePoliticaActualizacion()
   const escritorio = useActualizacion()
   const [error, setError] = useState<string | null>(null)
@@ -73,10 +77,11 @@ function AvisoPolitica({ politica, obligatoria }: { politica: PoliticaActualizac
     </ListaAjustes>
   </View>
   return (
-    <View className={`flex-1 justify-center ${obligatoria ? 'bg-background' : ''}`} style={{ paddingTop: 48, paddingBottom: 32, ...(!obligatoria ? { backgroundColor: 'rgba(0,0,0,0.55)' } : {}) }}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-        <View className="w-full gap-4" style={{ maxWidth: 440, ...(!obligatoria ? { backgroundColor: '#202020', padding: 24, borderRadius: 24 } : {}) }} accessibilityViewIsModal>
-          <Text accessibilityRole="header" className="text-foreground text-title2 font-bold">{obligatoria ? 'Actualizá para seguir usando DMusic' : 'Hay una nueva versión de DMusic'}</Text>
+    <View className={`flex-1 justify-center ${obligatoria ? 'bg-background' : ''}`} style={modalPC ? { flexGrow: 0, flexShrink: 1 } : { paddingTop: 48, paddingBottom: 32, ...(!obligatoria ? { backgroundColor: 'rgba(0,0,0,0.55)' } : {}) }}>
+      {modalPC ? <EncabezadoHoja titulo="Nueva versión de DMusic" izquierda={<BotonHoja onPress={descartarPolitica} />} /> : null}
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: modalPC ? 20 : 24, ...(modalPC ? { paddingTop: 0 } : {}) }}>
+        <View className="w-full gap-4" style={{ maxWidth: 440, ...(!obligatoria && !modalPC ? { backgroundColor: '#202020', padding: 24, borderRadius: 24 } : {}) }} accessibilityViewIsModal>
+          {!modalPC ? <Text accessibilityRole="header" className="text-foreground text-title2 font-bold">{obligatoria ? 'Actualizá para seguir usando DMusic' : 'Hay una nueva versión de DMusic'}</Text> : null}
           <Text className="text-muted-foreground text-callout">Tenés {s.instalacion?.version}. La última versión es {politica.latest_version}.{obligatoria ? ` La mínima admitida es ${politica.minimum_version}.` : ''}</Text>
           <Text className="text-muted-foreground">{obligatoria ? 'Instalá la actualización y volvé a abrir la app.' : 'Podés actualizar ahora o hacerlo más adelante.'}</Text>
           {esDesktop && escritorio.fase === 'bajando' ? <Text className="text-foreground">Descargando {escritorio.version}: {escritorio.porcentaje}%</Text> : null}

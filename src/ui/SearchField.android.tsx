@@ -9,6 +9,8 @@ import type { SearchFieldProps } from './SearchField.types'
 export function SearchField({ value, onChangeText, placeholder = 'Buscar', accessibilityLabel, onSubmit,
   autoFocus, loading = false, inputRef, onFocusChange }: SearchFieldProps) {
   const input = useRef<TextFieldRef>(null)
+  const focused = useRef(false)
+  const recibioFoco = useRef(false)
   const texto = useNativeState(value)
   // No reescribir teclas más recientes del buffer nativo al llegar un evento JS atrasado.
   const ultimoTexto = useRef(value)
@@ -25,7 +27,14 @@ export function SearchField({ value, onChangeText, placeholder = 'Buscar', acces
     <Row verticalAlignment="center" modifiers={[fillMaxWidth(), defaultMinSize({ minHeight: 48 }), clip(Shapes.RoundedCorner(24)), background(ANDROID_COLORS.surface), padding(14, 0, 0, 0)]}>
       <RNHostView matchContents><Search size={20} color={ANDROID_COLORS.muted} /></RNHostView>
       <BasicTextField ref={input} value={texto} selection={seleccion} autoFocus={autoFocus} singleLine onValueChange={next => { ultimoTexto.current = next; onChangeText(next) }}
-        onFocusChanged={onFocusChange} textStyle={{ color: ANDROID_COLORS.text, fontSize: 16 }} cursorColor={ANDROID_COLORS.text}
+        onFocusChanged={next => {
+          // Compose emite `false` al crear el campo, antes de procesar autoFocus.
+          // Propagar ese estado desmontaba SearchRow y el teclado nunca llegaba a abrirse.
+          if (focused.current === next) return
+          focused.current = next
+          if (next) recibioFoco.current = true
+          if (next || recibioFoco.current) onFocusChange?.(next)
+        }} textStyle={{ color: ANDROID_COLORS.text, fontSize: 16 }} cursorColor={ANDROID_COLORS.text}
         keyboardOptions={{ capitalization: 'none', autoCorrectEnabled: false, keyboardType: 'text', imeAction: 'search' }}
         keyboardActions={{ onSearch: () => onSubmit?.() }}
         modifiers={[weight(1), padding(10, 12, value || loading ? 0 : 14, 12), androidAccessibility(accessibilityLabel ?? placeholder)]}>
