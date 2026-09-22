@@ -19,6 +19,16 @@ test('el servicio y su lockfile usan el nombre dnmusic', () => {
   assert.equal(lock.packages[''].name, 'dnmusic')
 })
 
+test('los enlaces Railway también están registrados en iOS y Android', () => {
+  const host = 'dnmusic-production-c3f4.up.railway.app'
+  const app = JSON.parse(read('app.json')).expo
+  assert.ok(app.ios.associatedDomains.includes('applinks:' + host))
+  const data = app.android.intentFilters.flatMap(filter => filter.data)
+  for (const path of ['/cancion', '/lista', '/jam', '/perfil']) {
+    assert.ok(data.some(item => item.scheme === 'https' && item.host === host && item.pathPrefix === path))
+  }
+})
+
 test('Git ignora credenciales, claves y exportaciones locales de infraestructura', () => {
   const paths = ['.env', '.env.production', 'AuthKey.p8', 'signing.p12',
     'private.pem', 'private.key', 'credentials.json', 'service-account-prod.json',
