@@ -2,7 +2,7 @@
   "expo": {
     "name": "dnmusic",
     "slug": "flora",
-    "version": "1.16.3",
+    "version": "1.16.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "dnmusic",
@@ -11,8 +11,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.nihuel.dnmusic",
       "associatedDomains": [
-        "applinks:dnmusic-production-c3f4.up.railway.app",
-        "applinks:dnmusic-app.vercel.app"
+        "applinks:dnmusic-production-c3f4.up.railway.app"
       ],
       "infoPlist": {
         "UIBackgroundModes": [
@@ -60,26 +59,6 @@
             {
               "scheme": "https",
               "host": "dnmusic-production-c3f4.up.railway.app",
-              "pathPrefix": "/perfil"
-            },
-            {
-              "scheme": "https",
-              "host": "dnmusic-app.vercel.app",
-              "pathPrefix": "/cancion"
-            },
-            {
-              "scheme": "https",
-              "host": "dnmusic-app.vercel.app",
-              "pathPrefix": "/lista"
-            },
-            {
-              "scheme": "https",
-              "host": "dnmusic-app.vercel.app",
-              "pathPrefix": "/jam"
-            },
-            {
-              "scheme": "https",
-              "host": "dnmusic-app.vercel.app",
               "pathPrefix": "/perfil"
             }
           ],

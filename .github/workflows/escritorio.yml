@@ -127,6 +127,8 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_MUSIC_API: ${{ secrets.EXPO_PUBLIC_MUSIC_API }}
+          EXPO_PUBLIC_SITE_URL: https://dnmusic-production-c3f4.up.railway.app
+          SITE_URL: https://dnmusic-production-c3f4.up.railway.app
         run: npm run build:web
 
       - name: Dependencias del escritorio
@@ -137,9 +139,9 @@ jobs:
         working-directory: desktop
         run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
 
-      - name: Compilar el proceso principal
+      - name: Compilar y probar el proceso principal
         working-directory: desktop
-        run: npm run build
+        run: npm test
 
       - name: Traer la web y el ícono
         working-directory: desktop

@@ -75,6 +75,7 @@ test('una canción propia sobrevive al viaje por la URL', () => {
 test('reconoce las tres formas en que llega un link nuestro', () => {
   for (const url of [
     'https://dnmusic-production-c3f4.up.railway.app/cancion/abc123',
+    'https://dnmusic-app.vercel.app/cancion/abc123',
     'dnmusic://cancion/abc123',
     'app://dnmusic/cancion/abc123',
   ]) {

@@ -174,6 +174,28 @@ test('origen sale de config main/export confiable; localhost sólo dev explícit
   assert.equal(await origenAudioConfigurado(web, true, ORIGEN), ORIGEN)
 })
 
+test('Railway propio configura Auth y Storage; dominios vecinos no amplían la allowlist', async t => {
+  const railway = 'https://envoy-production-2fb6.up.railway.app'
+  const f = await fixture(t), web = join(f.dir, 'dist'), chunks = join(web, '_expo/static/js/web')
+  await mkdir(chunks, { recursive: true })
+  await writeFile(join(chunks, 'entry.js'), `const url="${railway}"`)
+  assert.equal(await origenAudioConfigurado(web, true, ''), railway)
+  assert.equal(await origenAudioConfigurado(web, true, railway), railway)
+  assert.equal(validarUrlAudio(signed(key, railway), key, railway).origin, railway)
+  for (const invalid of [railway + '.evil.test', railway + ':444', railway.replace('https:', 'http:'),
+    'https://another.up.railway.app', 'https://dnmusic-production-c3f4.up.railway.app',
+    'https://user:password@envoy-production-2fb6.up.railway.app']) {
+    assert.equal(await origenAudioConfigurado(web, true, invalid), null)
+    await writeFile(join(chunks, 'entry.js'), `const url="${invalid}"`)
+    assert.equal(await origenAudioConfigurado(web, true, ''), null)
+    assert.throws(() => validarUrlAudio(signed(key, invalid), key, railway))
+    assert.throws(() => validarUrlAudio(signed(key, invalid), key, invalid))
+  }
+  await writeFile(join(chunks, 'entry.js'), `const urls=["${railway}","${ORIGEN}"]`)
+  assert.equal(await origenAudioConfigurado(web, true, ''), null)
+  assert.equal(await origenAudioConfigurado(web, true, railway), railway)
+})
+
 test('quitar aborta descarga en curso y una nueva alta espera al borrado', async t => {
   let began, attempts = 0
   const started = new Promise(resolve => { began = resolve })

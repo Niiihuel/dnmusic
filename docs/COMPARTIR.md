@@ -204,4 +204,31 @@ El fondo es la portada desenfocada, con el color de la tapa por encima cuando
 se lo puede leer (`lib/colorPortada`) y un velo más oscuro arriba y abajo, como
 la viñeta de la portada de un disco. Sin carátula, la tapa muestra el sello de
 la app apagado en vez de un cuadrado negro.
+# Revisión de enlaces — 22 de septiembre de 2026
 
+Los enlaces nuevos de canciones, listas, Jams y perfiles se generan con
+`https://dnmusic-production-c3f4.up.railway.app`. El host retirado de Vercel
+sólo se reconoce como entrada histórica en mensajes/deep links; no se publica
+en las asociaciones nativas ni se usa para crear invitaciones nuevas.
+Reconocer un enlace histórico dentro de la app no mantiene vivo el sitio viejo
+si alguien lo abre directamente en un navegador.
+En la comprobación del 22/09 el sitio de Vercel todavía respondió 200 y conservó
+una URL canónica de Vercel, sin redirigir a Railway. La redirección del hosting
+antiguo es una tarea de infraestructura separada de estos cambios de código.
+
+En escritorio, `recibirArgumentos` entrega la ruta ya validada sin intentar
+interpretarla como otra URL. El proceso principal espera el aviso `enlace:listo`
+del main frame propio, enviado después de registrar el oyente del router; así
+no se pierde el enlace que inició la aplicación. Las recargas vuelven a esperar
+ese aviso. Esto tiene pruebas de arranque, segunda instancia y handshake.
+
+Auth, descargas y carátulas públicas admiten el gateway de producción
+`envoy-production-2fb6.up.railway.app`, no cualquier dominio Railway. El
+empaquetado verifica que el export contenga un origen de Auth/Storage reconocido
+antes de crear los instaladores. No basta con tener la variable en el runner.
+
+La comprobación HTTP de producción verificó las cuatro rutas compartibles y
+sus URLs canónicas, y el JSON AASA de iOS sin redirección. No equivale a probar
+una Jam activa entre dos dispositivos. Android sigue pendiente del certificado
+de firma y de publicar `assetlinks.json`: hoy esa ruta devuelve el shell HTML,
+no una asociación Android válida. No declarar verificación automática completa.

@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.16.4",
+    "fecha": "22 de septiembre de 2026",
+    "titulo": "Más fácil escuchar juntos.",
+    "cambios": [
+      "Corregimos errores en las invitaciones a Jams y mejoramos la apertura de enlaces compartidos.",
+      "Mejoramos la visualización de carátulas al compartir lo que estás escuchando.",
+      "Incluimos mejoras de estabilidad y ajustes generales."
+    ]
+  },
+  {
     "version": "1.16.3",
     "fecha": "22 de septiembre de 2026",
     "titulo": "Un inicio más tuyo.",

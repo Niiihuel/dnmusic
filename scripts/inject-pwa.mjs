@@ -28,7 +28,7 @@ const MARKER = '<!-- dany:pwa -->'
  * El dominio va absoluto porque las tarjetas lo piden así: los crawlers no
  * resuelven rutas relativas, y con una ruta suelta el preview sale sin imagen.
  */
-const SITIO = process.env.SITE_URL ?? 'https://dnmusic-production-c3f4.up.railway.app'
+const SITIO = process.env.SITE_URL?.trim() || 'https://dnmusic-production-c3f4.up.railway.app'
 const TITULO = 'dnmusic'
 const DESCRIPCION =
   'Escuchá tu música, armá tus listas y ponete en Jam: la misma canción, al mismo tiempo, con quien quieras.'

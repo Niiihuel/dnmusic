@@ -22,6 +22,9 @@ test('carátulas privadas/firmadas/locales y URLs con credenciales nunca cruzan 
   assert.equal(result.artworkUrl,undefined);assert.equal(result.trackUrl,undefined)
  }
  assert.ok(api.actividadParaCompartir({...entrada,track:{...track,artworkUrl:'https://project.supabase.co/storage/v1/object/public/artwork/a.jpg'}}).artworkUrl)
+ const railway='https://envoy-production-2fb6.up.railway.app/storage/v1/object/public/artwork/a.jpg'
+ assert.equal(api.actividadParaCompartir({...entrada,track:{...track,artworkUrl:railway}}).artworkUrl,railway)
+ for(const artworkUrl of [railway.replace('envoy-production-2fb6','another'),railway.replace('/public/','/sign/'),railway+'?token=private']) assert.equal(api.actividadParaCompartir({...entrada,track:{...track,artworkUrl}}).artworkUrl,undefined)
 })
 
 

@@ -156,6 +156,11 @@ test('activity validation enforces freshness and public-only assets with no arbi
   assert.equal(actividadDiscord(snapshot(now, { trackUrl: trackUrl + '&token=secret' }), now).activity.buttons, undefined)
   const artworkUrl = 'https://project.supabase.co/storage/v1/object/public/artwork/test.jpg'
   assert.equal(actividadDiscord(snapshot(now, { artworkUrl }), now).activity.assets.large_image, artworkUrl)
+  const railway = artworkUrl.replace('project.supabase.co', 'envoy-production-2fb6.up.railway.app')
+  assert.equal(actividadDiscord(snapshot(now, { artworkUrl: railway }), now).activity.assets.large_image, railway)
+  for (const invalid of [railway.replace('envoy-production-2fb6', 'another'), railway.replace('/public/', '/sign/'), railway + '?token=private']) {
+    assert.equal(actividadDiscord(snapshot(now, { artworkUrl: invalid }), now).activity.assets, undefined)
+  }
   assert.equal(actividadDiscord(snapshot(now, { artworkUrl: artworkUrl.replace('/public/', '/sign/') }), now).activity.assets, undefined)
   assert.equal(actividadDiscord(snapshot(now, { artworkUrl: artworkUrl + 'x'.repeat(300) }), now).activity.assets, undefined)
   const result = actividadDiscord(snapshot(now, { audioUrl: 'https://secret', userId: 'private', artworkUrl: 'https://i.ytimg.com/image?token=secret', trackUrl: 'file:///audio.mp3', expiresAt: now + 999999 }), now)

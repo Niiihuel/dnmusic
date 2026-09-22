@@ -132,6 +132,7 @@ const puente = {
     alAbrir: (escuchar: (ruta: string) => void): (() => void) => {
       const oyente = (_: IpcRendererEvent, ruta: string) => escuchar(ruta)
       ipcRenderer.on('enlace:abrir', oyente)
+      ipcRenderer.send('enlace:listo')
       return () => ipcRenderer.removeListener('enlace:abrir', oyente)
     },
   },

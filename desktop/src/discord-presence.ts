@@ -64,7 +64,7 @@ function publicUrl(value: unknown, artwork: boolean): string | undefined {
     if (artwork) {
       if (url.search) return
       const cdn = ['i.ytimg.com', 'img.youtube.com', 'yt3.googleusercontent.com', 'lh3.googleusercontent.com', 'yt3.ggpht.com', 'lh3.ggpht.com'].includes(url.hostname)
-      const storage = url.hostname.endsWith('.supabase.co') && url.pathname.startsWith('/storage/v1/object/public/artwork/')
+      const storage = (/^[a-z0-9-]+\.supabase\.co$/.test(url.hostname) || url.hostname === 'envoy-production-2fb6.up.railway.app') && url.pathname.startsWith('/storage/v1/object/public/artwork/')
       if (!cdn && !storage) return
     } else if (url.hostname !== 'music.youtube.com' || url.pathname !== '/watch' || !/^\?v=[A-Za-z0-9_-]{11}$/.test(url.search)) return
     return url.href.length <= (artwork ? 300 : 256) ? url.href : undefined

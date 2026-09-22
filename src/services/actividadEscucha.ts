@@ -27,7 +27,7 @@ function caratulaPublica(value: unknown): string | undefined {
     const url = new URL(value)
     if (url.protocol !== 'https:' || url.username || url.password || url.port || url.search || url.hash) return
     const cdn = ['i.ytimg.com', 'img.youtube.com', 'yt3.googleusercontent.com', 'lh3.googleusercontent.com', 'yt3.ggpht.com', 'lh3.ggpht.com'].includes(url.hostname)
-    const storage = url.hostname.endsWith('.supabase.co') && url.pathname.startsWith('/storage/v1/object/public/artwork/')
+    const storage = (/^[a-z0-9-]+\.supabase\.co$/.test(url.hostname) || url.hostname === 'envoy-production-2fb6.up.railway.app') && url.pathname.startsWith('/storage/v1/object/public/artwork/')
     if (cdn || storage) return url.href
   } catch { /* Metadatos malformados no salen del dispositivo. */ }
 }

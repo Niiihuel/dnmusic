@@ -18,7 +18,7 @@ import { copiarAlPortapapeles } from './portapapeles'
  * mismo host en cada release nativo.
  */
 export const SITIO = (
-  (typeof process !== 'undefined' ? process.env.EXPO_PUBLIC_SITE_URL : undefined) ??
+  (typeof process !== 'undefined' ? process.env.EXPO_PUBLIC_SITE_URL?.trim() : undefined) ||
   'https://dnmusic-production-c3f4.up.railway.app'
 ).replace(/\/$/, '')
 
@@ -88,7 +88,7 @@ export function enlaceDeDnmusic(entrada: string): { que: Compartible; id: string
   const texto = entrada.trim()
   if (!texto) return null
   const patron = new RegExp(
-    `^(?:${SITIO.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|dnmusic:/|app://dnmusic)` +
+    `^(?:${SITIO.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|https://dnmusic-app\\.vercel\\.app|dnmusic:/|app://dnmusic)` +
       `/(${COMPARTIBLES.join('|')})/([^/?#\\s]+)`,
     'i',
   )

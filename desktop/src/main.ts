@@ -12,6 +12,7 @@ import {
 } from './actualizador'
 import { ORIGEN, raizWeb, registrarEsquema, servirWeb } from './protocolo'
 import { ESQUEMA_ENLACE, EntregaDeEnlaces } from './enlaces'
+import { registrarEnlaces } from './enlaces-ipc'
 import { type Aporte } from './resolutor'
 import { cerrarResolutor, resolverEnHijo } from './resolutor-remoto'
 import { descargarArchivos } from './descargas'
@@ -28,7 +29,7 @@ import { registrarDiscord } from './discord-ipc'
 /**
  * dnmusic para escritorio.
  *
- * Adentro corre el mismo export web que sirve Vercel, sin una línea de
+ * Adentro corre el mismo export web que sirve Railway, sin una línea de
  * diferencia: el proceso principal solo le da una ventana, un origen propio
  * (ver protocolo.ts) y las actualizaciones.
  */
@@ -405,11 +406,12 @@ if (!app.requestSingleInstanceLock()) {
     )
 
     armarMenu()
+    registrarEnlaces(ipcMain, enlaces, () => ventanaPrincipal?.webContents ?? null)
     ventanaPrincipal = crearVentana()
-    /* Recién con la ventana hay a quién darle los links: se le manda la ruta y
-       navega expo-router, sin recargar el bundle ni cortar lo que suena. */
-    enlaces.conectar((ruta) => ventanaPrincipal?.webContents.send('enlace:abrir', ruta))
+    // El preload avisa cuando el router escucha; crear la ventana no basta.
     ventanaPrincipal.on('closed', () => enlaces.desconectar())
+    ventanaPrincipal.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => { if (isMainFrame && !isInPlace) enlaces.desconectar() })
+    ventanaPrincipal.webContents.on('render-process-gone', () => enlaces.desconectar())
     ventanaPrincipal.webContents.on('destroyed', () => google.cancelar())
     ventanaPrincipal.webContents.on('destroyed', () => discord.limpiar())
     ventanaPrincipal.webContents.on('render-process-gone', () => discord.limpiar())

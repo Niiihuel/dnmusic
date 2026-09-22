@@ -1,6 +1,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { rutaDeEnlace, enlaceEnArgumentos, EntregaDeEnlaces } = require('../dist/enlaces.js')
+const { registrarEnlaces } = require('../dist/enlaces-ipc.js')
+const { EventEmitter } = require('node:events')
 
 /**
  * Los `dnmusic://` que le llegan al escritorio.
@@ -75,4 +77,55 @@ test('cerrada la ventana, lo próximo vuelve a esperar', () => {
   assert.deepEqual(vistas, [], 'no se le manda a una ventana que no está')
   entrega.conectar((r) => vistas.push(r))
   assert.deepEqual(vistas, ['/cancion/abc'])
+})
+
+test('argv entrega invitaciones y canciones sin volver a interpretar la ruta normalizada', () => {
+  const entrega = new EntregaDeEnlaces(), vistas = []
+  assert.equal(entrega.recibirArgumentos(['/usr/bin/dnmusic', 'dnmusic://jam/ABC123']), true)
+  entrega.conectar(r => vistas.push(r))
+  assert.deepEqual(vistas, ['/jam/ABC123'])
+  assert.equal(entrega.recibirArgumentos(['dnmusic', 'https://dnmusic-production-c3f4.up.railway.app/cancion/propia%3Auuid']), true)
+  assert.deepEqual(vistas, ['/jam/ABC123', '/cancion/propia%3Auuid'])
+  assert.equal(entrega.recibirArgumentos(['dnmusic', '/ajustes']), false)
+})
+
+test('el router recibe el link pendiente sólo después del handshake del mainFrame propio', () => {
+  const ipc = new EventEmitter(), entrega = new EntregaDeEnlaces(), vistas = []
+  const frame = { url: 'app://dnmusic/' }
+  const w = { mainFrame: frame, isDestroyed: () => false, send: (...args) => vistas.push(args) }
+  registrarEnlaces(ipc, entrega, () => w)
+  entrega.recibirArgumentos(['dnmusic', 'dnmusic://jam/ABC123'])
+  ipc.emit('enlace:listo', { sender: {}, senderFrame: frame })
+  ipc.emit('enlace:listo', { sender: w, senderFrame: { url: frame.url } })
+  frame.url = 'https://evil.test/'
+  ipc.emit('enlace:listo', { sender: w, senderFrame: frame })
+  assert.deepEqual(vistas, [])
+  frame.url = 'app://dnmusic/'
+  ipc.emit('enlace:listo', { sender: w, senderFrame: frame })
+  assert.deepEqual(vistas, [['enlace:abrir', '/jam/ABC123']])
+  ipc.emit('enlace:listo', { sender: w, senderFrame: frame })
+  assert.equal(vistas.length, 1)
+  entrega.desconectar()
+  entrega.recibirArgumentos(['dnmusic', 'dnmusic://lista/uuid'])
+  assert.equal(vistas.length, 1)
+  ipc.emit('enlace:listo', { sender: w, senderFrame: frame })
+  assert.deepEqual(vistas[1], ['enlace:abrir', '/lista/uuid'])
+})
+
+test('preload registra oyente antes de avisar a main y entrega el enlace inicial', () => {
+  const { readFileSync } = require('node:fs'), { runInNewContext } = require('node:vm')
+  const ipc = new EventEmitter(), vistas = []; let bridge
+  ipc.invoke = async () => null
+  ipc.send = channel => { if (channel === 'enlace:listo') ipc.emit('enlace:abrir', {}, '/jam/ABC123') }
+  runInNewContext(readFileSync(require.resolve('../dist/preload.js'), 'utf8'), {
+    process: { platform: 'linux' }, exports: {}, require: name => {
+      assert.equal(name, 'electron')
+      return { ipcRenderer: ipc, contextBridge: { exposeInMainWorld: (_, value) => { bridge = value } } }
+    },
+  })
+  const off = bridge.enlaces.alAbrir(ruta => vistas.push(ruta))
+  assert.deepEqual(vistas, ['/jam/ABC123'])
+  off()
+  ipc.emit('enlace:abrir', {}, '/jam/OTRO')
+  assert.equal(vistas.length, 1)
 })
