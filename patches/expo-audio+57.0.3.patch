@@ -584,7 +584,7 @@ index ddd4f23..73d5882 100644
  - (void)invalidate;
  
 diff --git a/node_modules/expo-audio/ios/AudioTapProcessor.m b/node_modules/expo-audio/ios/AudioTapProcessor.m
-index 6f8fb16..b94dfe5 100644
+index 6f8fb16..b0c8d82 100644
 --- a/node_modules/expo-audio/ios/AudioTapProcessor.m
 +++ b/node_modules/expo-audio/ios/AudioTapProcessor.m
 @@ -3,6 +3,8 @@
@@ -690,7 +690,7 @@ index 6f8fb16..b94dfe5 100644
 @@ -53,7 +121,13 @@ typedef struct AVAudioTapProcessorContext {
      return NO;
    }
- 
+   
 -  AVAssetTrack *track = _player.currentItem.tracks.firstObject.assetTrack;
 +  AVAssetTrack *track = nil;
 +  for (AVPlayerItemTrack *itemTrack in _player.currentItem.tracks) {
@@ -719,13 +719,13 @@ index 6f8fb16..b94dfe5 100644
 +  context->channelCount = processingFormat->mChannelsPerFrame;
 +  context->equalizerVersion = 0;
 +  DNEQPrepare(&context->equalizer, processingFormat->mSampleRate);
- 
+   
    if (processingFormat->mFormatID != kAudioFormatLinearPCM) {
      NSLog(@"Audio Format ID for audioProcessingTap: LinearPCM");
 @@ -178,9 +263,7 @@ void tapPrepare(MTAudioProcessingTapRef tap, CMItemCount maxFrames, const AudioS
      NSLog(@"Audio Format ID for audioProcessingTap: Float only");
    }
- 
+   
 -  if (processingFormat->mFormatFlags & kAudioFormatFlagIsNonInterleaved) {
 -    context->isNonInterleaved = true;
 -  }
@@ -736,13 +736,13 @@ index 6f8fb16..b94dfe5 100644
 @@ -201,10 +284,12 @@ void tapProcess(MTAudioProcessingTapRef tap, CMItemCount numberFrames, MTAudioPr
      return;
    }
- 
+   
 +  [processor processEqualizer:context bufferList:bufferListInOut frames:*numberFramesOut];
 +
    SampleBufferCallback callback = processor.sampleBufferCallback;
 -  if (callback && bufferListInOut && bufferListInOut->mNumberBuffers > 0) {
 +  if (context->supportedTapProcessingFormat && callback && bufferListInOut && bufferListInOut->mNumberBuffers > 0) {
-     double timestamp = 0.0;
+     double timestamp = 0.0; 
 -    callback(&bufferListInOut->mBuffers[0], (long)numberFrames, timestamp);
 +    callback(&bufferListInOut->mBuffers[0], (long)*numberFramesOut, timestamp);
    }
