@@ -78,6 +78,7 @@ import { NovedadesAlAbrir } from '../src/ui/NovedadesAlAbrir'
 import { FilaChat } from '../src/ui/TabBar'
 import { Cascara } from '../src/ui/Cascara'
 import '../global.css'
+import { AndroidTheme } from '../src/ui/AndroidTheme'
 
 /** Debajo de esto no entran los tres paneles y la app pasa a pestañas. */
 const SHELL_PX = 780
@@ -145,7 +146,7 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <BandaVentana />
       <View style={{ flex: 1, minHeight: 0 }}>
-        <ControlActualizaciones><Chrome /></ControlActualizaciones>
+        <AndroidTheme><ControlActualizaciones><Chrome /></ControlActualizaciones></AndroidTheme>
         {splashListo ? null : <SplashAnimado onDone={() => setSplashListo(true)} />}
       </View>
     </GestureHandlerRootView>

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import androidDesign from './helpers/androidDesign.mjs'
 
 const colors = { background: '#121212', surface: '#242426', raised: '#303032', text: '#FFFFFF', muted: '#B3B3B3', primary: '#FFFFFF', onPrimary: '#121212', error: '#FF6961' }
 
@@ -41,6 +42,8 @@ function harness(path, dimensions = { width: 390, height: 844, fontScale: 1 }, o
   new Function('exports', ts.transpileModule(readFileSync('src/ui/menuReparto.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(reparto)
   const gesture = new Proxy({}, { get: () => () => gesture })
   const imports = {
+    './androidDesign': androidDesign,
+    './androidComposeDesign': { androidControlModifiers: () => [] },
     react, 'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': { View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView', StyleSheet: { absoluteFill: {} }, useWindowDimensions: () => dimensions },
     'react-native-gesture-handler': { Gesture: { LongPress: () => gesture }, GestureDetector: 'GestureDetector' },
@@ -128,7 +131,7 @@ test('barra Material exige confirmación para restablecer, bloquea guardados y r
   assert.equal(h.render('BarraCambiosPerfil', props), null)
   let ui = h.render('BarraCambiosPerfil', { ...props, visible: true })
   button(ui, 'Guardar').props.onClick()
-  assert.equal(button(ui, 'Guardar').props.colors.contentColor, colors.onPrimary)
+  assert.equal(button(ui, 'Guardar').props.colors.contentColor, colors.text)
   button(ui, 'Restablecer').props.onClick()
   ui = h.render('BarraCambiosPerfil', { ...props, visible: true })
   assert.ok(find(ui, 'AlertDialog'))

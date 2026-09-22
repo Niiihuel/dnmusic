@@ -80,7 +80,7 @@ test('geometry/fullscreen changes resize or remove the reserved row and subscrip
 test('RootLayout reserves the row once for every route; login no longer overlays another drag area', () => {
   const layout = readFileSync('app/_layout.tsx', 'utf8')
   assert.equal((layout.match(/<BandaVentana\s*\/>/g) ?? []).length, 1)
-  assert.match(layout, /<BandaVentana \/>\s*<View style=\{\{ flex: 1, minHeight: 0 \}\}>\s*<ControlActualizaciones>/)
+  assert.match(layout, /<BandaVentana \/>\s*<View style=\{\{ flex: 1, minHeight: 0 \}\}>\s*<AndroidTheme><ControlActualizaciones>/)
   assert.doesNotMatch(readFileSync('src/ui/Acceso.tsx', 'utf8'), /ARRASTRE_SUPERIOR|dn-arrastre-superior/)
 })
 

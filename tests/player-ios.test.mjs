@@ -111,3 +111,11 @@ test('respuesta de letra cancelada no reemplaza una carga nueva al cambiar durac
   tree = h.render('LyricsView', { track: { ...track, durationMs: 180000 } })
   assert.equal(children(tree, node => node.type === 'Lyrics')[0].props.lines, lines)
 })
+
+test('la letra iOS difumina profundidad, aterriza con resorte y respeta Reducir movimiento', () => {
+  const source = readFileSync('src/ui/Lyrics.tsx', 'utf8')
+  assert.match(source, /textShadowRadius: Math\.max\(1\.5, px \* 1\.25\)/)
+  assert.match(source, /withSequence\(/)
+  assert.match(source, /useReducedMotion\(\)/)
+  assert.match(source, /reduceMotion \? to : withSpring\(to, resorte\)/)
+})

@@ -6,6 +6,7 @@ import { SearchField } from './SearchField'
 import { IconButton } from './IconButton'
 import { Menu } from './Menu'
 import type { FiltrosCatalogoPerfilProps } from './FiltrosCatalogoPerfil.types'
+import { ANDROID_TYPE } from './androidDesign'
 
 const etiquetas: Record<string, string> = { marco: 'Avatar', efecto: 'Efectos', placa: 'Nombre', marcoPerfil: 'Perfil', paquete: 'Packs' }
 
@@ -26,7 +27,7 @@ export function FiltrosCatalogoPerfil(props: FiltrosCatalogoPerfilProps) {
               activeBorderColor: color.primary, inactiveBorderColor: color.raised,
               disabledActiveContainerColor: color.raised, disabledActiveContentColor: color.muted,
               disabledInactiveContainerColor: color.surface, disabledInactiveContentColor: color.muted }}>
-            <SegmentedButton.Label><Text style={{ typography: 'labelMedium' }}>{etiquetas[tipo.id] ?? tipo.nombre}</Text></SegmentedButton.Label>
+            <SegmentedButton.Label><Text style={ANDROID_TYPE.body}>{etiquetas[tipo.id] ?? tipo.nombre}</Text></SegmentedButton.Label>
           </SegmentedButton>)}
         </SingleChoiceSegmentedButtonRow>
       </AndroidHost>

@@ -1,6 +1,6 @@
 {
   "name": "dnmusic",
-  "version": "1.15.2",
+  "version": "1.16.0",
   "main": "expo-router/entry",
   "private": true,
   "scripts": {
@@ -28,6 +28,7 @@
     "@expo-google-fonts/bebas-neue": "^0.4.1",
     "@expo-google-fonts/caveat": "^0.4.2",
     "@expo-google-fonts/cormorant-garamond": "^0.4.1",
+    "@expo-google-fonts/inter-tight": "^0.4.2",
     "@expo-google-fonts/lora": "^0.4.2",
     "@expo-google-fonts/montserrat": "^0.4.2",
     "@expo-google-fonts/nunito": "^0.4.2",

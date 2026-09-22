@@ -75,10 +75,10 @@ test('detalle de escritorio usa columna contenida y activa la densidad compacta'
 /**
  * La vuelta de Google en el teléfono.
  *
- * `Escritorio` recibe la sección y la muestra sola; `Telefono` dibuja la tirada
- * entera de iOS, así que la sección tiene que ir a buscarse con el scroll.
+ * `Escritorio` recibe la sección y la muestra sola. Web móvil conserva una
+ * lista continua; iOS y Android delegan a su jerarquía de plataforma.
  */
-function fixtureTelefono(os = 'android') {
+function fixtureTelefono(os = 'web') {
   const source = ts.createSourceFile('ajustes.tsx', readFileSync('app/ajustes/index.tsx', 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
   const node = source.statements.find(n => ts.isFunctionDeclaration(n) && n.name.text === 'Telefono')
   const code = ts.transpileModule(`export ${node.getText(source)}`, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText
@@ -92,9 +92,12 @@ function fixtureTelefono(os = 'android') {
     Platform: { OS: os }, Fragment: 'Fragment',
     useState(initial) { const i = cursor++; if (!(i in refs)) refs[i] = initial; return [refs[i], v => { refs[i] = v }] },
     usePiso: () => 24, useKeyboardH: () => 0, useSafeAreaInsets: () => ({ bottom: 34 }),
-    ...Object.fromEntries(['SafeAreaView', 'View', 'Text', 'ScrollView', 'BotonVolver', 'EncabezadoHoja', 'SearchField', 'ListaAjustes', 'GrupoAjustes', 'FilaAccion', 'FilaDato'].map(k => [k, k])),
+    ...Object.fromEntries(['SafeAreaView', 'View', 'Text', 'ScrollView', 'BotonVolver', 'SearchField', 'AjustesNativos'].map(k => [k, k])),
   })
-  const categorias = [{ id: 'music', titulo: 'Reproducción', bloques: { type: 'Music' } }, { id: 'cuenta', titulo: 'Cuenta', bloques: { type: 'Cuenta' } }]
+  const categorias = [
+    { id: 'music', titulo: 'Reproducción', resumen: 'Audio', simbolo: 'waveform', bloques: { type: 'Music' } },
+    { id: 'cuenta', titulo: 'Cuenta', resumen: 'Perfil', simbolo: 'person.crop.circle', bloques: { type: 'Cuenta' } },
+  ]
   return {
     saltos,
     render(props = {}) {
@@ -130,18 +133,16 @@ test('buscando no se salta a ninguna sección: la lista ya está filtrada', () =
 })
 
 
-test('iOS abre Cuenta tras Google, permite ver todas las categorías y conserva un único List al buscar', () => {
+test('iOS entrega categorías y destino inicial al NavigationStack nativo', () => {
   const f = fixtureTelefono('ios')
-  let ui = f.render({ initialId: 'cuenta' })
+  const ui = f.render({ initialId: 'cuenta' })
   assert.equal(ui.some(n => n.type === 'ScrollView'), false)
-  assert.equal(ui.find(n => n.type === 'EncabezadoHoja').props.titulo, 'Cuenta')
-  assert.equal(ui.some(n => n.type === 'Music'), false)
-  ui.find(n => n.props?.rotulo === 'Ver toda la configuración').props.onPress()
-  ui = f.render({ initialId: 'cuenta' })
-  assert.ok(ui.some(n => n.type === 'Music'))
-  assert.ok(ui.some(n => n.type === 'Cuenta'))
-  assert.equal(ui.filter(n => n.type === 'ListaAjustes').length, 1)
-  ui = f.render({ buscando: true, busqueda: 'sin coincidencias', coinciden: [] })
-  assert.ok(ui.some(n => n.props?.rotulo === 'Sin resultados'))
-  assert.equal(ui.some(n => n.type === 'BloqueCuenta'), false)
+  const nativo = ui.find(n => n.type === 'AjustesNativos')
+  assert.equal(nativo.props.initialId, 'cuenta')
+  assert.deepEqual(nativo.props.categorias.map(c => ({ id: c.id, resumen: c.resumen, simbolo: c.simbolo })), [
+    { id: 'music', resumen: 'Audio', simbolo: 'waveform' },
+    { id: 'cuenta', resumen: 'Perfil', simbolo: 'person.crop.circle' },
+  ])
+  assert.equal(nativo.props.cuenta.type, 'BloqueCuenta')
+  assert.equal(nativo.props.piso, 24)
 })

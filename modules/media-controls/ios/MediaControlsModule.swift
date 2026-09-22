@@ -230,6 +230,7 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
   private let tabBar = UITabBar()
   private let ids = ["inicio", "listas", "chats", "perfil", "buscar"]
   private var confirmedSelection = "inicio"
+  private var pendingRollback: DispatchWorkItem?
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -277,6 +278,8 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
 
   override func layoutSubviews() { super.layoutSubviews(); tabBar.frame = bounds }
   func select(_ id: String) {
+    pendingRollback?.cancel()
+    pendingRollback = nil
     confirmedSelection = id
     guard let index = ids.firstIndex(of: id), let item = tabBar.items?[index],
       tabBar.selectedItem !== item else { return }
@@ -290,10 +293,21 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
   }
   func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
     guard ids.indices.contains(item.tag) else { return }
-    // Navigation can be cancelled by the unsaved-profile guard. Keep the
-    // confirmed section until React sends the destination after navigation.
-    if let index = ids.firstIndex(of: confirmedSelection) { tabBar.selectedItem = tabBar.items?[index] }
-    onSelect(["id": ids[item.tag]])
+    let requested = ids[item.tag]
+    /* Keep UIKit on the item the person just touched while React and the
+       router change sections. Resetting it synchronously made the control
+       jump back and could turn the first tap into a visual no-op. If a route
+       guard really cancels navigation, React won't confirm `requested` and
+       this delayed check restores the last confirmed destination. */
+    onSelect(["id": requested])
+    pendingRollback?.cancel()
+    let rollback = DispatchWorkItem { [weak self, weak tabBar] in
+      guard let self, let tabBar, self.confirmedSelection != requested,
+        let index = self.ids.firstIndex(of: self.confirmedSelection) else { return }
+      tabBar.selectedItem = tabBar.items?[index]
+    }
+    pendingRollback = rollback
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: rollback)
   }
 }
 

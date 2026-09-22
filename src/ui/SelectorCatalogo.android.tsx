@@ -4,6 +4,7 @@ import { Column, DropdownMenu, DropdownMenuItem, LazyColumn, ModalBottomSheet, R
 import { fillMaxWidth, height, padding, weight } from '@expo/ui/jetpack-compose/modifiers'
 import { AndroidIcon } from './AndroidIcon'
 import { AndroidHost, androidAccessibility, ANDROID_COLORS as color } from './AndroidHost'
+import { ANDROID_TYPE } from './androidDesign'
 
 const normalizar = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 type Props = { etiqueta: string; valor: string; opciones: { id: string; nombre: string }[]; onChange: (id: string) => void }
@@ -40,7 +41,7 @@ export function SelectorCatalogo({ etiqueta, valor, opciones, onChange }: Props)
       containerColor={color.background} contentColor={color.text}>
       <Column modifiers={[fillMaxWidth(), height(Math.min(alto * .78, 720))]}>
         <Row modifiers={[fillMaxWidth(), padding(20, 0, 8, 8)]} verticalAlignment="center">
-          <Text style={{ typography: 'titleLarge' }} modifiers={[weight(1)]}>{etiqueta}</Text>
+          <Text style={ANDROID_TYPE.title} modifiers={[weight(1)]}>{etiqueta}</Text>
           <TextButton onClick={ocultar} colors={{ contentColor: color.text }}><Text>Cerrar</Text></TextButton>
         </Row>
         <TextField value={textoNativo} onValueChange={setBusqueda} singleLine keyboardOptions={{ imeAction: 'search', autoCorrectEnabled: false }}

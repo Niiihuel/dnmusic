@@ -158,6 +158,18 @@ test('las tabs dan espacio al sistema y al texto grande sin cambiar callbacks', 
   }
 })
 
+test('la tab nativa conserva el primer toque mientras React confirma la sección', () => {
+  const swift = readFileSync('modules/media-controls/ios/MediaControlsModule.swift', 'utf8')
+  const didSelect = swift.slice(swift.indexOf('func tabBar(_ tabBar: UITabBar, didSelect'))
+  assert.match(didSelect, /onSelect\(\["id": requested\]\)/)
+  assert.match(didSelect, /DispatchQueue\.main\.asyncAfter/)
+  assert.doesNotMatch(
+    didSelect.slice(0, didSelect.indexOf('onSelect(["id": requested])')),
+    /tabBar\.selectedItem =/,
+    'UIKit no debe volver al tab anterior antes de emitir el primer toque',
+  )
+})
+
 test('Swift registra todos los eventos de mini player y mantiene pausa disponible mientras carga', () => {
   const swift = readFileSync('modules/media-controls/ios/MediaMiniPlayerView.swift', 'utf8')
   const module = readFileSync('modules/media-controls/ios/MediaControlsModule.swift', 'utf8')

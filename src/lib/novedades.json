@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.16.0",
+    "fecha": "22 de septiembre de 2026",
+    "titulo": "Tu biblioteca, más clara.",
+    "cambios": [
+      "Rediseñamos Playlists con secciones para tu música, una bienvenida cuando todavía no tenés listas y una tarjeta para traerlas de Spotify.",
+      "En iPhone, Configuración organiza las opciones por categorías con navegación nativa. Ajustamos la posición de la barra inferior y corregimos los cambios de sección que requerían tocar dos veces.",
+      "Las letras acompañan la canción con transiciones suaves y desenfoque en las líneas inactivas, respetando la opción de reducir movimiento.",
+      "Android estrena tipografía Inter Tight, controles con relieve suave y tarjetas más limpias. Configuración también se organiza en categorías."
+    ]
+  },
+  {
     "version": "1.15.2",
     "fecha": "21 de septiembre de 2026",
     "titulo": "dnmusic ya vive en Railway.",

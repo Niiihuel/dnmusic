@@ -1,8 +1,11 @@
 import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
 import { Alert, View } from 'react-native'
-import { Button, HStack, Host, Image, LabeledContent, List, Menu, ProgressView, RNHostView, Section, Spacer, Text, TextField, Toggle, VStack, useNativeState } from '@expo/ui/swift-ui'
-import { accessibilityLabel, autocorrectionDisabled, background, buttonStyle, clipShape, disabled, font, foregroundStyle, frame, listRowBackground, listRowSeparator, listStyle, padding, scrollContentBackground, scrollDismissesKeyboard, textInputAutocapitalization, tint, toggleStyle } from '@expo/ui/swift-ui/modifiers'
-import { useEffect } from 'react'
+import { Button, HStack, Host, Image, LabeledContent, List, Menu, NavigationDestination, NavigationLink, NavigationStack, ProgressView, RNHostView, Section, Spacer, Text, TextField, Toggle, Toolbar, VStack, useNativeState } from '@expo/ui/swift-ui'
+import { accessibilityLabel, autocorrectionDisabled, background, buttonStyle, clipShape, disabled, font, foregroundStyle, frame, listRowBackground, listRowSeparator, listStyle, navigationTitle, padding, scrollContentBackground, scrollDismissesKeyboard, textInputAutocapitalization, tint, toggleStyle } from '@expo/ui/swift-ui/modifiers'
+import { useEffect, useState } from 'react'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useKeyboardH } from '../state/shell'
+import { SearchField } from './SearchField'
 import * as Shared from './Ajustes.shared'
 import type { FilaSostener } from './Mantener'
 
@@ -47,6 +50,67 @@ function Rotulo({ rotulo, detalle }: { rotulo: string; detalle?: string }) {
   </VStack>
 }
 const fondo = () => [listRowBackground(FILA), frame({ minHeight: 44, maxWidth: Infinity })]
+
+/**
+ * Configuración de iPhone como jerarquía SwiftUI real.
+ *
+ * La raíz sólo muestra cuenta y categorías; cada categoría entra en un destino
+ * de NavigationStack con gesto de regreso, título y material de barra nativos.
+ * Así el contenido desplaza por debajo de la cabecera en vez de empezar tras
+ * una franja opaca dibujada por React Native.
+ */
+export function AjustesNativos({ categorias, initialId, cuenta, piso, buscando, busqueda, onBusqueda, onVolver }: Shared.AjustesNativosProps) {
+  const initialPath = initialId && categorias.some(c => c.id === initialId) ? [initialId] : []
+  const [path, setPath] = useState<string[]>(initialPath)
+  const insets = useSafeAreaInsets()
+  const keyboard = useKeyboardH()
+  const searchBottom = Math.max(insets.bottom, 12) + keyboard
+
+  const buscar = (value: string) => {
+    if (value.trim() && path.length) setPath([])
+    onBusqueda(value)
+  }
+
+  const lista = (titulo: string, children: ReactNode, raiz = false) => (
+    <Toolbar>
+      <EnLista.Provider value>
+        <List modifiers={[navigationTitle(titulo), listStyle('insetGrouped'), scrollContentBackground('hidden'), scrollDismissesKeyboard('interactively'), tint(TEXTO)]}>
+          {children}
+          <Text modifiers={[frame({ height: piso + 72 }), listRowBackground('clear'), listRowSeparator('hidden'), accessibilityLabel('')]}>{' '}</Text>
+        </List>
+      </EnLista.Provider>
+      {raiz ? <Toolbar.Content><Button label="Listo" role="cancel" onPress={onVolver} /></Toolbar.Content> : null}
+    </Toolbar>
+  )
+
+  return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: '#121212' }}>
+    <Host style={{ flex: 1 }} ignoreSafeArea="container" colorScheme="dark" seedColor={TEXTO}>
+      <NavigationStack path={path} onPathChange={setPath}>
+        {lista('Configuración', <>
+          {!buscando ? cuenta : null}
+          <Section title={buscando ? 'Resultados' : undefined}>
+            {categorias.map(c => <NavigationLink key={c.id} value={c.id} modifiers={[listRowBackground(FILA)]}>
+              <HStack spacing={12} modifiers={[frame({ minHeight: 50 })]}>
+                <Image systemName={c.simbolo as never} size={21} modifiers={[frame({ width: 28 })]} />
+                <VStack alignment="leading" spacing={3}>
+                  <Text>{c.titulo}</Text>
+                  <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(SECUNDARIO)]}>{c.resumen}</Text>
+                </VStack>
+              </HStack>
+            </NavigationLink>)}
+            {!categorias.length ? <Text modifiers={[foregroundStyle(SECUNDARIO)]}>No encontramos ese ajuste.</Text> : null}
+          </Section>
+        </>, true)}
+        {categorias.map(c => <NavigationDestination key={c.id} value={c.id}>
+          {lista(c.titulo, c.bloques)}
+        </NavigationDestination>)}
+      </NavigationStack>
+    </Host>
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: 16, right: 16, bottom: searchBottom }}>
+      <SearchField value={busqueda} onChangeText={buscar} placeholder="Buscar" />
+    </View>
+  </SafeAreaView>
+}
 
 export function FilaAjuste({ rotulo, detalle, valor, vacio = 'Sin poner', icono, globito, onPress, destructivo, disabled: apagada }: ComponentProps<typeof Shared.FilaAjuste>) {
   const valorVisible = valor?.trim() ? valor : vacio

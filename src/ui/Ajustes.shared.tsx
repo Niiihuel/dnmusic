@@ -8,6 +8,30 @@ import { Interruptor, INTERRUPTOR_PROPIO } from './Interruptor'
 import { Menu } from './Menu'
 import { ICON_COLOR, IconChevronDown, IconChevronRight } from './icons'
 
+export type CategoriaAjustesNativa = {
+  id: string
+  titulo: string
+  resumen: string
+  simbolo: string
+  bloques: ReactNode
+}
+
+export type AjustesNativosProps = {
+  categorias: CategoriaAjustesNativa[]
+  initialId?: string
+  cuenta: ReactNode
+  piso: number
+  buscando: boolean
+  busqueda: string
+  onBusqueda: (value: string) => void
+  onVolver: () => void
+}
+
+/** Sólo iOS la reemplaza por el NavigationStack SwiftUI. */
+export function AjustesNativos(_props: AjustesNativosProps) {
+  return null
+}
+
 const DensidadAjustesContext = createContext(false)
 
 // En escritorio usa la escala de Ajustes del Sistema; en teléfono conserva

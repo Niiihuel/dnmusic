@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Platform, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated'
+import { NativeMediaTabs } from '../../modules/media-controls'
 import type { Tab } from '../state/shell'
 import { BotonVidrio, HAY_VIDRIO } from './Glass'
 import { TabPildora, useIrATab } from './TabBar'
@@ -116,7 +117,9 @@ export function Cascara({
   const [altoTabs, setAltoTabs] = useState(0)
   const [altoFila, setAltoFila] = useState(0)
   const androidRecto = Platform.OS === 'android'
-  const abajo = insets.bottom > 0 ? insets.bottom - 6 : 8
+  /* UITabBar ya incorpora el área segura dentro de su geometría. Sumar otro
+     espaciador debajo era lo que levantaba toda la barra respecto de Music. */
+  const abajo = Platform.OS === 'ios' && NativeMediaTabs ? 0 : insets.bottom > 0 ? insets.bottom - 6 : 8
 
   /** 0 desplegada, 1 plegada. Todo lo demás sale de interpolar esto. */
   const p = useDerivedValue(() => withSpring(!androidRecto && colapsada ? 1 : 0, RESORTE), [androidRecto, colapsada])

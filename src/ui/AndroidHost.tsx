@@ -5,10 +5,7 @@ import { requireNativeModule } from 'expo'
 // This module is included in DMusic development/release builds, like our Swift modules.
 requireNativeModule('DNAndroidControls')
 
-export const ANDROID_COLORS = {
-  background: '#121212', surface: '#242426', raised: '#303032', text: '#FFFFFF',
-  muted: '#B3B3B3', primary: '#FFFFFF', onPrimary: '#121212', error: '#FF6961',
-} as const
+export { ANDROID_COLORS } from './androidDesign'
 
 export function androidAccessibility(label: string, value?: string): ModifierConfig {
   return { $type: 'dnmusicAccessibility', label, value }
