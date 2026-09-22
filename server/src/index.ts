@@ -892,7 +892,7 @@ export const manejador = async (
     return json(404, { error: 'No existe' })
   } catch (e) {
     // El detalle va al log del servidor; al cliente solo lo necesario.
-    console.error('[flora-music]', e)
+    console.error('[dnmusic]', e)
     return json(502, { error: (e as Error).message })
   }
 }
@@ -957,5 +957,5 @@ const esElPrograma =
   Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href
 
 if (esElPrograma) {
-  server.listen(PORT, () => console.log(`[flora-music] escuchando en :${PORT}`))
+  server.listen(PORT, () => console.log(`[dnmusic] escuchando en :${PORT}`))
 }

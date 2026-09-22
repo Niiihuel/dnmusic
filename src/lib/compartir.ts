@@ -18,7 +18,7 @@ import { copiarAlPortapapeles } from './portapapeles'
  * tienen que decir lo mismo o el link deja de abrir la app. Un valor que se
  * puede cambiar por build es justo lo que no queremos acá.
  */
-export const SITIO = 'https://dnmusic-app.vercel.app'
+export const SITIO = 'https://dnmusic-production-c3f4.up.railway.app'
 
 /**
  * Las cuatro cosas que tienen link propio.

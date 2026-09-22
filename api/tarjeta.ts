@@ -27,7 +27,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
  * contra el `host`.
  */
 
-const SITIO = 'https://dnmusic-app.vercel.app'
+const SITIO = 'https://dnmusic-production-c3f4.up.railway.app'
 const TITULO = 'dnmusic'
 const DESCRIPCION =
   'Escuchá tu música, armá tus listas y ponete en Jam: la misma canción, al mismo tiempo, con quien quieras.'

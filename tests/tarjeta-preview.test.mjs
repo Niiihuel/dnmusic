@@ -68,7 +68,7 @@ function respuesta() {
   return r
 }
 
-const pedido = (ruta) => ({ url: ruta, headers: { host: 'dnmusic-app.vercel.app' } })
+const pedido = (ruta) => ({ url: ruta, headers: { host: 'dnmusic-production-c3f4.up.railway.app' } })
 
 test('un tipo que no es compartible no llega a la base', async () => {
   const { handler, pedidos } = cargar({ tarjeta: null })
@@ -92,7 +92,7 @@ test('la tarjeta reemplaza el bloque marcado y deja un solo título', async () =
     res.cuerpo,
     /property="og:image" content="https:\/\/proyecto\.supabase\.co\/storage\/v1\/object\/public\/artwork\/abc\.jpg"/,
   )
-  assert.match(res.cuerpo, /og:url" content="https:\/\/dnmusic-app\.vercel\.app\/cancion\/abc123"/)
+  assert.match(res.cuerpo, /og:url" content="https:\/\/dnmusic-production-c3f4\.up\.railway\.app\/cancion\/abc123"/)
   /* La app tiene que seguir arrancando: esto es el shell, no una página nueva. */
   assert.match(res.cuerpo, /<div id="root">/)
 })
@@ -136,7 +136,7 @@ test('el embed es una página suelta, sin bundle y sí incrustable', async () =>
   await handler(pedido('/api/tarjeta?modo=embed&que=cancion&id=abc123'), res)
   assert.ok(!res.cuerpo.includes('id="root"'), 'el embed no trae la app')
   assert.match(res.headers['content-security-policy'], /frame-ancestors \*/)
-  assert.match(res.cuerpo, /href="https:\/\/dnmusic-app\.vercel\.app\/cancion\/abc123"/)
+  assert.match(res.cuerpo, /href="https:\/\/dnmusic-production-c3f4\.up\.railway\.app\/cancion\/abc123"/)
   assert.match(res.cuerpo, /background-image:url\('https:\/\/cdn\.test\/x\.jpg'\)/)
 })
 
