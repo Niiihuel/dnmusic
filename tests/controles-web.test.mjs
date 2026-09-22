@@ -202,6 +202,18 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   for (const id of ['active', 'disabled', 'aria', 'child', 'busy', 'backdrop', 'primary', 'decorative', 'link', 'role-link', 'outer', 'inner', 'row', 'content-row', 'hitbox', 'content-card', 'artwork']) ids[id] = (await send('DOM.querySelector', { nodeId: root.nodeId, selector: `#${id}` })).nodeId
   assert.equal(await evaluate('matchMedia("(hover: hover) and (pointer: fine)").matches'), true)
   const style = (id, prop, pseudo = '') => evaluate(`getComputedStyle(document.getElementById(${JSON.stringify(id)}), ${JSON.stringify(pseudo)})[${JSON.stringify(prop)}]`)
+  // Headless Chrome may defer its first animation frame until styles are read.
+  // Poll the computed result instead of assuming a fixed sleep advanced a transition.
+  const settledStyle = async (id, prop, accepts) => {
+    const until = Math.min(deadline, performance.now() + 3000)
+    let value
+    do {
+      value = await style(id, prop)
+      if (accepts(value)) return value
+      await sleep(30)
+    } while (performance.now() < until)
+    return value
+  }
   for (const id of ['active', 'primary', 'link', 'role-link']) {
     const before = await evaluate(`JSON.stringify(document.getElementById('${id}').getBoundingClientRect())`)
     await send('CSS.forcePseudoState', { nodeId: ids[id], forcedPseudoClasses: ['hover'] })
@@ -224,16 +236,14 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   // La fila contiene reproducción y acciones: no son dos cajas de hover.
   await send('CSS.forcePseudoState', { nodeId: ids['content-row'], forcedPseudoClasses: ['hover'] })
   await send('CSS.forcePseudoState', { nodeId: ids.hitbox, forcedPseudoClasses: ['hover'] })
-  await new Promise(resolve => setTimeout(resolve, 220))
-  assert.notEqual(await style('content-row', 'backgroundColor'), 'rgba(0, 0, 0, 0)')
+  assert.notEqual(await settledStyle('content-row', 'backgroundColor', value => value !== 'rgba(0, 0, 0, 0)'), 'rgba(0, 0, 0, 0)')
   assert.equal(await style('hitbox', 'backgroundImage'), 'none')
   assert.equal(await style('hitbox', 'backgroundColor'), 'rgba(0, 0, 0, 0)')
   const cardRect = await evaluate('JSON.stringify(document.getElementById("content-card").getBoundingClientRect())')
   await send('CSS.forcePseudoState', { nodeId: ids['content-card'], forcedPseudoClasses: ['hover'] })
-  await new Promise(resolve => setTimeout(resolve, 250))
   assert.equal(await style('content-card', 'backgroundImage'), 'none')
   assert.equal(await style('artwork', 'opacity'), '1')
-  assert.equal(await style('artwork', 'filter'), 'brightness(1.1)')
+  assert.equal(await settledStyle('artwork', 'filter', value => value === 'brightness(1.1)'), 'brightness(1.1)')
   assert.equal(await evaluate('JSON.stringify(document.getElementById("content-card").getBoundingClientRect())'), cardRect)
   await send('CSS.forcePseudoState', { nodeId: ids.row, forcedPseudoClasses: ['focus', 'focus-visible'] })
   assert.equal(await style('row', 'outlineWidth'), '2px', 'reproducción conserva foco accesible')

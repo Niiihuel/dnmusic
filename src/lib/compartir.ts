@@ -19,7 +19,7 @@ import { copiarAlPortapapeles } from './portapapeles'
  */
 export const SITIO = (
   (typeof process !== 'undefined' ? process.env.EXPO_PUBLIC_SITE_URL : undefined) ??
-  'https://dnmusic-app.vercel.app'
+  'https://dnmusic-production-c3f4.up.railway.app'
 ).replace(/\/$/, '')
 
 /**

@@ -1,10 +1,23 @@
 # expo-audio 57.0.3 / iOS y web
 
-`expo-audio+57.0.3.patch` mantiene correcciones locales en cinco archivos del SDK.
+`expo-audio+57.0.3.patch` mantiene correcciones locales del SDK y el DSP del ecualizador.
 Se aplica en `postinstall` con `--error-on-fail`. Los cambios Swift requieren
 recompilar la app de iOS; una actualización JS no los incorpora. El cambio web
 se incluye en el siguiente bundle web. Al actualizar Expo Audio, revisar el SDK
 y retirar o adaptar el parche.
+
+## Ecualizador iOS
+
+`DNEqualizerDSP.h` contiene diez biquads por canal, parámetros suavizados y
+compensación de realces según la respuesta conjunta. Lo incorpora el mismo
+`MTAudioProcessingTap` que usa el visualizador; no se reinicia el historial de
+los filtros en cada movimiento. El callback no espera locks y valida PCM
+Float32, canales y tamaño de buffers. Las muestras del visualizador respetan
+los frames realmente entregados, también si llegan intercaladas en estéreo.
+
+Prueba portable del DSP: `nix shell nixpkgs#gcc --command node --test tests/ecualizador-dsp.test.mjs`.
+Además de esa prueba y de reinstalar el parche, hace falta una nueva build iOS
+para verificar audio real y la pantalla nativa. Una OTA no incorpora este DSP.
 
 ## Muestreo sin reiniciar el grafo
 

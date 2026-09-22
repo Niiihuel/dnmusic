@@ -86,10 +86,10 @@ function montar({ local = true, falloFirma = false } = {}) {
   }
   const deps = {
     react,
-    'react-native': { AppState: { currentState: 'background' }, Platform: { OS: 'ios' } },
+    'react-native': { AppState: { currentState: 'background', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'ios' } },
     'expo-audio': { setAudioModeAsync: async () => {}, useAudioPlayer: source => react.useMemo(() => playerFor(source), [source?.uri ?? null]) },
     '../state/playback': playback,
-    '../state/ecualizador': { useEcualizador: () => ({ cargado: true, activo: false, ganancias: Array(10).fill(0) }) },
+    '../state/ecualizador': { useEcualizador: () => ({ cargado: true, activo: false, ganancias: Array(10).fill(0) }), informarSoporteEcualizador() {}, guardarEcualizadorAhora: async () => {} },
     '../state/diagnosticoAudio': { registrarIncidenciaAudio: async evento => { calls.events.push(evento) } },
     '../lib/proximasCola': { proximasCola: ({ tracks, index }, limit) => tracks.slice(index + 1, index + 1 + limit) },
     './usePrecargaCola': { usePrecargaCola: noop }, './useEspectroAudio': { useEspectroAudio: noop },

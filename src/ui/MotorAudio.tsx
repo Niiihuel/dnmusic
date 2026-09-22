@@ -50,7 +50,7 @@ import { saltar } from '../lib/seek'
 import { useAppActiva } from '../lib/appActiva'
 import { avisar } from '../state/aviso'
 import { mensajeError } from '../lib/mensajeError'
-import { useEcualizador } from '../state/ecualizador'
+import { guardarEcualizadorAhora, informarSoporteEcualizador, useEcualizador } from '../state/ecualizador'
 
 /** Margen para dar por terminada una canción. */
 const END_EPSILON_S = 0.35
@@ -321,9 +321,24 @@ export function MotorAudio() {
   useEffect(() => {
     if (!ecualizador.cargado) return
     const aplicar = (player as typeof player & { setEqualizer?: (activo: boolean, ganancias: number[]) => void }).setEqualizer
-    if (typeof aplicar !== 'function') return
-    aplicar.call(player, ecualizador.activo, ecualizador.ganancias)
+    if (typeof aplicar !== 'function') {
+      informarSoporteEcualizador('no-disponible')
+      return
+    }
+    try {
+      aplicar.call(player, ecualizador.activo, ecualizador.ganancias)
+      informarSoporteEcualizador('disponible')
+    } catch {
+      informarSoporteEcualizador('error')
+    }
   }, [player, ecualizador.cargado, ecualizador.activo, ecualizador.ganancias])
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state !== 'active') void guardarEcualizadorAhora()
+    })
+    return () => { subscription.remove(); void guardarEcualizadorAhora() }
+  }, [])
   const lease = useAudioLease(player)
   const playing = wantPlay && url !== null
   const bucle = !enJam && (repetir === 'una' || (repetir === 'lista' && tracks.length === 1 && upNext.length === 0 && !manual))

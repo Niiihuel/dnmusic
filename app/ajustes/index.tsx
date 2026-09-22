@@ -63,6 +63,7 @@ import { ConectarGoogle } from '../../src/ui/ConectarGoogle'
 import { DiscordIcon } from '../../src/ui/DiscordIcon'
 import { AjustesDiscord } from '../../src/ui/AjustesDiscord'
 import { AjustesActualizaciones } from '../../src/ui/AjustesActualizaciones'
+import { useResumenEcualizador } from '../../src/state/ecualizador'
 
 /** Desde acá la pantalla es la de macOS: barra lateral con las categorías y el detalle al lado. */
 const ESCRITORIO_PX = 780
@@ -117,6 +118,7 @@ export default function Configuracion() {
   const cuentaAuth = useAuthUser()
   const dormirMin = useDormirMin()
   const modoReproduccion = useModoReproduccion()
+  const resumenEcualizador = useResumenEcualizador()
   const perfil = useMyProfile()
   const nombre = perfil?.displayName?.trim() || perfil?.username || 'Tu cuenta'
   const { items } = useDescargas()
@@ -147,7 +149,7 @@ export default function Configuracion() {
       simbolo: 'waveform',
       icono: IconDisc,
       palabras:
-        'reproducción modo orden aleatorio descubrimiento recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música diagnóstico audio errores fallos recuperación',
+        'reproducción modo orden aleatorio descubrimiento recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música ecualizador graves agudos bandas presets sonido diagnóstico audio errores fallos recuperación',
       visible: true,
       bloques: (
         <>
@@ -184,9 +186,11 @@ export default function Configuracion() {
               ultima
             />
           </GrupoAjustes>
+          <GrupoAjustes>
+            <FilaAjuste rotulo="Ecualizador" valor={resumenEcualizador} icono={<IconSliders size={17} color={ICON_COLOR.muted} />}
+              onPress={() => router.push('/ajustes/ecualizador' as never)} ultima />
+          </GrupoAjustes>
           <GrupoAjustes pie="Consultá los fallos y recuperaciones recientes del audio en este dispositivo.">
-            <FilaAjuste rotulo="Ecualizador" valor="10 bandas" icono={<IconSliders size={17} color={ICON_COLOR.muted} />}
-              onPress={() => router.push('/ajustes/ecualizador' as never)} />
             <FilaAjuste rotulo="Diagnóstico de audio" vacio="" icono={<IconDisc size={17} color={ICON_COLOR.muted} />}
               onPress={() => router.push('/ajustes/diagnostico-audio')} ultima />
           </GrupoAjustes>

@@ -28,7 +28,7 @@ import { join } from 'node:path'
  * contra el `host`.
  */
 
-const SITIO = (process.env.SITE_URL ?? 'https://dnmusic-app.vercel.app').replace(/\/$/, '')
+const SITIO = (process.env.SITE_URL ?? 'https://dnmusic-production-c3f4.up.railway.app').replace(/\/$/, '')
 const TITULO = 'dnmusic'
 const DESCRIPCION =
   'Escuchá tu música, armá tus listas y ponete en Jam: la misma canción, al mismo tiempo, con quien quieras.'

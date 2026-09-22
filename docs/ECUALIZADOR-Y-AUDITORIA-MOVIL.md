@@ -2,7 +2,11 @@
 
 ## Resumen ejecutivo
 
-DMusic incorpora un ecualizador gráfico de diez bandas, persistente por dispositivo y conectado al mismo reproductor que ya sostiene el audio en segundo plano. La pantalla está en **Ajustes → Ecualizador**, permite activar o desactivar el procesamiento, elegir siete curvas y editar manualmente de 31 Hz a 16 kHz dentro de ±12 dB.
+dnmusic incorpora un ecualizador gráfico de diez bandas, persistente por dispositivo y conectado al mismo reproductor que ya sostiene el audio en segundo plano. La pantalla está en **Configuración → Reproducción → Ecualizador**, permite activar o desactivar el procesamiento, elegir siete curvas y editar manualmente de 31 Hz a 16 kHz dentro de ±12 dB.
+
+En iOS, una pantalla propia combina navegación/lista SwiftUI, presets visibles con check y una curva arrastrable alojada explícitamente en `RNHostView`. El selector de banda y el slider nativo ofrecen el mismo ajuste con VoiceOver, en dB y pasos de 0,5. La curva conserva márgenes para no cortar los extremos. No se introducen Views de React Native directamente en una Section de SwiftUI ni otro inset superior que recorte el material de navegación.
+
+Referencia de interacción: Spotify documenta **Settings and privacy → Playback → Equalizer**, un interruptor, presets y puntos arrastrables. No documenta su implementación interna de DSP; las curvas de dnmusic son propias. Fuente: https://support.spotify.com/us/article/equalizer/
 
 La interfaz y el estado son compartidos, pero el procesamiento no se simula en JavaScript:
 
@@ -18,7 +22,7 @@ La auditoría adicional corrige el cierre prematuro del buscador Android al apar
 
 ### Una curva estable, tres motores reales
 
-La app expone siempre las mismas frecuencias centrales: 31, 62, 125, 250, 500, 1.000, 2.000, 4.000, 8.000 y 16.000 Hz. El estado compartido limita cada valor a ±12 dB, valida que haya exactamente diez bandas y serializa las escrituras en AsyncStorage. Así no se pierde la última edición si se mueven varios controles seguidos y un valor corrupto no bloquea la reproducción.
+La app expone siempre las mismas frecuencias centrales: 31, 62, 125, 250, 500, 1.000, 2.000, 4.000, 8.000 y 16.000 Hz. El estado compartido limita cada valor a ±12 dB, valida que haya exactamente diez bandas y agrupa las escrituras durante el arrastre. Persiste al soltar, salir o pasar a background; no encola una escritura por frame. La carga tardía no pisa ediciones recientes y el nombre del preset se deriva de la curva real.
 
 Los presets son curvas propias de la aplicación. No se guardan parámetros opacos del sistema porque Android no garantiza igual cantidad ni iguales centros de banda entre fabricantes: su API informa las bandas disponibles, su frecuencia central y el rango permitido en milibeles.[^1] La capa Kotlin interpola la curva de DMusic en escala logarítmica sobre esas bandas y limita el resultado al rango que devuelve el dispositivo.
 
@@ -36,7 +40,11 @@ El visualizador y el ecualizador comparten el mismo grafo sin duplicar la fuente
 
 ### Seguridad acústica y límites
 
-El control está acotado a ±12 dB y todo valor no finito vuelve a 0. Una suma de ganancias positivas puede elevar picos y producir saturación según el master, el contenido y el DSP del fabricante. Por eso los presets combinan realces con recortes y la matriz de dispositivo debe incluir contenido ya masterizado cerca de 0 dBFS, auriculares y altavoz. Si se observan recortes en modelos concretos, la evolución recomendada es incorporar un preamplificador automático o un limitador transparente; no conviene reducir silenciosamente el volumen general del reproductor porque cambiaría el significado del control de volumen del usuario.
+El control está acotado a ±12 dB y los valores no finitos nunca llegan a los filtros. En iOS, `DNEqualizerDSP.h` conserva el historial de cada canal al mover una banda e interpola las ganancias con una constante de 20 ms. Calcula la respuesta combinada de las diez bandas en una grilla logarítmica y aplica preamplificación compensada con margen de 0,5 dB cuando hay realces. Esto puede bajar el nivel percibido: la pantalla lo explica. No se modifica el volumen del reproductor ni el del sistema.
+
+El callback de audio usa `os_unfair_lock_trylock`: si la UI está escribiendo conserva la curva anterior hasta el próximo buffer, sin esperar. Sólo procesa PCM Float32 empaquetado válido y respeta los canales/tamaños reales de cada buffer. Las bandas por encima del límite de Nyquist se dejan neutras, no se acumulan en otra frecuencia. Al desactivar vuelve suavemente a identidad. La compensación reduce saturación, pero no sustituye pruebas con masters reales ni es un limitador de loudness/lookahead.
+
+Las pruebas C ejecutan el DSP real con señales a 22,05/44,1/48/96 kHz: bypass, respuesta de frecuencia, aislamiento estéreo, continuidad de estado, ganancia combinada y entradas no finitas. Se ejecutan con `nix shell nixpkgs#gcc --command node --test tests/ecualizador-dsp.test.mjs`. Esto no valida UIKit/AVFoundation ni audición en un iPhone: hay que recompilar y comprobar reproducción, cambio de pista, fondo, auriculares, AirPlay y reanudación. Android y web conservan sus motores anteriores; esta compensación corresponde al DSP iOS.
 
 ## Diagnóstico del buscador y el teclado Android
 

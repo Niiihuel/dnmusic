@@ -1,6 +1,6 @@
 {
   "name": "dnmusic",
-  "version": "1.16.1",
+  "version": "1.16.2",
   "main": "expo-router/entry",
   "private": true,
   "scripts": {

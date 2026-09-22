@@ -23,7 +23,7 @@ test('el parche se revierte y reaplica completo sin perder cambios del SDK insta
     'node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt',
     'node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt',
     `${base}AudioComponentRegistry.swift`, `${base}AudioPlayer.swift`, `${base}AudioModule.swift`,
-    `${base}AudioTapProcessor.h`, `${base}AudioTapProcessor.m`, `${base}MediaController.swift`,
+    `${base}AudioTapProcessor.h`, `${base}AudioTapProcessor.m`, `${base}DNEqualizerDSP.h`, `${base}MediaController.swift`,
     'node_modules/expo-audio/src/AudioModule.types.ts', 'node_modules/expo-audio/src/AudioPlayer.web.ts',
   ].sort())
   try {

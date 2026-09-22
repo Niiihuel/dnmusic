@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.16.2",
+    "fecha": "22 de septiembre de 2026",
+    "titulo": "Tu sonido, a tu manera.",
+    "cambios": [
+      "El ecualizador estrena una curva de diez bandas y preajustes en Configuración → Reproducción, con controles nativos en iPhone y una pantalla adaptada a la computadora.",
+      "Tus ajustes se guardan al terminar de mover los controles. Si la música suena en otro dispositivo, la pantalla lo indica sin simular cambios de sonido locales.",
+      "En iPhone, suavizamos los cambios entre ajustes, compensamos el nivel para reducir la saturación y corregimos la lectura de muestras del visualizador."
+    ]
+  },
+  {
     "version": "1.16.1",
     "fecha": "22 de septiembre de 2026",
     "titulo": "Más cómodo, más tuyo.",

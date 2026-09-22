@@ -261,7 +261,7 @@ index d265606..7c1f5eb 100644
      }
  
 diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-audio/ios/AudioPlayer.swift
-index 0742943..c9ce25f 100644
+index 0742943..b399682 100644
 --- a/node_modules/expo-audio/ios/AudioPlayer.swift
 +++ b/node_modules/expo-audio/ios/AudioPlayer.swift
 @@ -23,7 +23,17 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
@@ -307,7 +307,7 @@ index 0742943..c9ce25f 100644
      ref.actionAtItemEnd = isLooping ? .advance : .pause
      if isLooping {
        enqueueNextLoopItem()
-@@ -119,24 +136,45 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -119,24 +136,46 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      }
      samplingEnabled = enabled
      if enabled {
@@ -332,7 +332,8 @@ index 0742943..c9ce25f 100644
 +  func setEqualizer(enabled: Bool, gains: [Double]) {
 +    equalizerEnabled = enabled
 +    equalizerGains = (0..<10).map { index in
-+      min(12, max(-12, gains.indices.contains(index) ? gains[index] : 0))
++      let value = gains.indices.contains(index) ? gains[index] : 0
++      return value.isFinite ? min(12, max(-12, value)) : 0
 +    }
 +    if enabled && isLoaded {
 +      installTap()
@@ -355,7 +356,7 @@ index 0742943..c9ce25f 100644
        "timeControlStatus": timeControlStatusString(status: ref.timeControlStatus),
        "reasonForWaitingToPlay": reasonForWaitingToPlayString(status: ref.reasonForWaitingToPlay),
        "mute": ref.isMuted,
-@@ -150,7 +188,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -150,7 +189,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        "isBuffering": isBuffering,
        "isLive": isLive,
        "currentOffsetFromLive": currentOffsetFromLive,
@@ -364,7 +365,7 @@ index 0742943..c9ce25f 100644
      ]
    }
  
-@@ -198,22 +236,31 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -198,22 +237,31 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
    }
  
    private func setupPublisher() {
@@ -383,7 +384,7 @@ index 0742943..c9ce25f 100644
            return
          }
          if status == .readyToPlay {
-+          if shouldInstallAudioTap || samplingEnabled || keepAudioSessionActive {
++          if shouldInstallAudioTap || samplingEnabled || keepAudioSessionActive || equalizerEnabled {
 +            installTap()
 +            shouldInstallAudioTap = false
 +          }
@@ -400,7 +401,7 @@ index 0742943..c9ce25f 100644
          }
          if status == .failed {
            self.updateStatus(with: [
-@@ -228,12 +275,14 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -228,12 +276,14 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
          guard let self else {
            return
          }
@@ -417,7 +418,7 @@ index 0742943..c9ce25f 100644
            self.installTap()
          }
        }
-@@ -246,9 +295,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -246,9 +296,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      removeQueuedLoopItems()
      ref.pause()
  
@@ -428,7 +429,7 @@ index 0742943..c9ce25f 100644
      replacePlayerItem(with: item)
  
      if wasSamplingEnabled {
-@@ -267,9 +314,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -267,9 +315,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      removeQueuedLoopItems()
      ref.pause()
  
@@ -439,7 +440,7 @@ index 0742943..c9ce25f 100644
      let item = AudioUtils.createAVPlayerItem(from: source)
      replacePlayerItem(with: item)
  
-@@ -320,9 +365,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -320,9 +366,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
  
    private func teardownPlayer() {
      removeQueuedLoopItems()
@@ -450,7 +451,7 @@ index 0742943..c9ce25f 100644
      if let timeToken {
        ref.removeTimeObserver(timeToken)
        self.timeToken = nil
-@@ -331,6 +374,12 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -331,6 +375,12 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        NotificationCenter.default.removeObserver(endObserver)
        self.endObserver = nil
      }
@@ -463,7 +464,7 @@ index 0742943..c9ce25f 100644
      cancellables.removeAll()
      ref.pause()
    }
-@@ -358,7 +407,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -358,7 +408,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        return
      }
  
@@ -472,7 +473,7 @@ index 0742943..c9ce25f 100644
        tapInstalled = true
        return
      }
-@@ -370,8 +419,10 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -370,8 +420,10 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      audioProcessor = AudioTapProcessor(player: ref)
      let success = audioProcessor?.installTap() ?? false
      tapInstalled = success
@@ -483,7 +484,21 @@ index 0742943..c9ce25f 100644
        audioProcessor?.sampleBufferCallback = { [weak self] buffer, frameCount, timestamp in
          guard let self = self,
            let audioBuffer = buffer?.pointee,
-@@ -400,6 +451,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -381,10 +433,12 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+         }
+ 
+         let channelCount = Int(audioBuffer.mNumberChannels)
++        guard channelCount > 0 else { return }
+         let dataPointer = data.assumingMemoryBound(to: Float.self)
++        let sampleCount = min(Int(frameCount) * channelCount, Int(audioBuffer.mDataByteSize) / MemoryLayout<Float>.size)
+ 
+         let channels = (0..<channelCount).map { channelIndex in
+-          let channelData = stride(from: channelIndex, to: Int(frameCount), by: channelCount).map { frameIndex in
++          let channelData = stride(from: channelIndex, to: sampleCount, by: channelCount).map { frameIndex in
+             dataPointer[frameIndex]
+           }
+           return ["frames": channelData]
+@@ -400,6 +454,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
  
    private func uninstallTap() {
      tapInstalled = false
@@ -491,7 +506,7 @@ index 0742943..c9ce25f 100644
      audioProcessor?.uninstallTap()
      audioProcessor?.sampleBufferCallback = nil
    }
-@@ -439,6 +491,32 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -439,6 +494,32 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      }
    }
  
@@ -524,7 +539,7 @@ index 0742943..c9ce25f 100644
    private func addPlaybackEndNotification() {
      if let endObserver {
        NotificationCenter.default.removeObserver(endObserver)
-@@ -447,7 +525,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -447,7 +528,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      endObserver = NotificationCenter.default.addObserver(
        forName: .AVPlayerItemDidPlayToEndTime,
        object: nil,
@@ -533,7 +548,7 @@ index 0742943..c9ce25f 100644
      ) { [weak self] notification in
        guard let self,
          let finishedItem = notification.object as? AVPlayerItem else {
-@@ -460,6 +538,11 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -460,6 +541,11 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        }
  
        if !self.isLooping {
@@ -545,7 +560,7 @@ index 0742943..c9ce25f 100644
          let currentTime = finishedItem.duration.seconds
          self.updateStatus(with: [
            "playing": false,
-@@ -497,6 +580,10 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -497,6 +583,10 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
  
    func pause() {
      ref.pause()
@@ -569,42 +584,30 @@ index ddd4f23..73d5882 100644
  - (void)invalidate;
  
 diff --git a/node_modules/expo-audio/ios/AudioTapProcessor.m b/node_modules/expo-audio/ios/AudioTapProcessor.m
-index 6f8fb16..4445c9c 100644
+index 6f8fb16..b94dfe5 100644
 --- a/node_modules/expo-audio/ios/AudioTapProcessor.m
 +++ b/node_modules/expo-audio/ios/AudioTapProcessor.m
-@@ -3,14 +3,31 @@
+@@ -3,6 +3,8 @@
  #import "AudioTapProcessor.h"
  #import <AudioToolbox/AudioToolbox.h>
  #import <os/lock.h>
 +#import <math.h>
++#import "DNEqualizerDSP.h"
  
  NS_ASSUME_NONNULL_BEGIN
  
-+#define DN_EQ_BANDS 10
-+#define DN_EQ_MAX_CHANNELS 8
-+
-+typedef struct DNEQCoefficients {
-+  double b0, b1, b2, a1, a2;
-+} DNEQCoefficients;
-+
-+typedef struct DNEQState {
-+  double x1, x2, y1, y2;
-+} DNEQState;
-+
- typedef struct AVAudioTapProcessorContext {
-   Boolean isNonInterleaved;
+@@ -11,6 +13,10 @@ typedef struct AVAudioTapProcessorContext {
    Boolean supportedTapProcessingFormat;
    void *self;
    Boolean isValid;
 +  Float64 sampleRate;
 +  UInt32 channelCount;
 +  uint64_t equalizerVersion;
-+  DNEQCoefficients equalizerCoefficients[DN_EQ_BANDS];
-+  DNEQState equalizerState[DN_EQ_MAX_CHANNELS][DN_EQ_BANDS];
++  DNEqualizerDSP equalizer;
  } AVAudioTapProcessorContext;
  
  
-@@ -19,6 +36,10 @@ typedef struct AVAudioTapProcessorContext {
+@@ -19,6 +25,10 @@ typedef struct AVAudioTapProcessorContext {
    MTAudioProcessingTapRef _audioProcessingTap;
    BOOL _isTapInstalled;
    BOOL _isInvalidated;
@@ -615,7 +618,7 @@ index 6f8fb16..4445c9c 100644
  }
  
  - (instancetype)initWithPlayer:(AVPlayer *)player {
-@@ -29,10 +50,102 @@ typedef struct AVAudioTapProcessorContext {
+@@ -29,10 +39,68 @@ typedef struct AVAudioTapProcessorContext {
      _isTapInstalled = NO;
      _isInvalidated = NO;
      _audioProcessingTap = NULL;
@@ -632,84 +635,50 @@ index 6f8fb16..4445c9c 100644
 +  _equalizerEnabled = enabled;
 +  for (NSInteger index = 0; index < DN_EQ_BANDS; index++) {
 +    double value = index < gains.count ? gains[index].doubleValue : 0.0;
-+    _equalizerGains[index] = (float)fmax(-12.0, fmin(12.0, value));
++    _equalizerGains[index] = isfinite(value) ? (float)fmax(-12.0, fmin(12.0, value)) : 0;
 +  }
 +  _equalizerVersion++;
 +  os_unfair_lock_unlock(&_equalizerLock);
 +}
 +
-+static DNEQCoefficients DNEQMakePeaking(Float64 frequency, Float64 sampleRate, Float64 gainDB) {
-+  const double nyquistSafe = sampleRate * 0.45;
-+  const double f = fmax(20.0, fmin(frequency, nyquistSafe));
-+  const double a = pow(10.0, gainDB / 40.0);
-+  const double omega = 2.0 * M_PI * f / sampleRate;
-+  const double alpha = sin(omega) / (2.0 * M_SQRT2);
-+  const double cosOmega = cos(omega);
-+  const double a0 = 1.0 + alpha / a;
-+  DNEQCoefficients c;
-+  c.b0 = (1.0 + alpha * a) / a0;
-+  c.b1 = (-2.0 * cosOmega) / a0;
-+  c.b2 = (1.0 - alpha * a) / a0;
-+  c.a1 = (-2.0 * cosOmega) / a0;
-+  c.a2 = (1.0 - alpha / a) / a0;
-+  return c;
-+}
-+
 +- (void)processEqualizer:(AVAudioTapProcessorContext *)context
 +              bufferList:(AudioBufferList *)bufferList
 +                   frames:(CMItemCount)frameCount {
-+  BOOL enabled;
-+  float gains[DN_EQ_BANDS];
-+  uint64_t version;
-+  os_unfair_lock_lock(&_equalizerLock);
-+  enabled = _equalizerEnabled;
-+  memcpy(gains, _equalizerGains, sizeof(gains));
-+  version = _equalizerVersion;
-+  os_unfair_lock_unlock(&_equalizerLock);
-+
-+  if (!enabled || !context->supportedTapProcessingFormat || frameCount <= 0) return;
-+  if (context->equalizerVersion != version) {
-+    static const double frequencies[DN_EQ_BANDS] = { 31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
-+    for (NSInteger band = 0; band < DN_EQ_BANDS; band++) {
-+      context->equalizerCoefficients[band] = DNEQMakePeaking(frequencies[band], context->sampleRate, gains[band]);
++  if (!context->supportedTapProcessingFormat || !bufferList || frameCount <= 0) return;
++  // The render callback must never wait for the UI thread. If a control write
++  // owns the lock, keep the previous curve for this buffer and retry next time.
++  if (os_unfair_lock_trylock(&_equalizerLock)) {
++    const BOOL changed = context->equalizerVersion != _equalizerVersion;
++    const BOOL enabled = _equalizerEnabled;
++    float gains[DN_EQ_BANDS];
++    memcpy(gains, _equalizerGains, sizeof(gains));
++    const uint64_t version = _equalizerVersion;
++    os_unfair_lock_unlock(&_equalizerLock);
++    if (changed) {
++      DNEQSetTarget(&context->equalizer, enabled, gains);
++      context->equalizerVersion = version;
 +    }
-+    memset(context->equalizerState, 0, sizeof(context->equalizerState));
-+    context->equalizerVersion = version;
 +  }
 +
-+  const UInt32 channels = MIN(context->channelCount, DN_EQ_MAX_CHANNELS);
-+  if (context->isNonInterleaved) {
-+    const UInt32 buffers = MIN(bufferList->mNumberBuffers, channels);
-+    for (UInt32 channel = 0; channel < buffers; channel++) {
-+      float *samples = (float *)bufferList->mBuffers[channel].mData;
-+      if (!samples) continue;
-+      for (CMItemCount frame = 0; frame < frameCount; frame++) {
-+        double value = samples[frame];
-+        for (NSInteger band = 0; band < DN_EQ_BANDS; band++) {
-+          DNEQCoefficients c = context->equalizerCoefficients[band];
-+          DNEQState *s = &context->equalizerState[channel][band];
-+          const double output = c.b0 * value + c.b1 * s->x1 + c.b2 * s->x2 - c.a1 * s->y1 - c.a2 * s->y2;
-+          s->x2 = s->x1; s->x1 = value; s->y2 = s->y1; s->y1 = output;
-+          value = output;
-+        }
-+        samples[frame] = (float)fmax(-1.0, fmin(1.0, value));
-+      }
-+    }
-+  } else if (bufferList->mNumberBuffers > 0) {
-+    float *samples = (float *)bufferList->mBuffers[0].mData;
-+    if (!samples) return;
-+    for (CMItemCount frame = 0; frame < frameCount; frame++) {
-+      for (UInt32 channel = 0; channel < channels; channel++) {
-+        const CMItemCount sampleIndex = frame * channels + channel;
-+        double value = samples[sampleIndex];
-+        for (NSInteger band = 0; band < DN_EQ_BANDS; band++) {
-+          DNEQCoefficients c = context->equalizerCoefficients[band];
-+          DNEQState *s = &context->equalizerState[channel][band];
-+          const double output = c.b0 * value + c.b1 * s->x1 + c.b2 * s->x2 - c.a1 * s->y1 - c.a2 * s->y2;
-+          s->x2 = s->x1; s->x1 = value; s->y2 = s->y1; s->y1 = output;
-+          value = output;
-+        }
-+        samples[sampleIndex] = (float)fmax(-1.0, fmin(1.0, value));
++  // Validate the actual AudioBufferList, for planar AND interleaved Float32.
++  UInt32 channels = 0;
++  CMItemCount safeFrames = frameCount;
++  for (UInt32 index = 0; index < bufferList->mNumberBuffers; index++) {
++    AudioBuffer buffer = bufferList->mBuffers[index];
++    if (!buffer.mData || buffer.mNumberChannels == 0) return;
++    channels += buffer.mNumberChannels;
++    safeFrames = MIN(safeFrames, buffer.mDataByteSize / (sizeof(float) * buffer.mNumberChannels));
++  }
++  if (channels != context->channelCount || channels > DN_EQ_MAX_CHANNELS) return;
++  for (CMItemCount frame = 0; frame < safeFrames; frame++) {
++    DNEQBeginFrame(&context->equalizer);
++    UInt32 channel = 0;
++    for (UInt32 index = 0; index < bufferList->mNumberBuffers; index++) {
++      AudioBuffer buffer = bufferList->mBuffers[index];
++      float *samples = (float *)buffer.mData;
++      for (UInt32 local = 0; local < buffer.mNumberChannels; local++, channel++) {
++        const CMItemCount offset = frame * buffer.mNumberChannels + local;
++        samples[offset] = DNEQProcessSample(&context->equalizer, channel, samples[offset]);
 +      }
 +    }
 +  }
@@ -718,28 +687,181 @@ index 6f8fb16..4445c9c 100644
  - (BOOL)isTapInstalled {
    os_unfair_lock_lock(&_lock);
    BOOL installed = _isTapInstalled;
-@@ -168,7 +281,11 @@ void tapFinalize(MTAudioProcessingTapRef tap) {
+@@ -53,7 +121,13 @@ typedef struct AVAudioTapProcessorContext {
+     return NO;
+   }
+ 
+-  AVAssetTrack *track = _player.currentItem.tracks.firstObject.assetTrack;
++  AVAssetTrack *track = nil;
++  for (AVPlayerItemTrack *itemTrack in _player.currentItem.tracks) {
++    if ([itemTrack.assetTrack.mediaType isEqualToString:AVMediaTypeAudio]) {
++      track = itemTrack.assetTrack;
++      break;
++    }
++  }
+   if (!track) {
+     os_unfair_lock_unlock(&_lock);
+     return NO;
+@@ -168,7 +242,18 @@ void tapFinalize(MTAudioProcessingTapRef tap) {
  
  void tapPrepare(MTAudioProcessingTapRef tap, CMItemCount maxFrames, const AudioStreamBasicDescription *processingFormat) {
    AVAudioTapProcessorContext *context = (AVAudioTapProcessorContext *)MTAudioProcessingTapGetStorage(tap);
 -  context->supportedTapProcessingFormat = true;
-+  context->supportedTapProcessingFormat = processingFormat->mFormatID == kAudioFormatLinearPCM && (processingFormat->mFormatFlags & kAudioFormatFlagIsFloat) != 0;
++  if (!context) return;
++  context->supportedTapProcessingFormat = processingFormat->mFormatID == kAudioFormatLinearPCM
++    && (processingFormat->mFormatFlags & kAudioFormatFlagIsFloat) != 0
++    && (processingFormat->mFormatFlags & kAudioFormatFlagIsBigEndian) == 0
++    && (processingFormat->mFormatFlags & kAudioFormatFlagIsPacked) != 0
++    && processingFormat->mBitsPerChannel == 32
++    && processingFormat->mChannelsPerFrame > 0 && processingFormat->mChannelsPerFrame <= DN_EQ_MAX_CHANNELS
++    && isfinite(processingFormat->mSampleRate) && processingFormat->mSampleRate > 0;
 +  context->sampleRate = processingFormat->mSampleRate;
 +  context->channelCount = processingFormat->mChannelsPerFrame;
 +  context->equalizerVersion = 0;
-+  memset(context->equalizerState, 0, sizeof(context->equalizerState));
++  DNEQPrepare(&context->equalizer, processingFormat->mSampleRate);
  
    if (processingFormat->mFormatID != kAudioFormatLinearPCM) {
      NSLog(@"Audio Format ID for audioProcessingTap: LinearPCM");
-@@ -201,6 +318,8 @@ void tapProcess(MTAudioProcessingTapRef tap, CMItemCount numberFrames, MTAudioPr
+@@ -178,9 +263,7 @@ void tapPrepare(MTAudioProcessingTapRef tap, CMItemCount maxFrames, const AudioS
+     NSLog(@"Audio Format ID for audioProcessingTap: Float only");
+   }
+ 
+-  if (processingFormat->mFormatFlags & kAudioFormatFlagIsNonInterleaved) {
+-    context->isNonInterleaved = true;
+-  }
++  context->isNonInterleaved = (processingFormat->mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
+ }
+ 
+ void tapProcess(MTAudioProcessingTapRef tap, CMItemCount numberFrames, MTAudioProcessingTapFlags flags, AudioBufferList *bufferListInOut, CMItemCount *numberFramesOut, MTAudioProcessingTapFlags *flagsOut) {
+@@ -201,10 +284,12 @@ void tapProcess(MTAudioProcessingTapRef tap, CMItemCount numberFrames, MTAudioPr
      return;
    }
  
 +  [processor processEqualizer:context bufferList:bufferListInOut frames:*numberFramesOut];
 +
    SampleBufferCallback callback = processor.sampleBufferCallback;
-   if (callback && bufferListInOut && bufferListInOut->mNumberBuffers > 0) {
+-  if (callback && bufferListInOut && bufferListInOut->mNumberBuffers > 0) {
++  if (context->supportedTapProcessingFormat && callback && bufferListInOut && bufferListInOut->mNumberBuffers > 0) {
      double timestamp = 0.0;
+-    callback(&bufferListInOut->mBuffers[0], (long)numberFrames, timestamp);
++    callback(&bufferListInOut->mBuffers[0], (long)*numberFramesOut, timestamp);
+   }
+ }
+ 
+diff --git a/node_modules/expo-audio/ios/DNEqualizerDSP.h b/node_modules/expo-audio/ios/DNEqualizerDSP.h
+new file mode 100644
+index 0000000..5c59b84
+--- /dev/null
++++ b/node_modules/expo-audio/ios/DNEqualizerDSP.h
+@@ -0,0 +1,108 @@
++// dnmusic: portable DSP, exercised with generated signals in tests/fixtures.
++// The audio callback owns this state. No allocation, locks or Objective-C here.
++#ifndef DN_EQUALIZER_DSP_H
++#define DN_EQUALIZER_DSP_H
++#include <math.h>
++#include <stdbool.h>
++#include <string.h>
++
++#define DN_EQ_BANDS 10
++#define DN_EQ_MAX_CHANNELS 8
++#define DN_EQ_PI 3.14159265358979323846
++static const double DNEQFrequencies[DN_EQ_BANDS] = {31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000};
++
++typedef struct { double b0, b1, b2, a1, a2; } DNEQCoefficients;
++typedef struct { double x1, x2, y1, y2; } DNEQState;
++typedef struct {
++  double sampleRate, smoothing, gainSmoothing, preamp, targetPreamp;
++  double gains[DN_EQ_BANDS], targets[DN_EQ_BANDS];
++  DNEQCoefficients coefficients[DN_EQ_BANDS];
++  DNEQState channels[DN_EQ_MAX_CHANNELS][DN_EQ_BANDS];
++  unsigned int step;
++  bool bypass;
++} DNEqualizerDSP;
++
++static inline DNEQCoefficients DNEQMakePeaking(double frequency, double sampleRate, double gainDB) {
++  if (!isfinite(gainDB) || fabs(gainDB) < 0.0001 || frequency >= sampleRate * 0.49) {
++    return (DNEQCoefficients){1, 0, 0, 0, 0};
++  }
++  const double a = pow(10.0, gainDB / 40.0);
++  const double omega = 2.0 * DN_EQ_PI * frequency / sampleRate;
++  const double alpha = sin(omega) / (2.0 * sqrt(2.0));
++  const double cosine = cos(omega), a0 = 1.0 + alpha / a;
++  return (DNEQCoefficients){(1.0 + alpha * a) / a0, -2.0 * cosine / a0,
++    (1.0 - alpha * a) / a0, -2.0 * cosine / a0, (1.0 - alpha / a) / a0};
++}
++
++static inline void DNEQPrepare(DNEqualizerDSP *eq, double sampleRate) {
++  memset(eq, 0, sizeof(*eq));
++  eq->sampleRate = isfinite(sampleRate) && sampleRate > 0 ? sampleRate : 48000;
++  eq->smoothing = 1.0 - exp(-32.0 / (0.020 * eq->sampleRate));
++  eq->gainSmoothing = 1.0 - exp(-1.0 / (0.020 * eq->sampleRate));
++  eq->preamp = eq->targetPreamp = 1.0;
++  eq->bypass = true;
++  for (int band = 0; band < DN_EQ_BANDS; band++) eq->coefficients[band].b0 = 1;
++}
++
++static inline double DNEQResponseSquared(DNEQCoefficients c, double omega) {
++  const double real = cos(omega), imag = sin(omega), real2 = cos(2 * omega), imag2 = sin(2 * omega);
++  const double nr = c.b0 + c.b1 * real + c.b2 * real2, ni = c.b1 * imag + c.b2 * imag2;
++  const double dr = 1 + c.a1 * real + c.a2 * real2, di = c.a1 * imag + c.a2 * imag2;
++  return (nr * nr + ni * ni) / fmax(1e-24, dr * dr + di * di);
++}
++
++static inline void DNEQSetTarget(DNEqualizerDSP *eq, bool enabled, const float gains[DN_EQ_BANDS]) {
++  DNEQCoefficients target[DN_EQ_BANDS];
++  for (int band = 0; band < DN_EQ_BANDS; band++) {
++    const double value = enabled && isfinite(gains[band]) ? fmax(-12, fmin(12, gains[band])) : 0;
++    eq->targets[band] = DNEQFrequencies[band] < eq->sampleRate * 0.49 ? value : 0;
++    target[band] = DNEQMakePeaking(DNEQFrequencies[band], eq->sampleRate, eq->targets[band]);
++  }
++  // Evaluate the combined response, not just max(band): adjacent peaks overlap.
++  double peak = 1;
++  for (int bin = 0; bin <= 256; bin++) {
++    const double frequency = 10 * pow(eq->sampleRate * 0.049, bin / 256.0);
++    const double omega = 2 * DN_EQ_PI * frequency / eq->sampleRate;
++    double response = 1;
++    for (int band = 0; band < DN_EQ_BANDS; band++) response *= DNEQResponseSquared(target[band], omega);
++    peak = fmax(peak, response);
++  }
++  eq->targetPreamp = peak > 1.0001 ? pow(10, -0.5 / 20.0) / sqrt(peak) : 1;
++  eq->bypass = false;
++  eq->step = 0;
++}
++
++static inline void DNEQBeginFrame(DNEqualizerDSP *eq) {
++  if (eq->bypass) return;
++  eq->preamp += (eq->targetPreamp - eq->preamp) * eq->gainSmoothing;
++  if (fabs(eq->targetPreamp - eq->preamp) < 1e-7) eq->preamp = eq->targetPreamp;
++  if (eq->step++ % 32 != 0) return;
++  bool flat = eq->preamp == 1 && eq->targetPreamp == 1;
++  for (int band = 0; band < DN_EQ_BANDS; band++) {
++    const double previous = eq->gains[band];
++    eq->gains[band] += (eq->targets[band] - eq->gains[band]) * eq->smoothing;
++    if (fabs(eq->targets[band] - eq->gains[band]) < 0.001) eq->gains[band] = eq->targets[band];
++    flat = flat && eq->gains[band] == 0;
++    if (previous != eq->gains[band]) eq->coefficients[band] = DNEQMakePeaking(DNEQFrequencies[band], eq->sampleRate, eq->gains[band]);
++  }
++  // Never reset filter history when a finger moves. Only clear after a smooth
++  // return to identity, or in prepare when the source/format really changes.
++  if (flat) { eq->bypass = true; memset(eq->channels, 0, sizeof(eq->channels)); }
++}
++
++static inline float DNEQProcessSample(DNEqualizerDSP *eq, unsigned int channel, float input) {
++  if (!isfinite(input)) return 0;
++  if (eq->bypass || channel >= DN_EQ_MAX_CHANNELS) return input;
++  double value = input * eq->preamp;
++  for (int band = 0; band < DN_EQ_BANDS; band++) {
++    DNEQCoefficients c = eq->coefficients[band];
++    DNEQState *s = &eq->channels[channel][band];
++    const double output = c.b0 * value + c.b1 * s->x1 + c.b2 * s->x2 - c.a1 * s->y1 - c.a2 * s->y2;
++    s->x2 = s->x1; s->x1 = value; s->y2 = s->y1; s->y1 = output;
++    value = output;
++  }
++  if (!isfinite(value)) { memset(eq->channels[channel], 0, sizeof(eq->channels[channel])); return 0; }
++  // Last-resort peak guard; response-based headroom prevents normal clipping.
++  return (float)fmax(-1, fmin(1, value));
++}
++#endif
 diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/expo-audio/ios/MediaController.swift
 index e977f57..2d056a2 100644
 --- a/node_modules/expo-audio/ios/MediaController.swift
@@ -781,28 +903,74 @@ index 7e75371..068b0e7 100644
     * Sets or removes this audio player as the active player for lock screen controls.
     * Only one player can control the lock screen at a time.
 diff --git a/node_modules/expo-audio/src/AudioPlayer.web.ts b/node_modules/expo-audio/src/AudioPlayer.web.ts
-index 61db2df..733bbe6 100644
+index 61db2df..8164dce 100644
 --- a/node_modules/expo-audio/src/AudioPlayer.web.ts
 +++ b/node_modules/expo-audio/src/AudioPlayer.web.ts
-@@ -22,6 +22,7 @@ import { mediaSessionController } from './MediaSessionController.web';
+@@ -22,6 +22,52 @@ import { mediaSessionController } from './MediaSessionController.web';
  export const activePlayers = new Set<AudioPlayerWeb>();
  
  let hasWarnedIOSVolume = false;
 +const EQUALIZER_FREQUENCIES = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
++const equalizerFrequency = (frequency: number, sampleRate: number) => Math.min(frequency, sampleRate * 0.49);
++
++/** Combined peaking response, not just the largest slider: adjacent boosts overlap.
++ * RBJ coefficients match Web Audio's peaking filter (Q = sqrt(2)). Sample the
++ * log spectrum plus every centre; keep 1 dB extra margin for inter-bin peaks.
++ * This is headroom, not a brick-wall limiter or a promise of no true-peak overs.
++ */
++function equalizerHeadroom(gains: number[], sampleRate: number): number {
++  if (!gains.some(gain => gain > 0)) return 1;
++  const centres = EQUALIZER_FREQUENCIES.map(frequency => equalizerFrequency(frequency, sampleRate));
++  const coefficients = gains.map((gain, index) => {
++    const angle = 2 * Math.PI * centres[index] / sampleRate;
++    const amplitude = 10 ** (gain / 40);
++    const alpha = Math.sin(angle) / (2 * Math.SQRT2);
++    return [1 + alpha * amplitude, -2 * Math.cos(angle), 1 - alpha * amplitude,
++      1 + alpha / amplitude, -2 * Math.cos(angle), 1 - alpha / amplitude];
++  });
++  const probes = [...centres, ...Array.from({ length: 256 }, (_, index) =>
++    3 * (sampleRate * 0.499 / 3) ** (index / 255))];
++  let peakDb = 0;
++  for (const frequency of probes) {
++    const angle = 2 * Math.PI * frequency / sampleRate;
++    const cos = Math.cos(angle), sin = Math.sin(angle);
++    const cos2 = Math.cos(2 * angle), sin2 = Math.sin(2 * angle);
++    let db = 0;
++    for (const [b0, b1, b2, a0, a1, a2] of coefficients) {
++      const numerator = (b0 + b1 * cos + b2 * cos2) ** 2 + (b1 * sin + b2 * sin2) ** 2;
++      const denominator = (a0 + a1 * cos + a2 * cos2) ** 2 + (a1 * sin + a2 * sin2) ** 2;
++      db += 10 * Math.log10(Math.max(1e-24, numerator) / Math.max(1e-24, denominator));
++    }
++    peakDb = Math.max(peakDb, db);
++  }
++  return 10 ** (-(peakDb + 1) / 20);
++}
++
++function smoothEqualizerParam(param: AudioParam, target: number, now: number, timeConstant: number): void {
++  if (typeof param.cancelAndHoldAtTime === 'function') param.cancelAndHoldAtTime(now);
++  else {
++    const current = param.value;
++    param.cancelScheduledValues(now);
++    param.setValueAtTime(current, now);
++  }
++  param.setTargetAtTime(target, now, timeConstant);
++}
++
  function isIOSSafari(): boolean {
    return /iPad|iPhone|iPod/.test(navigator.userAgent);
  }
-@@ -53,6 +54,9 @@ export class AudioPlayerWeb
+@@ -53,6 +99,10 @@ export class AudioPlayerWeb
    private crossOrigin?: 'anonymous' | 'use-credentials';
    private analyser: AnalyserNode | null = null;
    private sourceNode: MediaElementAudioSourceNode | null = null;
 +  private equalizerNodes: BiquadFilterNode[] = [];
++  private equalizerPreamp: GainNode | null = null;
 +  private equalizerEnabled = false;
 +  private equalizerGains = Array(10).fill(0) as number[];
    private samplingFrameId: number | null = null;
    private samplingEnabled = false;
    private samplingBuffer: Float32Array<ArrayBuffer> | null = null;
-@@ -148,6 +152,12 @@ export class AudioPlayerWeb
+@@ -148,6 +198,12 @@ export class AudioPlayerWeb
      this.loaded = false;
      this.media = this._createMediaElement();
  
@@ -815,7 +983,7 @@ index 61db2df..733bbe6 100644
      if (wasSampling) {
        this.setAudioSamplingEnabled(true);
      }
-@@ -197,9 +207,7 @@ export class AudioPlayerWeb
+@@ -197,9 +253,7 @@ export class AudioPlayerWeb
        this.analyser = ctx.createAnalyser();
        this.analyser.fftSize = 2048;
  
@@ -826,7 +994,7 @@ index 61db2df..733bbe6 100644
  
        this.samplingBuffer = new Float32Array(this.analyser.frequencyBinCount);
        this.samplingEnabled = true;
-@@ -216,17 +224,62 @@ export class AudioPlayerWeb
+@@ -216,17 +270,77 @@ export class AudioPlayerWeb
          this.analyser = null;
        }
  
@@ -854,30 +1022,45 @@ index 61db2df..733bbe6 100644
 +    const ctx = getAudioContext();
 +    if (ctx.state === 'suspended') void ctx.resume();
 +    if (!this.sourceNode) this.sourceNode = ctx.createMediaElementSource(this.media);
++    let graphChanged = false;
 +    if (!this.equalizerNodes.length) {
++      this.equalizerPreamp = ctx.createGain();
 +      this.equalizerNodes = EQUALIZER_FREQUENCIES.map((frequency) => {
 +        const node = ctx.createBiquadFilter();
 +        node.type = 'peaking';
-+        node.frequency.value = frequency;
++        node.frequency.value = equalizerFrequency(frequency, ctx.sampleRate);
 +        node.Q.value = Math.SQRT2;
 +        return node;
 +      });
++      graphChanged = true;
++    }
++    const headroom = enabled ? equalizerHeadroom(this.equalizerGains, ctx.sampleRate) : 1;
++    if (this.equalizerPreamp) {
++      // Attenuate before the boosted filters settle; recover more slowly when
++      // disabling/cutting. All updates start from the current rendered value.
++      const gain = this.equalizerPreamp.gain;
++      smoothEqualizerParam(gain, headroom, ctx.currentTime, headroom < gain.value ? 0.008 : 0.12);
 +    }
 +    this.equalizerNodes.forEach((node, index) => {
-+      node.gain.setTargetAtTime(enabled ? this.equalizerGains[index] : 0, ctx.currentTime, 0.015);
++      smoothEqualizerParam(node.gain, enabled ? this.equalizerGains[index] : 0, ctx.currentTime, 0.03);
 +    });
-+    this.reconnectAudioGraph();
++    if (graphChanged) this.reconnectAudioGraph();
 +  }
 +
 +  private reconnectAudioGraph(): void {
 +    if (!this.sourceNode) return;
 +    const ctx = getAudioContext();
 +    this.sourceNode.disconnect();
++    this.equalizerPreamp?.disconnect();
 +    this.equalizerNodes.forEach((node) => node.disconnect());
 +    this.analyser?.disconnect();
 +
 +    let tail: AudioNode = this.sourceNode;
-+    if (this.equalizerEnabled && this.equalizerNodes.length) {
++    // Once installed, bypass by smoothly returning to flat/unity. Disconnecting
++    // filters while their parameters are settling causes clicks and gain jumps.
++    if (this.equalizerPreamp && this.equalizerNodes.length) {
++      tail.connect(this.equalizerPreamp);
++      tail = this.equalizerPreamp;
 +      for (const node of this.equalizerNodes) {
 +        tail.connect(node);
 +        tail = node;
@@ -894,7 +1077,19 @@ index 61db2df..733bbe6 100644
    private startSampling(): void {
      if (!this.samplingEnabled || !this.analyser || !this.samplingBuffer) {
        return;
-@@ -375,7 +428,15 @@ export class AudioPlayerWeb
+@@ -273,6 +387,11 @@ export class AudioPlayerWeb
+       this.sourceNode = null;
+     }
+ 
++    this.equalizerNodes.forEach(node => node.disconnect());
++    this.equalizerNodes = [];
++    this.equalizerPreamp?.disconnect();
++    this.equalizerPreamp = null;
++
+     this.samplingEnabled = false;
+     this.media.pause();
+     // Clear event handlers to prevent memory leaks
+@@ -375,7 +494,15 @@ export class AudioPlayerWeb
      };
  
      media.onended = () => {
