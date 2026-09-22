@@ -6,7 +6,7 @@ import { ventanaPrecarga } from '../src/lib/politicaPrecarga.ts'
 const source=ts.transpileModule(readFileSync('src/ui/usePrecargaCola.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText
 const flush=async()=>{for(let i=0;i<6;i++)await new Promise(r=>setImmediate(r))}
 const track=id=>({id,videoId:id,audioPath:`${id}.m4a`})
-function montar({disk=true, platform='web', network='amplia',failSigning=false}={}){
+function montar({disk=true, platform='web', network='amplia',failSigning=false, resolverEspera}={}){
  const hooks=[],effects=[],timers=new Map(),downloads=[],sources=[],protectedPaths=[],priorities=[]
  const resolved=[],completed=[],cached=new Map()
  let signatures=0
@@ -19,7 +19,7 @@ function montar({disk=true, platform='web', network='amplia',failSigning=false}=
   '../state/redPrecarga':{useTipoRedPrecarga:()=>online?network:'no'},
   '../lib/politicaPrecarga':{ventanaPrecarga},
   '../state/playback':{getPlaybackState:()=>({tracks:[current],index:0,manual:null}),completarCancion:(...args)=>completed.push(args)},
-  '../services/music':{resolveSong:async t=>{resolved.push(t.videoId);return{path:`${t.id}.m4a`,url:`https://audio/${t.id}`,artworkPath:null,durationMs:180000}},signedUrl:async path=>{signatures++;if(failSigning)throw Error('sin firma');return`https://audio/${path}`}},
+  '../services/music':{resolveSong:async t=>{resolved.push(t.videoId);await resolverEspera?.(t);return{path:`${t.id}.m4a`,url:`https://audio/${t.id}`,artworkPath:null,durationMs:180000}},signedUrl:async path=>{signatures++;if(failSigning)throw Error('sin firma');return`https://audio/${path}`}},
   '../state/descargas':{HAY_DESCARGAS:disk,rutaLocal:path=>cached.get(path)??null,priorizarReproduccion:v=>priorities.push(v),protegerDescargas:paths=>protectedPaths.push(paths),prepararCache:(t,signal)=>new Promise(resolve=>{downloads.push({track:t,signal,resolve:uri=>{if(uri)cached.set(t.audioPath,uri);resolve(uri)}});signal.addEventListener('abort',()=>resolve(null),{once:true})})},
   '../lib/prepararBuffer':{prepararBuffer:async uri=>{sources.push('buffer');return platform==='web'?'blob:prepared':uri},liberarBuffer:uri=>sources.push(['release',uri])},
  }
@@ -41,7 +41,7 @@ test('espera audio estable, prepara dos secuencialmente y no cambia la fuente qu
  h.status();h.render();assert.equal(h.priorities.at(-1),false)
  await h.clock();assert.equal(h.downloads.length,1);assert.equal(h.downloads[0].track.id,'b')
  h.downloads[0].resolve('local:b');await flush();assert.equal(h.downloads.length,2);assert.equal(h.downloads[1].track.id,'c')
- h.downloads[1].resolve('local:c');await flush();assert.deepEqual(h.sources,[])
+ h.downloads[1].resolve('local:c');await flush();assert.deepEqual(h.sources,[['b','https://audio/b.m4a'],['c','https://audio/c.m4a']])
  assert.ok(h.protectedPaths.at(-1).includes('video:a'))
 })
 test('buffering o cambiar de playlist cancela trabajo anterior sin tocar la canción actual',async()=>{
@@ -49,7 +49,7 @@ test('buffering o cambiar de playlist cancela trabajo anterior sin tocar la canc
  h.status({isLoaded:true,isBuffering:true,playing:true});h.render();assert.equal(h.downloads[0].signal.aborted,true);assert.equal(h.priorities.at(-1),true)
  await flush();assert.equal(h.downloads.length,1)
  h.render({current:track('x'),proximas:[track('y')],url:'https://audio/x'});h.status();h.render();await h.clock()
- assert.equal(h.downloads.at(-1).track.id,'y');assert.deepEqual(h.sources,[])
+ assert.equal(h.downloads.at(-1).track.id,'y');assert.ok(h.sources.every(x=>Array.isArray(x)&&!['a','x'].includes(x[0])))
 })
 test('preferencias sin cargar, desactivadas o sin red no inician descargas',async()=>{
  const h=montar();h.settings({ready:false});h.render();h.status();h.render();await h.clock();assert.equal(h.downloads.length,0)
@@ -61,7 +61,8 @@ test('preferencias sin cargar, desactivadas o sin red no inician descargas',asyn
 test('un disco sin espacio no dispara un buffer adicional fuera de la cuota',async()=>{
  const h=montar();h.render();h.status();h.render();await h.clock()
  h.downloads[0].resolve(null);await flush();h.downloads[1].resolve(null);await flush()
- assert.deepEqual(h.sources,[])
+ assert.equal(h.sources.includes('buffer'),false)
+ assert.deepEqual(h.sources,[['b','https://audio/b.m4a'],['c','https://audio/c.m4a']])
 })
 
 test('metadata y nuevas referencias equivalentes no cancelan una descarga en curso',async()=>{
@@ -76,7 +77,7 @@ test('metadata y nuevas referencias equivalentes no cancelan una descarga en cur
 test('iOS calienta sólo el próximo AVPlayerItem local y libera buffers al desmontar',async()=>{
  const h=montar({platform:'ios'});h.render();h.status();h.render();await h.clock()
  h.downloads[0].resolve('local:b');await flush()
- assert.deepEqual(h.sources,[['b','local:b'],'buffer'])
+ assert.deepEqual(h.sources,[['b','https://audio/b.m4a'],['c','https://audio/c.m4a'],['b','local:b'],'buffer'])
  h.downloads[1].resolve('local:c');await flush();assert.equal(h.sources.filter(x=>x==='buffer').length,1)
  h.unmount();assert.ok(h.sources.some(x=>Array.isArray(x)&&x[0]==='release'&&x[1]==='local:b'))
  assert.ok(h.sources.some(x=>Array.isArray(x)&&x[0]==='forget'&&x[1]==='b'))
@@ -105,7 +106,7 @@ test('errores especulativos reintentan una vez y no generan un bucle al renderiz
 test('Android prepara disco sin duplicar la canción completa en memoria nativa',async()=>{
  const h=montar({platform:'android'});h.render();h.status();h.render();await h.clock()
  h.downloads[0].resolve('local:b');await flush();h.downloads[1].resolve('local:c');await flush()
- assert.deepEqual(h.sources,[]);h.unmount()
+ assert.equal(h.sources.includes('buffer'),false);h.unmount()
 })
 
 
@@ -114,7 +115,8 @@ test('resultados sin audio se resuelven en orden mientras suena la actual; conse
  h.render({proximas:[{...track('b'),audioPath:''},{...track('c'),audioPath:''}]})
  await h.clock();assert.deepEqual(h.resolved,[])
  h.status();h.render();await h.clock()
- assert.deepEqual(h.resolved,['b']);assert.equal(h.completed[0][0],'b')
+ assert.deepEqual(h.resolved,['b','c']);assert.equal(h.completed[0][0],'b')
+ assert.deepEqual(h.sources,[['b','https://audio/b'],['c','https://audio/c']], 'ambas firmas listas antes de terminar una descarga')
  assert.equal(h.completed[0][1].audioPath,'b.m4a')
  h.downloads[0].resolve(null);await flush()
  assert.deepEqual(h.resolved,['b','c']);assert.equal(h.completed[1][0],'c')
@@ -140,5 +142,33 @@ test('iOS repone la ventana durante diez canciones sin necesitar un regreso a fo
   }
  }
  assert.deepEqual(h.downloads.map(d=>d.track.id),['1','2','3','4','5','6','7','8','9'])
+ h.unmount()
+})
+
+test('Wi-Fi adelanta dos resoluciones aunque la primera demore, datos sólo una en vuelo',async()=>{
+ for(const network of ['amplia','datos']){
+  const pendientes=new Map()
+  const h=montar({platform:'ios',network,resolverEspera:t=>new Promise(resolve=>pendientes.set(t.id,resolve))})
+  h.render({proximas:['b','c','d'].map(id=>({...track(id),audioPath:''}))});h.status();h.render();await h.clock()
+  assert.deepEqual(h.resolved,network==='amplia'?['b','c']:['b'])
+  assert.equal(h.downloads.length,0)
+  pendientes.get('b')();await flush()
+  assert.deepEqual(h.resolved,['b','c'])
+  assert.equal(h.downloads.length,1)
+  assert.ok(h.sources.some(x=>Array.isArray(x)&&x[0]==='b'&&x[1]==='https://audio/b'))
+  pendientes.get('c')();await flush()
+  assert.ok(h.sources.some(x=>Array.isArray(x)&&x[0]==='c'&&x[1]==='https://audio/c'))
+  assert.equal(h.downloads.length,1,'la segunda URL está lista sin terminar la primera descarga')
+  h.unmount()
+ }
+})
+
+test('cancelar una resolución anticipada no escribe metadata ni URL al retornar tarde',async()=>{
+ const pendientes=[]
+ const h=montar({platform:'ios',resolverEspera:()=>new Promise(resolve=>pendientes.push(resolve))})
+ h.render({proximas:['b','c'].map(id=>({...track(id),audioPath:''}))});h.status();h.render();await h.clock()
+ h.settings({automatic:false});h.render()
+ pendientes.forEach(resolve=>resolve());await flush()
+ assert.deepEqual(h.sources,[]);assert.deepEqual(h.completed,[]);assert.equal(h.downloads.length,0)
  h.unmount()
 })

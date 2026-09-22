@@ -379,7 +379,9 @@ function Chrome() {
      acorta: si no, quedaba una franja oscura enorme arriba de las pestañas. */
   const sonando = usePlaybackTrack() !== null
   const teclado = useKeyboardH()
-  const buscando = useBuscando()
+  const campoActivo = useBuscando()
+  // Explorar mantiene el campo al pie sin forzar el foco ni abrir el teclado.
+  const buscando = campoActivo || (enRaiz && tabGuardada === 'buscar')
   const colapsada = useColapsada()
   const enChat = useEnChat()
   /*

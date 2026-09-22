@@ -78,23 +78,53 @@ export function usePrecargaCola({ current, proximas, url, player, wantPlay, mudo
     }
     let timer: ReturnType<typeof setTimeout>
     const trabajar = async () => {
-      for (const [posicion, original] of datos.current.ventana.entries()) {
+      // Resolver/firmar no debe esperar una descarga completa. Con Wi‑Fi se
+      // adelantan dos candidatos; datos mantiene uno y respeta la preferencia.
+      // Las descargas al disco siguen seriales y dentro de su cuota habitual.
+      const ventanaActual = datos.current.ventana
+      type Preparada = { track: PlaylistTrack; remota?: string }
+      const preparar = async (original: PlaylistTrack): Promise<Preparada> => {
+        let track = original
+        if (!sigue()) throw Object.assign(new Error('Cancelado'), { name: 'AbortError' })
+        if (buffers.current.has(track.id) || rutaLocal(track.audioPath)) return { track }
+        let remota: string
+        if (!track.audioPath) {
+          const song = await resolveSong({ ...track, album: '', albumId: null }, abort.signal)
+          if (!sigue()) throw Object.assign(new Error('Cancelado'), { name: 'AbortError' })
+          track = { ...track, audioPath: song.path, artworkPath: song.artworkPath, durationMs: song.durationMs || track.durationMs }
+          remota = song.url
+          completarCancion(track.videoId, { audioPath: track.audioPath, artworkPath: track.artworkPath, durationMs: track.durationMs })
+        } else {
+          remota = await signedUrl(track.audioPath)
+        }
+        if (sigue() && !esActual(track.id)) datos.current.remember(track.id, remota)
+        return { track, remota }
+      }
+      const preparaciones = new Map<string, Promise<{ valor: Preparada } | { error: unknown }>>()
+      const anticipar = (posicion: number) => {
+        const track = ventanaActual[posicion]
+        if (!track || preparaciones.has(track.id) || (fallos.current.get(track.id) ?? 0) >= 2) return
+        // Capturar el rechazo desde el inicio: una candidata puede dejar de
+        // estar en la cola antes de que llegue su turno en el bucle de disco.
+        preparaciones.set(track.id, preparar(track).then(valor => ({ valor }), error => ({ error })))
+      }
+      anticipar(0)
+      if (red === 'amplia') anticipar(1)
+      for (const [posicion, original] of ventanaActual.entries()) {
         if (!sigue()) return
         let track = original
         const buffer = buffers.current.get(track.id)
         if (buffer) { if (!esActual(track.id)) datos.current.remember(track.id, buffer); continue }
         if ((fallos.current.get(track.id) ?? 0) >= 2) continue
         try {
-          let remota: string | undefined
-          if (!track.audioPath) {
-            const song = await resolveSong({ ...track, album: '', albumId: null }, abort.signal)
-            if (!sigue()) return
-            track = { ...track, audioPath: song.path, artworkPath: song.artworkPath, durationMs: song.durationMs || track.durationMs }
-            remota = song.url
-            completarCancion(track.videoId, {
-              audioPath: track.audioPath, artworkPath: track.artworkPath, durationMs: track.durationMs,
-            })
-          }
+          anticipar(posicion)
+          const lista = await preparaciones.get(track.id)!
+          if (!sigue()) return
+          if ('error' in lista) throw lista.error
+          track = lista.valor.track
+          const remota = lista.valor.remota
+          // La próxima resolución corre mientras esta canción baja al disco.
+          anticipar(posicion + 1)
           let local = rutaLocal(track.audioPath)
           if (!local && HAY_DESCARGAS) local = await prepararCache(track, abort.signal)
           if (!sigue()) return
@@ -130,7 +160,7 @@ export function usePrecargaCola({ current, proximas, url, player, wantPlay, mudo
       }
     }
     // Dejar estabilizar el buffer antes de disputar ancho de banda.
-    timer = setTimeout(() => { void trabajar() }, 1200)
+    timer = setTimeout(() => { void trabajar() }, 400)
     return () => { clearTimeout(timer); abort.abort() }
   }, [current?.id, claveVentana, habilitada, red, wantPlay, preparada])
 }

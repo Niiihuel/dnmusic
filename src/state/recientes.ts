@@ -1,84 +1,75 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import type { ArtistResult, TrackResult } from '../services/music'
 import { createStore, useStore } from './store'
 
-/**
- * Lo último que buscaste.
- *
- * Vive en el teléfono y no en la base: es del aparato, no de la cuenta. Que lo
- * que buscaste en tu iPhone aparezca en la web sería raro, y para guardarlo en
- * Supabase habría que decidir cuánto retener y quién lo puede leer — mucha
- * ceremonia para una lista de diez palabras.
- *
- * Se escribe al **elegir un resultado**, no al teclear. Ese es el punto: lo
- * escrito a medias no es una búsqueda, es el camino hacia una. Guardar cada
- * pulsación dejaría el historial lleno de `ciga`, `cigar`, `cigare`, que es
- * exactamente lo que uno no quiere volver a tocar. Apple Music hace lo mismo.
- */
+export type RecienteBusqueda =
+  | { tipo: 'consulta'; id: string; termino: string }
+  | { tipo: 'cancion'; id: string; track: TrackResult }
+  | { tipo: 'artista'; id: string; artist: ArtistResult }
 
-const CLAVE = 'dnmusic.recientes.v1'
-/** Cuántas se recuerdan. Más que esto ya no es historial, es archivo. */
-const TOPE = 10
+const CLAVE = 'dnmusic.recientes.v2'
+const ANTERIOR = 'dnmusic.recientes.v1'
+const TOPE = 15
+const store = createStore<{ items: RecienteBusqueda[] | null }>({ items: null })
+let lectura: Promise<void> | null = null
+let escritura = Promise.resolve()
+let revision = 0
 
-type Recientes = {
-  /**
-   * `null` mientras no se leyó del disco.
-   *
-   * No es lo mismo que la lista vacía: con `null` no hay nada que decir
-   * todavía, y con `[]` corresponde el cartel de «no hay búsquedas recientes».
-   * Sin la diferencia, el cartel parpadearía en cada arranque.
-   */
-  terminos: string[] | null
+/** Sólo metadata de catálogo, nunca URLs de audio firmadas ni tokens. */
+function cancion(t: TrackResult): RecienteBusqueda {
+  return { tipo: 'cancion', id: `cancion:${t.videoId}`, track: {
+    videoId: t.videoId, title: t.title, artist: t.artist, artistId: t.artistId ?? null,
+    artworkUrl: t.artworkUrl ?? '', album: t.album ?? '', albumId: t.albumId ?? null,
+    durationMs: Number.isFinite(t.durationMs) ? t.durationMs : 0,
+    ...(t.audioPath ? { audioPath: t.audioPath, artworkPath: t.artworkPath ?? null } : {}),
+  } }
+}
+function artista(a: ArtistResult): RecienteBusqueda {
+  return { tipo: 'artista', id: `artista:${a.id}`, artist: { id: a.id, name: a.name, photoUrl: a.photoUrl ?? '', subtitle: 'Artista' } }
+}
+function consulta(termino: string): RecienteBusqueda {
+  return { tipo: 'consulta', id: `consulta:${termino.toLocaleLowerCase('es')}`, termino }
+}
+function leer(crudo: string | null): RecienteBusqueda[] {
+  if (!crudo) return []
+  const data: unknown = JSON.parse(crudo)
+  if (!Array.isArray(data)) return []
+  return data.flatMap((r): RecienteBusqueda[] => {
+    if (typeof r === 'string' && r.trim()) return [consulta(r.trim())]
+    if (!r || typeof r !== 'object') return []
+    if (r.tipo === 'consulta' && typeof r.termino === 'string' && r.termino.trim()) return [consulta(r.termino.trim())]
+    if (r.tipo === 'cancion' && typeof r.track?.videoId === 'string' && typeof r.track?.title === 'string' && typeof r.track?.artist === 'string' && typeof r.track?.artworkUrl === 'string') return [cancion(r.track)]
+    if (r.tipo === 'artista' && typeof r.artist?.id === 'string' && typeof r.artist?.name === 'string' && typeof r.artist?.photoUrl === 'string') return [artista(r.artist)]
+    return []
+  }).filter((r, i, all) => all.findIndex(a => a.id === r.id) === i).slice(0, TOPE)
 }
 
-const store = createStore<Recientes>({ terminos: null })
-
-/** Lee lo guardado. Lo llama la pantalla de búsqueda al montarse. */
-export async function cargarRecientes() {
-  if (store.get().terminos !== null) return
-  try {
-    const crudo = await AsyncStorage.getItem(CLAVE)
-    const guardadas = crudo ? (JSON.parse(crudo) as string[]) : []
-    store.set({ terminos: Array.isArray(guardadas) ? guardadas.slice(0, TOPE) : [] })
-  } catch {
-    // Sin historial, pero el buscador funciona igual.
-    store.set({ terminos: [] })
-  }
+export function cargarRecientes(): Promise<void> {
+  if (store.get().items !== null) return Promise.resolve()
+  if (lectura) return lectura
+  const version = revision
+  lectura = (async () => {
+    let items: RecienteBusqueda[] = []
+    try { items = leer(await AsyncStorage.getItem(CLAVE) ?? await AsyncStorage.getItem(ANTERIOR)) } catch { /* Historial corrupto no impide buscar. */ }
+    if (revision === version) store.set({ items })
+  })().finally(() => { lectura = null })
+  return lectura
 }
-
-function guardar(terminos: string[]) {
-  store.set({ terminos })
-  void AsyncStorage.setItem(CLAVE, JSON.stringify(terminos)).catch(() => {
-    // Queda en memoria para esta sesión y se pierde al cerrar. No es grave.
-  })
+function guardar(items: RecienteBusqueda[]) {
+  revision++
+  store.set({ items })
+  // Serializar evita que un guardado lento restaure lo que se acaba de borrar.
+  escritura = escritura.then(() => AsyncStorage.setItem(CLAVE, JSON.stringify(items))).catch(() => {})
 }
-
-/**
- * Suma un término al historial, arriba de todo.
- *
- * Repetir una búsqueda no la duplica: la sube. Es lo que uno espera de una
- * lista de «recientes» —lo último que hiciste va primero— y evita que buscar
- * tres veces lo mismo llene el historial con una sola cosa.
- *
- * La comparación ignora mayúsculas y espacios de sobra, pero **se guarda tal
- * como lo escribiste**: si buscaste «Cigarettes After Sex», eso es lo que
- * querés volver a ver, no `cigarettes after sex`.
- */
-export function recordarBusqueda(termino: string) {
-  const limpio = termino.trim()
-  if (!limpio) return
-  const igual = limpio.toLocaleLowerCase('es')
-  const previas = store.get().terminos ?? []
-  guardar([limpio, ...previas.filter((t) => t.toLocaleLowerCase('es') !== igual)].slice(0, TOPE))
+async function recordar(item: RecienteBusqueda) {
+  const version = revision
+  await cargarRecientes()
+  if (revision !== version && store.get().items?.length === 0) return
+  guardar([item, ...(store.get().items ?? []).filter(r => r.id !== item.id)].slice(0, TOPE))
 }
-
-/** Saca una sola, desde su «✕». */
-export function olvidarBusqueda(termino: string) {
-  guardar((store.get().terminos ?? []).filter((t) => t !== termino))
-}
-
-/** Borra todo, desde «Limpiar». */
-export function limpiarRecientes() {
-  guardar([])
-}
-
-export const useRecientes = () => useStore(store, (s) => s.terminos)
+export function recordarBusqueda(termino: string) { if (termino.trim()) void recordar(consulta(termino.trim())) }
+export function recordarCancion(track: TrackResult) { void recordar(cancion(track)) }
+export function recordarArtista(artist: ArtistResult) { void recordar(artista(artist)) }
+export function olvidarBusqueda(id: string) { guardar((store.get().items ?? []).filter(r => r.id !== id)) }
+export function limpiarRecientes() { guardar([]) }
+export const useRecientes = () => useStore(store, s => s.items)

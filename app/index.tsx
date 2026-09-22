@@ -13,6 +13,7 @@ import {
   AppState,
   FlatList,
   Image,
+  Keyboard,
   Platform,
   Text,
   useWindowDimensions,
@@ -118,6 +119,8 @@ import {
   cerrarBusqueda,
   setTermino,
   useConsulta,
+  useBuscando,
+  registerBusquedaHandler,
 } from '../src/state/busqueda'
 import {
   detachOrigin,
@@ -139,9 +142,10 @@ import { SearchDropdown } from '../src/ui/SearchDropdown'
 import { ScrollArea } from '../src/ui/ScrollArea'
 import { ScrollAreaTecho } from '../src/ui/ScrollAreaContext'
 import { SearchRecents } from '../src/ui/SearchRecents'
+import { SearchExplore } from '../src/ui/SearchExplore'
 import { useColapso } from '../src/ui/useColapso'
 import { BotonVidrio, Glass, HAY_VIDRIO } from '../src/ui/Glass'
-import { recordarBusqueda } from '../src/state/recientes'
+import { recordarArtista, recordarCancion } from '../src/state/recientes'
 import { addShowcase } from '../src/services/showcases'
 import { Menu, type MenuItem } from '../src/ui/Menu'
 import { BarraLateral, CampoBusquedaLateral } from '../src/ui/BarraLateral'
@@ -272,6 +276,7 @@ export default function Home() {
   const searchRef = useRef<SearchFieldHandle>(null)
   const [searchResults, setSearchResults] = useState<ContactResult[]>([])
   const [searchingContacts, setSearchingContacts] = useState(false)
+  const [consultaRespondida, setConsultaRespondida] = useState('')
   /** Cuenta cuya solicitud está saliendo, para mostrar la espera en su fila. */
   const [solicitando, setSolicitando] = useState<string | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
@@ -621,6 +626,26 @@ export default function Home() {
      tecla no la re-renderiza entera. El campo de arriba, que sí necesita lo
      inmediato, es su propia hoja (`CampoBusquedaArriba`). */
   const conversationQuery = useConsulta()
+  const campoBusquedaActivo = useBuscando()
+
+  // Un solo camino para la fila móvil y el campo lateral. También vuelve a
+  // resultados si se escribe desde un artista o una categoría abiertos.
+  useEffect(() => {
+    registerBusquedaHandler(value => {
+      if (value.trim()) {
+        setSearchingContacts(!music || consultaRespondida !== `musica:${value.trim()}`)
+        if (music && view.kind !== 'search') go({ kind: 'search' })
+      } else {
+        setTrackResults([])
+        setArtistResults([])
+        setSearchResults([])
+        setSearchError(null)
+        setSearchingContacts(false)
+        setConsultaRespondida('')
+      }
+    })
+    return () => registerBusquedaHandler(null)
+  }, [music, view.kind, go, consultaRespondida])
 
 
   /** Relee la biblioteca; la lista abierta se refresca con lo que llega. */
@@ -653,15 +678,12 @@ export default function Home() {
         setChatAbierto(false)
         return
       }
-      /* Tocar la lupa **abre el campo**, no solo la pestaña. El buscador al pie
-         solo se dibuja mientras buscás, así que sin esto entrar a «Buscar»
-         mostraba el historial y ningún lugar donde escribir. Volver a tocarla
-         con el teclado ya cerrado lo trae de nuevo. */
-      /* La lupa abre el buscador de abajo, que es donde vive el campo. Y
-         cualquier otra pestaña lo cierra y se lleva lo escrito: volver a entrar
-         con el término viejo mostraría resultados de algo que ya no estabas
-         buscando. */
-      if (tab === 'buscar') abrirBusqueda('Buscá una canción o un artista')
+      if (tab === 'buscar') {
+        Keyboard.dismiss()
+        searchRef.current?.blur()
+        cerrarBusqueda()
+        abrirBusqueda('Canciones y artistas', false)
+      }
       /* Entrar a «Listas» relee la biblioteca: pudiste haber creado una desde
          otro lado. Ver el efecto de `AppState` más abajo. */
       if (tab === 'listas') void loadPlaylists()
@@ -816,6 +838,8 @@ export default function Home() {
     if (music) {
       searchMusic(term, controller.signal)
         .then(({ tracks, artists }) => {
+          if (controller.signal.aborted) return
+          setConsultaRespondida(`musica:${term}`)
           setTrackResults(tracks)
           setArtistResults(artists)
           setSearchError(
@@ -824,7 +848,8 @@ export default function Home() {
           setSearchingContacts(false)
         })
         .catch((cause: unknown) => {
-          if ((cause as Error).name === 'AbortError') return
+          if (controller.signal.aborted || (cause as Error).name === 'AbortError') return
+          setConsultaRespondida(`musica:${term}`)
           setSearchError('No se pudo buscar.')
           setSearchingContacts(false)
         })
@@ -1912,25 +1937,6 @@ export default function Home() {
 
   function changeGlobalSearch(value: string) {
     setTermino(value)
-    /*
-     * Lo que pasa al escribir se decide **acá**, en el evento, y no en un
-     * efecto: es la respuesta a un gesto concreto.
-     *
-     * Con algo escrito, «buscando» se enciende ya —el campo muestra su rueda
-     * desde la primera tecla, aunque la consulta todavía no se haya asentado—.
-     * Al vaciar, los resultados se apagan en el acto: son de una búsqueda que
-     * ya no existe. Volver a poner el mismo valor no redibuja nada, así que
-     * esto no es un setState por tecla.
-     */
-    if (value.trim()) {
-      setSearchingContacts(true)
-      return
-    }
-    setTrackResults([])
-    setArtistResults([])
-    setSearchResults([])
-    setSearchError(null)
-    setSearchingContacts(false)
   }
 
   /**
@@ -1944,7 +1950,6 @@ export default function Home() {
    */
   function buscarDesdeLateral(value: string) {
     changeGlobalSearch(value)
-    if (music && value.trim() && view.kind !== 'search') go({ kind: 'search' })
   }
 
   function chooseGlobalResult(result: ContactResult) {
@@ -2315,7 +2320,7 @@ export default function Home() {
                       playlists={playlists}
                       openId={openPlaylist?.id ?? null}
                       seccion={
-                        view.kind === 'home'
+                        view.kind === 'search' ? 'buscar' : view.kind === 'home'
                           ? 'inicio'
                           : view.kind === 'gustos'
                             ? 'gustos'
@@ -2337,6 +2342,7 @@ export default function Home() {
                       }
                       buscando={searchingContacts}
                       onInicio={vivo ? () => setTab('inicio') : nada}
+                      onExplorar={vivo ? () => setTab('buscar') : nada}
                       onChats={
                         vivo
                           ? () => {
@@ -2536,23 +2542,26 @@ export default function Home() {
                 <SearchDropdown
                   visible
                   embedded
-                  loading={searchingContacts}
+                  loading={searchingContacts || consultaRespondida !== `musica:${conversationQuery.trim()}`}
                   results={trackResults}
                   error={searchError}
                   /* El historial se escribe al **elegir**, no al teclear: lo
                      escrito a medias no es una búsqueda, es el camino hacia
                      una. Ver `state/recientes`. */
                   onSelect={(track) => {
-                    recordarBusqueda(conversationQuery)
+                    Keyboard.dismiss()
+                    recordarCancion(track)
                     void playSearchResult(track, trackResults)
                   }}
                   onPlay={(track) => {
-                    recordarBusqueda(conversationQuery)
+                    Keyboard.dismiss()
+                    recordarCancion(track)
                     void playSearchResult(track, trackResults)
                   }}
                   artists={artistResults}
                   onOpenArtist={(a) => {
-                    recordarBusqueda(conversationQuery)
+                    Keyboard.dismiss()
+                    recordarArtista(a)
                     changeGlobalSearch('')
                     go({ kind: 'artist', id: a.id, name: a.name })
                   }}
@@ -2564,15 +2573,29 @@ export default function Home() {
                      pasan por detrás del velo al desplazar. */
                   topInset={techo}
                 />
-                ) : (
+                ) : campoBusquedaActivo ? (
                   /* Sin nada escrito, lo último que buscaste. Corre por debajo
                      del campo y se difumina a través del vidrio. */
                   <SearchRecents
-                      onPick={(termino) => {
+                    onPlay={(track) => {
+                      Keyboard.dismiss()
+                      recordarCancion(track)
+                      void playSearchResult(track)
+                    }}
+                    onOpenArtist={(artist) => {
+                      Keyboard.dismiss()
+                      recordarArtista(artist)
+                      changeGlobalSearch('')
+                      go({ kind: 'artist', id: artist.id, name: artist.name })
+                    }}
+                    menuFor={menuForTrack}
+                    onPick={(termino) => {
                       changeGlobalSearch(termino)
                       searchRef.current?.focus()
                     }}
                   />
+                ) : (
+                  <SearchExplore onOpenGenero={(g) => go({ kind: 'genero', params: g.params, name: g.name })} />
                 )}
 
               </View>

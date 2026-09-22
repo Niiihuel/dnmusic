@@ -3,7 +3,7 @@ import type { SearchFieldHandle } from './SearchField.types'
 import { useState, type ReactNode, type RefObject } from 'react'
 import { Platform, Pressable, Text, View } from 'react-native'
 import type { Playlist } from '../services/playlists'
-import { useTermino } from '../state/busqueda'
+import { setActivo, useTermino } from '../state/busqueda'
 import { useCuantosMeGusta } from '../state/gustos'
 import { useWantPlay } from '../state/playback'
 import { usePiso } from '../state/shell'
@@ -28,13 +28,14 @@ import {
   IconLogOut,
   IconMusic,
   IconPlus,
+  IconSearch,
   IconSliders,
   IconUser,
   type IconProps,
 } from './icons'
 
 /** Dónde está parado quien mira, para marcar la fila. */
-export type SeccionLateral = 'inicio' | 'gustos' | 'listas' | 'otra'
+export type SeccionLateral = 'inicio' | 'buscar' | 'gustos' | 'listas' | 'otra'
 
 /**
  * La barra lateral del escritorio: la navegación de la app, al modo de macOS.
@@ -68,6 +69,7 @@ export function BarraLateral({
   placeholderBusqueda = 'Buscar',
   buscando = false,
   onInicio,
+  onExplorar,
   onChats,
   onGustos,
   onListas,
@@ -106,6 +108,7 @@ export function BarraLateral({
   placeholderBusqueda?: string
   buscando?: boolean
   onInicio: () => void
+  onExplorar: () => void
   onChats: () => void
   onGustos: () => void
   onListas: () => void
@@ -154,6 +157,7 @@ export function BarraLateral({
       <ScrollArea className="min-h-0 flex-1" contentContainerClassName="gap-1 px-2" contentContainerStyle={{ paddingBottom: piso }}>
         <SharedLayoutBg className="dn-sidebar-items">
         <FilaLateral icono={IconHome} label="Inicio" activa={seccion === 'inicio'} onPress={onInicio} />
+        <FilaLateral icono={IconSearch} label="Buscar" activa={seccion === 'buscar'} onPress={onExplorar} />
         <FilaLateral
           icono={IconInbox}
           label="Chats"
@@ -293,6 +297,7 @@ export function CampoBusquedaLateral({
       inputRef={inputRef}
       value={value}
       onChangeText={onBuscar}
+      onFocusChange={(focused) => { if (focused) setActivo(true) }}
       placeholder="Buscar"
       accessibilityLabel={placeholder}
       density="compact"

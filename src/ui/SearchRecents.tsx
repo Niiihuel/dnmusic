@@ -1,107 +1,57 @@
+import { useEffect } from 'react'
+import { Text, View } from 'react-native'
+import type { ArtistResult, TrackResult } from '../services/music'
+import { cargarRecientes, limpiarRecientes, olvidarBusqueda, useRecientes } from '../state/recientes'
+import { usePlaybackCargada, usePlaybackTrack, useWantPlay } from '../state/playback'
+import { useKeyboardH, usePiso, useTecho } from '../state/shell'
 import { BotonSuperficie } from './BotonSuperficie'
 import { IconButton } from './IconButton'
-import { useEffect } from 'react'
-import { ScrollView, Text, View } from 'react-native'
-import { cargarRecientes, limpiarRecientes, olvidarBusqueda, useRecientes } from '../state/recientes'
-import { useKeyboardH, usePiso, useTecho } from '../state/shell'
+import { type MenuItem } from './Menu'
+import { ArtistHit, ResultadoFila } from './SearchDropdown'
+import { ScrollArea } from './ScrollArea'
+import { SkeletonList } from './Skeleton'
 import { ICON_COLOR, IconClose, IconSearch } from './icons'
 
-/**
- * Lo último que buscaste, mientras el campo está vacío.
- *
- * Ocupa el lugar donde después van los resultados, así la pestaña nunca está en
- * blanco: entrar a «Buscar» sin haber escrito nada mostraba una pantalla negra
- * con un campo arriba y nada más.
- *
- * **No lleva tarjeta.** Son filas sueltas sobre el fondo, y esa es la
- * diferencia con los resultados: acá el contenido tiene que poder correr por
- * debajo del campo de búsqueda y verse difuminado a través del vidrio. Una caja
- * opaca cortaría eso en seco — es la misma razón por la que los resultados sí
- * la llevan y por eso terminan antes de llegar.
- */
-export function SearchRecents({ onPick }: { onPick: (termino: string) => void }) {
-  const terminos = useRecientes()
-  /* La cáscara ya incluye el campo: mientras buscás, la fila de abajo es él.
-     Ver `SearchRow`. */
-  const piso = usePiso()
-  /* El encabezado de la portada flota (ver `useTecho`): el título arranca
-     debajo de él, con el mismo respiro que ya tenía (`pt-3`). */
-  const techo = useTecho(12)
+/** Entidades elegidas, en orden real; las consultas antiguas se conservan. */
+export function SearchRecents({ onPick, onPlay, onOpenArtist, menuFor }: {
+  onPick: (termino: string) => void; onPlay: (track: TrackResult) => void
+  onOpenArtist: (artist: ArtistResult) => void; menuFor: (track: TrackResult) => MenuItem[]
+}) {
+  const items = useRecientes()
+  const current = usePlaybackTrack()
+  const playing = useWantPlay()
+  const cargada = usePlaybackCargada()
+  const piso = usePiso(16)
   const teclado = useKeyboardH()
-
-  useEffect(() => {
-    void cargarRecientes()
-  }, [])
-
-  // Todavía no se leyó del disco: nada que mostrar, ni siquiera el cartel.
-  if (terminos === null) return null
-
-  if (terminos.length === 0) {
-    return (
-      /*
-       * Se centra en **lo que se ve**, no en el contenedor.
-       *
-       * El contenedor llega hasta el borde de abajo —así el contenido pasa por
-       * detrás del vidrio—, pero el teclado y la fila del buscador tapan la
-       * mitad de abajo. Centrado a secas, el cartel caía justo detrás del
-       * campo. Descontando lo tapado queda centrado en el hueco que mirás.
-       */
-      <View
-        className="flex-1 items-center justify-center gap-3 px-10"
-        style={{ paddingTop: techo, paddingBottom: piso + teclado }}
-      >
-        <IconSearch size={34} color={ICON_COLOR.muted} />
-        <Text className="text-foreground text-center text-body font-semibold">
-          Ninguna búsqueda reciente
-        </Text>
-        <Text className="text-muted-foreground text-center text-footnote leading-5">
-          Acá van a aparecer las canciones y los artistas que busques.
-        </Text>
-      </View>
-    )
-  }
-
-  return (
-    <View className="min-h-0 flex-1">
-      <View className="flex-row items-center justify-between px-4 pb-1" style={{ paddingTop: techo }}>
-        <Text className="text-foreground text-body font-bold">Búsquedas recientes</Text>
-        <BotonSuperficie
-          accessibilityRole="button"
-          accessibilityLabel="Limpiar las búsquedas recientes"
-          onPress={limpiarRecientes}
-          hitSlop={8}
-          className="active:opacity-60"
-        >
-          <Text className="text-muted-foreground text-footnote font-semibold">Limpiar</Text>
-        </BotonSuperficie>
-      </View>
-
-      <ScrollView
-        className="min-h-0 flex-1"
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        contentContainerStyle={{ paddingBottom: piso }}
-      >
-        {terminos.map((termino) => (
-          <View key={termino} className="flex-row items-center">
-            {/* El término ocupa toda la fila y el «✕» queda afuera del
-                Pressable: anidarlo dejaría un botón dentro de otro, que en web
-                es HTML inválido y se come el click del de adentro. */}
-            <BotonSuperficie
-              accessibilityRole="button"
-              accessibilityLabel={`Buscar ${termino} otra vez`}
-              onPress={() => onPick(termino)}
-              className="min-w-0 flex-1 flex-row items-center gap-3 px-4 py-3 active:opacity-60"
-            >
-              <IconSearch size={17} color={ICON_COLOR.muted} />
-              <Text className="min-w-0 flex-1 text-foreground text-subheadline" numberOfLines={1}>
-                {termino}
-              </Text>
-            </BotonSuperficie>
-            <IconButton label={`Olvidar ${termino}`} symbol="xmark" onPress={() => olvidarBusqueda(termino)} lado={44} size={15} icon={<IconClose size={15} color={ICON_COLOR.muted} />} />
-          </View>
-        ))}
-      </ScrollView>
+  const techo = useTecho(12)
+  useEffect(() => { void cargarRecientes() }, [])
+  return <ScrollArea className="flex-1" keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+    contentContainerStyle={{ paddingTop: techo, paddingBottom: piso + teclado, paddingHorizontal: 16 }}>
+    <View className="flex-row items-center justify-between pb-3">
+      <Text accessibilityRole="header" className="text-foreground text-body font-semibold">Búsquedas recientes</Text>
+      {items?.length ? <BotonSuperficie accessibilityRole="button" accessibilityLabel="Borrar búsquedas recientes"
+        onPress={limpiarRecientes} style={{ minHeight: 44, justifyContent: 'center', paddingLeft: 16 }}>
+        <Text className="text-muted-foreground text-subheadline">Borrar</Text>
+      </BotonSuperficie> : null}
     </View>
-  )
+    {items === null ? <SkeletonList rows={4} /> : items.length === 0 ? (
+      <Text className="text-muted-foreground text-subheadline py-6">Buscá una canción o un artista. Lo que elijas aparece acá.</Text>
+    ) : items.map(item => {
+      const quitar: MenuItem = { label: 'Quitar de recientes', sfSymbol: 'clock.badge.xmark', onPress: () => olvidarBusqueda(item.id) }
+      return <View key={item.id}>
+        {item.tipo === 'cancion' ? <ResultadoFila track={item.track} sounding={current?.videoId === item.track.videoId}
+          playing={playing} busy={current?.videoId === item.track.videoId && playing && !cargada}
+          alwaysSelect={false} onSelect={onPlay} menuFor={track => [...menuFor(track), quitar]} amplia /> : item.tipo === 'artista' ? (
+          <ArtistHit artist={item.artist} onPress={() => onOpenArtist(item.artist)} extraItems={[quitar]} amplia />
+        ) : <View className="flex-row items-center">
+          <BotonSuperficie accessibilityRole="button" accessibilityLabel={`Buscar ${item.termino}`}
+            onPress={() => onPick(item.termino)} className="min-w-0 flex-1 flex-row items-center gap-3 py-4">
+            <IconSearch size={22} color={ICON_COLOR.muted} />
+            <Text className="text-foreground text-body flex-1" numberOfLines={1}>{item.termino}</Text>
+          </BotonSuperficie>
+          <IconButton label={`Olvidar ${item.termino}`} symbol="xmark" onPress={() => olvidarBusqueda(item.id)} lado={44} icon={<IconClose size={16} color={ICON_COLOR.muted} />} />
+        </View>}
+      </View>
+    })}
+  </ScrollArea>
 }

@@ -4,7 +4,7 @@ import { Keyboard, View } from 'react-native'
 import { useRef } from 'react'
 import Animated, { interpolate, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { cerrarBusqueda, setActivo, setTermino, usePista, useTermino } from '../state/busqueda'
+import { cerrarBusqueda, setActivo, setTermino, useBuscando, usePista, useTermino } from '../state/busqueda'
 import { useRouter } from 'expo-router'
 import { setTab, useKeyboardH } from '../state/shell'
 import { SearchField } from './SearchField'
@@ -32,6 +32,7 @@ export function SearchRow() {
   const insets = useSafeAreaInsets()
   const termino = useTermino()
   const pista = usePista()
+  const activo = useBuscando()
   const input = useRef<SearchFieldHandle>(null)
   const teclado = useKeyboardH()
   const router = useRouter()
@@ -100,24 +101,22 @@ export function SearchRow() {
           value={termino}
           onChangeText={setTermino}
           onFocusChange={(f) => {
-            /* Perder el cursor **no** cierra la búsqueda si hay algo escrito:
-               al arrastrar la lista el teclado se va, y ahí uno está mirando
-               resultados, no saliendo. */
+            // El blur puede preceder al click de un reciente. No desmontar
+            // esa fila hasta que se elija Cancelar o se navegue a otra sección.
             if (f) setActivo(true)
-            else if (!termino.trim()) setActivo(false)
           }}
-          /* La fila aparece justo cuando alguien quiere buscar. */
-          autoFocus
+          autoFocus={activo}
           placeholder={pista}
         />
       </View>
 
       {/* Redondel y sin texto, como en iOS 26: la ✕ no necesita explicación, y
           «Cancelar» escrito obligaría al botón a comerse el ancho del campo. */}
-      <IconButton label="Cancelar la búsqueda" symbol="xmark" onPress={() => {
+      {activo || termino ? <IconButton label="Cancelar la búsqueda" symbol="xmark" onPress={() => {
+          input.current?.blur()
           cerrarBusqueda()
           Keyboard.dismiss()
-        }} variant="glass" lado={48} icon={<IconClose size={18} color={ICON_COLOR.foreground} />} />
+        }} variant="glass" lado={48} icon={<IconClose size={18} color={ICON_COLOR.foreground} />} /> : null}
     </Animated.View>
   )
 }
