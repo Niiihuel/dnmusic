@@ -40,6 +40,7 @@ function fixture(initialId = 'cuenta') {
     '@expo/ui/swift-ui/modifiers': modifiers,
     '../state/shell': { useKeyboardH: () => 0 },
     './SearchField': { SearchField: 'SearchField' },
+    './CollectionScrollEdge': { BordeScrollNativo: 'BordeScrollNativo' },
     './Ajustes.shared': shared,
     './Mantener': {},
   }
@@ -81,4 +82,13 @@ test('buscar desde un destino vuelve a la raíz y conserva el campo inferior', (
   assert.deepEqual(ui.find(node => node.type === 'NavigationStack').props.path, [])
   assert.deepEqual(f.searches, ['audio'])
   assert.equal(ui.find(node => node.type === 'SearchField').props.value, 'audio')
+})
+
+test('la navegación posee el área segura y un borde suave, sin recorte RN sobre el reloj', () => {
+  const ui = fixture().render()
+  assert.equal(ui[0].type, 'RNView')
+  assert.equal(ui.find(node => node.type === 'Host').props.ignoreSafeArea, undefined)
+  assert.equal(ui.find(node => node.type === 'BordeScrollNativo').props.nativeNavigation, true)
+  assert.equal(ui.some(node => node.type === 'SafeAreaView'), false)
+  assert.equal(ui.some(node => node.props?.children === 'Modo y audio'), false, 'los resúmenes sólo se muestran al buscar')
 })

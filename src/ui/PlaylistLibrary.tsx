@@ -2,9 +2,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BordeScrollNativo } from './CollectionScrollEdge'
 import { superficieInteractivaWeb } from './estadoControl'
 import { Glass } from './Glass'
-import { ANDROID_CARD, ANDROID_COLORS, ANDROID_TYPE, androidButtonSurface } from './androidDesign'
+import { ANDROID_CARD, ANDROID_COLORS, ANDROID_TYPE } from './androidDesign'
 import { BotonSuperficie } from './BotonSuperficie'
 import { NativeMediaRow } from '../../modules/media-controls'
+import { IconSpotify } from './IconSpotify'
 import { artworkSource } from '../lib/artwork'
 import { coverUrl } from '../services/playlists'
 import { useState } from 'react'
@@ -28,7 +29,6 @@ import {
   ICON_COLOR,
   IconChevronRight,
   IconCollapseRight,
-  IconDownload,
   IconGlobe,
   IconHeartFilled,
   IconMusic,
@@ -248,39 +248,7 @@ export function PlaylistLibrary({
            * exactamente cuando uno nota que le falta algo.
            */
           ListFooterComponent={
-            onImportar ? (
-              bibliotecaMovil ? <ImportarSpotify onPress={onImportar} /> : NativeMediaRow ? <NativeMediaRow title="Traer de Spotify" subtitle={'Se rearma con tu música'} symbol="square.and.arrow.down" label="Traer de Spotify"
-                onActivate={onImportar} style={{ height: 76, width: '100%' }} /> : (
-              <BotonSuperficie
-                accessibilityRole="button"
-                onPress={onImportar}
-                className={`mt-1 flex-row items-center rounded-lg ${
-                  suelto ? 'gap-3 p-2.5' : 'gap-3 p-2'
-                } active:bg-card`}
-              >
-                <View
-                  className="items-center justify-center rounded bg-muted"
-                  style={{ width: suelto ? 60 : 48, height: suelto ? 60 : 48 }}
-                >
-                  <IconDownload size={suelto ? 20 : 17} color={ICON_COLOR.muted} />
-                </View>
-                <View className="min-w-0 flex-1 gap-0.5">
-                  <Text
-                    className={`text-foreground ${suelto ? 'text-callout' : 'text-subheadline'}`}
-                    numberOfLines={1}
-                  >
-                    Traer de Spotify
-                  </Text>
-                  <Text
-                    className={`text-muted-foreground ${suelto ? 'text-footnote' : 'text-caption1'}`}
-                    numberOfLines={1}
-                  >
-                    Se rearma con tu música
-                  </Text>
-                </View>
-              </BotonSuperficie>
-              )
-            ) : null
+            onImportar ? <ImportarSpotify onPress={onImportar} /> : null
           }
           renderItem={({ item }) => (
             <FilaLista
@@ -338,13 +306,13 @@ function ImportarSpotify({ onPress }: { onPress: () => void }) {
         onPress={onPress}
         style={[{ flexDirection: 'row', alignItems: 'center', gap: 13, borderRadius: 18, backgroundColor: '#191A19', paddingHorizontal: 14, paddingVertical: 14 }, Platform.OS === 'android' && { ...ANDROID_CARD, borderRadius: 18 }]}
       >
-        <View style={[{ width: 46, height: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 23, backgroundColor: '#1ED760' }, Platform.OS === 'android' && androidButtonSurface()]}>
-          <IconDownload size={21} color={Platform.OS === 'android' ? ANDROID_COLORS.strong : '#07150B'} />
+        <View style={{ width: 46, height: 46, alignItems: 'center', justifyContent: 'center' }}>
+          <IconSpotify size={36} />
         </View>
         <View style={{ minWidth: 0, flex: 1, gap: 3 }}>
-          <Text numberOfLines={2} style={[{ color: '#FFFFFF', fontSize: 16, lineHeight: 21, fontWeight: '600' }, Platform.OS === 'android' && { ...ANDROID_TYPE.body, color: ANDROID_COLORS.text }]}>Traé tus playlists de Spotify</Text>
+          <Text numberOfLines={2} style={[{ color: '#FFFFFF', fontSize: 16, lineHeight: 21, fontWeight: '600' }, Platform.OS === 'android' && { ...ANDROID_TYPE.body, color: ANDROID_COLORS.text }]}>Traer de Spotify</Text>
           <Text numberOfLines={2} style={[{ color: 'rgba(255,255,255,0.58)', fontSize: 13, lineHeight: 18 }, Platform.OS === 'android' && { ...ANDROID_TYPE.body, color: ANDROID_COLORS.muted }]}>
-            Pegá un enlace y las reconstruimos con tu música.
+            Importá una playlist
           </Text>
         </View>
         <IconChevronRight size={18} color="rgba(255,255,255,0.42)" />

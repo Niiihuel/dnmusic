@@ -12,6 +12,7 @@ export type NativeMediaRowProps = ViewProps & {
   busy?: boolean
   selected?: boolean
   disabled?: boolean
+  drawsHighlight?: boolean
   label: string
   onActivate: () => void
 }
@@ -23,10 +24,11 @@ export type NativeMediaTabProps = ViewProps & {
 
 // Un módulo independiente permite seguir usando el binario anterior sin pedir
 // una vista que no existe dentro de un módulo ya instalado.
-const mediaModule = Platform.OS === 'ios' ? requireOptionalNativeModule<{ miniPlayerVersion?: number }>('MediaControls') : null
+const mediaModule = Platform.OS === 'ios' ? requireOptionalNativeModule<{ miniPlayerVersion?: number; rowHighlightVersion?: number }>('MediaControls') : null
 const disponible = mediaModule !== null
 export const NativeMediaRow = disponible ? requireNativeView<NativeMediaRowProps>('MediaControls', 'MediaTrackView') : null
 export const NativeMediaTabs = disponible ? requireNativeView<NativeMediaTabProps>('MediaControls', 'MediaTabBarView') : null
+export const NativeRowHighlight = mediaModule?.rowHighlightVersion === 1 ? requireNativeView<ViewProps>('MediaControls', 'MediaRowHighlightView') : null
 
 export type NativeSurfaceEvent = { nativeEvent: { pressed?: boolean; pageX: number; pageY: number; locationX: number; locationY: number; timestamp: number } }
 export type NativeSurfaceProps = ViewProps & {

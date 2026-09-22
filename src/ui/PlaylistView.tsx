@@ -1070,7 +1070,7 @@ function BotonDescarga({ total, bajado, onPress, opciones }: {
  * rincón, y en el teléfono ese rincón ya está justo.
  */
 function MarcaDescarga({ descarga }: { descarga: DescargaUI | undefined }) {
-  if (!HAY_DESCARGAS || !descarga) return null
+  if (!HAY_DESCARGAS || !descarga || descarga.temporal) return null
 
   return (
     <View className="mr-1">

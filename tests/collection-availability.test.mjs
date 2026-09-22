@@ -26,3 +26,19 @@ test('clientes antiguos, Expo Go y otras plataformas conservan el fallback', () 
     assert.equal(load(...args).CollectionScrollEdge, null)
   }
 })
+
+test('el nuevo borde de navegación mantiene las barras existentes y protege binarios anteriores', () => {
+  const current = load('ios', 26, { scrollEdgeVersion: 2 })
+  assert.equal(current.CollectionScrollEdge, 'CollectionScrollEdgeView')
+  assert.equal(current.HAY_ESTILO_SCROLL_NATIVO, true)
+  assert.equal(load('ios', 26, { scrollEdgeVersion: 1 }).HAY_ESTILO_SCROLL_NATIVO, false)
+})
+
+test('Settings suaviza el borde del sistema sin superponer un segundo material', () => {
+  const swift = readFileSync('modules/collection-controls/ios/CollectionControlsModule.swift', 'utf8')
+  const branch = swift.slice(swift.indexOf('if nativeNavigation {'), swift.indexOf('var scope = container.superview'))
+  assert.match(branch, /softenNavigationScrolls\(in: container\)/)
+  assert.match(branch, /return/)
+  assert.doesNotMatch(branch, /addInteraction|UIVisualEffectView/)
+  assert.match(swift, /navigationConnection\?\.cancel\(\)/)
+})

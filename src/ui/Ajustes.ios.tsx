@@ -3,9 +3,10 @@ import { Alert, View } from 'react-native'
 import { Button, HStack, Host, Image, LabeledContent, List, Menu, NavigationDestination, NavigationLink, NavigationStack, ProgressView, RNHostView, Section, Spacer, Text, TextField, Toggle, Toolbar, VStack, useNativeState } from '@expo/ui/swift-ui'
 import { accessibilityLabel, autocorrectionDisabled, background, buttonStyle, clipShape, disabled, font, foregroundStyle, frame, listRowBackground, listRowSeparator, listStyle, navigationTitle, padding, scrollContentBackground, scrollDismissesKeyboard, textInputAutocapitalization, tint, toggleStyle } from '@expo/ui/swift-ui/modifiers'
 import { useEffect, useState } from 'react'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useKeyboardH } from '../state/shell'
 import { SearchField } from './SearchField'
+import { BordeScrollNativo } from './CollectionScrollEdge'
 import * as Shared from './Ajustes.shared'
 import type { FilaSostener } from './Mantener'
 
@@ -83,8 +84,10 @@ export function AjustesNativos({ categorias, initialId, cuenta, piso, buscando, 
     </Toolbar>
   )
 
-  return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: '#121212' }}>
-    <Host style={{ flex: 1 }} ignoreSafeArea="container" colorScheme="dark" seedColor={TEXTO}>
+  // NavigationStack owns the top safe area and its scroll-edge material. A RN
+  // top inset clips the whole SwiftUI canvas before it can blur under the clock.
+  return <View style={{ flex: 1, backgroundColor: '#121212' }}>
+    <Host style={{ flex: 1 }} colorScheme="dark" seedColor={TEXTO}>
       <NavigationStack path={path} onPathChange={setPath}>
         {lista('Configuración', <>
           {!buscando ? cuenta : null}
@@ -94,7 +97,7 @@ export function AjustesNativos({ categorias, initialId, cuenta, piso, buscando, 
                 <Image systemName={c.simbolo as never} size={21} modifiers={[frame({ width: 28 })]} />
                 <VStack alignment="leading" spacing={3}>
                   <Text>{c.titulo}</Text>
-                  <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(SECUNDARIO)]}>{c.resumen}</Text>
+                  {buscando ? <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(SECUNDARIO)]}>{c.resumen}</Text> : null}
                 </VStack>
               </HStack>
             </NavigationLink>)}
@@ -106,10 +109,11 @@ export function AjustesNativos({ categorias, initialId, cuenta, piso, buscando, 
         </NavigationDestination>)}
       </NavigationStack>
     </Host>
+    <BordeScrollNativo nativeNavigation key={path.join('/')} />
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 16, right: 16, bottom: searchBottom }}>
       <SearchField value={busqueda} onChangeText={buscar} placeholder="Buscar" />
     </View>
-  </SafeAreaView>
+  </View>
 }
 
 export function FilaAjuste({ rotulo, detalle, valor, vacio = 'Sin poner', icono, globito, onPress, destructivo, disabled: apagada }: ComponentProps<typeof Shared.FilaAjuste>) {

@@ -10,9 +10,12 @@ function encuadreDe(v: unknown): Encuadre | null {
   if (!r || typeof r !== 'object') return null
   const { x, y, escala, rotacion } = r
   if (typeof x !== 'number' || typeof y !== 'number' || typeof escala !== 'number') return null
-  return typeof rotacion === 'number' && Number.isFinite(rotacion) && rotacion !== 0
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(escala)) return null
+  const base = typeof rotacion === 'number' && Number.isFinite(rotacion) && rotacion !== 0
     ? { x, y, escala, rotacion }
     : { x, y, escala }
+  return typeof r.aspecto === 'number' && Number.isFinite(r.aspecto) && r.aspecto > 0
+    ? { ...base, aspecto: r.aspecto } : base
 }
 
 /**

@@ -5,6 +5,8 @@ import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { useClicDerecho } from './useClicDerecho'
 import { PlayingBars } from './PlayingBars'
 import { usePlaybackCargada } from '../state/playback'
+import { filaCargando } from './estadoFilaReproduccion'
+import { RowSurface } from './RowSurface'
 import { formatClock } from './SeekBar'
 import { estadoControlWeb, superficieInteractivaWeb } from './estadoControl'
 import { ICON_COLOR, IconMusic, IconPause, IconPlay } from './icons'
@@ -108,7 +110,7 @@ export function TrackRow({
    * spinner y no las barras: barras sobre silencio es mentir que suena.
    */
   const cargada = usePlaybackCargada()
-  const cargando = !!busy || (sounding && !cargada)
+  const cargando = filaCargando(sounding, playing, cargada, busy)
 
   /* Propio salvo que lo manden de afuera; el de afuera manda porque quien lo
      pasa lo necesita para dibujar algo que no está acá adentro. */
@@ -126,7 +128,7 @@ export function TrackRow({
   const punto = apreton ?? clic.punto
 
   const fila = (
-    <View
+    <RowSurface
       {...superficieInteractivaWeb('row')}
       onFocus={() => setFocused(true)}
       onBlur={(event) => {
@@ -201,7 +203,7 @@ export function TrackRow({
           {/* Solo en la fila que suena: las barras siguen la onda y la
               posición, y cuarenta filas suscriptas a la posición serían
               cuarenta redibujados por segundo. */}
-          {sounding ? <PlayingBars playing={playing} /> : null}
+          {sounding ? playing ? <PlayingBars playing /> : <IconPlay size={13} color={ICON_COLOR.foreground} /> : null}
         </View>
         {cargando ? (
           <View pointerEvents="none" style={{ position: 'absolute' }}>
@@ -308,7 +310,7 @@ export function TrackRow({
           }}
         />
       ) : null}
-    </View>
+    </RowSurface>
   )
 
   // El callback de onLongPress suprime onPress al soltar; en iOS el menú y

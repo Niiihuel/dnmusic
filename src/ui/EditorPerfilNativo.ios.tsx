@@ -9,7 +9,6 @@ import { Avatar } from './Avatar'
 import { Marco } from './Marco'
 import { TarjetaPerfil } from './TarjetaPerfil'
 import { FondoPerfil } from './PerfilPublico'
-import { esVideo } from '../services/showcases'
 import { TITULO_CAMPO, type EditorCampoPerfil } from './EditorDeCampo'
 import { normalizeUsername } from '../models/username'
 import { proxiedImage } from '../services/music'
@@ -97,7 +96,7 @@ export function EditorPerfilNativo(props: EditorPerfilNativoProps) {
             </View></RNHostView></VStack> : null}
             <Accion titulo={tieneFondo ? 'Cambiar fondo' : 'Elegir fondo'} symbol="photo" onPress={props.onElegirFondo} ocupado={ocupado} busy={props.subiendoFondo} />
             {props.progresoFondo !== null ? <ProgressView value={props.progresoFondo} modifiers={fila}><Text>{props.progresoFondo >= 1 ? 'Preparando vista previa…' : 'Subiendo fondo…'}</Text></ProgressView> : null}
-            {tieneFondo && !esVideo(perfil.bannerPath!) ? <Accion titulo="Encuadrar fondo" symbol="crop" onPress={() => onAbrir({ pathname: '/perfil/encuadrar', params: { que: 'fondo' } })} ocupado={ocupado} /> : null}
+            {tieneFondo ? <Accion titulo="Encuadrar fondo" symbol="crop" onPress={() => onAbrir({ pathname: '/perfil/encuadrar', params: { que: 'fondo' } })} ocupado={ocupado} /> : null}
             {tieneFondo ? <Accion titulo="Quitar fondo" symbol="trash" onPress={() => props.onQuitar('fondo')} ocupado={ocupado} destructiva /> : null}
           </Section>)}
         </NavigationDestination>

@@ -30,7 +30,7 @@ import { nombreDePlaca } from '../../../src/ui/Placas'
 import { esDecoracionPropia } from '../../../src/services/decoraciones'
 import { Marco, MARCOS } from '../../../src/ui/Marco'
 import { pickImage } from '../../../src/lib/pickImage'
-import { esVideo, uploadIlustracionConProgreso } from '../../../src/services/showcases'
+import { uploadIlustracionConProgreso } from '../../../src/services/showcases'
 import { setMyProfile, useMyProfile, useUser } from '../../../src/state/session'
 import { useKeyboardH, usePiso } from '../../../src/state/shell'
 import { avisar } from '../../../src/state/aviso'
@@ -184,7 +184,7 @@ export default function EditarPerfil() {
   }
 
   const avatarPath = profile?.avatarPath ?? null
-  const puedeEncuadrarFondo = !!profile?.bannerPath && !esVideo(profile.bannerPath)
+  const puedeEncuadrarFondo = !!profile?.bannerPath
   const nombre = profile?.displayName?.trim() || profile?.username || '?'
 
   async function elegirFoto() {

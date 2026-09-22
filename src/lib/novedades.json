@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.16.1",
+    "fecha": "22 de septiembre de 2026",
+    "titulo": "Más cómodo, más tuyo.",
+    "cambios": [
+      "Corregimos el cambio de pestaña desde una playlist y los indicadores de pausa, carga y descarga. Las filas resaltan completas, incluidos sus controles.",
+      "Suavizamos el borde superior de Configuración y Tus me gusta, y simplificamos la importación de Spotify.",
+      "Las letras tienen espacio para animarse sin recortarse a los costados.",
+      "El mosaico ofrece tamaños visibles, un control de resize más cómodo y opciones más simples. Mejoramos la selección de fotos de iOS y el encuadre con zoom bajo los dedos y grilla, también para videos de fondo.",
+      "Las opciones de tipografía de iOS muestran la fuente real de cada muestra."
+    ]
+  },
+  {
     "version": "1.16.0",
     "fecha": "22 de septiembre de 2026",
     "titulo": "Tu biblioteca, más clara.",

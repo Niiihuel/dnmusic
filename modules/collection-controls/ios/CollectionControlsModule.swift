@@ -7,8 +7,13 @@ public final class CollectionControlsModule: Module {
     Constant("contentFadeVersion") { 1 }
 
     View(CollectionFadeView.self) {}
-    Constant("scrollEdgeVersion") { 1 }
-    View(CollectionScrollEdgeView.self) {}
+    Constant("scrollEdgeVersion") { 2 }
+    View(CollectionScrollEdgeView.self) {
+      Prop("nativeNavigation") { (view: CollectionScrollEdgeView, value: Bool) in
+        view.nativeNavigation = value
+        view.setNeedsLayout()
+      }
+    }
 
     View(CollectionSearchView.self) {
       Events("onChangeText", "onCancel")
@@ -327,10 +332,14 @@ private final class CollectionSnapshotController: UIViewController {
 
 /// Associates a custom floating toolbar with the nearest content scroll view.
 final class CollectionScrollEdgeView: ExpoView {
+  var nativeNavigation = false
   private var edgeInteraction: UIInteraction?
   private weak var toolbar: UIView?
+  private var navigationConnection: DispatchWorkItem?
 
   override func willMove(toSuperview newSuperview: UIView?) {
+    navigationConnection?.cancel()
+    navigationConnection = nil
     if let edgeInteraction { toolbar?.removeInteraction(edgeInteraction) }
     edgeInteraction = nil
     toolbar = nil
@@ -340,6 +349,19 @@ final class CollectionScrollEdgeView: ExpoView {
   override func didMoveToWindow() {
     super.didMoveToWindow()
     scheduleConnection()
+    navigationConnection?.cancel()
+    navigationConnection = nil
+    // SwiftUI may install a pushed List after the RN host's first layout.
+    // One bounded pass after the transition also configures that destination;
+    // no display link or permanent polling while scrolling.
+    if #available(iOS 26.0, *), window != nil {
+      let connection = DispatchWorkItem { [weak self] in
+        guard let self, self.nativeNavigation else { return }
+        self.connect()
+      }
+      navigationConnection = connection
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: connection)
+    }
   }
 
   override func layoutSubviews() {
@@ -355,6 +377,12 @@ final class CollectionScrollEdgeView: ExpoView {
   @available(iOS 26.0, *)
   private func connect() {
     guard window != nil, let container = superview else { return }
+    if nativeNavigation {
+      // NavigationStack already owns the edge container and safe area. Only
+      // soften its scroll effects: do not add a second material or a mask.
+      softenNavigationScrolls(in: container)
+      return
+    }
     var scope = container.superview
     var scroll: UIScrollView?
     while let current = scope, scroll == nil {
@@ -375,6 +403,15 @@ final class CollectionScrollEdgeView: ExpoView {
     interaction.scrollView = scroll
     scroll.topEdgeEffect.style = .soft
     scroll.topEdgeEffect.isHidden = false
+  }
+
+  @available(iOS 26.0, *)
+  private func softenNavigationScrolls(in root: UIView) {
+    if let scroll = root as? UIScrollView {
+      scroll.topEdgeEffect.style = .soft
+      scroll.topEdgeEffect.isHidden = false
+    }
+    for child in root.subviews { softenNavigationScrolls(in: child) }
   }
 
   private func contentScroll(in root: UIView, excluding: UIView) -> UIScrollView? {

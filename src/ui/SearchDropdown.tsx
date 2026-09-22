@@ -8,6 +8,7 @@ import { useKeyboardH, usePiso } from '../state/shell'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { useClicDerecho } from './useClicDerecho'
 import { EstadoTapa } from './CoverState'
+import { RowSurface } from './RowSurface'
 import { SkeletonList } from './Skeleton'
 import { ICON_COLOR, IconMusic, IconPlus, IconUser } from './icons'
 import { proxiedImage, type ArtistResult, type TrackResult } from '../services/music'
@@ -250,7 +251,7 @@ function ResultadoFila({
        * <button> dentro de otro <button>. Lo tocable es la parte de la
        * izquierda, que ocupa todo lo que sobra.
        */
-      <View
+      <RowSurface
         {...clic.gestos}
         onPointerEnter={() => setOver(true)}
         onPointerLeave={() => setOver(false)}
@@ -354,7 +355,7 @@ function ResultadoFila({
         {clic.punto && items.length ? (
           <Menu items={items} sinDisparador abiertoEn={clic.punto} onCerrarPunto={clic.cerrar} />
         ) : null}
-      </View>
+      </RowSurface>
   )
 
   if (!items.length) return fila
@@ -369,6 +370,7 @@ function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => v
   return (
     <MantenerApretado items={[{ label: 'Ir al artista', sfSymbol: 'music.microphone', onPress }]}
       preview={{ title: artist.name, subtitle: 'Artista', artwork: photo }} onPreviewPress={onPress}>
+    <RowSurface>
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Ir a ${artist.name}`}
@@ -394,6 +396,7 @@ function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => v
         </Text>
       </View>
     </Pressable>
+    </RowSurface>
     </MantenerApretado>
   )
 }

@@ -50,6 +50,7 @@ function montar({ width = 1440, resultados = [resultado(0), resultado(1, 'dudosa
     '../src/ui/estadoControl': { superficieInteractivaWeb: tipo => ({ dataSet: { dnSurface: tipo } }), estadoControlWeb: modo => ({ dataSet: { dnHover: modo } }) },
     '../src/ui/SharedLayoutBg': { SharedLayoutBg: 'SharedLayoutBg' },
     '../src/ui/EntradaTexto': { EntradaTexto: 'TextInput' },
+    '../src/ui/IconSpotify': { IconSpotify: 'IconSpotify' },
     '../src/ui/Field': { PLACEHOLDER_COLOR: '#777' }, '../src/ui/Button': { FormError: 'FormError' },
     '../src/ui/Social': { CabeceraSocial: 'CabeceraSocial', AccionSocial: 'AccionSocial' },
     '../src/ui/Hoja': { Hoja: 'Hoja', useHojaModal: () => width >= 780 },
@@ -84,6 +85,9 @@ for (const width of [390, 1440]) {
     assert.equal(h.all('TextInput').length, 1)
     assert.equal(h.all('Pressable').filter(n => n.props.accessibilityRole === 'tab').length, 0)
     assert.equal(h.lecturas.length, 0)
+    assert.equal(h.all('CabeceraSocial')[0].props.detalle, undefined)
+    assert.equal(h.all('IconSpotify').length, 1)
+    assert.equal(h.all('Text').some(n => String(n.props.children).includes('playlist pública')), true)
     await h.revisarEnlace()
     assert.equal(h.lecturas.length, 1)
     assert.equal(h.all('FlatList')[0].props.data.length, 3)

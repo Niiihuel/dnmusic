@@ -26,6 +26,7 @@ function harness(path, injected = {}) {
     if (id === 'react-native-safe-area-context') return { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ bottom: 0 }) }
     if (id === '../state/shell') return { useKeyboardH: () => 0 }
     if (id === './SearchField') return { SearchField: 'SearchField' }
+    if (id === './CollectionScrollEdge') return { BordeScrollNativo: 'BordeScrollNativo' }
     if (id === './Ajustes.shared') return { GrupoAjustes: 'SharedGroup' }
     throw Error(id)
   })

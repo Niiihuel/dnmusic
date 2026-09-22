@@ -163,7 +163,7 @@ export function FondoPerfil({
   return (
     <View pointerEvents="none" className="absolute inset-0">
       {clip ? (
-        <FondoClip key={uri} uri={uri} animado={animado} />
+        <FondoClip key={uri} uri={uri} animado={animado} encuadre={encuadre} />
       ) : (
         <FondoImagen uri={uri} encuadre={encuadre} animado={animado} />
       )}
@@ -261,7 +261,8 @@ function FondoImagen({ uri, encuadre, animado }: { uri: string; encuadre: Encuad
  * sesión contra lo que ya suena, y un fondo mudo no tiene por qué tocarle el
  * audio a nadie.
  */
-function FondoClip({ uri, animado }: { uri: string; animado: boolean }) {
+function FondoClip({ uri, animado, encuadre = null }: { uri: string; animado: boolean; encuadre?: Encuadre | null }) {
+  const [caja, setCaja] = useState({ w: 0, h: 0 })
   const activa = useAppActiva()
   const reproducir = animado && activa
   const [fallo, setFallo] = useState(false)
@@ -295,14 +296,20 @@ function FondoClip({ uri, animado }: { uri: string; animado: boolean }) {
   }
 
   return (
+    <View style={{ width: '100%', height: '100%', overflow: 'hidden' }} onLayout={e => {
+      const { width: w, height: h } = e.nativeEvent.layout
+      setCaja(antes => antes.w === w && antes.h === h ? antes : { w, h })
+    }}>
     <VideoView
       player={video}
-      style={{ width: '100%', height: '100%' }}
+      style={encuadre && caja.w && caja.h ? estiloEncuadrado(caja.w, encuadre, caja.h) : { width: '100%', height: '100%' }}
       contentFit="cover"
       nativeControls={false}
       playsInline
       allowsVideoFrameAnalysis={false}
+      surfaceType="textureView"
     />
+    </View>
   )
 }
 
@@ -1350,7 +1357,7 @@ function CeldaDeMosaico({
     })
     .onUpdate((e) => {
       if (estirando.value !== indice) return
-      const destino = objetivoResizeMosaico(inicioResize.value, e.translationX, e.translationY)
+      const destino = objetivoResizeMosaico(inicioResize.value, e.translationX, e.translationY, ultimoDestino.value)
       if (destino.cols !== ultimoDestino.value.cols || destino.filas !== ultimoDestino.value.filas) {
         ultimoDestino.value = destino
         runOnJS(estirarA)(indice, destino.cols, destino.filas)
@@ -1470,17 +1477,17 @@ function CeldaDeMosaico({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Cambiar el tamaño"
+                  accessibilityValue={{ text: mitad ? 'Mitad' : filas === 2 ? 'Grande' : 'Ancho completo' }}
                   accessibilityHint="Arrastrá para elegir el tamaño, o tocá para pasar al siguiente"
                   onPress={() => tocarAsa(indice)}
-                  hitSlop={8}
                   style={[
                     {
                       position: 'absolute',
-                      right: -4,
-                      bottom: -4,
-                      width: 28,
-                      height: 28,
-                      borderRadius: 14,
+                      right: 0,
+                      bottom: 0,
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
                       alignItems: 'center',
                       justifyContent: 'center',
                       backgroundColor: 'rgba(18,18,18,0.94)',
@@ -1489,7 +1496,7 @@ function CeldaDeMosaico({
                     TECLADO_FISICO ? ({ cursor: 'nwse-resize' } as object) : null,
                   ]}
                 >
-                  <IconRedimensionar size={13} color="#FFFFFF" />
+                  <IconRedimensionar size={18} color="#FFFFFF" />
                 </Pressable>
               </GestureDetector>
             </>

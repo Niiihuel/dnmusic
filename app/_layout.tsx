@@ -1071,7 +1071,7 @@ function SessionGate() {
       </Stack.Protected>
       <Stack.Protected guard={approved}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="importar" options={HOJA_SOCIAL} />
+      <Stack.Screen name="importar" options={Platform.OS === 'ios' ? { ...HOJA_SOCIAL, sheetAllowedDetents: [0.6, 1], sheetInitialDetentIndex: 0 } : HOJA_SOCIAL} />
       <Stack.Screen name="vincular-google" options={HOJA_SOCIAL} />
       <Stack.Screen name="ajustes/novedades" />
       <Stack.Screen name="ajustes/accesos" />
@@ -1132,7 +1132,8 @@ function SessionGate() {
             ? HOJA_WEB
             : {
                 presentation: 'formSheet',
-                sheetAllowedDetents: 'fitToContents',
+                sheetAllowedDetents: [0.85, 1],
+                sheetInitialDetentIndex: 0,
                 sheetGrabberVisible: true,
                 sheetCornerRadius: RADIO.hojaMedia,
               }

@@ -107,6 +107,7 @@ export function MeGustaView({
             <View>
               <CollectionHeader
                 kind="Colección"
+                bleedTop={techo}
                 title={<CollectionTitle>Tus me gusta</CollectionTitle>}
                 meta={`${total} ${total === 1 ? 'canción' : 'canciones'}${
                   totalMs > 0 ? ` · ${formatLength(totalMs)}` : ''

@@ -3,7 +3,7 @@ import { accessibilityAddTraits, accessibilityLabel, buttonStyle, disabled as de
 import type { FilaSocialProps } from './FilaSocial.types'
 
 /** Content-sized native row for an existing scroll surface; deliberately has no nested List. */
-export function FilaSocial({ titulo, detalle, fontFamily, valor, label, selected = false, busy = false, disabled = false, onPress }: FilaSocialProps) {
+export function FilaSocial({ titulo, detalle, fontFamily, fontSize, valor, label, selected = false, busy = false, disabled = false, onPress }: FilaSocialProps) {
   return <Host ignoreSafeArea="all" matchContents={{ vertical: true }} colorScheme="dark" seedColor="#FFFFFF" style={{ width: '100%', minHeight: 44 }}>
     <Button onPress={disabled || busy ? undefined : onPress} modifiers={[
       buttonStyle('plain'), deshabilitado(disabled || busy),
@@ -12,7 +12,9 @@ export function FilaSocial({ titulo, detalle, fontFamily, valor, label, selected
     ]}>
       <HStack spacing={12} modifiers={[frame({ minHeight: 44 }), padding({ horizontal: 12, vertical: 8 })]}>
         <VStack alignment="leading" spacing={4}>
-          <Text modifiers={[font({ textStyle: 'subheadline', family: fontFamily, weight: fontFamily ? 'regular' : 'semibold' }), foregroundStyle('#FFFFFF')]}>{titulo}</Text>
+          <Text modifiers={[font(fontFamily
+            ? { textStyle: 'subheadline', family: fontFamily, size: fontSize }
+            : { textStyle: 'subheadline', size: fontSize, weight: 'semibold' }), foregroundStyle('#FFFFFF')]}>{titulo}</Text>
           {detalle ? <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle('#B3B3B3')]}>{detalle}</Text> : null}
         </VStack>
         <Spacer />

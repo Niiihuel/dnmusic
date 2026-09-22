@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { activeLyricIndex, enfoque, type LyricLine } from '../services/letra'
+import { ESCALA_MAX_LETRA, margenLetra } from './lyricsGeometry'
 
 /* La fila es tocable y además se atenúa sola, así que el `Pressable` es el que
    lleva el estilo animado. Con él se fue `active:opacity-60`: NativeWind no
@@ -166,6 +167,7 @@ export function Lyrics({
   const fixedH = visible ? visible * s.lineH : undefined
 
   const [boxH, setBoxH] = useState(fixedH ?? 0)
+  const [boxW, setBoxW] = useState(0)
   const spots = useRef<{ y: number; h: number }[]>([])
   const reduceMotion = useReducedMotion()
   const offset = useSharedValue(0)
@@ -254,7 +256,7 @@ export function Lyrics({
   if (!lines.length) return null
 
   const columna = (
-    <Animated.View style={columnStyle}>
+    <Animated.View style={[columnStyle, { paddingHorizontal: margenLetra(boxW, xl ? 24 : size === 'lg' ? 20 : 12) }]}>
       {lines.map((line, i) => (
         <Line
           key={`${line.atMs}-${i}`}
@@ -282,7 +284,10 @@ export function Lyrics({
   const caja = {
     style: fixedH ? { height: fixedH } : undefined,
     className: `overflow-hidden ${fixedH ? '' : 'flex-1'}`,
-    onLayout: (e: LayoutChangeEvent) => setBoxH(e.nativeEvent.layout.height),
+    onLayout: (e: LayoutChangeEvent) => {
+      setBoxH(e.nativeEvent.layout.height)
+      setBoxW(e.nativeEvent.layout.width)
+    },
     accessibilityLabel: 'Letra de la canción',
   }
 
@@ -446,7 +451,7 @@ const Line = memo(function Line({
      escalón no se ve—; animar un filtro por línea en cada cuadro sería caro. */
   const atenuacion = useAnimatedStyle(() => ({
     opacity: opacidad(indice - foco.value, xl),
-    transform: [{ scale: escala.value }],
+    transform: [{ scale: Math.min(ESCALA_MAX_LETRA, escala.value) }],
   }))
 
   const texto: TextStyle = {

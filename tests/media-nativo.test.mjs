@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 
 const jsx = (type, props) => ({ type, props })
+const { filaCargando } = load('src/ui/estadoFilaReproduccion.ts')
 function load(path, imports = {}) {
   const exports = {}
   const code = ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: {
@@ -11,6 +12,8 @@ function load(path, imports = {}) {
   } }).outputText
   new Function('exports', 'require', code)(exports, id => {
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx }
+    if (id === './estadoFilaReproduccion') return { filaCargando }
+    if (id === './RowSurface') return { RowSurface: 'RowSurface' }
     if (id in imports) return imports[id]
     if (id === '@expo/ui/swift-ui') return new Proxy({}, { get: (_, key) => key })
     if (id === '@expo/ui/swift-ui/modifiers') return new Proxy({ shapes: { rectangle: () => 'rectangle' } }, { get: (o, key) => o[key] ?? ((...args) => ({ kind: key, args })) })
@@ -103,6 +106,37 @@ test('el binario anterior conserva las filas y la navegación de respaldo', () =
     './TabBar.shared': { useIrATab: () => () => {}, TabPildora: 'Fallback' },
   })
   assert.deepEqual(TabPildora({ active: 'inicio' }), jsx('Fallback', { active: 'inicio' }))
+})
+
+test('pausa en una fila nativa muestra reproducir y nunca deja el spinner del buffer', () => {
+  const { TrackRow } = load('src/ui/TrackRow.ios.tsx', {
+    'react-native': { View: 'View', useWindowDimensions: () => ({ fontScale: 1 }) },
+    '../../modules/media-controls': { NativeMediaRow: 'NativeRow', NativeRowHighlight: 'RowHighlight' },
+    '../state/playback': { usePlaybackCargada: () => false },
+    './Menu': { MantenerApretado: 'Context' },
+    './TrackRow.shared': { TrackRow: 'Fallback' },
+  })
+  const tree = TrackRow({ title: 'Tema', artist: 'Artista', sounding: true, playing: false, busy: true, onPlay() {}, trailing: jsx('Menu', {}) })
+  assert.equal(tree.type, 'RowSurface')
+  assert.ok(find(tree, 'Menu'), 'menú y canción comparten el fondo')
+  const row = find(tree, 'NativeRow')
+  assert.equal(row.props.busy, false)
+  assert.equal(row.props.drawsHighlight, false)
+  assert.match(row.props.label, /^Reproducir /)
+  const swift = readFileSync('modules/media-controls/ios/MediaControlsModule.swift', 'utf8')
+  assert.match(swift, /stateImage.image = UIImage\(systemName: playing \? "waveform" : "play.fill"\)/)
+})
+
+test('el resaltado nativo observa toda la fila sin robar taps ni el scroll', () => {
+  const swift = readFileSync('modules/media-controls/ios/MediaRowHighlightView.swift', 'utf8')
+  assert.match(swift, /superview\?\.addGestureRecognizer\(touch\)/)
+  assert.match(swift, /cancelsTouchesInView = false/)
+  assert.match(swift, /delaysTouchesBegan = false/)
+  assert.match(swift, /canPrevent[^\n]+false/)
+  assert.match(swift, /canBePrevented[^\n]+false/)
+  assert.match(swift, /override func touchesCancelled[^\n]+highlight\(false\)/)
+  assert.match(swift, /hypot[^\n]+> 8/)
+  assert.doesNotMatch(swift, /onActivate|sendActions/)
 })
 
 test('la superficie UIKit mantiene acciones y long press de selección con sus coordenadas; bloqueada no invoca ninguna', () => {

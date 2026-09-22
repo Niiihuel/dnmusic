@@ -647,6 +647,8 @@ export default function Home() {
     registerTabHandler((tab) => {
       if (tab === 'perfil') return
       setMusic(tab !== 'chats')
+      dejarCara()
+      if (tab !== 'buscar') cerrarBusqueda()
       if (tab === 'chats') {
         setChatAbierto(false)
         return
@@ -660,7 +662,6 @@ export default function Home() {
          con el término viejo mostraría resultados de algo que ya no estabas
          buscando. */
       if (tab === 'buscar') abrirBusqueda('Buscá una canción o un artista')
-      else cerrarBusqueda()
       /* Entrar a «Listas» relee la biblioteca: pudiste haber creado una desde
          otro lado. Ver el efecto de `AppState` más abajo. */
       if (tab === 'listas') void loadPlaylists()
@@ -674,7 +675,7 @@ export default function Home() {
       setAt(0)
     })
     return () => registerTabHandler(null)
-  }, [loadPlaylists])
+  }, [loadPlaylists, dejarCara])
 
   /*
    * Poner una cara de la música, venga de donde venga.
@@ -2456,7 +2457,7 @@ export default function Home() {
              * cierra por `dejarCara`.
              */
             <CentroSonando cara={caraCentro} pista={pistaSonando} sonando={sonandoAhora} />
-          ) : openPlaylist ? (
+          ) : music && openPlaylist ? (
             <PlaylistView
               playlist={openPlaylist}
               reloadToken={reloadToken}
@@ -2600,7 +2601,7 @@ export default function Home() {
                las de cualquier canción; «quitar» lo agrega la vista, porque
                quitar de acá ES desmarcar. */
             <MeGustaView
-              onSearch={() => searchRef.current?.focus()}
+              onSearch={() => setTab('buscar')}
               menuFor={(t) => menuForTrack(playlistTrackAsResult(t))}
             />
           ) : music && collection ? (
