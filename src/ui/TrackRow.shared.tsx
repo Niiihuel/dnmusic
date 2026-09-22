@@ -9,7 +9,7 @@ import { filaCargando } from './estadoFilaReproduccion'
 import { RowSurface } from './RowSurface'
 import { formatClock } from './SeekBar'
 import { estadoControlWeb, superficieInteractivaWeb } from './estadoControl'
-import { ICON_COLOR, IconMusic, IconPause, IconPlay } from './icons'
+import { ICON_COLOR, IconDownload, IconMusic, IconPause, IconPlay } from './icons'
 
 /** Debajo de esto la tabla deja de ser una tabla. Igual que en `Panel`. */
 const SHELL_PX = 780
@@ -39,6 +39,7 @@ export function TrackRow({
   index,
   title,
   artist,
+  downloaded,
   artwork,
   durationMs,
   sounding,
@@ -55,6 +56,8 @@ export function TrackRow({
   index: number
   title: string
   artist: string
+  /** Descarga explícita lista para escuchar sin conexión, no caché temporal. */
+  downloaded?: boolean
   /**
    * La imagen ya resuelta, no la URL cruda.
    *
@@ -156,7 +159,7 @@ export function TrackRow({
       <Pressable
         {...estadoControlWeb('row')}
         accessibilityRole="button"
-        accessibilityLabel={playing ? 'Pausar' : `Reproducir ${title}`}
+        accessibilityLabel={`${playing ? 'Pausar' : `Reproducir ${title}`}${downloaded ? ', disponible sin conexión' : ''}`}
         onPress={onPlay}
         delayLongPress={500}
         onLongPress={
@@ -248,12 +251,15 @@ export function TrackRow({
           >
             {title}
           </Text>
-          <Text
-            className={`text-muted-foreground ${suelto ? 'text-footnote' : 'text-caption1'}`}
-            numberOfLines={1}
-          >
-            {artist}
-          </Text>
+          <View className="min-w-0 flex-row items-center gap-1">
+            {downloaded ? <IconDownload size={11} color={ICON_COLOR.muted} /> : null}
+            <Text
+              className={`min-w-0 flex-1 text-muted-foreground ${suelto ? 'text-footnote' : 'text-caption1'}`}
+              numberOfLines={1}
+            >
+              {artist}
+            </Text>
+          </View>
         </View>
 
 

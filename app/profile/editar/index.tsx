@@ -399,7 +399,7 @@ export default function EditarPerfil() {
       pie={
         profile.visibility === 'publico'
           ? 'Cualquiera con cuenta puede ver tu perfil y tus vitrinas. Si activás la escucha, solo tus contactos ven la canción mientras suena; pueden dejar reacciones que quedan en tu perfil.'
-          : 'Solo vos podés ver tu perfil. Nadie más, ni con el enlace.'
+          : 'Solo vos y tus contactos pueden ver tu perfil y tus vitrinas. Quienes te encuentren por búsqueda no podrán abrirlo.'
       }
     >
       <FilaInterruptor iconoPlano
@@ -449,7 +449,7 @@ export default function EditarPerfil() {
 
 
   const vistaPrevia = <View className="w-full gap-4" style={{ maxWidth: 390, alignSelf: 'center' }}>
-    <Text className="text-muted-foreground text-caption2 px-3">{profile.visibility === 'publico' ? 'Público' : 'Solo vos'}</Text>
+    <Text className="text-muted-foreground text-caption2 px-3">{profile.visibility === 'publico' ? 'Público' : 'Contactos'}</Text>
     <View style={{ padding: 24 }}><TarjetaPerfil perfil={profile} /></View>
   </View>
   const abrirProbador = <Pressable accessibilityRole="button" accessibilityLabel="Abrir el probador de personalización" onPress={() => abrir('/profile/marco')}

@@ -29,6 +29,18 @@ if (!entrada) {
 const md = [
   `## ${entrada.titulo}`,
   '',
+  ...(entrada.pasos?.length ? [
+    '### Lo destacado',
+    '',
+    ...entrada.pasos.flatMap((paso, i) => [
+      `#### ${String(i + 1).padStart(2, '0')} · ${paso.titulo}`,
+      '',
+      paso.detalle,
+      '',
+    ]),
+    '### Todos los cambios',
+    '',
+  ] : []),
   ...entrada.cambios.map((c) => `- ${c}`),
   '',
   `_${entrada.fecha}_`,

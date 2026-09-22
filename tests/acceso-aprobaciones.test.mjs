@@ -198,7 +198,10 @@ test('enlace de Ajustes usa exclusivamente el permiso administrativo del servido
   const exports={},navigation=[]
   new Function('exports','require','esAdmin','escritorio','cuentaAuth','ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser','IconSliders','ICON_COLOR','router',transpile(`export const category=${category.getText(source)}`))(exports,()=>({jsx,jsxs:jsx}),admin,false,null,'ListaSolicitudes','GrupoAjustes','FilaAjuste','IconUser','IconSliders',{muted:'gray'},{push:p=>navigation.push(p)})
   assert.equal(exports.category.visible,admin)
-  flatten(exports.category.bloques).find(n=>n.type==='FilaAjuste').props.onPress()
+  const filas=flatten(exports.category.bloques).filter(n=>n.type==='FilaAjuste')
+  assert.equal(filas.length,1)
+  assert.equal(filas[0].props.rotulo,'Solicitudes de acceso')
+  filas[0].props.onPress()
   assert.deepEqual(navigation,['/ajustes/accesos'])
  }
  const desktop={},owner={id:'owner'}
@@ -206,6 +209,7 @@ test('enlace de Ajustes usa exclusivamente el permiso administrativo del servido
  const table=flatten(desktop.category.bloques).find(n=>n.type==='ListaSolicitudes')
  assert.equal(table.props.administradorId,'owner')
  assert.equal(table.props.integrada,true)
+ assert.equal(flatten(desktop.category.bloques).some(n=>n.type==='FilaAjuste'),false)
 })
 
 

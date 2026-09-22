@@ -44,17 +44,17 @@ test('las tapas de sugerencias, búsquedas y listas muestran play al pausar, no 
   }
 })
 
-test('la tilde pertenece sólo a descargas explícitas, nunca a la precarga automática', () => {
+test('la descarga terminada no ocupa el extremo de la fila; sólo se muestra progreso explícito', () => {
   const source = ts.createSourceFile('PlaylistView.tsx', readFileSync('src/ui/PlaylistView.tsx', 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
   const fn = source.statements.find(n => ts.isFunctionDeclaration(n) && n.name.text === 'MarcaDescarga')
   assert.ok(fn)
-  const { MarcaDescarga } = load(`const HAY_DESCARGAS = true, View = 'View', Text = 'Text', IconDownloaded = 'Downloaded', IconDownload = 'Download', ICON_COLOR = {}; export ${fn.getText(source)}`)
+  const { MarcaDescarga } = load(`const HAY_DESCARGAS = true, View = 'View', Text = 'Text', IconDownload = 'Download', ICON_COLOR = {}; export ${fn.getText(source)}`)
   for (const estado of ['espera', 'bajando', 'lista', 'error', 'pausada']) {
     assert.equal(MarcaDescarga({ descarga: { temporal: true, estado } }), null)
   }
   assert.equal(MarcaDescarga({}), null)
-  assert.ok(nodes(MarcaDescarga({ descarga: { temporal: false, estado: 'lista' } })).some(n => n.type === 'Downloaded'))
-  assert.equal(nodes(MarcaDescarga({ descarga: { temporal: false, estado: 'bajando', progreso: 0.5 } })).some(n => n.type === 'Downloaded'), false)
+  assert.equal(MarcaDescarga({ descarga: { temporal: false, estado: 'lista' } }), null)
+  assert.ok(nodes(MarcaDescarga({ descarga: { temporal: false, estado: 'bajando', progreso: 0.5 } })).some(n => n.type === 'Text'))
 })
 
 test('una playlist abierta no puede ocultar Chats cuando cambia la sección', () => {

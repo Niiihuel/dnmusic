@@ -9,7 +9,7 @@ import {
   useActualizacion,
   type EstadoActualizacion,
 } from '../state/actualizacion'
-import { ICON_COLOR, IconCheck, IconDownload, IconSparkles } from './icons'
+import { TarjetaVersion } from './TarjetaVersion'
 
 function describir(estado: EstadoActualizacion): { titulo: string; detalle: string } {
   switch (estado.fase) {
@@ -79,33 +79,9 @@ export function Actualizador() {
       : estado.fase === 'error'
         ? 'Reintentar'
         : 'Buscar actualizaciones'
-  const Icono =
-    lista || estado.fase === 'sin-novedad'
-      ? IconCheck
-      : esperando || estado.fase === 'bajando'
-        ? IconDownload
-        : IconSparkles
-
   return (
-    <View className="gap-4 rounded-2xl bg-card p-5">
-      <View className="flex-row items-center gap-3">
-        <View className="h-11 w-11 items-center justify-center rounded-full bg-muted">
-          {ocupado ? (
-            <ActivityIndicator size="small" color={ICON_COLOR.foreground} />
-          ) : (
-            <Icono size={19} color={ICON_COLOR.foreground} />
-          )}
-        </View>
-        <View className="min-w-0 flex-1 gap-1">
-          <Text
-            accessibilityLiveRegion="polite"
-            className="text-foreground text-subheadline font-semibold"
-          >
-            {titulo}
-          </Text>
-          <Text className="text-muted-foreground text-caption1 leading-5">{detalle}</Text>
-        </View>
-      </View>
+    <TarjetaVersion version={'version' in estado ? estado.version : undefined} etiqueta="Actualizaciones de dnmusic" titulo={titulo} detalle={detalle}>
+      {estado.fase === 'buscando' ? <ActivityIndicator accessibilityLabel="Buscando actualizaciones" color="#fff" /> : null}
       {estado.fase === 'bajando' ? (
         <View className="gap-2">
           <View
@@ -162,6 +138,6 @@ export function Actualizador() {
           ))}
         </View>
       ) : null}
-    </View>
+    </TarjetaVersion>
   )
 }

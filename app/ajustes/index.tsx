@@ -33,7 +33,10 @@ import {
   IconLogOut,
   IconMusic,
   IconSearch,
-  IconSparkles,
+  IconNovedades,
+  IconUpdate,
+  IconCursor,
+  IconDispositivo,
   IconTrash,
   IconUser,
   IconWifi,
@@ -237,8 +240,8 @@ export default function Configuracion() {
       id: 'app',
       titulo: 'La app',
       resumen: 'Novedades y comportamiento',
-      simbolo: 'sparkles',
-      icono: IconSparkles,
+      simbolo: 'app.badge',
+      icono: IconDispositivo,
       palabras: 'novedades avisos ayudas cursor interfaz app rótulos',
       visible: true,
       bloques: (
@@ -252,14 +255,14 @@ export default function Configuracion() {
           {TECLADO_FISICO ? (
             <FilaInterruptor
               rotulo="Ayudas al pasar el cursor"
-              icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+              icono={<IconCursor size={17} color={ICON_COLOR.muted} />}
               activo={ajustes.ayudasCursor}
               onCambiar={(v) => setPreferencia('ayudasCursor', v)}
             />
           ) : null}
           <FilaInterruptor
             rotulo="Novedades al abrir"
-            icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+            icono={<IconNovedades size={17} color={ICON_COLOR.muted} />}
             activo={ajustes.novedadesAlAbrir}
             onCambiar={(v) => setPreferencia('novedadesAlAbrir', v)}
             ultima
@@ -272,7 +275,7 @@ export default function Configuracion() {
       titulo: 'Actualizaciones',
       resumen: 'Versión instalada y disponibilidad',
       simbolo: 'arrow.triangle.2.circlepath',
-      icono: IconDownload,
+      icono: IconUpdate,
       palabras: 'actualizaciones versión instalada descargar reiniciar novedades TestFlight tienda',
       visible: true,
       bloques: <AjustesActualizaciones />,
@@ -280,12 +283,12 @@ export default function Configuracion() {
     {
       id: 'accesos',
       titulo: 'Solicitudes de acceso',
-      resumen: 'Personas y compatibilidad',
+      resumen: 'Personas que quieren entrar a DMusic',
       simbolo: 'person.2',
       icono: IconUser,
       palabras: 'administración aprobar rechazar solicitudes acceso cuentas google',
       visible: esAdmin,
-      bloques: <>{escritorio && cuentaAuth ? (
+      bloques: escritorio && cuentaAuth ? (
         <ListaSolicitudes key={cuentaAuth.id} administradorId={cuentaAuth.id} integrada />
       ) : (
         <GrupoAjustes pie="Revisá quién puede entrar a DMusic.">
@@ -298,11 +301,7 @@ export default function Configuracion() {
             ultima
           />
         </GrupoAjustes>
-      )}
-        <GrupoAjustes titulo="Administración" pie="Controlá qué versiones siguen siendo compatibles. Esta herramienta no sube ni compila la app.">
-          <FilaAjuste rotulo="Compatibilidad de versiones" vacio="" icono={<IconSliders size={17} color={ICON_COLOR.muted} />} onPress={() => router.push('/ajustes/compatibilidad')} ultima />
-        </GrupoAjustes>
-      </>,
+      ),
     },
     {
       id: 'discord',
@@ -390,7 +389,7 @@ export default function Configuracion() {
       <FilaAjuste
         rotulo="Novedades"
         valor={NOVEDADES[0]?.version}
-        icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+        icono={<IconNovedades size={17} color={ICON_COLOR.muted} />}
         globito={pendientes?.length || undefined}
         onPress={() => router.push('/ajustes/novedades')}
         ultima
@@ -440,7 +439,7 @@ export default function Configuracion() {
             <FilaAjuste
               rotulo="Novedades"
               valor={NOVEDADES[0]?.version}
-              icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+              icono={<IconNovedades size={17} color={ICON_COLOR.muted} />}
               globito={pendientes?.length || undefined}
               onPress={() => router.push('/ajustes/novedades')}
               ultima

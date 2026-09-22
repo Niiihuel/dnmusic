@@ -8,6 +8,8 @@ import { HAY_ACTUALIZADOR, useActualizacion } from '../state/actualizacion'
 import { setPreferencia, useAjustes } from '../state/ajustes'
 import { FilaAccion, FilaDato, FilaInterruptor, GrupoAjustes } from './Ajustes'
 import { Actualizador } from './Actualizador'
+import { TarjetaVersion } from './TarjetaVersion'
+import { BloqueVersionAjustes } from './BloqueVersionAjustes'
 
 const DESCARGAS_PC = 'https://github.com/Niihuel/dnmusic-releases/releases/latest'
 
@@ -56,11 +58,18 @@ export function AjustesActualizaciones() {
     finally { setAbriendo(false) }
   }
   return <>
+    <BloqueVersionAjustes>
+      {HAY_ACTUALIZADOR ? <Actualizador /> : <TarjetaVersion
+        version={instalacion?.version}
+        etiqueta={platform === 'ios' ? 'En tu iPhone' : 'En este dispositivo'}
+        titulo="La música sigue. La app mejora."
+        detalle={platform === 'ios' ? 'Las nuevas versiones llegan desde TestFlight o App Store.' : 'Encontrá acá tu versión y cómo actualizarla.'}
+      />}
+    </BloqueVersionAjustes>
     <GrupoAjustes titulo="DMusic" error={error || (!instalacion && errorLectura ? 'No se pudo leer la versión instalada.' : null)}>
       <FilaDato rotulo={platform === 'web' ? 'Versión cargada' : 'Versión instalada'} valor={consultando ? 'Consultando…' : instalacion?.version ?? 'No disponible'} ultima={Platform.OS === 'web' || !nativeBuildVersion} />
       {Platform.OS !== 'web' && nativeBuildVersion ? <FilaDato rotulo="Compilación" valor={nativeBuildVersion} ultima /> : null}
     </GrupoAjustes>
-    {HAY_ACTUALIZADOR ? <Actualizador /> : null}
     {manual ? <GrupoAjustes titulo="Cómo actualizar" pie={guia.detalle}>
       <FilaDato rotulo="Actualización" valor={platform === 'ios' ? 'App Store o TestFlight' : platform === 'web' ? 'Desde el navegador' : 'Desde el instalador'} ultima={!guia.destino} />
       {guia.destino ? <FilaAccion rotulo={guia.accion} onPress={() => void abrir()} busy={abriendo} ultima /> : null}

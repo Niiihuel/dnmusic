@@ -1,114 +1,32 @@
-import { useEffect } from 'react'
-import { Pressable, Text, View } from 'react-native'
-import { useRouter } from 'expo-router'
-import { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
-import {
-  descartarAviso,
-  instalarActualizacion,
-  useAvisoDeActualizacion,
-} from '../state/actualizacion'
-import { usePiso } from '../state/shell'
-import { GlassAnimado, HAY_VIDRIO } from './Glass'
-import { ICON_COLOR, IconClose, IconSparkles } from './icons'
+import { descartarAviso, descargarActualizacion, instalarActualizacion, PUEDE_DESCARGAR_ACTUALIZACION, useAvisoDeActualizacion } from '../state/actualizacion'
+import { Text, View } from 'react-native'
+import { useAjustesCargados } from '../state/ajustes'
+import { useUser } from '../state/session'
+import { useSegments } from 'expo-router'
+import { DialogoVersion } from './DialogoVersion'
+import { TarjetaVersion } from './TarjetaVersion'
+import { PrimaryButton, GhostButton } from './Button'
 
-const ENTRADA_MS = 260
-
-/**
- * «Hay una versión nueva», sin interrumpir a nadie.
- *
- * Solo aparece cuando la actualización ya está **bajada y lista**: mientras se
- * busca o se baja no se dibuja nada, porque eso pasa solo y contarlo no le
- * cambia la decisión a nadie. Y aparece una vez: si la despachás, no vuelve en
- * esta sesión.
- *
- * Lo importante es que no es un pedido, es un ofrecimiento. La actualización se
- * instala igual al cerrar la app —eso ya era así, ver `desktop/src/
- * actualizador.ts`— así que ignorar esto no tiene ningún costo. Lo único que
- * agrega el botón es poder tenerla ya.
- *
- * Reemplaza a un `dialog.showMessageBox` del sistema que aparecía en el medio,
- * modal, con el marco gris del sistema operativo encima de una interfaz que se
- * separa por luminancia, y **también mientras sonaba música**.
- *
- * Fuera del escritorio no existe: el store no encuentra puente y esto devuelve
- * `null` sin montar nada.
- */
+/** Aparece al detectar una versión; instalar sólo está disponible con la descarga verificada. */
 export function AvisoActualizacion() {
   const aviso = useAvisoDeActualizacion()
-  const router = useRouter()
-  const piso = usePiso(12)
-
-  const p = useSharedValue(0)
-
-  useEffect(() => {
-    p.value = withTiming(aviso ? 1 : 0, {
-      duration: ENTRADA_MS,
-      easing: Easing.out(Easing.cubic),
-    })
-  }, [aviso, p])
-
-  const animado = useAnimatedStyle(() => ({
-    opacity: p.value,
-    transform: [{ translateY: (1 - p.value) * 14 }],
-  }))
-
-  if (!aviso) return null
-
-  return (
-    /*
-     * El envoltorio ubica y **no se anima**: un ancestro con transform u
-     * opacidad forma un backdrop root y le apaga el desenfoque al vidrio. El
-     * movimiento vive un nivel más abajo, en `GlassAnimado`. Mismo cuidado que
-     * en `Aviso.tsx`, donde eso ya costó una tarde.
-     */
-    <View
-      pointerEvents="box-none"
-      style={{ position: 'absolute', left: 16, right: 16, bottom: piso, alignItems: 'center' }}
-    >
-      <GlassAnimado
-        radius={22}
-        style={[HAY_VIDRIO ? null : { backgroundColor: 'rgb(31,31,31)' }, animado]}
-      >
-        <View className="max-w-[480px] flex-row items-center gap-3 py-2.5 pl-4 pr-2.5">
-          <IconSparkles size={17} color={ICON_COLOR.foreground} />
-
-          {/*
-            El detalle del actualizador muestra las notas que llegaron con el
-            paquete descargado y la acción para instalarlo.
-          */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Ver qué trae la versión ${aviso.version}`}
-            onPress={() => router.push('/ajustes?seccion=actualizaciones')}
-            className="min-w-0 flex-1 active:opacity-70"
-          >
-            <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>
-              Actualización lista
-            </Text>
-            <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
-              {aviso.version} · Se instala al cerrar.
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Reiniciar e instalar ahora"
-            onPress={instalarActualizacion}
-            className="min-h-11 justify-center rounded-full bg-primary px-3.5 active:opacity-80"
-          >
-            <Text className="text-primary-foreground text-footnote font-semibold">Reiniciar</Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Después"
-            onPress={() => descartarAviso(aviso.version)}
-            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          >
-            <IconClose size={15} color={ICON_COLOR.muted} />
-          </Pressable>
-        </View>
-      </GlassAnimado>
-    </View>
-  )
+  const usuario = useUser()
+  const cargados = useAjustesCargados()
+  const segmentos = useSegments() as string[]
+  const visible = !!aviso && !!usuario && cargados && segmentos[0] !== 'onboarding' && segmentos[0] !== 'vincular-google'
+  const cerrar = () => { if (aviso) descartarAviso(aviso.version) }
+  const lista = aviso?.fase === 'lista'
+  const porcentaje = aviso?.fase === 'bajando' && Number.isFinite(aviso.porcentaje) ? Math.max(0, Math.min(100, Math.round(aviso.porcentaje))) : 0
+  return <DialogoVersion visible={visible} titulo="Nueva versión de dnmusic" onCerrar={cerrar}>
+    {visible && aviso ? <TarjetaVersion key={aviso.version} version={aviso.version} etiqueta={lista ? 'Lista para instalar' : 'Nueva versión disponible'} titulo={aviso.notas?.titulo || 'Tu música, cada vez mejor.'}
+      detalle={lista ? 'La actualización está descargada. Reiniciá cuando quieras; también se instala al cerrar.' : aviso.fase === 'bajando' ? 'Estamos descargando la actualización. Tu música sigue.' : 'La descarga empieza cuando pauses la música. Podés seguir escuchando.'}
+      cambios={aviso.notas?.cambios} pasos={aviso.notas?.pasos} onCerrar={cerrar}>
+      {aviso.fase === 'bajando' ? <View style={{ gap: 8 }} accessibilityRole="progressbar" accessibilityLabel="Descarga de actualización" accessibilityValue={{ min: 0, max: 100, now: porcentaje }}>
+        <View style={{ height: 3, borderRadius: 2, backgroundColor: '#404040' }}><View style={{ height: 3, width: `${porcentaje}%`, borderRadius: 2, backgroundColor: '#fff' }} /></View>
+        <Text style={{ color: '#b3b3b3', fontSize: 12 }}>{porcentaje}% descargado</Text>
+      </View> : null}
+      {lista ? <PrimaryButton label="Reiniciar e instalar" onPress={instalarActualizacion} /> : aviso.fase === 'esperando-silencio' && PUEDE_DESCARGAR_ACTUALIZACION ? <PrimaryButton label="Descargar ahora" onPress={descargarActualizacion} /> : null}
+      <GhostButton label="Seguir escuchando" onPress={cerrar} />
+    </TarjetaVersion> : null}
+  </DialogoVersion>
 }

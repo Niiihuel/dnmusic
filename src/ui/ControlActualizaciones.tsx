@@ -1,9 +1,8 @@
-import { Dialogo } from './Dialogo'
+import { DialogoVersion } from './DialogoVersion'
+import { TarjetaVersion } from './TarjetaVersion'
 import { useDentroModalPC } from './ModalContext'
-import { EncabezadoHoja, BotonHoja } from './EncabezadoHoja'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ActivityIndicator, BackHandler, Linking, Platform, ScrollView, Text, View } from 'react-native'
-import { ListaAjustes, GrupoAjustes, FilaAccion, FilaDato } from './Ajustes'
 import { PrimaryButton, GhostButton } from './Button'
 import { usePreferencia } from '../state/ajustes'
 import { buscarActualizacion, descargarActualizacion, instalarActualizacion, PUEDE_DESCARGAR_ACTUALIZACION, useActualizacion } from '../state/actualizacion'
@@ -29,9 +28,9 @@ export function ControlActualizaciones({ children }: { children: ReactNode }) {
     return <AvisoPolitica key={`${s.politica.platform}:${s.politica.revision}`} politica={s.politica} obligatoria />
   }
   return <>{children}{tipo === 'opcional' && avisos && s.politica ? (
-    <Dialogo titulo="Nueva versión de DMusic" ancho={480} contenidoPC={<AvisoPolitica key={`${s.politica.platform}:${s.politica.revision}`} politica={s.politica} obligatoria={false} />} visible transparent={Platform.OS !== 'ios'} presentationStyle={Platform.OS === 'ios' ? 'formSheet' : undefined} animationType={Platform.OS === 'ios' ? 'slide' : 'fade'} onRequestClose={descartarPolitica}>
+    <DialogoVersion titulo="Nueva versión de dnmusic" visible onCerrar={descartarPolitica}>
       <AvisoPolitica key={`${s.politica.platform}:${s.politica.revision}`} politica={s.politica} obligatoria={false} />
-    </Dialogo>
+    </DialogoVersion>
   ) : null}</>
 }
 
@@ -62,37 +61,24 @@ function AvisoPolitica({ politica, obligatoria }: { politica: PoliticaActualizac
     } catch { setError('No se pudo abrir la descarga. Revisá la conexión y volvé a intentar.') }
     finally { enCurso.current = false; setAbriendo(false) }
   }
-  if (Platform.OS === 'ios') return <View className="flex-1 bg-background" style={{ paddingTop: 32 }}>
-    <ListaAjustes titulo={obligatoria ? 'Actualizá para continuar' : 'Nueva versión de DMusic'} piso={48}>
-      <GrupoAjustes pie={obligatoria ? 'Instalá la actualización y volvé a abrir la app.' : 'Podés actualizar ahora o hacerlo más adelante.'}>
-        <FilaDato rotulo="Versión instalada" valor={s.instalacion?.version ?? 'Desconocida'} />
-        <FilaDato rotulo="Última versión" valor={politica.latest_version} />
-        {obligatoria ? <FilaDato rotulo="Mínima admitida" valor={politica.minimum_version} ultima /> : null}
-      </GrupoAjustes>
-      <GrupoAjustes error={error ?? (s.error ? 'No se pudo comprobar la política. Se conserva la última recibida.' : null)}>
-        <FilaAccion rotulo="Abrir descarga" busy={abriendo} onPress={() => { void abrirDestino() }} />
-        <FilaAccion rotulo="Volver a comprobar" busy={s.consultando} onPress={() => { void refrescarPolitica() }} ultima={obligatoria} />
-        {!obligatoria ? <FilaAccion rotulo="Más adelante" onPress={descartarPolitica} ultima /> : null}
-      </GrupoAjustes>
-    </ListaAjustes>
-  </View>
   return (
-    <View className={`flex-1 justify-center ${obligatoria ? 'bg-background' : ''}`} style={modalPC ? { flexGrow: 0, flexShrink: 1 } : { paddingTop: 48, paddingBottom: 32, ...(!obligatoria ? { backgroundColor: 'rgba(0,0,0,0.55)' } : {}) }}>
-      {modalPC ? <EncabezadoHoja titulo="Nueva versión de DMusic" izquierda={<BotonHoja onPress={descartarPolitica} />} /> : null}
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: modalPC ? 20 : 24, ...(modalPC ? { paddingTop: 0 } : {}) }}>
-        <View className="w-full gap-4" style={{ maxWidth: 440, ...(!obligatoria && !modalPC ? { backgroundColor: '#202020', padding: 24, borderRadius: 24 } : {}) }} accessibilityViewIsModal>
-          {!modalPC ? <Text accessibilityRole="header" className="text-foreground text-title2 font-bold">{obligatoria ? 'Actualizá para seguir usando DMusic' : 'Hay una nueva versión de DMusic'}</Text> : null}
-          <Text className="text-muted-foreground text-callout">Tenés {s.instalacion?.version}. La última versión es {politica.latest_version}.{obligatoria ? ` La mínima admitida es ${politica.minimum_version}.` : ''}</Text>
-          <Text className="text-muted-foreground">{obligatoria ? 'Instalá la actualización y volvé a abrir la app.' : 'Podés actualizar ahora o hacerlo más adelante.'}</Text>
-          {esDesktop && escritorio.fase === 'bajando' ? <Text className="text-foreground">Descargando {escritorio.version}: {escritorio.porcentaje}%</Text> : null}
-          {esDesktop && escritorio.fase === 'error' ? <Text accessibilityRole="alert" className="text-destructive">El actualizador falló. Podés abrir la descarga e instalarla manualmente.</Text> : null}
-          {instalable ? <PrimaryButton label="Instalar y reiniciar" onPress={instalarActualizacion} /> : null}
-          {descargable ? <PrimaryButton label="Descargar ahora" onPress={descargarActualizacion} /> : null}
-          <PrimaryButton label={politica.platform === 'web' ? 'Abrir versión actualizada' : 'Abrir descarga'} busy={abriendo} onPress={() => void abrirDestino()} />
-          {esDesktop ? <GhostButton label="Buscar en el actualizador" disabled={escritorio.fase === 'buscando' || escritorio.fase === 'bajando'} onPress={buscarActualizacion} /> : null}
-          <GhostButton label="Volver a comprobar" disabled={s.consultando} onPress={() => void refrescarPolitica()} />
-          {s.error || error ? <Text accessibilityRole="alert" className="text-destructive">{error ?? 'No se pudo comprobar la política. Se conserva la última recibida.'}</Text> : null}
-          {!obligatoria ? <GhostButton label="Más adelante" onPress={descartarPolitica} /> : null}
+    <View style={{ ...(obligatoria ? { flex: 1, backgroundColor: '#121212', paddingTop: 48, paddingBottom: 32 } : {}) }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: obligatoria ? 24 : 0 }}>
+        <View style={{ width: '100%', maxWidth: 560 }} accessibilityViewIsModal>
+          <TarjetaVersion version={politica.latest_version}
+            etiqueta={obligatoria ? 'Actualización necesaria' : 'Nueva versión disponible'}
+            titulo={obligatoria ? 'Actualizá para seguir escuchando.' : 'Hay algo nuevo para vos.'}
+            detalle={`Tenés la versión ${s.instalacion?.version ?? 'anterior'}. ${obligatoria ? 'Instalá la actualización para continuar.' : 'Actualizá ahora o seguí escuchando y hacelo después.'}`}
+            onCerrar={!obligatoria && !modalPC ? descartarPolitica : undefined}>
+            {esDesktop && escritorio.fase === 'bajando' ? <Text accessibilityLiveRegion="polite" className="text-foreground">Descargando {escritorio.version}: {Math.round(escritorio.porcentaje)}%</Text> : null}
+            {esDesktop && escritorio.fase === 'error' ? <Text accessibilityRole="alert" className="text-destructive">No se pudo descargar. Podés reintentar o abrir el instalador.</Text> : null}
+            {instalable ? <PrimaryButton label="Instalar y reiniciar" onPress={instalarActualizacion} /> : descargable ? <PrimaryButton label="Descargar ahora" onPress={descargarActualizacion} /> :
+              <PrimaryButton label={politica.platform === 'web' ? 'Abrir versión actualizada' : politica.platform === 'ios' ? (politica.update_url.startsWith('https://testflight.apple.com/') ? 'Abrir TestFlight' : 'Abrir App Store') : 'Abrir descarga'} busy={abriendo} onPress={() => void abrirDestino()} />}
+            {esDesktop && !instalable && !descargable ? <GhostButton label="Buscar en el actualizador" disabled={escritorio.fase === 'buscando' || escritorio.fase === 'bajando'} onPress={buscarActualizacion} /> : null}
+            {obligatoria || s.error || error ? <GhostButton label="Volver a comprobar" disabled={s.consultando} onPress={() => void refrescarPolitica()} /> : null}
+            {s.error || error ? <Text accessibilityRole="alert" className="text-destructive">{error ?? 'No se pudo comprobar la versión. Se conserva la última recibida.'}</Text> : null}
+            {!obligatoria ? <GhostButton label="Seguir escuchando" onPress={descartarPolitica} /> : null}
+          </TarjetaVersion>
         </View>
       </ScrollView>
     </View>

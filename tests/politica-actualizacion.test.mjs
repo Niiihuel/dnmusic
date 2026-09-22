@@ -155,7 +155,7 @@ test('gate: bloqueo sin children ni salida, preferencia desactivada y descarte n
   let state = { iniciada: true, politica: policy({ minimum_version: '1.12.0' }), instalacion: installed('1.11.0'), descartada: 'windows:1.12.0' }, preference = false
   const f = uiFixture('src/ui/ControlActualizaciones.tsx', {
     './EncabezadoHoja': { EncabezadoHoja: 'EncabezadoHoja', BotonHoja: 'BotonHoja' },
-    './Dialogo': { Dialogo: 'Modal' }, './ModalContext': { useDentroModalPC: () => false },
+    './DialogoVersion': { DialogoVersion: 'Modal' }, './TarjetaVersion': { TarjetaVersion: 'TarjetaVersion' }, './ModalContext': { useDentroModalPC: () => false },
     '../state/ajustes': { usePreferencia: () => preference },
     '../state/actualizacion': { useActualizacion: () => ({ fase: 'inactivo' }) },
     '../state/politicaActualizacion': { usePoliticaActualizacion: () => state, iniciarPoliticaActualizacion: () => () => {}, descartarPolitica() {}, refrescarPolitica() {} },
@@ -166,13 +166,14 @@ test('gate: bloqueo sin children ni salida, preferencia desactivada y descarte n
   const mandatory = ui.find(n => n.props?.obligatoria)
   assert.ok(mandatory)
   ui = f.render('AvisoPolitica', mandatory.props)
-  assert.equal(ui.some(n => n.props?.label === 'Más adelante'), false)
+  assert.equal(ui.some(n => n.props?.label === 'Seguir escuchando'), false)
+  assert.equal(ui.find(n => n.type === 'TarjetaVersion').props.onCerrar, undefined)
   assert.equal(ui.some(n => n.type === 'Modal'), false, 'mandatory is a replacement, not dismissible overlay')
   state = { ...state, politica: policy(), descartada: null }
   assert.equal(f.render('ControlActualizaciones', { children: { type: 'APP' } }).some(n => n.type === 'APP'), true)
   preference = true
   ui = f.render('ControlActualizaciones', { children: { type: 'APP' } })
-  assert.ok(ui.find(n => n.type === 'Modal').props.onRequestClose)
+  assert.ok(ui.find(n => n.type === 'Modal').props.onCerrar)
   assert.equal(f.render('AvisoActualizacionSinPolitica', { children: { type: 'LEGACY' } }).some(n => n.type === 'LEGACY'), false)
   state = { ...state, politica: null }
   assert.equal(f.render('AvisoActualizacionSinPolitica', { children: { type: 'LEGACY' } }).some(n => n.type === 'LEGACY'), true)

@@ -199,7 +199,7 @@ import {
 } from '../src/ui/icons'
 import { compartirLista } from '../src/lib/compartirLista'
 import { dejarCancionACompartir } from '../src/state/compartir'
-import { estadoControlWeb } from '../src/ui/estadoControl'
+import { superficieInteractivaWeb } from '../src/ui/estadoControl'
 
 const SIDEBAR_PX = 780
 const DETAIL_PX = 1120
@@ -2779,11 +2779,11 @@ export default function Home() {
                        * la misma esquina.
                        */}
                       <BotonSuperficie
-                        {...estadoControlWeb('none')}
+                        {...superficieInteractivaWeb('row')}
                         accessibilityRole="button"
                         accessibilityLabel={`Ver el perfil de ${contactName}`}
                         onPress={() => router.push(`/perfil/${contact.username}`)}
-                        className="min-h-11 min-w-0 flex-1 flex-row items-center gap-3 active:opacity-70"
+                        className="min-h-14 min-w-0 flex-1 flex-row items-center gap-3 rounded-xl px-3 py-2 active:opacity-70"
                       >
                         <Avatar name={contactName} path={contact.avatarPath} size={40} />
                         <View className="min-w-0 flex-1 gap-0.5">

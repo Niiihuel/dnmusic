@@ -17,6 +17,7 @@ function fixture({ platform='web', installed={platform:'windows',version:'1.10.0
   '../services/instalacionActual':{obtenerInstalacion:async()=>installed},'../services/politicaActualizacion':core,
   '../state/politicaActualizacion':{usePoliticaActualizacion:()=>({instalacion:installed,politica:policy})},'../state/actualizacion':bridge,
   '../state/ajustes':{useAjustes:()=>({avisosActualizacion:true}),setPreferencia:(...a)=>actions.push(a)},'./Ajustes':ajustes,'./Actualizador':{Actualizador:'Actualizador'},
+  './TarjetaVersion':{TarjetaVersion:'TarjetaVersion'}, './BloqueVersionAjustes':{BloqueVersionAjustes:'BloqueVersionAjustes'},
   './icons':{ICON_COLOR:{},IconCheck:'check',IconDownload:'download',IconSparkles:'sparkles'}}
  const api=load('src/ui/AjustesActualizaciones.tsx',modules), actualizador=load('src/ui/Actualizador.tsx',modules)
  return {api,bridge,actions,opened,render:()=>flatten(api.AjustesActualizaciones()),renderUpdater:()=>flatten(actualizador.Actualizador())}

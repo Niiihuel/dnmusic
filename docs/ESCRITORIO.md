@@ -82,6 +82,36 @@ El navegador no puede hacer lo mismo (hablar con YouTube desde una página lo
 frena CORS); por eso el puente existe solo acá. El teléfono podría, y es la
 fase que sigue si hace falta.
 
+### Reiniciar después de actualizar en Linux
+
+`ActualizadorAppImage` conserva la descarga, verificación y reemplazo de
+`electron-updater`, pero cambia el relanzamiento. En un AppImage normal usa
+`app.relaunch`: la nueva instancia espera la salida de la anterior y no pelea
+con su bloqueo de instancia única.
+
+En NixOS o una ejecución reconocida de `appimage-run`, no se ejecuta el archivo
+directamente: eso puede fallar con `error loading libfuse.so.2`. Tampoco alcanza
+con un hijo detached ni con el relauncher dentro de bubblewrap: al salir el
+entorno puede terminar sus procesos auxiliares. Se programa un servicio
+**transitorio del usuario** (`systemd-run --user`, sin root), fuera de ese
+entorno. Espera hasta 30 segundos la salida del PID anterior y ejecuta
+`appimage-run` con la ruta del AppImage actualizado. La unidad se recolecta al
+terminar; no instala un servicio permanente ni cambia el acceso directo.
+
+El lanzador se resuelve antes de reemplazar el archivo. Las rutas viajan como
+argumentos, nunca como código de shell; no se copian secretos ni bibliotecas
+del proceso antiguo al nuevo. Si falta el lanzador o no se puede programar el
+supervisor, el error vuelve al updater sin ordenar el cierre. Windows sigue
+usando NSIS sin cambios.
+
+Validación local (22/09/2026): AppImage de prueba y perfil de Electron aislados,
+usando el runtime publicado y el `appimage-run` real de NixOS. El instalador
+reemplazó el archivo temporal; se registraron `first → quit → reopened` con
+PID distinto y el bloqueo de instancia única adquirido por ambos procesos.
+No se modificó la instalación ni el perfil real. Las pruebas automatizadas
+en `desktop/tests/reinicio-linux.test.cjs` cubren selección, argumentos,
+fallos y la integración con `doInstall` de la dependencia instalada.
+
 ### En NixOS, `npm run dev` no arranca
 
 El Electron que baja npm es un binario genérico y NixOS no los ejecuta:

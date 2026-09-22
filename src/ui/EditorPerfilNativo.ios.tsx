@@ -117,7 +117,7 @@ export function EditorPerfilNativo(props: EditorPerfilNativoProps) {
         </NavigationDestination>
         <NavigationDestination value="privacidad">
           {pantalla('Quién lo ve', <>
-            <Section footer={<Text>{perfil.visibility === 'publico' ? 'Las personas con cuenta pueden ver tu perfil y tus vitrinas.' : 'Solo vos podés ver tu perfil, incluso si alguien tiene el enlace.'}</Text>}>
+            <Section footer={<Text>{perfil.visibility === 'publico' ? 'Las personas con cuenta pueden ver tu perfil y tus vitrinas.' : 'Solo vos y tus contactos pueden ver tu perfil y tus vitrinas.'}</Text>}>
               <Toggle label="Perfil público" systemImage="person.crop.circle" isOn={perfil.visibility === 'publico'} onIsOnChange={activo => props.onCambiar({ visibility: activo ? 'publico' : 'privado' })} modifiers={[...fila, tint('#34C759'), toggleStyle('switch'), disabled(ocupado)]} />
             </Section>
             <Section footer={<Text>Si tu perfil es público, tus contactos pueden ver la canción mientras suena y dejarte reacciones.</Text>}>
@@ -133,7 +133,7 @@ export function EditorPerfilNativo(props: EditorPerfilNativoProps) {
           </Section>)}
         </NavigationDestination>
         <NavigationDestination value="previa">
-          {pantalla('Vista previa', <Section footer={<Text>{perfil.visibility === 'publico' ? 'Así se verá tu perfil público al guardar.' : 'Tu perfil es privado. Solo vos podés verlo.'}</Text>}>
+          {pantalla('Vista previa', <Section footer={<Text>{perfil.visibility === 'publico' ? 'Así se verá tu perfil público al guardar.' : 'Tu perfil privado será visible para tus contactos.'}</Text>}>
             <VStack modifiers={[listRowBackground('clear'), padding({ vertical: 8 })]}>
               <RNHostView matchContents><View style={{ width: anchoPrevia, paddingVertical: 12 }}><TarjetaPerfil perfil={perfil} /></View></RNHostView>
             </VStack>

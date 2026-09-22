@@ -29,7 +29,7 @@ export function CargaChats({ texto }: { texto: string }) {
 }
 export function FilaConversacion({ nombre, nombreAvatar = nombre, avatarPath, detalle, fecha, noLeidos, selected, compacto, onPress }: FilaConversacionProps) {
   return <BotonSuperficie {...superficieInteractivaWeb('row')} accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress}
-    className={`flex-row items-center gap-2 rounded-lg px-2 py-2 active:opacity-80 ${selected ? 'bg-muted' : ''}`}>
+    className={`min-h-14 w-full flex-row items-center gap-3 rounded-xl px-3 py-2.5 active:opacity-80 ${selected ? 'bg-muted' : ''}`}>
     <Avatar name={nombreAvatar} path={avatarPath} size={compacto ? 36 : 44} />
     <View className="min-w-0 flex-1 gap-0.5">
       <View className="flex-row items-center gap-2">

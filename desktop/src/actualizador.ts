@@ -1,5 +1,8 @@
 import { app, BrowserWindow } from 'electron'
-import { autoUpdater, type UpdateInfo } from 'electron-updater'
+import { autoUpdater as actualizadorSistema, type UpdateInfo } from 'electron-updater'
+import { ActualizadorAppImage } from './actualizador-appimage'
+
+const autoUpdater = process.platform === 'linux' ? new ActualizadorAppImage() : actualizadorSistema
 
 /**
  * Las actualizaciones de escritorio.
@@ -45,7 +48,7 @@ const ESPERA_SILENCIO_MS = 30 * 1000
  * que todavía no está instalada: el `novedades.json` del bundle llega hasta la
  * que estás corriendo, no más.
  */
-export type NotasVersion = { titulo: string; cambios: string[]; fecha: string | null }
+export type NotasVersion = { titulo: string; cambios: string[]; fecha: string | null; pasos?: { titulo: string; detalle: string }[] }
 
 export type EstadoActualizacion =
   /** Todavía no buscó nada. Trae la versión instalada para no pedirla aparte. */
@@ -98,9 +101,19 @@ export function leerNotas(crudo: unknown): NotasVersion | null {
       .trim() ?? ''
   const cambios = lineas.filter((l) => l.startsWith('- ')).map((l) => l.slice(2).trim())
   const fecha = lineas.find((l) => /^_.+_$/.test(l))?.slice(1, -1) ?? null
+  const pasos: { titulo: string; detalle: string }[] = []
+  for (let i = 0; i < lineas.length; i++) {
+    const tituloPaso = /^#### \d{2} · (.+)$/.exec(lineas[i])?.[1]
+    if (!tituloPaso) continue
+    const detalle: string[] = []
+    for (let j = i + 1; j < lineas.length && !lineas[j].startsWith('#'); j++) {
+      if (lineas[j] && !lineas[j].startsWith('- ') && !/^_.+_$/.test(lineas[j])) detalle.push(lineas[j])
+    }
+    if (detalle.length) pasos.push({ titulo: tituloPaso, detalle: detalle.join(' ') })
+  }
 
   if (!titulo && !cambios.length) return null
-  return { titulo, cambios, fecha }
+  return { titulo, cambios, fecha, ...(pasos.length ? { pasos } : {}) }
 }
 
 let estado: EstadoActualizacion = { fase: 'inactivo', version: '' }
@@ -266,8 +279,9 @@ export async function buscarAhora(manual = false): Promise<void> {
  *                     con la pantalla vacía, teniendo que buscar el ícono.
  *
  * En Windows lo hace el propio instalador NSIS, que espera a que el proceso
- * termine, actualiza y lanza. En Linux el AppImage se reemplaza a sí mismo y
- * después lanza el archivo nuevo.
+ * termine, actualiza y lanza. En Linux el AppImage se reemplaza a sí mismo;
+ * ActualizadorAppImage programa la reapertura después del cierre, respetando
+ * appimage-run cuando el sistema lo necesita.
  */
 export function instalarYReabrir(): boolean {
   if (estado.fase !== 'lista' || intentoInstalar) return false

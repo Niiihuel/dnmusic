@@ -43,6 +43,30 @@ const tracks = [0, 1, 2, 3].map(i => ({
 const radio = { ...tracks[0], id: 'radio:nueva', videoId: 'radio-video' }
 const manual = { ...tracks[1], id: 'manual:nueva', videoId: 'manual-video' }
 
+test('releer la playlist que suena no reinicia ni reemplaza la pista activa', () => {
+  const { api } = fixture()
+  api.playQueue(tracks, 1, { id: 'lista', name: 'Lista' })
+  api.reportProgress(72000, tracks[1].durationMs)
+  const before = api.getPlaybackState()
+  let cambios = 0
+  const stop = api.subscribePlayback(() => { cambios++ })
+
+  api.syncQueue('lista', tracks.map(track => ({ ...track })))
+  assert.equal(api.getPlaybackState(), before)
+  assert.equal(cambios, 0)
+
+  const modificadas = [tracks[2], { ...tracks[0], title: 'Título actualizado' }, tracks[1], tracks[3]]
+  api.syncQueue('lista', modificadas)
+  const after = api.getPlaybackState()
+  assert.equal(after.tracks[after.index], before.tracks[before.index])
+  assert.equal(after.index, 2)
+  assert.equal(after.positionMs, 72000)
+  assert.equal(after.wantPlay, true)
+  assert.equal(after.tracks[1].title, 'Título actualizado')
+  assert.equal(cambios, 1)
+  stop()
+})
+
 test('el selector rota orden, aleatorio y descubrimiento sin cambiar la canción actual', () => {
   const { api, avisos } = fixture()
   api.playQueue(tracks, 2, { id: 'lista', name: 'Lista' })

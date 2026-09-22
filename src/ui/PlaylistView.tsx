@@ -62,7 +62,6 @@ import {
   IconClose,
   IconDownload,
   IconDisk,
-  IconDownloaded,
   IconGlobe,
   IconImage,
   IconMusic,
@@ -797,11 +796,14 @@ export function PlaylistView({
             /* El índice de la lista filtrada no sirve para tocar ni numerar:
                se traduce al de la lista entera, que es la cola de verdad. */
             const real = indiceReal.get(item.id) ?? index
+            const descarga = HAY_DESCARGAS ? entradaDeTrack(item, descargas)?.descarga : undefined
+            const opciones = opcionesDe(item)
             return (
             <TrackRow
               index={real}
               title={item.title}
               artist={item.artist}
+              downloaded={descarga?.estado === 'lista' && !descarga.temporal}
               artwork={artworkSource(item.artworkPath, item.artworkUrl, 96)}
               durationMs={item.durationMs}
               gusto={<BotonMeGusta track={item} size={18} lado={44} />}
@@ -811,15 +813,15 @@ export function PlaylistView({
               /* La misma lista por los dos caminos: los tres puntos y el
                  mantener apretado. Armarla acá una sola vez es lo que evita que
                  con el tiempo ofrezcan cosas distintas. */
-              menu={opcionesDe(item)}
+              menu={opciones}
               /* Va siempre: `TrackRow` decide si se ve —en el teléfono sí, en
                  escritorio bajo el cursor—. Antes se decidía acá con `hovered`
                  y en el teléfono no aparecía nunca. */
               trailing={
                 <>
-                  <MarcaDescarga descarga={entradaDeTrack(item, descargas)?.descarga} />
+                  <MarcaDescarga descarga={descarga} />
                   <Menu
-                    items={opcionesDe(item)}
+                    items={opciones}
                     label={`Opciones de ${item.title}`}
                     size={14}
                   />
@@ -1054,29 +1056,30 @@ function BotonDescarga({ total, bajado, onPress, opciones }: {
   const enCurso = bajado.bajando > 0
   const contenido = enCurso
     ? <Text className="text-foreground text-caption2 font-semibold tabular-nums">{Math.round(bajado.progreso * 100)}%</Text>
-    : completa ? <IconDownloaded size={19} color={ICON_COLOR.foreground} /> : <IconDownload size={19} color={ICON_COLOR.muted} />
+    : completa
+      ? <View className="h-8 w-8 items-center justify-center rounded-full bg-muted"><IconDownload size={17} color={ICON_COLOR.foreground} /></View>
+      : <IconDownload size={19} color={ICON_COLOR.muted} />
   const gestionar = opciones.some(o => o.label !== 'Descargar para escuchar sin conexión')
-  if (gestionar) return <Menu label="Opciones de descarga de la lista" items={opciones}
+  if (gestionar) return <Menu label={completa ? 'Lista disponible sin conexión, opciones de descarga' : 'Opciones de descarga de la lista'} items={opciones}
     trigger={<View className="h-11 w-11 items-center justify-center">{contenido}</View>} />
   return <IconButton label="Descargar para escuchar sin conexión" symbol="arrow.down.circle"
     disabled={total === 0} onPress={onPress} icon={contenido} size={19} muted />
 }
 
 /**
- * La marca de «esta la tenés bajada», al final de la fila.
+ * El progreso pendiente queda al final de la fila. La descarga terminada se
+ * indica discretamente junto al artista, sin competir con los tres puntos.
  *
  * Es de solo mirar: lo que se puede hacer con ella está en el menú de la propia
  * canción. Un control más en la fila competiría con los tres puntos por el mismo
  * rincón, y en el teléfono ese rincón ya está justo.
  */
 function MarcaDescarga({ descarga }: { descarga: DescargaUI | undefined }) {
-  if (!HAY_DESCARGAS || !descarga || descarga.temporal) return null
+  if (!HAY_DESCARGAS || !descarga || descarga.temporal || descarga.estado === 'lista') return null
 
   return (
     <View className="mr-1">
-      {descarga.estado === 'lista' ? (
-        <IconDownloaded size={13} color={ICON_COLOR.muted} />
-      ) : descarga.estado === 'bajando' ? (
+      {descarga.estado === 'bajando' ? (
         <Text className="text-muted-foreground text-caption2 tabular-nums">
           {Math.round(descarga.progreso * 100)}%
         </Text>

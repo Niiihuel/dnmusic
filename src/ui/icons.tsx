@@ -106,6 +106,9 @@ export const IconVolume = make(Volume2)
 export const IconVolumeOff = make(VolumeX)
 export const IconBan = make(Ban)
 export const IconSparkles = make(Sparkles)
+export const IconUpdate = make(ArrowUpCircle)
+export const IconNovedades = make(Newspaper)
+export const IconCursor = make(MousePointer2)
 export const IconUser = make(UserRound)
 export const IconUsers = make(UsersRound)
 export const IconShare = make(Share2)
@@ -138,3 +141,4 @@ export const ICON_COLOR = {
   /** Sobre superficies claras, como el botón primario. */
   onPrimary: '#121212',
 } as const
+import { ArrowUpCircle, MousePointer2, Newspaper } from 'lucide-react-native'

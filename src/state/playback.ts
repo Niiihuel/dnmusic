@@ -1670,7 +1670,26 @@ export function syncQueue(originId: string, tracks: PlaylistTrack[]) {
     stopPlayback()
     return
   }
-  store.set({ tracks, index })
+
+  /*
+   * Leer la misma playlist trae objetos nuevos aunque sus filas no hayan
+   * cambiado. Publicarlos como una cola nueva despierta al motor de audio:
+   * iOS puede volver a preparar la fuente de la canción actual y empezar en
+   * cero justo al terminar la carga de la pantalla. Si sólo se releyó, no hay
+   * nada que reconciliar. Si hubo cambios, la pista que ya suena conserva su
+   * objeto y su fuente; se actualizan las demás filas y su nueva posición.
+   */
+  const iguales = (a: PlaylistTrack, b: PlaylistTrack) =>
+    a.id === b.id && a.videoId === b.videoId && a.title === b.title &&
+    a.artist === b.artist && a.artistId === b.artistId &&
+    a.artworkUrl === b.artworkUrl && a.artworkPath === b.artworkPath &&
+    a.audioPath === b.audioPath && a.durationMs === b.durationMs &&
+    a.truePeak === b.truePeak
+  if (index === state.index && tracks.length === state.tracks.length &&
+      tracks.every((track, i) => iguales(track, state.tracks[i]))) return
+
+  const reconciled = tracks.map((track, i) => i === index ? current : track)
+  store.set({ tracks: reconciled, index })
 }
 
 /**

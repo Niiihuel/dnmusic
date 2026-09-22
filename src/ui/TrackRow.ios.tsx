@@ -12,12 +12,12 @@ export function TrackRow(props: ComponentProps<typeof Respaldo>) {
   const { fontScale } = useWindowDimensions()
   const cargada = usePlaybackCargada()
   if (!NativeMediaRow) return <Respaldo {...props} />
-  const { title, artist, artwork, sounding, playing, busy, inset = true, onPlay, trailing, menu } = props
+  const { title, artist, downloaded, artwork, sounding, playing, busy, inset = true, onPlay, trailing, menu } = props
   const fila = <RowSurface style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: inset ? 12 : 0 }}>
-    <NativeMediaRow title={title} subtitle={artist} artwork={artwork}
+    <NativeMediaRow title={title} subtitle={downloaded ? `↓  ${artist}` : artist} artwork={artwork}
       sounding={sounding} playing={playing} busy={filaCargando(sounding, playing, cargada, busy)}
       {...(NativeRowHighlight ? { drawsHighlight: false } : {})}
-      label={`${playing ? 'Pausar' : 'Reproducir'} ${title}, de ${artist}`}
+      label={`${playing ? 'Pausar' : 'Reproducir'} ${title}, de ${artist}${downloaded ? ', disponible sin conexión' : ''}`}
       onActivate={onPlay} style={{ flex: 1, height: Math.max(68, 42 * fontScale + 16) }} />
     <View style={{ minWidth: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>{trailing}</View>
   </RowSurface>

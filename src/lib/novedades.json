@@ -1,5 +1,37 @@
 [
   {
+    "version": "1.16.5",
+    "fecha": "22 de septiembre de 2026",
+    "titulo": "Cada mejora tiene su lugar.",
+    "pasos": [
+      {
+        "titulo": "Conocé la versión de un vistazo",
+        "detalle": "Las novedades ahora tienen una tarjeta propia. Podés recorrerlas paso a paso y seguir leyendo la lista completa de cambios, tanto al abrir la app como desde Configuración."
+      },
+      {
+        "titulo": "Tu música sigue donde estaba",
+        "detalle": "Abrir una playlist ya no reinicia la canción en iPhone. También aclaramos las señales de reproducción y descarga en las filas para que muestren lo que realmente está pasando."
+      },
+      {
+        "titulo": "Más cerca de tu gente",
+        "detalle": "Tus contactos aceptados pueden ver tu perfil aunque lo tengas privado. Quienes solo te encuentren por búsqueda siguen sin poder abrirlo, y los bloqueos siempre se respetan."
+      },
+      {
+        "titulo": "Actualizar sin perder el ritmo",
+        "detalle": "En PC, la actualización se presenta con más contexto y controles más claros. Corregimos el reinicio tras instalar en Linux y ampliamos las áreas interactivas de Chats."
+      }
+    ],
+    "cambios": [
+      "Nueva tarjeta de versión con recorrido por pasos, notas completas y una presentación consistente en PC e iPhone.",
+      "Corregimos el reinicio de la canción al entrar en una playlist en iPhone.",
+      "Las canciones descargadas dejan de mostrar un check permanente; los estados de pausa, carga y descarga se distinguen mejor.",
+      "Los contactos aceptados pueden abrir perfiles privados; las personas ajenas y bloqueadas no.",
+      "El encabezado del contacto y las filas de Chats tienen una zona de interacción más cómoda en PC.",
+      "El actualizador de Linux vuelve a abrir la app después de instalar la nueva versión.",
+      "Organizamos Configuración para mostrar las novedades y el estado de actualización con más claridad."
+    ]
+  },
+  {
     "version": "1.16.4",
     "fecha": "22 de septiembre de 2026",
     "titulo": "Más fácil escuchar juntos.",

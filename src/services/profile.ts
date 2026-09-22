@@ -283,9 +283,10 @@ export function initialsFor(name: string): string {
 }
 
 /**
- * El perfil público de alguien, por su usuario.
+ * El perfil visible de alguien, por su usuario.
  *
- * Devuelve `null` si esa cuenta está en privado — o si no existe. Las dos cosas
+ * Un perfil privado se ve si ya son contactos. Devuelve `null` si no tenés
+ * acceso — o si no existe. Las dos cosas
  * se ven igual a propósito: «existe pero no te deja ver» ya es información sobre
  * alguien que decidió no mostrarse.
  */
@@ -294,8 +295,8 @@ export async function fetchProfile(username: string): Promise<Profile | null> {
   if (error) throw error
   const fila = Array.isArray(data) ? data[0] : data
   const perfil = profileFromRow(fila)
-  /* La función pública no devuelve la visibilidad de otro —no es asunto de
-     quien mira— así que se completa con lo único que se puede afirmar: si te lo
-     está devolviendo, es porque se deja ver. */
+  /* La función no expone la elección de visibilidad de otra persona. El valor
+     no se usa como control de acceso: lo decide el servidor antes de devolver
+     la fila, incluso cuando se trata de un contacto con perfil privado. */
   return perfil ? { ...perfil, visibility: 'publico' } : null
 }
