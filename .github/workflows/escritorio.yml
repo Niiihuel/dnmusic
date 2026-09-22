@@ -19,6 +19,10 @@ on:
       version:
         description: 'Versión a publicar (ej. 1.2.0)'
         required: true
+      publish:
+        description: 'Publicar en GitHub Releases (desactivado: guardar instaladores como artifacts)'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -76,12 +80,15 @@ jobs:
           ANON: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           MUSICA: ${{ secrets.EXPO_PUBLIC_MUSIC_API }}
           TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          PUBLISH: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != false }}
         run: |
           faltan=''
           [ -n "$URL" ]    || faltan="$faltan EXPO_PUBLIC_SUPABASE_URL"
           [ -n "$ANON" ]   || faltan="$faltan EXPO_PUBLIC_SUPABASE_ANON_KEY"
           [ -n "$MUSICA" ] || faltan="$faltan EXPO_PUBLIC_MUSIC_API"
-          [ -n "$TOKEN" ]  || faltan="$faltan RELEASES_TOKEN"
+          if [ "$PUBLISH" = true ]; then
+            [ -n "$TOKEN" ] || faltan="$faltan RELEASES_TOKEN"
+          fi
           if [ -n "$faltan" ]; then
             echo "✗ Sin valor:$faltan"
             echo
@@ -150,4 +157,18 @@ jobs:
         working-directory: desktop
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        run: npx electron-builder ${{ matrix.plataforma }} --publish always
+        run: npx electron-builder ${{ matrix.plataforma }} --publish ${{ github.event_name == 'workflow_dispatch' && inputs.publish == false && 'never' || 'always' }}
+
+      - name: Guardar instaladores y metadatos de actualización
+        if: ${{ success() || failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dnmusic-desktop-${{ matrix.os }}-${{ steps.version.outputs.version }}
+          path: |
+            desktop/release/*.AppImage
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+            desktop/release/latest*.yml
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 0
