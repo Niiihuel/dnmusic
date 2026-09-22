@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Platform, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated'
+import { NativeMediaTabs } from '../../modules/media-controls'
 import type { Tab } from '../state/shell'
 import { BotonVidrio, HAY_VIDRIO } from './Glass'
 import { TabPildora, useIrATab } from './TabBar'
@@ -115,17 +116,20 @@ export function Cascara({
   const ir = useIrATab()
   const [altoTabs, setAltoTabs] = useState(0)
   const [altoFila, setAltoFila] = useState(0)
-  const abajo = insets.bottom > 0 ? insets.bottom - 6 : 8
+  const androidRecto = Platform.OS === 'android'
+  /* UITabBar ya incorpora el área segura dentro de su geometría. Sumar otro
+     espaciador debajo era lo que levantaba toda la barra respecto de Music. */
+  const abajo = Platform.OS === 'ios' && NativeMediaTabs ? 0 : insets.bottom > 0 ? insets.bottom - 6 : 8
 
   /** 0 desplegada, 1 plegada. Todo lo demás sale de interpolar esto. */
-  const p = useDerivedValue(() => withSpring(colapsada ? 1 : 0, RESORTE), [colapsada])
+  const p = useDerivedValue(() => withSpring(!androidRecto && colapsada ? 1 : 0, RESORTE), [androidRecto, colapsada])
 
   const Icono = ICONO[active] ?? IconHome
 
   useEffect(() => {
     if (!altoFila) return
-    onAltoVisible(altoFila + (colapsada ? 0 : altoTabs) + abajo)
-  }, [altoFila, altoTabs, colapsada, abajo, onAltoVisible])
+    onAltoVisible(altoFila + (!androidRecto && colapsada ? 0 : altoTabs) + abajo)
+  }, [altoFila, altoTabs, androidRecto, colapsada, abajo, onAltoVisible])
 
   /* La columna entera baja el alto de las pestañas: se van por el borde y la
      fila del reproductor queda donde estaban ellas. */
@@ -183,6 +187,7 @@ export function Cascara({
      quedaba clavado en el valor inicial: plegada, la tarjeta conservaba el
      aire de desplegada y quedaban dos huecos contra los redondeles. */
   const media = useAnimatedStyle(() => {
+    if (androidRecto) return { marginLeft: 0, marginRight: 0 }
     const margen = RESPIRO_MEDIA + (1 - p.value) * RESPIRO_GRANDE
     return { marginLeft: margen, marginRight: margen }
   })
@@ -204,10 +209,10 @@ export function Cascara({
           flexDirection: 'row',
           alignItems: 'center',
           overflow: 'hidden',
-          paddingHorizontal: HAY_VIDRIO ? COSTADO : 8,
+          paddingHorizontal: androidRecto ? 0 : HAY_VIDRIO ? COSTADO : 8,
         }}
       >
-        <Animated.View style={[{ marginRight: AIRE }, izquierda]}>
+        {androidRecto ? null : <Animated.View style={[{ marginRight: AIRE }, izquierda]}>
           <BotonVidrio
             label="Desplegar la barra"
             onPress={onExpandir}
@@ -216,11 +221,11 @@ export function Cascara({
           >
             <Icono size={21} color={ICON_COLOR.foreground} />
           </BotonVidrio>
-        </Animated.View>
+        </Animated.View>}
 
         <Animated.View style={[{ flex: 1, minWidth: 0 }, media]}>{children}</Animated.View>
 
-        <Animated.View style={[{ marginLeft: AIRE }, derecha]}>
+        {androidRecto ? null : <Animated.View style={[{ marginLeft: AIRE }, derecha]}>
           {/*
            * La misma lupa que la de la barra desplegada, y por eso la misma
            * función: buscar desde el perfil tiene que **salir** del perfil, o el
@@ -235,7 +240,7 @@ export function Cascara({
           >
             <IconSearch size={21} color={ICON_COLOR.muted} />
           </BotonVidrio>
-        </Animated.View>
+        </Animated.View>}
       </View>
 
       {/*

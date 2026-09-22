@@ -1,3 +1,5 @@
+import { SharedLayoutBg } from './SharedLayoutBg'
+import { superficieInteractivaWeb } from './estadoControl'
 import { CopyFeedback } from './CopyFeedback'
 import { createContext, useContext, type ReactNode } from 'react'
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native'
@@ -5,6 +7,30 @@ import type { SFSymbol } from 'sf-symbols-typescript'
 import { Interruptor, INTERRUPTOR_PROPIO } from './Interruptor'
 import { Menu } from './Menu'
 import { ICON_COLOR, IconChevronDown, IconChevronRight } from './icons'
+
+export type CategoriaAjustesNativa = {
+  id: string
+  titulo: string
+  resumen: string
+  simbolo: string
+  bloques: ReactNode
+}
+
+export type AjustesNativosProps = {
+  categorias: CategoriaAjustesNativa[]
+  initialId?: string
+  cuenta: ReactNode
+  piso: number
+  buscando: boolean
+  busqueda: string
+  onBusqueda: (value: string) => void
+  onVolver: () => void
+}
+
+/** Sólo iOS la reemplaza por el NavigationStack SwiftUI. */
+export function AjustesNativos(_props: AjustesNativosProps) {
+  return null
+}
 
 const DensidadAjustesContext = createContext(false)
 
@@ -89,7 +115,7 @@ export function GrupoAjustes({
       {titulo ? (
         <Text className={`${compacto ? 'px-3 pb-1.5 text-footnote font-semibold uppercase' : 'px-4 pb-2 text-footnote'} text-muted-foreground`}>{titulo}</Text>
       ) : null}
-      <View className={`overflow-hidden bg-card ${compacto ? 'rounded-[16px]' : 'rounded-[22px]'}`}>{children}</View>
+      <View className={`overflow-hidden bg-card ${compacto ? 'rounded-[16px]' : 'rounded-[22px]'}`}><SharedLayoutBg targets="surfaces" className="dn-settings-rows">{children}</SharedLayoutBg></View>
       {error ? (
         <Text
           accessibilityRole="alert"
@@ -158,6 +184,7 @@ export function FilaAjuste({
 
   return (
     <Pressable
+      {...superficieInteractivaWeb('row')}
       accessibilityRole="button"
       accessibilityLabel={`${rotulo}${puesto ? `: ${valor}` : vacio ? `: ${vacio}` : ''}`}
       accessibilityState={{ disabled }}
@@ -345,6 +372,7 @@ export function FilaAccion({
   const activa = !disabled && !busy
   return (
     <Pressable
+      {...superficieInteractivaWeb('row')}
       accessibilityRole="button"
       accessibilityLabel={rotulo}
       accessibilityState={{ disabled: !activa, busy }}
@@ -358,7 +386,7 @@ export function FilaAccion({
           ultima ? '' : 'border-b border-muted'
         }`}
       >
-        {copyText !== undefined ? <CopyFeedback text={copyText} label={rotulo} icon={icono} /> : <Text
+        {copyText !== undefined ? <CopyFeedback text={copyText} label={rotulo} rowDensity={compacto ? 'compact' : 'regular'} icon={icono ? compacto || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : undefined} /> : <Text
           className={`min-w-0 flex-1 ${compacto ? 'text-subheadline' : 'text-body'} ${
             activa ? 'text-foreground' : 'text-muted-foreground/60'
           } ${destacada ? 'font-semibold' : ''}`}
@@ -393,6 +421,7 @@ export function FilaCuenta({
 }) {
   return (
     <Pressable
+      {...superficieInteractivaWeb('row')}
       accessibilityRole="button"
       accessibilityLabel={`${nombre}. ${detalle}`}
       onPress={onPress}
@@ -468,6 +497,7 @@ export function FilaInterruptor({
       }
   return (
     <Fila
+      {...superficieInteractivaWeb('row')}
       {...escucha}
       className={`flex-row items-center ${disabled ? 'opacity-45' : INTERRUPTOR_PROPIO ? '' : 'active:bg-muted'} ${compacto ? 'gap-2.5 pl-3' : 'gap-3 pl-4'}`}
     >

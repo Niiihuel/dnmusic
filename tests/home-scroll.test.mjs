@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import { tituloEditorial, identidadGenero } from '../src/lib/catalogoEditorial.ts'
 
 const jsx = (type, props) => ({ type, props })
 function nodes(node, type) {
@@ -24,6 +25,7 @@ function load(width, loaded) {
     './useColapso': { useColapso: () => ({ onScroll }) },
     './ScrollArea': { ScrollArea: 'ScrollArea' }, './Panel': { Panel: 'Panel' },
     './icons': { ICON_COLOR: {} },
+    '../lib/catalogoEditorial': { tituloEditorial, identidadGenero },
   }
   new Function('exports', 'require', outputText)(exports, id => deps[id] ?? {})
   return { ...exports, onScroll }

@@ -2,6 +2,7 @@ import { SegmentedButton, SingleChoiceSegmentedButtonRow, Text } from '@expo/ui/
 import { fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers'
 import { AndroidHost, ANDROID_COLORS as color, androidAccessibility } from './AndroidHost'
 import type { PestanaPerfil } from './PestanasPerfil'
+import { ANDROID_TYPE } from './androidDesign'
 
 const PESTANAS: { id: PestanaPerfil; rotulo: string }[] = [
   { id: 'reciente', rotulo: 'Reciente' },
@@ -27,7 +28,7 @@ export function SelectorPestanasPerfil({ activa, onCambiar }: {
             inactiveBorderColor: color.raised,
           }}
           modifiers={[androidAccessibility(`Sección del perfil: ${pestana.rotulo}`, seleccionada ? 'Seleccionada' : undefined)]}>
-          <SegmentedButton.Label><Text style={{ typography: 'labelLarge' }}>{pestana.rotulo}</Text></SegmentedButton.Label>
+          <SegmentedButton.Label><Text style={ANDROID_TYPE.body}>{pestana.rotulo}</Text></SegmentedButton.Label>
         </SegmentedButton>
       })}
     </SingleChoiceSegmentedButtonRow>

@@ -27,6 +27,7 @@ function fixture() {
     './EditorDeCampo': { TITULO_CAMPO: { usuario: 'Usuario', nombre: 'Nombre visible', linea: 'Tu línea' } },
     '../models/username': { normalizeUsername: value => value.toLowerCase().replace(/[^a-z0-9_]/g, '') },
     '../services/music': { proxiedImage: url => url },
+    './SearchField': { SearchField: 'SearchField' },
   }
   const exports = {}
   new Function('exports', 'require', compile('src/ui/EditorPerfilNativo.ios.tsx'))(exports, name => { assert.ok(name in imports, name); return imports[name] })
@@ -93,7 +94,8 @@ test('buscar música para el perfil siempre selecciona el resultado completo sin
   song.props.onPress()
   assert.equal(selecciones[0], track)
   assert.equal(ui.find(n => n.type === 'RNImage').props.source.uri, track.artworkUrl)
-  assert.equal(ui.filter(n => n.type === 'TextField').length, 1)
+  assert.equal(ui.filter(n => n.type === 'TextField').length, 0)
+  assert.equal(ui.find(n => n.type === 'SearchField').props.value, 'Tema')
 })
 
 test('los toggles nativos alimentan el store real y preservan el borrador al volver de una sección', () => {

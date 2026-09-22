@@ -11,7 +11,7 @@ function moduleAt(path, dependencies = {}, globals = {}, suffix = '') {
   return exports
 }
 const core = moduleAt('src/services/politicaActualizacion.ts')
-const destination = 'https://github.com/Niiihuel/dnmusic-releases/releases/latest'
+const destination = 'https://github.com/Niihuel/dnmusic-releases/releases/latest'
 const policy = (patch = {}) => ({ platform: 'windows', latest_version: '1.12.0', minimum_version: '0.0.0', update_url: destination, enabled: true, revision: 1, ...patch })
 const installed = version => ({ platform: 'windows', version })
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
@@ -37,9 +37,9 @@ test('opcional descartable por plataforma y versión; mínimo siempre prevalece'
   assert.equal(core.politicaCubreAviso(null, installed('1.11.0')), false)
 })
 test('destinos admitidos y rechazo de esquemas, credenciales, puertos, host impostor y plataforma equivocada', () => {
-  const accepted = [['windows', destination], ['linux', `${destination.replace('/latest', '/download/v1.12.0/dnmusic.AppImage')}`], ['ios', 'https://testflight.apple.com/join/Ab123'], ['ios', 'https://apps.apple.com/ar/app/dmusic/id12345'], ['android', 'https://play.google.com/store/apps/details?id=com.nihuel.dnmusic'], ['web', 'https://dnmusic-app.vercel.app/?v=1.12.0']]
+  const accepted = [['windows', destination], ['linux', `${destination.replace('/latest', '/download/v1.12.0/dnmusic.AppImage')}`], ['ios', 'https://testflight.apple.com/join/Ab123'], ['ios', 'https://apps.apple.com/ar/app/dmusic/id12345'], ['android', 'https://play.google.com/store/apps/details?id=com.nihuel.dnmusic'], ['web', 'https://dnmusic-app.vercel.app/?v=1.12.0'], ['web', 'https://dnmusic-production-c3f4.up.railway.app/?v=1.12.0']]
   for (const [platform, url] of accepted) assert.equal(core.esDestinoActualizacion(platform, url), true, url)
-  for (const url of ['javascript:alert(1)', 'http://github.com/Niiihuel/dnmusic-releases/releases/latest', destination + '#x', destination + '\n', destination.replace('github.com', 'github.com.evil.test'), destination.replace('github.com', 'github.com@evil.test'), destination.replace('github.com', 'github.com:443'), destination.replace('Niiihuel', 'someone'), 'file:///tmp/update', 'https://example.com/']) assert.equal(core.esDestinoActualizacion('windows', url), false, url)
+  for (const url of ['javascript:alert(1)', 'http://github.com/Niihuel/dnmusic-releases/releases/latest', destination + '#x', destination + '\n', destination.replace('github.com', 'github.com.evil.test'), destination.replace('github.com', 'github.com@evil.test'), destination.replace('github.com', 'github.com:443'), destination.replace('Niihuel', 'someone'), 'file:///tmp/update', 'https://example.com/']) assert.equal(core.esDestinoActualizacion('windows', url), false, url)
   assert.equal(core.esDestinoActualizacion('ios', destination), false)
   assert.equal(core.esDestinoActualizacion('web', destination), false)
   for (const patch of [{ minimum_version: '2.0.0' }, { enabled: 'true' }, { revision: 0 }, { revision: 1.1 }, { platform: 'unknown' }, { update_url: 'javascript:alert(1)' }]) assert.throws(() => core.leerPolitica(policy(patch)))
@@ -148,12 +148,14 @@ function uiFixture(path, dependencies, names = []) {
   }
   const components = Object.fromEntries(['View','Text','Modal','ScrollView','ActivityIndicator','Pressable','Switch'].map(n => [n,n]))
   const native = { ...components, Platform: { OS: 'web' }, BackHandler: { addEventListener: () => ({ remove() {} }) }, Linking: { openURL: async () => {} } }
-  const api = moduleAt(path, { 'react': react, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': native, './Ajustes': Object.fromEntries(['ListaAjustes', 'GrupoAjustes', 'FilaAccion', 'FilaDato'].map(n => [n, n])), './Button': { PrimaryButton: 'PrimaryButton', GhostButton: 'GhostButton' }, ...dependencies }, {}, names.length ? `\nexport { ${names.join(',')} };` : '')
+  const api = moduleAt(path, { 'react': react, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': native, './Ajustes': Object.fromEntries(['ListaAjustes', 'GrupoAjustes', 'FilaAccion', 'FilaDato'].map(n => [n, n])), './Button': { PrimaryButton: 'PrimaryButton', GhostButton: 'GhostButton' }, '../lib/compartir': { SITIO: 'https://dnmusic-production-c3f4.up.railway.app' }, ...dependencies }, {}, names.length ? `\nexport { ${names.join(',')} };` : '')
   return { render(name, props) { index = 0; return flatten(api[name](props)) }, effects }
 }
 test('gate: bloqueo sin children ni salida, preferencia desactivada y descarte nunca lo evitan', () => {
   let state = { iniciada: true, politica: policy({ minimum_version: '1.12.0' }), instalacion: installed('1.11.0'), descartada: 'windows:1.12.0' }, preference = false
   const f = uiFixture('src/ui/ControlActualizaciones.tsx', {
+    './EncabezadoHoja': { EncabezadoHoja: 'EncabezadoHoja', BotonHoja: 'BotonHoja' },
+    './Dialogo': { Dialogo: 'Modal' }, './ModalContext': { useDentroModalPC: () => false },
     '../state/ajustes': { usePreferencia: () => preference },
     '../state/actualizacion': { useActualizacion: () => ({ fase: 'inactivo' }) },
     '../state/politicaActualizacion': { usePoliticaActualizacion: () => state, iniciarPoliticaActualizacion: () => () => {}, descartarPolitica() {}, refrescarPolitica() {} },

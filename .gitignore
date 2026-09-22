@@ -58,6 +58,16 @@ npm-debug.*
 # proyecto y el token OIDC que se renueva solo.
 .vercel
 
+# Estado local y exportaciones temporales de infraestructura.
+.idea/
+.railway-config-pull-*/
+
+# Credenciales y claves privadas: nunca forman parte del código público.
+*.pem
+*.key
+credentials.json
+service-account*.json
+
 # Cualquier .env queda afuera —ahí viven la service_role y las claves— **menos
 # el de ejemplo**, que es documentación y tiene que viajar con el repo. El CLI
 # de Vercel dejó `.env*` a secas, que también lo tapaba.

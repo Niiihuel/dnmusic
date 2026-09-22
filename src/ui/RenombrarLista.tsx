@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Modal, Platform, Pressable, Text, TextInput, useWindowDimensions, View } from 'react-native'
 import { EntradaTexto } from './EntradaTexto'
+import { HojaNombreListaNativa } from './HojaNombreListaNativa'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { CollectionTitle, useAngosto } from './CollectionHeader'
 import { Hoja } from './Hoja'
@@ -109,6 +110,7 @@ export function AccionesNombreLista({ editor }: { editor: EdicionNombreLista }) 
 /** En iOS el sistema presenta la hoja; en web angosta Hoja aporta su portal. */
 export function HojaNombreLista({ editor }: { editor: EdicionNombreLista }) {
   const inline = useNombreInline()
+  if (Platform.OS === 'ios') return <HojaNombreListaNativa editor={editor} />
   if (!editor.borrador || inline) return null
   const nativo = Platform.OS !== 'web'
   const campos = <View className="gap-4 px-5 pb-5">
@@ -118,7 +120,7 @@ export function HojaNombreLista({ editor }: { editor: EdicionNombreLista }) {
   </View>
   const contenido = <Hoja medida="contenido" titulo="Cambiar nombre" onCerrar={editor.cancelar}>
     <SafeAreaView edges={['bottom']} className="bg-background" style={nativo ? { flex: 1, backgroundColor: '#121212' } : undefined}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={nativo ? { flex: 1 } : undefined}>
+      <KeyboardAvoidingView style={nativo ? { flex: 1 } : undefined}>
         <CabeceraSocial titulo="Cambiar nombre" onCerrar={editor.cancelar} ocupado={editor.borrador.ocupado} />
         {nativo ? <ScrollArea style={{ flex: 1 }} keyboardShouldPersistTaps="handled">{campos}</ScrollArea> : campos}
         {nativo ? <View className="flex-row px-5 pb-5"><AccionesNombreLista editor={editor} /></View> : null}

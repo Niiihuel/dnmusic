@@ -408,6 +408,9 @@ function aplicarFila(fila: Escucha) {
       posicionVisible(fila, s.offsetMs),
     )
     aplicandoRemoto = false
+  } else {
+    // Mostrar canción y segundo juntos, sin esperar otro viaje para la cola.
+    volcar(null)
   }
   programarRefetch()
   ajustarTicker()
@@ -571,7 +574,17 @@ export function desconectarEscucha() {
 
 /* La app vuelve al frente: lo que haya pasado mientras tanto, de una vez. */
 const appStateSubscription = AppState.addEventListener('change', (estado) => {
-  if (estado === 'active' && uid && store.get().escucha) programarRefetch()
+  if (estado !== 'active' || !uid) return
+  const s = store.get()
+  if (!s.escucha) return
+  // Repintar el reloj ya conocido antes del refetch: al despertar los timers
+  // pueden haber quedado detenidos, pero la canción de la PC siguió avanzando.
+  if (s.espejo && s.escucha.track && !hayJam() && filaVigente(s)) {
+    aplicandoRemoto = true
+    escuchaTransporte(suenaEnOtro(s), posicionVisible(s.escucha, s.offsetMs))
+    aplicandoRemoto = false
+  }
+  programarRefetch()
 })
 
 // Metro ejecuta dispose antes de reevaluar el módulo: no quedan listeners del
@@ -679,13 +692,14 @@ async function ejecutarPublicacion() {
   const sig = actual ? colaSigDe(p) : ''
   const suena = actual !== null && p.wantPlay && s.sonandoLocal
   const posicion = actual ? p.positionMs : 0
+  const medidoEn = Date.now()
 
   try {
     const revision = await publicarEscucha({
       deviceId: s.deviceId,
       deviceNombre: nombreDispositivo(),
       revision: s.escucha?.revision ?? 0,
-      track: actual,
+      track: actual && p.durationMs > 0 ? { ...actual, durationMs: p.durationMs } : actual,
       suena,
       posicionMs: posicion,
       cola:
@@ -699,7 +713,7 @@ async function ejecutarPublicacion() {
       suena,
       colaSig: sig,
       posicionMs: posicion,
-      enviadoEn: Date.now(),
+      enviadoEn: medidoEn,
     }
     colaPendiente = false
     // Confirmada por el RPC: la fila es nuestra. El eco trae esta misma
@@ -711,7 +725,7 @@ async function ejecutarPublicacion() {
         track: actual,
         suena,
         posicionMs: posicion,
-        arrancadoEn: suena ? Date.now() + store.get().offsetMs : null,
+        arrancadoEn: suena ? medidoEn + store.get().offsetMs : null,
         revision,
         actualizadoEn: Date.now() + store.get().offsetMs,
       },
@@ -890,6 +904,7 @@ registerEscucha({
 
 /* ── Hooks ────────────────────────────────────────────────────────────────── */
 
+export const esEscuchaEspejo = () => store.get().espejo && !hayJam()
 export const useEscuchaEspejo = () => useStore(store, (s) => s.espejo && !hayJam())
 /** El nombre del aparato donde suena, o null si este no es un espejo. */
 export const useEscuchaEspejoNombre = () =>
@@ -929,12 +944,13 @@ const VACIO: DispositivoPresente[] = []
  */
 export function leerEscuchaParaIntegraciones() {
   const s = store.get(), p = getPlaybackState(), ahora = Date.now()
-  const local = !s.espejo && (!s.escucha || s.escucha.deviceId === s.deviceId)
-  if (hayJam()) return null
+  // Un Jam también puede sonar en esta PC. Sólo el motor confirma escucha:
+  // un participante que controla otra salida no inventa actividad local.
+  const local = hayJam() || (!s.espejo && (!s.escucha || s.escucha.deviceId === s.deviceId))
   if (local) {
     const track = p.manual ?? p.tracks[p.index]
     if (!track || !p.wantPlay || !s.sonandoLocal || p.error) return null
-    return { track, sonando: true, posicionMs: p.positionMs, actualizadoEn: ahora }
+    return { track: p.durationMs > 0 ? { ...track, durationMs: p.durationMs } : track, sonando: true, posicionMs: p.positionMs, actualizadoEn: ahora }
   }
   const e = s.escucha
   if (!e?.track || !e.suena || s.conexion !== 'conectado' || !s.presentes || !duenoPresente(s) || !filaVigente(s) || e.actualizadoEn === null) return null

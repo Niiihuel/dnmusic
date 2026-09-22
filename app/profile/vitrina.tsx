@@ -11,7 +11,6 @@ import {
   View,
 } from 'react-native'
 import { useRouter } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
 import { artworkSource } from '../../src/lib/artwork'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { pickImage } from '../../src/lib/pickImage'
@@ -20,6 +19,7 @@ import { coloresDe, nombreDeTema, temaEfectivo } from '../../src/lib/tema'
 import { volver } from '../../src/lib/volver'
 import {
   addShowcase,
+  anchosDe,
   payloadDe,
   esVideo,
   ROTULO_TIPO,
@@ -106,7 +106,7 @@ export default function EditarVitrina() {
   }, [global, user, borrador, temporal, inicial, edicion.ocupado])
 
   function listo() {
-    if (subiendo || edicion.ocupado) return
+    if (subiendo || enVuelo.current || edicion.ocupado) return
     if (global && user && borrador) {
       const id = ponerVitrinaEdicion(user.id, borrador, temporal, inicial, borradorVitrinaCompleto(borrador))
       if (borrador.kind === 'subspace' && !borrador.id && borradorVitrinaCompleto(borrador)) {
@@ -126,10 +126,10 @@ export default function EditarVitrina() {
   if (!borrador) {
     /* Se entró sin nada armado —una recarga en la web—: no hay qué editar. */
     return (
-      <SafeAreaView className="flex-1 bg-background items-center justify-center gap-4 px-8" edges={['top']}>
+      <View className="flex-1 bg-background items-center justify-center gap-4 px-8">
         <Text className="text-muted-foreground text-center text-footnote">No hay ninguna pieza a medio armar.</Text>
         <AccionSocial label="Volver al perfil" secundaria onPress={() => volver(router, '/profile')} />
-      </SafeAreaView>
+      </View>
     )
   }
 
@@ -234,7 +234,9 @@ export default function EditarVitrina() {
    * cubriendo y centrada, que es como venía.
    */
   async function ponerImagen(desdeCamara: boolean) {
-    if (!user || subiendo || enVuelo.current) return
+    if (!user || subiendo || enVuelo.current || edicion.ocupado) return
+    enVuelo.current = true
+    setError(null)
     setSubiendo(true)
     try {
       const elegida = await pickImage({ desdeCamara })
@@ -245,13 +247,15 @@ export default function EditarVitrina() {
       else actualizarBorrador((b) => ({ estilo: { ...b.estilo, fondo: imagen } }))
       if (!esVideo(ruta)) encuadrar()
     } catch (e) {
-      avisar((e as Error).message || 'No se pudo subir la imagen', true)
+      setError(mensajeError(e))
     } finally {
+      enVuelo.current = false
       setSubiendo(false)
     }
   }
 
   function sacarImagen() {
+    if (enVuelo.current || subiendo || edicion.ocupado) return
     actualizarBorrador((b) => ({ estilo: { ...b.estilo, fondo: null } }))
   }
 
@@ -262,11 +266,11 @@ export default function EditarVitrina() {
     <FuentePerfil fuente={perfil?.fuente}>
       <Hoja onCerrar={global ? listo : undefined}>
         {dialogoSalida}
-        <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+        <View className="flex-1 bg-background">
           <View className="flex-1">
             <EncabezadoHoja
               titulo={titulo}
-              izquierda={<BotonHoja tipo="cerrar" label="Cerrar editor" onPress={global ? listo : () => volver(router, '/profile')} />}
+              izquierda={<BotonHoja tipo="cerrar" label="Cerrar editor" disabled={guardando || subiendo || edicion.ocupado} onPress={global ? listo : () => volver(router, '/profile')} />}
               derecha={global ? <AccionSocial label="Listo" secundaria expandida={false} onPress={listo} disabled={subiendo || edicion.ocupado} /> : undefined}
             />
 
@@ -339,6 +343,18 @@ export default function EditarVitrina() {
                       </View>
                     </View>
 
+                    <View className="gap-2">
+                      <Text className="px-1 text-muted-foreground text-footnote font-semibold">Tamaño</Text>
+                      <Segmentado
+                        label="Tamaño de la pieza"
+                        value={borrador.ancho}
+                        options={anchosDe(kind).map(value => ({ value, label: value === 'mitad' ? 'Mitad' : value === 'entero' ? 'Completo' : 'Grande' }))}
+                        onChange={ancho => {
+                          if (!enVuelo.current && !subiendo && !edicion.ocupado) actualizarBorrador({ ancho })
+                        }}
+                      />
+                    </View>
+
                     {kind === 'cancion' || kind === 'fragmento' ? (
                       <View className="gap-2">
                         <Text className="px-1 text-muted-foreground text-footnote font-semibold uppercase">
@@ -408,6 +424,7 @@ export default function EditarVitrina() {
                             kind === 'imagen' ? contenido?.kind === 'imagen' : estilo.fondo !== null
                           }
                           subiendo={subiendo}
+                          disabled={guardando || subiendo || edicion.ocupado}
                           sinNinguno={kind === 'imagen'}
                           onNinguno={sacarImagen}
                           onCamara={() => void ponerImagen(true)}
@@ -434,6 +451,7 @@ export default function EditarVitrina() {
                         />
                       ) : null}
                     </GrupoAjustes>
+                    {global && error ? <Text accessibilityRole="alert" className="text-footnote text-muted-foreground">{error}</Text> : null}
 
                   </View>
                 </ScrollView>
@@ -443,7 +461,7 @@ export default function EditarVitrina() {
               </KeyboardAvoidingView>
             </Panel>
           </View>
-        </SafeAreaView>
+        </View>
       </Hoja>
     </FuentePerfil>
   )
@@ -579,6 +597,7 @@ function FilaImagen({
   rotulo,
   puesta,
   subiendo,
+  disabled,
   sinNinguno,
   onNinguno,
   onCamara,
@@ -588,6 +607,7 @@ function FilaImagen({
   rotulo: string
   puesta: boolean
   subiendo: boolean
+  disabled: boolean
   /** Para la vitrina de imagen: sin foto no hay vitrina, así que no se ofrece sacarla. */
   sinNinguno: boolean
   onNinguno: () => void
@@ -600,29 +620,27 @@ function FilaImagen({
     <Menu
       label={rotulo}
       triggerFullWidth
+      disabled={disabled}
       items={[
-        ...(sinNinguno
-          ? []
-          : [
-              {
-                label: 'Ninguna',
-                onPress: onNinguno,
-                icon: <IconBan size={15} color={ICON_COLOR.muted} />,
-                sfSymbol: 'circle.slash' as const,
-              },
-            ]),
         {
-          label: 'Cámara',
-          onPress: onCamara,
-          icon: <IconCamera size={15} color={ICON_COLOR.muted} />,
-          sfSymbol: 'camera' as const,
-        },
-        {
-          label: 'Galería',
+          label: 'Elegir de Fotos',
           onPress: onGaleria,
           icon: <IconImage size={15} color={ICON_COLOR.muted} />,
           sfSymbol: 'photo.on.rectangle' as const,
         },
+        {
+          label: 'Sacar una foto',
+          onPress: onCamara,
+          icon: <IconCamera size={15} color={ICON_COLOR.muted} />,
+          sfSymbol: 'camera' as const,
+        },
+        ...(sinNinguno || !puesta ? [] : [{
+          label: 'Quitar fondo',
+          onPress: onNinguno,
+          destructive: true,
+          icon: <IconBan size={15} color={ICON_COLOR.muted} />,
+          sfSymbol: 'circle.slash' as const,
+        }]),
       ]}
       trigger={
         <View className="w-full flex-row items-center gap-3 px-4">
@@ -636,7 +654,7 @@ function FilaImagen({
           >
             <Text className="shrink-0 text-foreground text-subheadline">{rotulo}</Text>
             <Text className="min-w-0 flex-1 text-right text-subheadline text-muted-foreground" numberOfLines={1}>
-              {subiendo ? 'Subiendo…' : puesta ? 'Puesta' : 'Ninguna'}
+              {subiendo ? 'Preparando…' : puesta ? 'Cambiar' : 'Elegir'}
             </Text>
             <IconChevronRight size={16} color={ICON_COLOR.muted} />
           </View>

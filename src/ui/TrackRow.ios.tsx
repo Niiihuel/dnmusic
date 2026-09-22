@@ -1,7 +1,9 @@
 import type { ComponentProps } from 'react'
 import { View, useWindowDimensions } from 'react-native'
-import { NativeMediaRow } from '../../modules/media-controls'
+import { NativeMediaRow, NativeRowHighlight } from '../../modules/media-controls'
 import { usePlaybackCargada } from '../state/playback'
+import { filaCargando } from './estadoFilaReproduccion'
+import { RowSurface } from './RowSurface'
 import { MantenerApretado } from './Menu'
 import { TrackRow as Respaldo } from './TrackRow.shared'
 export { ANCHO_DURACION } from './TrackRow.shared'
@@ -11,13 +13,14 @@ export function TrackRow(props: ComponentProps<typeof Respaldo>) {
   const cargada = usePlaybackCargada()
   if (!NativeMediaRow) return <Respaldo {...props} />
   const { title, artist, artwork, sounding, playing, busy, inset = true, onPlay, trailing, menu } = props
-  const fila = <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: inset ? 12 : 0 }}>
+  const fila = <RowSurface style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: inset ? 12 : 0 }}>
     <NativeMediaRow title={title} subtitle={artist} artwork={artwork}
-      sounding={sounding} playing={playing} busy={!!busy || (sounding && !cargada)}
+      sounding={sounding} playing={playing} busy={filaCargando(sounding, playing, cargada, busy)}
+      {...(NativeRowHighlight ? { drawsHighlight: false } : {})}
       label={`${playing ? 'Pausar' : 'Reproducir'} ${title}, de ${artist}`}
       onActivate={onPlay} style={{ flex: 1, height: Math.max(68, 42 * fontScale + 16) }} />
     <View style={{ minWidth: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>{trailing}</View>
-  </View>
+  </RowSurface>
   return menu?.length ? <MantenerApretado items={menu} preview={{ title, subtitle: artist, artwork }} >{fila}</MantenerApretado> : fila
 }
 

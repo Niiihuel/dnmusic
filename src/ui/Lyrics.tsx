@@ -3,13 +3,16 @@ import { Platform, Pressable, Text, View, type LayoutChangeEvent, type TextStyle
 import Animated, {
   Easing,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
+  withSequence,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated'
 
 import { activeLyricIndex, enfoque, type LyricLine } from '../services/letra'
+import { ESCALA_MAX_LETRA, margenLetra } from './lyricsGeometry'
 
 /* La fila es tocable y además se atenúa sola, así que el `Pressable` es el que
    lleva el estilo animado. Con él se fue `active:opacity-60`: NativeWind no
@@ -77,16 +80,15 @@ const TENUE = 'rgba(255,255,255,0.45)'
  * arrastra es lo que hace ver la columna como algo con peso, y es lo que la
  * curva de antes no tenía: `Easing.out(cubic)` llega y frena en seco.
  *
- * **No rebota.** Se midió: la posición baja de 252 a 88 y nunca se pasa de
- * largo, ni un píxel. Por eso el `dampingRatio` va casi en uno — un resorte
- * críticamente amortiguado es exactamente esta forma: arranque corto, pico
- * temprano, cola exponencial. Bajarlo le mete un rebote que el original no
- * tiene; es un número y se cambia, pero deja de ser el video.
+ * La columna conserva un aterrizaje apenas elástico: suficiente para que se
+ * sienta física al cambiar de verso, sin volver hacia la línea anterior. El
+ * pulso corto de la línea activa, más abajo, termina de dar esa sensación sin
+ * desplazar el texto fuera de su ancla.
  *
  * `duration` es la duración **perceptual**: Reanimated corre el resorte una vez
- * y media más largo, así que 420 son los ~630ms medidos.
+ * y media más largo, así que 440 da una cola cercana a los 650ms.
  */
-const RESORTE = { duration: 420, dampingRatio: 0.9 } as const
+const RESORTE = { duration: 440, dampingRatio: 0.82 } as const
 
 /**
  * Lo que tarda una línea en apagarse cuando le toca a la siguiente.
@@ -165,7 +167,9 @@ export function Lyrics({
   const fixedH = visible ? visible * s.lineH : undefined
 
   const [boxH, setBoxH] = useState(fixedH ?? 0)
+  const [boxW, setBoxW] = useState(0)
   const spots = useRef<{ y: number; h: number }[]>([])
+  const reduceMotion = useReducedMotion()
   const offset = useSharedValue(0)
   /** En qué línea está el foco, **con decimales**: de ahí sale cada opacidad. */
   const focoSV = useSharedValue(0)
@@ -197,16 +201,16 @@ export function Lyrics({
       const resorte = xl ? RESORTE : { ...RESORTE, duration: 300 }
       if (settled.current) {
         // eslint-disable-next-line react-hooks/immutability
-        offset.value = withSpring(to, resorte)
+        offset.value = reduceMotion ? to : withSpring(to, resorte)
         // eslint-disable-next-line react-hooks/immutability
-        focoSV.value = withTiming(i, CRUCE)
+        focoSV.value = reduceMotion ? i : withTiming(i, CRUCE)
       } else {
         offset.value = to
         focoSV.value = i
         settled.current = true
       }
     },
-    [boxH, offset, focoSV, s.ancla, xl],
+    [boxH, offset, focoSV, reduceMotion, s.ancla, xl],
   )
 
   useEffect(() => {
@@ -252,7 +256,7 @@ export function Lyrics({
   if (!lines.length) return null
 
   const columna = (
-    <Animated.View style={columnStyle}>
+    <Animated.View style={[columnStyle, { paddingHorizontal: margenLetra(boxW, xl ? 24 : size === 'lg' ? 20 : 12) }]}>
       {lines.map((line, i) => (
         <Line
           key={`${line.atMs}-${i}`}
@@ -263,6 +267,7 @@ export function Lyrics({
           distance={i - foco}
           size={s}
           xl={xl}
+          reduceMotion={reduceMotion}
           /* Enfocada pero todavía en silencio: la letra ya subió, la voz no
              llegó. Se ve entera, a media luz. */
           esperando={xl && i === target && i !== sonando}
@@ -279,7 +284,10 @@ export function Lyrics({
   const caja = {
     style: fixedH ? { height: fixedH } : undefined,
     className: `overflow-hidden ${fixedH ? '' : 'flex-1'}`,
-    onLayout: (e: LayoutChangeEvent) => setBoxH(e.nativeEvent.layout.height),
+    onLayout: (e: LayoutChangeEvent) => {
+      setBoxH(e.nativeEvent.layout.height)
+      setBoxW(e.nativeEvent.layout.width)
+    },
     accessibilityLabel: 'Letra de la canción',
   }
 
@@ -329,10 +337,17 @@ function desenfoque(distance: number): number {
   return Math.min(6, distance > 0 ? (d - 1) * 1.6 : d * 1.1)
 }
 
-/** iOS admite brillo y opacidad en `filter`, pero no blur. La profundidad
- * allí la conserva la atenuación; web y Android mantienen el desenfoque. */
+/** React Native no expone blur de contenido en iOS. La sombra del propio
+ * glifo crea allí un desenfoque óptico equivalente sin emborronar el fondo;
+ * web y Android usan el filtro real. */
 function estiloDesenfoque(px: number): TextStyle | null {
-  if (px <= 0 || Platform.OS === 'ios') return null
+  if (px <= 0) return null
+  if (Platform.OS === 'ios') return {
+    color: 'rgba(255,255,255,0.18)',
+    textShadowColor: 'rgba(255,255,255,0.88)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: Math.max(1.5, px * 1.25),
+  }
   if (Platform.OS === 'web') return { filter: `blur(${px.toFixed(1)}px)` } as unknown as TextStyle
   return { filter: [{ blur: px }] } as unknown as TextStyle
 }
@@ -371,6 +386,7 @@ const Line = memo(function Line({
   distance,
   size,
   xl,
+  reduceMotion,
   esperando,
   tocable,
   sostenible,
@@ -386,6 +402,7 @@ const Line = memo(function Line({
   distance: number
   size: (typeof SIZE)[LyricsSize]
   xl: boolean
+  reduceMotion: boolean
   /** En foco pero todavía sin cantar: la pantalla se adelantó. */
   esperando: boolean
   tocable: boolean
@@ -395,6 +412,22 @@ const Line = memo(function Line({
   onLongPress: (texto: string, atMsLinea: number) => void
 }) {
   const active = distance === 0
+  const escala = useSharedValue(active ? 1 : 0.975)
+
+  useEffect(() => {
+    if (reduceMotion) {
+      escala.value = active ? 1 : 0.975
+      return
+    }
+    // La línea entra con un pulso mínimo y aterriza; el texto no cambia de
+    // tamaño de golpe mientras la columna todavía está viajando.
+    escala.value = active
+      ? withSequence(
+          withSpring(1.028, { duration: 170, dampingRatio: 0.72 }),
+          withSpring(1, { duration: 270, dampingRatio: 0.88 }),
+        )
+      : withSpring(0.975, { duration: 240, dampingRatio: 1 })
+  }, [active, escala, reduceMotion])
 
   const layout = (e: LayoutChangeEvent) =>
     onMeasure(indice, e.nativeEvent.layout.y, e.nativeEvent.layout.height)
@@ -413,11 +446,13 @@ const Line = memo(function Line({
    * termina cayendo al color por defecto — negro sobre negro.
    */
   const fontSize = active ? size.active : size.idle
-  /* La opacidad es lo único animado: es lo que tiene que cruzar mientras la
-     columna viaja. El desenfoque salta con la distancia entera —a esa distancia
-     la línea ya está apagada y el escalón no se ve—, y animarlo sería redibujar
-     un filtro por línea en cada cuadro. */
-  const atenuacion = useAnimatedStyle(() => ({ opacity: opacidad(indice - foco.value, xl) }))
+  /* Opacidad y escala cruzan mientras la columna viaja. El desenfoque salta
+     con la distancia entera —a esa distancia la línea ya está apagada y el
+     escalón no se ve—; animar un filtro por línea en cada cuadro sería caro. */
+  const atenuacion = useAnimatedStyle(() => ({
+    opacity: opacidad(indice - foco.value, xl),
+    transform: [{ scale: Math.min(ESCALA_MAX_LETRA, escala.value) }],
+  }))
 
   const texto: TextStyle = {
     color: esperando ? TENUE : '#FFFFFF',

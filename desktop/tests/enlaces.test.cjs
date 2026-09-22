@@ -14,6 +14,7 @@ test('reconoce el esquema propio y el link del sitio', () => {
   assert.equal(rutaDeEnlace('dnmusic://cancion/abc123'), '/cancion/abc123')
   assert.equal(rutaDeEnlace('dnmusic://jam/ABC123'), '/jam/ABC123')
   assert.equal(rutaDeEnlace('https://dnmusic-app.vercel.app/lista/un-uuid'), '/lista/un-uuid')
+  assert.equal(rutaDeEnlace('https://dnmusic-production-c3f4.up.railway.app/lista/un-uuid'), '/lista/un-uuid')
   assert.equal(rutaDeEnlace('  dnmusic://perfil/nihuel  '), '/perfil/nihuel')
 })
 

@@ -4,19 +4,16 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   AjustesCompactos,
+  AjustesNativos,
   FilaAjuste,
   FilaCuenta,
   FilaInterruptor,
   FilaOpciones,
   GrupoAjustes,
-  ListaAjustes,
-  FilaAccion,
-  FilaDato,
   FilaConfirmable,
 } from '../../src/ui/Ajustes'
 import { Avatar } from '../../src/ui/Avatar'
 import { CabeceraLateral, BotonLateral } from '../../src/ui/CabeceraLateral'
-import { EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
 import { BotonVolver } from '../../src/ui/BotonVolver'
 import { CollapsedSidebar } from '../../src/ui/SidebarMotion'
 import { ScrollArea as ScrollView } from '../../src/ui/ScrollArea'
@@ -66,6 +63,7 @@ import { ConectarGoogle } from '../../src/ui/ConectarGoogle'
 import { DiscordIcon } from '../../src/ui/DiscordIcon'
 import { AjustesDiscord } from '../../src/ui/AjustesDiscord'
 import { AjustesActualizaciones } from '../../src/ui/AjustesActualizaciones'
+import { useResumenEcualizador } from '../../src/state/ecualizador'
 
 /** Desde acá la pantalla es la de macOS: barra lateral con las categorías y el detalle al lado. */
 const ESCRITORIO_PX = 780
@@ -86,6 +84,8 @@ const normalizar = (valor: string) =>
 type Categoria = {
   id: string
   titulo: string
+  resumen: string
+  simbolo: string
   icono: (p: IconProps) => React.ReactElement
   /** Con qué palabras se la encuentra buscando. */
   palabras: string
@@ -97,12 +97,9 @@ type Categoria = {
 /**
  * Configuración, con la anatomía del sistema en las dos plataformas.
  *
- * **En el teléfono es Configuración de iOS**: el título grande, la fila de la
- * cuenta arriba con la cara y el nombre, y debajo los bloques de filas —placa
- * de ícono, rótulo, valor en gris, chevron o interruptor— sin títulos de
- * sección (la raíz de Configuración no los lleva: cada bloque agrupa lo que va
- * junto y su pie explica lo que haga falta). El buscador **flota abajo**, como
- * en iOS 26, y la lista pasa por detrás.
+ * **En iPhone es Configuración de iOS**: una raíz breve con la cuenta y las
+ * categorías. Cada categoría abre su propio destino nativo, con gesto de
+ * regreso, barra translúcida y título administrados por NavigationStack.
  *
  * **En la compu es Ajustes del Sistema de macOS**: una barra lateral con el
  * buscador, la cuenta y la lista de categorías, y a la derecha el detalle de la
@@ -121,6 +118,7 @@ export default function Configuracion() {
   const cuentaAuth = useAuthUser()
   const dormirMin = useDormirMin()
   const modoReproduccion = useModoReproduccion()
+  const resumenEcualizador = useResumenEcualizador()
   const perfil = useMyProfile()
   const nombre = perfil?.displayName?.trim() || perfil?.username || 'Tu cuenta'
   const { items } = useDescargas()
@@ -147,9 +145,11 @@ export default function Configuracion() {
     {
       id: 'reproduccion',
       titulo: 'Reproducción',
+      resumen: 'Modo, temporizador y audio',
+      simbolo: 'waveform',
       icono: IconDisc,
       palabras:
-        'reproducción modo orden aleatorio descubrimiento recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música diagnóstico audio errores fallos recuperación',
+        'reproducción modo orden aleatorio descubrimiento recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música ecualizador graves agudos bandas presets sonido diagnóstico audio errores fallos recuperación',
       visible: true,
       bloques: (
         <>
@@ -186,6 +186,10 @@ export default function Configuracion() {
               ultima
             />
           </GrupoAjustes>
+          <GrupoAjustes>
+            <FilaAjuste rotulo="Ecualizador" valor={resumenEcualizador} icono={<IconSliders size={17} color={ICON_COLOR.muted} />}
+              onPress={() => router.push('/ajustes/ecualizador' as never)} ultima />
+          </GrupoAjustes>
           <GrupoAjustes pie="Consultá los fallos y recuperaciones recientes del audio en este dispositivo.">
             <FilaAjuste rotulo="Diagnóstico de audio" vacio="" icono={<IconDisc size={17} color={ICON_COLOR.muted} />}
               onPress={() => router.push('/ajustes/diagnostico-audio')} ultima />
@@ -196,6 +200,8 @@ export default function Configuracion() {
     {
       id: 'descargas',
       titulo: HAY_DESCARGAS ? 'Descargas y caché' : 'Precarga',
+      resumen: 'Música sin conexión y uso de datos',
+      simbolo: 'arrow.down.circle',
       icono: IconDownload,
       palabras: 'almacenamiento descargas caché cache automática precarga espacio límite wifi datos conexión bajadas sin conexión',
       visible: true,
@@ -230,6 +236,8 @@ export default function Configuracion() {
     {
       id: 'app',
       titulo: 'La app',
+      resumen: 'Novedades y comportamiento',
+      simbolo: 'sparkles',
       icono: IconSparkles,
       palabras: 'novedades avisos ayudas cursor interfaz app rótulos',
       visible: true,
@@ -262,6 +270,8 @@ export default function Configuracion() {
     {
       id: 'actualizaciones',
       titulo: 'Actualizaciones',
+      resumen: 'Versión instalada y disponibilidad',
+      simbolo: 'arrow.triangle.2.circlepath',
       icono: IconDownload,
       palabras: 'actualizaciones versión instalada descargar reiniciar novedades TestFlight tienda',
       visible: true,
@@ -270,6 +280,8 @@ export default function Configuracion() {
     {
       id: 'accesos',
       titulo: 'Solicitudes de acceso',
+      resumen: 'Personas y compatibilidad',
+      simbolo: 'person.2',
       icono: IconUser,
       palabras: 'administración aprobar rechazar solicitudes acceso cuentas google',
       visible: esAdmin,
@@ -295,6 +307,8 @@ export default function Configuracion() {
     {
       id: 'discord',
       titulo: 'Discord',
+      resumen: 'Presencia y actividad',
+      simbolo: 'bubble.left.and.bubble.right',
       icono: DiscordIcon,
       palabras: 'discord presencia compartir canción escuchando actividad',
       visible: true,
@@ -303,6 +317,8 @@ export default function Configuracion() {
     {
       id: 'privacidad',
       titulo: 'Privacidad',
+      resumen: 'Bloqueados e historial de escucha',
+      simbolo: 'hand.raised',
       icono: IconLock,
       palabras: 'privacidad datos bloqueados borrar historial escucha recomendaciones',
       visible: true,
@@ -326,6 +342,8 @@ export default function Configuracion() {
     {
       id: 'cuenta',
       titulo: 'Cuenta',
+      resumen: 'Perfil, Google y sesión',
+      simbolo: 'person.crop.circle',
       icono: IconUser,
       palabras: 'perfil foto nombre fuente tipografía espacio cerrar sesión salir cuenta conectar google vincular correo',
       visible: true,
@@ -499,19 +517,17 @@ function Telefono({
      apoya sobre él. La lista reserva su alto para llegar a la última fila. */
   const pieBuscador = Math.max(insets.bottom, 12) + teclado
 
-  const [mostrarTodas, setMostrarTodas] = useState(false)
-  if (Platform.OS === 'ios') {
-    const enfocada = !mostrarTodas && !buscando ? coinciden.find(c => c.id === initialId) : undefined
-    const visibles = enfocada ? [enfocada] : coinciden
-    return <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <EncabezadoHoja titulo={enfocada?.titulo ?? 'Configuración'} izquierda={<BotonVolver label="Volver" onPress={onVolver} />} />
-      <ListaAjustes piso={piso + 72}>
-        {enfocada ? <GrupoAjustes><FilaAccion rotulo="Ver toda la configuración" onPress={() => setMostrarTodas(true)} ultima /></GrupoAjustes> : !buscando ? cuenta : null}
-        {visibles.map(c => <Fragment key={c.id}>{c.bloques}</Fragment>)}
-        {!visibles.length ? <GrupoAjustes pie="Probá con otra palabra."><FilaDato rotulo="Sin resultados" valor={busqueda} /><FilaAccion rotulo="Ver todo" onPress={() => onBusqueda('')} ultima /></GrupoAjustes> : null}
-      </ListaAjustes>
-      <View style={{ position: 'absolute', left: 16, right: 16, bottom: pieBuscador }}><SearchField value={busqueda} onChangeText={onBusqueda} placeholder="Buscar" /></View>
-    </SafeAreaView>
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    return <AjustesNativos
+      initialId={initialId}
+      categorias={coinciden.map(c => ({ id: c.id, titulo: c.titulo, resumen: c.resumen, simbolo: c.simbolo, bloques: c.bloques }))}
+      cuenta={cuenta}
+      piso={piso}
+      buscando={buscando}
+      busqueda={busqueda}
+      onBusqueda={onBusqueda}
+      onVolver={onVolver}
+    />
   }
 
   return (

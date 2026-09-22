@@ -8,7 +8,7 @@ const compile = path => ts.transpileModule(readFileSync(path, 'utf8'), {
 }).outputText
 const flush = () => new Promise(resolve => setImmediate(resolve))
 
-function fixture(saved = null) {
+function fixture(saved = null, platform = 'ios', random = Math.random) {
   const storeModule = {}, api = {}, avisos = [], writes = []
   new Function('exports', 'require', compile('src/state/store.ts'))(
     storeModule,
@@ -18,13 +18,14 @@ function fixture(saved = null) {
     getItem: async key => key === 'playback:v1' ? saved : null,
     setItem: async (key, value) => { writes.push([key, JSON.parse(value)]) },
   }
-  new Function('exports', 'require', compile('src/state/playback.ts'))(api, id => {
+  new Function('exports', 'require', 'Math', compile('src/state/playback.ts'))(api, id => {
     if (id === '@react-native-async-storage/async-storage') return { __esModule: true, default: storage }
+    if (id === 'react-native') return { Platform: { OS: platform } }
     if (id === 'react-native-reanimated') return { makeMutable: value => ({ value }) }
     if (id === './store') return storeModule
     if (id === './aviso') return { avisar: message => avisos.push(message) }
     throw new Error(id)
-  })
+  }, Object.assign(Object.create(Math), { random }))
   return { api, avisos, writes }
 }
 
@@ -236,4 +237,54 @@ test('Poner a continuación no altera el Jam y espera autorización de traspaso 
   api.registerEscucha(null)
   continuation()
   assert.equal(api.getPlaybackState().upNext[0].id, manual.id)
+})
+
+
+test('volumen web: audio inmediato y una sola escritura al terminar la ráfaga', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { api, writes } = fixture(null, 'web')
+  api.setVolume(0.2); api.setVolume(0.3); api.setVolume(0.4)
+  assert.equal(api.getPlaybackState().volume, 0.4)
+  assert.deepEqual(writes, [])
+  t.mock.timers.tick(159)
+  assert.deepEqual(writes, [])
+  t.mock.timers.tick(1)
+  assert.deepEqual(writes, [['volume:v1', 0.4]])
+  api.setVolume(0.4); api.setVolume(Number.NaN)
+  t.mock.timers.tick(200)
+  assert.equal(writes.length, 1)
+})
+
+
+for (const modo of ['aleatorio', 'recomendado']) {
+  test(`${modo}: iniciar una colección puede comenzar por cualquiera, sin repetir ni omitir temas`, () => {
+    for (let primera = 0; primera < tracks.length; primera++) {
+      const { api } = fixture(null, 'ios', () => (primera + 0.5) / tracks.length)
+      api.setModoReproduccion(modo)
+      api.playCollection(tracks, { id: 'lista', name: 'Lista' })
+      const state = api.getPlaybackState()
+      assert.equal(state.index, primera)
+      assert.equal(state.shuffle[0], primera)
+      assert.equal(state.durationMs, tracks[primera].durationMs)
+      assert.deepEqual([...state.shuffle].sort(), [0, 1, 2, 3])
+      const recorridas = [state.index]
+      for (let i = 1; i < tracks.length; i++) { api.advance(); recorridas.push(api.getPlaybackState().index) }
+      assert.equal(new Set(recorridas).size, tracks.length)
+      // Tocar una fila concreta sigue siendo una elección explícita.
+      api.playQueue(tracks, 1, { id: 'lista', name: 'Lista' })
+      assert.equal(api.getPlaybackState().index, 1)
+    }
+  })
+}
+test('inicio en orden, colección vacía y una sola canción mantienen un índice válido', () => {
+  const { api } = fixture(null, 'ios', () => 0.99)
+  api.playCollection(tracks, null)
+  assert.equal(api.getPlaybackState().index, 0)
+  const anterior = api.getPlaybackState()
+  api.playCollection([], null)
+  assert.equal(api.getPlaybackState(), anterior)
+  api.setModoReproduccion('aleatorio')
+  api.playCollection([tracks[2]], null)
+  assert.equal(api.getPlaybackState().index, 0)
+  assert.deepEqual(api.getPlaybackState().shuffle, [0])
 })

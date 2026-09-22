@@ -9,7 +9,7 @@ export function textoEsperaGooglePara(contexto: ContextoGoogle, superficie: Supe
     if (contexto === 'registro') {
       return 'Terminá el alta en tu navegador. Al volver, la solicitud quedará lista para que @nihuel la apruebe.'
     }
-    return 'Terminá el acceso en tu navegador. dnmusic se actualizará automáticamente.'
+    return 'Google se abrió en tu navegador. Completá el acceso ahí; al terminar, dnmusic continuará en esta ventana.'
   }
   if (superficie === 'ios') {
     if (contexto === 'vinculacion') {

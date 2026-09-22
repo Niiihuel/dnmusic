@@ -4,6 +4,7 @@ import { Column, Text } from '@expo/ui/jetpack-compose'
 import { fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers'
 import { AndroidHost, ANDROID_COLORS as color } from './AndroidHost'
 import { IconButton } from './IconButton'
+import { ANDROID_TYPE } from './androidDesign'
 
 /** Yoga reserves header space; text and actions render through Compose. */
 export function EncabezadoHoja({ titulo, sobre, izquierda, derecha }: {
@@ -18,8 +19,8 @@ export function EncabezadoHoja({ titulo, sobre, izquierda, derecha }: {
       <View accessibilityRole="header" style={{ flex: 1, minWidth: 0 }}>
         <AndroidHost matchContents={{ vertical: true }} style={{ width: '100%' }}>
           <Column modifiers={[fillMaxWidth()]} verticalArrangement={{ spacedBy: 2 }}>
-            <Text color={color.text} style={{ fontSize: 18, fontWeight: '600', textAlign: 'center' }} modifiers={[fillMaxWidth()]}>{titulo}</Text>
-            {sobre ? <Text color={color.muted} style={{ typography: 'bodySmall', textAlign: 'center' }} modifiers={[fillMaxWidth()]}>{sobre}</Text> : null}
+            <Text color={color.text} style={{ ...ANDROID_TYPE.title, textAlign: 'center' }} modifiers={[fillMaxWidth()]}>{titulo}</Text>
+            {sobre ? <Text color={color.muted} style={{ ...ANDROID_TYPE.body, textAlign: 'center' }} modifiers={[fillMaxWidth()]}>{sobre}</Text> : null}
           </Column>
         </AndroidHost>
       </View>

@@ -11,6 +11,7 @@ function harness(path, deps = {}, extra = '') {
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx }
     if (id === 'react') return { useState(v) { const n = i++; if (!(n in states)) states[n] = v; return [states[n], v => states[n] = typeof v === 'function' ? v(states[n]) : v] }, useRef(v) { const n = i++; return states[n] ??= { current: v } }, useEffect() {} }
     if (id in deps) return deps[id]
+    if (id === './estadoFilaReproduccion') return harness('src/ui/estadoFilaReproduccion.ts').exports
     if (id.endsWith('/icons')) return new Proxy({ ICON_COLOR: {} }, { get: (target, k) => target[k] ?? k })
     return new Proxy({}, { get: (_, k) => k })
   })

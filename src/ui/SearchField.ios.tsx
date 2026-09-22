@@ -1,6 +1,7 @@
 import { useEffect, useImperativeHandle, useRef } from 'react'
 import { Button, Host, HStack, Image, ProgressView, TextField, useNativeState, type TextFieldRef } from '@expo/ui/swift-ui'
-import { accessibilityLabel as etiqueta, autocorrectionDisabled, background, buttonStyle, clipShape, font, foregroundStyle, frame, labelStyle, onSubmit as alEnviar, padding, submitLabel, textFieldStyle, textInputAutocapitalization } from '@expo/ui/swift-ui/modifiers'
+import { accessibilityLabel as etiqueta, autocorrectionDisabled, background, buttonStyle, clipShape, font, foregroundStyle, frame, glassEffect, labelStyle, onSubmit as alEnviar, padding, submitLabel, textFieldStyle, textInputAutocapitalization } from '@expo/ui/swift-ui/modifiers'
+import { isLiquidGlassAvailable } from 'expo-glass-effect'
 import type { SearchFieldProps } from './SearchField.types'
 
 /** Texto, foco, limpiar y botón Buscar administrados por controles SwiftUI. */
@@ -17,7 +18,11 @@ export function SearchField({ value, onChangeText, placeholder, accessibilityLab
   }, [texto, value])
 
   return <Host ignoreSafeArea="all" style={{ width: '100%', height: alto, flexShrink: 0 }} colorScheme="dark" seedColor="#FFFFFF">
-    <HStack spacing={10} modifiers={[padding({ leading: 14, trailing: 2 }), frame({ height: alto }), background('#1F1F1F'), clipShape('capsule')]}>
+    <HStack spacing={10} modifiers={[padding({ leading: 14, trailing: 2 }), frame({ height: alto }),
+      // Una sola superficie, sin un relleno opaco ni clipping encima del vidrio.
+      ...(isLiquidGlassAvailable()
+        ? [glassEffect({ glass: { variant: 'regular' }, shape: 'capsule' })]
+        : [background('#1F1F1F'), clipShape('capsule')])]}>
       <Image systemName="magnifyingglass" color="#B3B3B3" size={18} />
       <TextField ref={input} text={texto} placeholder={placeholder} autoFocus={autoFocus}
         onTextChange={onChangeText} onFocusChange={onFocusChange}

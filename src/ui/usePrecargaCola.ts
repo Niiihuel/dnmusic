@@ -89,8 +89,11 @@ export function usePrecargaCola({ current, proximas, url, player, wantPlay, mudo
           if (!track.audioPath) {
             const song = await resolveSong({ ...track, album: '', albumId: null }, abort.signal)
             if (!sigue()) return
-            track = { ...track, audioPath: song.path, artworkPath: song.artworkPath, durationMs: song.durationMs }
+            track = { ...track, audioPath: song.path, artworkPath: song.artworkPath, durationMs: song.durationMs || track.durationMs }
             remota = song.url
+            completarCancion(track.videoId, {
+              audioPath: track.audioPath, artworkPath: track.artworkPath, durationMs: track.durationMs,
+            })
           }
           let local = rutaLocal(track.audioPath)
           if (!local && HAY_DESCARGAS) local = await prepararCache(track, abort.signal)
@@ -114,9 +117,6 @@ export function usePrecargaCola({ current, proximas, url, player, wantPlay, mudo
             if (!esActual(track.id)) datos.current.remember(track.id, buffer)
           }
           fallos.current.delete(track.id)
-          if (original.audioPath !== track.audioPath) completarCancion(track.videoId, {
-            audioPath: track.audioPath, artworkPath: track.artworkPath, durationMs: track.durationMs,
-          })
         } catch {
           // Una precarga fallida no borra canciones elegidas ni corta la cola.
           // Al tocarla, reproducción reintentará con su prioridad normal.

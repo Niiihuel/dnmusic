@@ -5,6 +5,8 @@ import { AlertDialog, Button, CircularProgressIndicator, Column, Row, Shape, Spa
 import { fillMaxWidth, paddingAll, size, weight } from '@expo/ui/jetpack-compose/modifiers'
 import { AndroidHost, ANDROID_COLORS as color } from './AndroidHost'
 import type { BarraCambiosPerfilProps } from './BarraCambiosPerfil'
+import { ANDROID_TYPE } from './androidDesign'
+import { androidControlModifiers } from './androidComposeDesign'
 
 /** A persistent Material surface keeps save/reset available until the draft is resolved. */
 export function BarraCambiosPerfil({ visible, ocupado = false, error, puedeGuardar = true,
@@ -18,20 +20,21 @@ export function BarraCambiosPerfil({ visible, ocupado = false, error, puedeGuard
     : { width: '100%' }}>
     <AndroidHost matchContents={{ vertical: true }} style={{ width: '100%' }} onLayoutContent={e => onAltura?.(e.nativeEvent.height)}>
       <Surface color={color.surface} contentColor={color.text} shadowElevation={4} modifiers={[fillMaxWidth()]}
-        shape={Shape.RoundedCorner({ cornerRadii: { topStart: 24, topEnd: 24, bottomStart: 24, bottomEnd: 24 } })}>
+        shape={Shape.RoundedCorner({ cornerRadii: { topStart: 18, topEnd: 18, bottomStart: 18, bottomEnd: 18 } })}>
         <Column modifiers={[paddingAll(12), fillMaxWidth()]} verticalArrangement={{ spacedBy: 8 }}>
           <Row verticalAlignment="center" horizontalArrangement={{ spacedBy: 8 }}>
             {ocupado ? <CircularProgressIndicator color={color.text} modifiers={[size(18, 18)]} /> : null}
-            <Text style={{ typography: 'titleSmall' }}>{ocupado ? 'Guardando cambios…' : 'Cambios sin guardar'}</Text>
+            <Text style={ANDROID_TYPE.body}>{ocupado ? 'Guardando cambios…' : 'Cambios sin guardar'}</Text>
           </Row>
-          {error ? <Text color={color.error} style={{ typography: 'bodySmall' }}>{error}</Text> : null}
+          {error ? <Text color={color.error} style={ANDROID_TYPE.body}>{error}</Text> : null}
           <Row modifiers={[fillMaxWidth()]} verticalAlignment="center">
             <TextButton enabled={!ocupado} onClick={ocupado ? undefined : () => setConfirmarRestablecer(true)}
-              colors={{ contentColor: color.text, disabledContentColor: color.muted }}><Text>Restablecer</Text></TextButton>
+              colors={{ contentColor: color.text, disabledContentColor: color.muted }}><Text style={ANDROID_TYPE.body}>Restablecer</Text></TextButton>
             <Spacer modifiers={[weight(1)]} />
             <Button enabled={puedeConfirmar} onClick={puedeConfirmar ? onGuardar : undefined}
-              colors={{ containerColor: color.primary, contentColor: color.onPrimary, disabledContainerColor: color.raised, disabledContentColor: color.muted }}>
-              <Text>Guardar</Text>
+              modifiers={androidControlModifiers(true)}
+              colors={{ containerColor: 'transparent', contentColor: color.text, disabledContainerColor: 'transparent', disabledContentColor: color.muted }}>
+              <Text style={ANDROID_TYPE.body}>Guardar</Text>
             </Button>
           </Row>
         </Column>

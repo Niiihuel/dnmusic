@@ -65,7 +65,7 @@ test('iOS conserva letras y controles durante cambios de posición; solo cerrar 
   const lyrics = children(tree, node => node.type === 'LyricsView')[0]
   assert.equal(lyrics.props.onTap, undefined, 'tocar un verso no oculta la interfaz')
   lyrics.props.onPickLine(30000)
-  children(tree, node => node.props?.label === 'Cerrar reproductor')[0].props.onPress()
+  children(tree, node => node.type === 'PlayerHeader')[0].props.onClose()
   assert.deepEqual(calls, [['seek', 30000], 'close'])
 })
 
@@ -110,4 +110,12 @@ test('respuesta de letra cancelada no reemplaza una carga nueva al cambiar durac
   await new Promise(resolve => setImmediate(resolve))
   tree = h.render('LyricsView', { track: { ...track, durationMs: 180000 } })
   assert.equal(children(tree, node => node.type === 'Lyrics')[0].props.lines, lines)
+})
+
+test('la letra iOS difumina profundidad, aterriza con resorte y respeta Reducir movimiento', () => {
+  const source = readFileSync('src/ui/Lyrics.tsx', 'utf8')
+  assert.match(source, /textShadowRadius: Math\.max\(1\.5, px \* 1\.25\)/)
+  assert.match(source, /withSequence\(/)
+  assert.match(source, /useReducedMotion\(\)/)
+  assert.match(source, /reduceMotion \? to : withSpring\(to, resorte\)/)
 })

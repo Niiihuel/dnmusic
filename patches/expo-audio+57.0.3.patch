@@ -1,4 +1,134 @@
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
+index 992239b..83ad312 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
+@@ -531,6 +531,12 @@ class AudioModule : Module() {
+         }
+       }
+ 
++      Function("setEqualizer") { player: AudioPlayer, enabled: Boolean, gains: List<Double> ->
++        runOnMain {
++          player.setEqualizer(enabled, gains)
++        }
++      }
++
+       AsyncFunction("seekTo") { player: AudioPlayer, seekTime: Double, _: Double?, _: Double? ->
+         player.seekTo(seekTime)
+       }.runOnQueue(Queues.MAIN)
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
+index c76a9fd..19783df 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
+@@ -4,6 +4,7 @@ import android.Manifest
+ import android.content.Context
+ import android.content.pm.PackageManager
+ import android.media.audiofx.Visualizer
++import android.media.audiofx.Equalizer
+ import android.util.Log
+ import androidx.core.content.ContextCompat
+ import androidx.media3.common.AudioAttributes
+@@ -78,6 +79,15 @@ class AudioPlayer(
+ 
+   private var samplingEnabled = false
+   private var visualizer: Visualizer? = null
++  private var equalizer: Equalizer? = null
++  private var equalizerSessionId = C.AUDIO_SESSION_ID_UNSET
++  private var equalizerEnabled = false
++  private var equalizerGains = FloatArray(10)
++  private val equalizerListener = object : Player.Listener {
++    override fun onAudioSessionIdChanged(audioSessionId: Int) {
++      if (equalizerEnabled && audioSessionId != equalizerSessionId) rebuildEqualizer(audioSessionId)
++    }
++  }
+   private val context by lazy {
+     appContext.reactContext
+       ?: throw Exceptions.ReactContextLost()
+@@ -85,6 +95,7 @@ class AudioPlayer(
+ 
+   init {
+     installPlayerListeners()
++    ref.addListener(equalizerListener)
+     source?.let {
+       setMediaSource(source)
+     }
+@@ -180,6 +191,65 @@ class AudioPlayer(
+     }
+   }
+ 
++  /**
++   * Maps the app's stable ten-band curve onto the bands exposed by the device's
++   * AudioEffect implementation. Android equalizers vary by vendor, so each
++   * native centre frequency samples the logarithmic ten-band curve.
++   */
++  fun setEqualizer(enabled: Boolean, gains: List<Double>) {
++    equalizerEnabled = enabled
++    equalizerGains = FloatArray(10) { index ->
++      (gains.getOrNull(index) ?: 0.0).toFloat().coerceIn(-12f, 12f)
++    }
++    if (!enabled) {
++      equalizer?.enabled = false
++      return
++    }
++    if (equalizer == null || equalizerSessionId != ref.audioSessionId) {
++      rebuildEqualizer(ref.audioSessionId)
++    } else {
++      applyEqualizerCurve()
++    }
++  }
++
++  private fun rebuildEqualizer(audioSessionId: Int) {
++    equalizer?.release()
++    equalizer = null
++    equalizerSessionId = C.AUDIO_SESSION_ID_UNSET
++    if (!equalizerEnabled || audioSessionId == C.AUDIO_SESSION_ID_UNSET) return
++    try {
++      equalizer = Equalizer(0, audioSessionId)
++      equalizerSessionId = audioSessionId
++      applyEqualizerCurve()
++      equalizer?.enabled = true
++    } catch (error: RuntimeException) {
++      Log.w(TAG, "Equalizer is unavailable for audio session $audioSessionId", error)
++      equalizer?.release()
++      equalizer = null
++    }
++  }
++
++  private fun applyEqualizerCurve() {
++    val effect = equalizer ?: return
++    val frequencies = doubleArrayOf(31.0, 62.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0)
++    val range = effect.bandLevelRange
++    val minimum = range[0].toInt()
++    val maximum = range[1].toInt()
++    for (band in 0 until effect.numberOfBands.toInt()) {
++      val hz = effect.getCenterFreq(band.toShort()) / 1000.0
++      val upper = frequencies.indexOfFirst { it >= hz }.let { if (it < 0) frequencies.lastIndex else it }
++      val lower = (upper - 1).coerceAtLeast(0)
++      val gain = if (lower == upper) equalizerGains[upper]
++      else {
++        val span = kotlin.math.ln(frequencies[upper] / frequencies[lower])
++        val mix = if (span == 0.0) 0.0 else kotlin.math.ln(hz.coerceAtLeast(frequencies[lower]) / frequencies[lower]) / span
++        (equalizerGains[lower] + (equalizerGains[upper] - equalizerGains[lower]) * mix.toFloat())
++      }
++      effect.setBandLevel(band.toShort(), (gain * 100f).toInt().coerceIn(minimum, maximum).toShort())
++    }
++    effect.enabled = equalizerEnabled
++  }
++
+   override fun setPlaybackRate(rate: Float) {
+     val playbackRate = rate.coerceIn(0.1f, 2.0f)
+     val pitch = if (preservesPitch) 1f else playbackRate
+@@ -283,6 +353,9 @@ class AudioPlayer(
+     }
+     serviceConnection.unbind()
+     visualizer?.release()
++    ref.removeListener(equalizerListener)
++    equalizer?.release()
++    equalizer = null
+     super.releasePlayer()
+   }
+ 
 diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_modules/expo-audio/ios/AudioComponentRegistry.swift
+index 036d166..b347f2f 100644
 --- a/node_modules/expo-audio/ios/AudioComponentRegistry.swift
 +++ b/node_modules/expo-audio/ios/AudioComponentRegistry.swift
 @@ -1,5 +1,8 @@
@@ -10,7 +140,7 @@ diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_mod
  
  class AudioComponentRegistry {
    private var players = [String: AudioPlayer]()
-@@ -11,8 +14,67 @@
+@@ -11,8 +14,67 @@ class AudioComponentRegistry {
  
    private let registryQueue = DispatchQueue(label: "expo.audio.registry", attributes: .concurrent)
  
@@ -78,7 +208,7 @@ diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_mod
    func add(_ player: AudioPlayer) {
      registryQueue.async(flags: .barrier) {
        self.players[player.id] = player
-@@ -54,6 +116,7 @@
+@@ -54,6 +116,7 @@ class AudioComponentRegistry {
    #endif
  
    func removeAll() {
@@ -87,9 +217,10 @@ diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_mod
        self.players.values.forEach { $0.owningRegistry = nil }
        self.players.removeAll()
 diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-audio/ios/AudioModule.swift
+index d265606..7c1f5eb 100644
 --- a/node_modules/expo-audio/ios/AudioModule.swift
 +++ b/node_modules/expo-audio/ios/AudioModule.swift
-@@ -107,6 +107,7 @@
+@@ -107,6 +107,7 @@ public class AudioModule: Module {
      }
  
      OnAppEntersForeground {
@@ -97,7 +228,7 @@ diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-a
        if !shouldPlayInBackground {
          resumeAllPlayers()
        }
-@@ -242,7 +243,7 @@
+@@ -242,7 +243,7 @@ public class AudioModule: Module {
        }
  
        Function("pause") { player in
@@ -106,7 +237,18 @@ diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-a
          if !player.keepAudioSessionActive {
            deactivateSession()
          }
-@@ -600,6 +601,11 @@
+@@ -258,6 +259,10 @@ public class AudioModule: Module {
+         }
+       }
+ 
++      Function("setEqualizer") { (player: AudioPlayer, enabled: Bool, gains: [Double]) in
++        player.setEqualizer(enabled: enabled, gains: gains)
++      }
++
+       Function("setActiveForLockScreen") { (player: AudioPlayer, active: Bool, metadata: Metadata?, options: LockScreenOptions?) in
+         player.setActiveForLockScreen(active, metadata: metadata, options: options)
+       }
+@@ -600,6 +605,11 @@ public class AudioModule: Module {
          case .doNotMix, .mixWithOthers:
            playable.pause()
          }
@@ -119,9 +261,29 @@ diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-a
      }
  
 diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-audio/ios/AudioPlayer.swift
+index 0742943..b399682 100644
 --- a/node_modules/expo-audio/ios/AudioPlayer.swift
 +++ b/node_modules/expo-audio/ios/AudioPlayer.swift
-@@ -47,9 +47,13 @@
+@@ -23,7 +23,17 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+     ref.rate == 0.0
+   }
+   var samplingEnabled = false
+-  var keepAudioSessionActive = false
++  private var equalizerEnabled = false
++  private var equalizerGains = Array(repeating: 0.0, count: 10)
++  var keepAudioSessionActive = false {
++    didSet {
++      // A cached item may already be ready before this option is assigned.
++      // Prepare the visual tap before playback, including background starts.
++      if keepAudioSessionActive && !isPlaying {
++        installTap()
++      }
++    }
++  }
+ 
+   var isLooping = false {
+     didSet {
+@@ -47,9 +57,13 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
    private var timeToken: Any?
    private var cancellables = Set<AnyCancellable>()
    private var endObserver: NSObjectProtocol?
@@ -135,7 +297,28 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
    private var shouldInstallAudioTap = false
    weak var owningRegistry: AudioComponentRegistry?
    var onPlaybackComplete: (() -> Void)?
-@@ -125,7 +129,8 @@
+@@ -100,6 +114,9 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+   }
+ 
+   func play(at rate: Float) {
++    if keepAudioSessionActive && !isPlaying {
++      installTap()
++    }
+     ref.actionAtItemEnd = isLooping ? .advance : .pause
+     if isLooping {
+       enqueueNextLoopItem()
+@@ -119,24 +136,46 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+     }
+     samplingEnabled = enabled
+     if enabled {
++      // Foreground only enables delivery of samples from the prepared tap.
++      // Never rebuild a playing persistent item's audioMix for a visual.
++      if keepAudioSessionActive && isPlaying {
++        return
++      }
+       if isLoaded {
+         installTap()
+       } else {
          shouldInstallAudioTap = true
        }
      } else {
@@ -145,7 +328,19 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
        shouldInstallAudioTap = false
      }
    }
-@@ -133,10 +138,14 @@
+ 
++  func setEqualizer(enabled: Bool, gains: [Double]) {
++    equalizerEnabled = enabled
++    equalizerGains = (0..<10).map { index in
++      let value = gains.indices.contains(index) ? gains[index] : 0
++      return value.isFinite ? min(12, max(-12, value)) : 0
++    }
++    if enabled && isLoaded {
++      installTap()
++    }
++    audioProcessor?.setEqualizerEnabled(enabled, gains: equalizerGains.map { NSNumber(value: $0) })
++  }
++
    func currentStatus() -> [String: Any?] {
      let currentDuration = ref.status == .readyToPlay ? duration : 0.0
      let rate = isPlaying ? ref.rate : currentRate
@@ -161,7 +356,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
        "timeControlStatus": timeControlStatusString(status: ref.timeControlStatus),
        "reasonForWaitingToPlay": reasonForWaitingToPlayString(status: ref.reasonForWaitingToPlay),
        "mute": ref.isMuted,
-@@ -150,7 +159,7 @@
+@@ -150,7 +189,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        "isBuffering": isBuffering,
        "isLive": isLive,
        "currentOffsetFromLive": currentOffsetFromLive,
@@ -170,7 +365,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      ]
    }
  
-@@ -198,6 +207,15 @@
+@@ -198,22 +237,31 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
    }
  
    private func setupPublisher() {
@@ -186,7 +381,27 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      ref.publisher(for: \.currentItem?.status)
        .sink { [weak self] status in
          guard let self, let status else {
-@@ -228,6 +246,7 @@
+           return
+         }
+         if status == .readyToPlay {
++          if shouldInstallAudioTap || samplingEnabled || keepAudioSessionActive || equalizerEnabled {
++            installTap()
++            shouldInstallAudioTap = false
++          }
+           self.updateStatus(with: [
+             "isLoaded": true
+           ])
+           if self.isLooping {
+             self.enqueueNextLoopItem()
+           }
+-          if shouldInstallAudioTap || samplingEnabled {
+-            installTap()
+-            shouldInstallAudioTap = false
+-          }
+         }
+         if status == .failed {
+           self.updateStatus(with: [
+@@ -228,12 +276,14 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
          guard let self else {
            return
          }
@@ -194,7 +409,16 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
          if self.isLooping {
            self.enqueueNextLoopItem()
            self.addPlaybackEndNotification()
-@@ -246,9 +265,7 @@
+         }
+-        if self.samplingEnabled && self.isLoaded {
+-          self.uninstallTap()
++        if (self.samplingEnabled || self.keepAudioSessionActive) && self.isLoaded {
++          // installTap is idempotent for the same AVPlayerItem. A ready-item
++          // event followed by currentItem must not tear down its fresh mix.
+           self.installTap()
+         }
+       }
+@@ -246,9 +296,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      removeQueuedLoopItems()
      ref.pause()
  
@@ -205,7 +429,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      replacePlayerItem(with: item)
  
      if wasSamplingEnabled {
-@@ -267,9 +284,7 @@
+@@ -267,9 +315,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      removeQueuedLoopItems()
      ref.pause()
  
@@ -216,7 +440,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      let item = AudioUtils.createAVPlayerItem(from: source)
      replacePlayerItem(with: item)
  
-@@ -320,9 +335,7 @@
+@@ -320,9 +366,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
  
    private func teardownPlayer() {
      removeQueuedLoopItems()
@@ -227,7 +451,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      if let timeToken {
        ref.removeTimeObserver(timeToken)
        self.timeToken = nil
-@@ -331,6 +344,12 @@
+@@ -331,6 +375,12 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        NotificationCenter.default.removeObserver(endObserver)
        self.endObserver = nil
      }
@@ -240,7 +464,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      cancellables.removeAll()
      ref.pause()
    }
-@@ -358,7 +377,7 @@
+@@ -358,7 +408,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        return
      }
  
@@ -249,15 +473,32 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
        tapInstalled = true
        return
      }
-@@ -370,6 +389,7 @@
+@@ -370,8 +420,10 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      audioProcessor = AudioTapProcessor(player: ref)
      let success = audioProcessor?.installTap() ?? false
      tapInstalled = success
 +    sampledItem = success ? ref.currentItem : nil
  
      if success {
++      audioProcessor?.setEqualizerEnabled(equalizerEnabled, gains: equalizerGains.map { NSNumber(value: $0) })
        audioProcessor?.sampleBufferCallback = { [weak self] buffer, frameCount, timestamp in
-@@ -400,6 +420,7 @@
+         guard let self = self,
+           let audioBuffer = buffer?.pointee,
+@@ -381,10 +433,12 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+         }
+ 
+         let channelCount = Int(audioBuffer.mNumberChannels)
++        guard channelCount > 0 else { return }
+         let dataPointer = data.assumingMemoryBound(to: Float.self)
++        let sampleCount = min(Int(frameCount) * channelCount, Int(audioBuffer.mDataByteSize) / MemoryLayout<Float>.size)
+ 
+         let channels = (0..<channelCount).map { channelIndex in
+-          let channelData = stride(from: channelIndex, to: Int(frameCount), by: channelCount).map { frameIndex in
++          let channelData = stride(from: channelIndex, to: sampleCount, by: channelCount).map { frameIndex in
+             dataPointer[frameIndex]
+           }
+           return ["frames": channelData]
+@@ -400,6 +454,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
  
    private func uninstallTap() {
      tapInstalled = false
@@ -265,7 +506,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      audioProcessor?.uninstallTap()
      audioProcessor?.sampleBufferCallback = nil
    }
-@@ -439,6 +460,32 @@
+@@ -439,6 +494,32 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      }
    }
  
@@ -298,7 +539,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
    private func addPlaybackEndNotification() {
      if let endObserver {
        NotificationCenter.default.removeObserver(endObserver)
-@@ -447,7 +494,7 @@
+@@ -447,7 +528,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      endObserver = NotificationCenter.default.addObserver(
        forName: .AVPlayerItemDidPlayToEndTime,
        object: nil,
@@ -307,7 +548,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      ) { [weak self] notification in
        guard let self,
          let finishedItem = notification.object as? AVPlayerItem else {
-@@ -460,6 +507,11 @@
+@@ -460,6 +541,11 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        }
  
        if !self.isLooping {
@@ -319,7 +560,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
          let currentTime = finishedItem.duration.seconds
          self.updateStatus(with: [
            "playing": false,
-@@ -497,6 +549,10 @@
+@@ -497,6 +583,10 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
  
    func pause() {
      ref.pause()
@@ -330,10 +571,525 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
    }
  
    func resumePlayback() {
+diff --git a/node_modules/expo-audio/ios/AudioTapProcessor.h b/node_modules/expo-audio/ios/AudioTapProcessor.h
+index ddd4f23..73d5882 100644
+--- a/node_modules/expo-audio/ios/AudioTapProcessor.h
++++ b/node_modules/expo-audio/ios/AudioTapProcessor.h
+@@ -11,6 +11,7 @@ typedef void (^SampleBufferCallback)(AudioBuffer *audioBuffer, long frameCount,
+ 
+ - (instancetype)initWithPlayer:(AVPlayer *)player;
+ - (BOOL)installTap;
++- (void)setEqualizerEnabled:(BOOL)enabled gains:(NSArray<NSNumber *> *)gains;
+ - (void)uninstallTap;
+ - (void)invalidate;
+ 
+diff --git a/node_modules/expo-audio/ios/AudioTapProcessor.m b/node_modules/expo-audio/ios/AudioTapProcessor.m
+index 6f8fb16..b0c8d82 100644
+--- a/node_modules/expo-audio/ios/AudioTapProcessor.m
++++ b/node_modules/expo-audio/ios/AudioTapProcessor.m
+@@ -3,6 +3,8 @@
+ #import "AudioTapProcessor.h"
+ #import <AudioToolbox/AudioToolbox.h>
+ #import <os/lock.h>
++#import <math.h>
++#import "DNEqualizerDSP.h"
+ 
+ NS_ASSUME_NONNULL_BEGIN
+ 
+@@ -11,6 +13,10 @@ typedef struct AVAudioTapProcessorContext {
+   Boolean supportedTapProcessingFormat;
+   void *self;
+   Boolean isValid;
++  Float64 sampleRate;
++  UInt32 channelCount;
++  uint64_t equalizerVersion;
++  DNEqualizerDSP equalizer;
+ } AVAudioTapProcessorContext;
+ 
+ 
+@@ -19,6 +25,10 @@ typedef struct AVAudioTapProcessorContext {
+   MTAudioProcessingTapRef _audioProcessingTap;
+   BOOL _isTapInstalled;
+   BOOL _isInvalidated;
++  os_unfair_lock _equalizerLock;
++  BOOL _equalizerEnabled;
++  float _equalizerGains[DN_EQ_BANDS];
++  uint64_t _equalizerVersion;
+ }
+ 
+ - (instancetype)initWithPlayer:(AVPlayer *)player {
+@@ -29,10 +39,68 @@ typedef struct AVAudioTapProcessorContext {
+     _isTapInstalled = NO;
+     _isInvalidated = NO;
+     _audioProcessingTap = NULL;
++    _equalizerLock = OS_UNFAIR_LOCK_INIT;
++    _equalizerEnabled = NO;
++    _equalizerVersion = 1;
++    memset(_equalizerGains, 0, sizeof(_equalizerGains));
+   }
+   return self;
+ }
+ 
++- (void)setEqualizerEnabled:(BOOL)enabled gains:(NSArray<NSNumber *> *)gains {
++  os_unfair_lock_lock(&_equalizerLock);
++  _equalizerEnabled = enabled;
++  for (NSInteger index = 0; index < DN_EQ_BANDS; index++) {
++    double value = index < gains.count ? gains[index].doubleValue : 0.0;
++    _equalizerGains[index] = isfinite(value) ? (float)fmax(-12.0, fmin(12.0, value)) : 0;
++  }
++  _equalizerVersion++;
++  os_unfair_lock_unlock(&_equalizerLock);
++}
++
++- (void)processEqualizer:(AVAudioTapProcessorContext *)context
++              bufferList:(AudioBufferList *)bufferList
++                   frames:(CMItemCount)frameCount {
++  if (!context->supportedTapProcessingFormat || !bufferList || frameCount <= 0) return;
++  // The render callback must never wait for the UI thread. If a control write
++  // owns the lock, keep the previous curve for this buffer and retry next time.
++  if (os_unfair_lock_trylock(&_equalizerLock)) {
++    const BOOL changed = context->equalizerVersion != _equalizerVersion;
++    const BOOL enabled = _equalizerEnabled;
++    float gains[DN_EQ_BANDS];
++    memcpy(gains, _equalizerGains, sizeof(gains));
++    const uint64_t version = _equalizerVersion;
++    os_unfair_lock_unlock(&_equalizerLock);
++    if (changed) {
++      DNEQSetTarget(&context->equalizer, enabled, gains);
++      context->equalizerVersion = version;
++    }
++  }
++
++  // Validate the actual AudioBufferList, for planar AND interleaved Float32.
++  UInt32 channels = 0;
++  CMItemCount safeFrames = frameCount;
++  for (UInt32 index = 0; index < bufferList->mNumberBuffers; index++) {
++    AudioBuffer buffer = bufferList->mBuffers[index];
++    if (!buffer.mData || buffer.mNumberChannels == 0) return;
++    channels += buffer.mNumberChannels;
++    safeFrames = MIN(safeFrames, buffer.mDataByteSize / (sizeof(float) * buffer.mNumberChannels));
++  }
++  if (channels != context->channelCount || channels > DN_EQ_MAX_CHANNELS) return;
++  for (CMItemCount frame = 0; frame < safeFrames; frame++) {
++    DNEQBeginFrame(&context->equalizer);
++    UInt32 channel = 0;
++    for (UInt32 index = 0; index < bufferList->mNumberBuffers; index++) {
++      AudioBuffer buffer = bufferList->mBuffers[index];
++      float *samples = (float *)buffer.mData;
++      for (UInt32 local = 0; local < buffer.mNumberChannels; local++, channel++) {
++        const CMItemCount offset = frame * buffer.mNumberChannels + local;
++        samples[offset] = DNEQProcessSample(&context->equalizer, channel, samples[offset]);
++      }
++    }
++  }
++}
++
+ - (BOOL)isTapInstalled {
+   os_unfair_lock_lock(&_lock);
+   BOOL installed = _isTapInstalled;
+@@ -53,7 +121,13 @@ typedef struct AVAudioTapProcessorContext {
+     return NO;
+   }
+   
+-  AVAssetTrack *track = _player.currentItem.tracks.firstObject.assetTrack;
++  AVAssetTrack *track = nil;
++  for (AVPlayerItemTrack *itemTrack in _player.currentItem.tracks) {
++    if ([itemTrack.assetTrack.mediaType isEqualToString:AVMediaTypeAudio]) {
++      track = itemTrack.assetTrack;
++      break;
++    }
++  }
+   if (!track) {
+     os_unfair_lock_unlock(&_lock);
+     return NO;
+@@ -168,7 +242,18 @@ void tapFinalize(MTAudioProcessingTapRef tap) {
+ 
+ void tapPrepare(MTAudioProcessingTapRef tap, CMItemCount maxFrames, const AudioStreamBasicDescription *processingFormat) {
+   AVAudioTapProcessorContext *context = (AVAudioTapProcessorContext *)MTAudioProcessingTapGetStorage(tap);
+-  context->supportedTapProcessingFormat = true;
++  if (!context) return;
++  context->supportedTapProcessingFormat = processingFormat->mFormatID == kAudioFormatLinearPCM
++    && (processingFormat->mFormatFlags & kAudioFormatFlagIsFloat) != 0
++    && (processingFormat->mFormatFlags & kAudioFormatFlagIsBigEndian) == 0
++    && (processingFormat->mFormatFlags & kAudioFormatFlagIsPacked) != 0
++    && processingFormat->mBitsPerChannel == 32
++    && processingFormat->mChannelsPerFrame > 0 && processingFormat->mChannelsPerFrame <= DN_EQ_MAX_CHANNELS
++    && isfinite(processingFormat->mSampleRate) && processingFormat->mSampleRate > 0;
++  context->sampleRate = processingFormat->mSampleRate;
++  context->channelCount = processingFormat->mChannelsPerFrame;
++  context->equalizerVersion = 0;
++  DNEQPrepare(&context->equalizer, processingFormat->mSampleRate);
+   
+   if (processingFormat->mFormatID != kAudioFormatLinearPCM) {
+     NSLog(@"Audio Format ID for audioProcessingTap: LinearPCM");
+@@ -178,9 +263,7 @@ void tapPrepare(MTAudioProcessingTapRef tap, CMItemCount maxFrames, const AudioS
+     NSLog(@"Audio Format ID for audioProcessingTap: Float only");
+   }
+   
+-  if (processingFormat->mFormatFlags & kAudioFormatFlagIsNonInterleaved) {
+-    context->isNonInterleaved = true;
+-  }
++  context->isNonInterleaved = (processingFormat->mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
+ }
+ 
+ void tapProcess(MTAudioProcessingTapRef tap, CMItemCount numberFrames, MTAudioProcessingTapFlags flags, AudioBufferList *bufferListInOut, CMItemCount *numberFramesOut, MTAudioProcessingTapFlags *flagsOut) {
+@@ -201,10 +284,12 @@ void tapProcess(MTAudioProcessingTapRef tap, CMItemCount numberFrames, MTAudioPr
+     return;
+   }
+   
++  [processor processEqualizer:context bufferList:bufferListInOut frames:*numberFramesOut];
++
+   SampleBufferCallback callback = processor.sampleBufferCallback;
+-  if (callback && bufferListInOut && bufferListInOut->mNumberBuffers > 0) {
++  if (context->supportedTapProcessingFormat && callback && bufferListInOut && bufferListInOut->mNumberBuffers > 0) {
+     double timestamp = 0.0; 
+-    callback(&bufferListInOut->mBuffers[0], (long)numberFrames, timestamp);
++    callback(&bufferListInOut->mBuffers[0], (long)*numberFramesOut, timestamp);
+   }
+ }
+ 
+diff --git a/node_modules/expo-audio/ios/DNEqualizerDSP.h b/node_modules/expo-audio/ios/DNEqualizerDSP.h
+new file mode 100644
+index 0000000..5c59b84
+--- /dev/null
++++ b/node_modules/expo-audio/ios/DNEqualizerDSP.h
+@@ -0,0 +1,108 @@
++// dnmusic: portable DSP, exercised with generated signals in tests/fixtures.
++// The audio callback owns this state. No allocation, locks or Objective-C here.
++#ifndef DN_EQUALIZER_DSP_H
++#define DN_EQUALIZER_DSP_H
++#include <math.h>
++#include <stdbool.h>
++#include <string.h>
++
++#define DN_EQ_BANDS 10
++#define DN_EQ_MAX_CHANNELS 8
++#define DN_EQ_PI 3.14159265358979323846
++static const double DNEQFrequencies[DN_EQ_BANDS] = {31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000};
++
++typedef struct { double b0, b1, b2, a1, a2; } DNEQCoefficients;
++typedef struct { double x1, x2, y1, y2; } DNEQState;
++typedef struct {
++  double sampleRate, smoothing, gainSmoothing, preamp, targetPreamp;
++  double gains[DN_EQ_BANDS], targets[DN_EQ_BANDS];
++  DNEQCoefficients coefficients[DN_EQ_BANDS];
++  DNEQState channels[DN_EQ_MAX_CHANNELS][DN_EQ_BANDS];
++  unsigned int step;
++  bool bypass;
++} DNEqualizerDSP;
++
++static inline DNEQCoefficients DNEQMakePeaking(double frequency, double sampleRate, double gainDB) {
++  if (!isfinite(gainDB) || fabs(gainDB) < 0.0001 || frequency >= sampleRate * 0.49) {
++    return (DNEQCoefficients){1, 0, 0, 0, 0};
++  }
++  const double a = pow(10.0, gainDB / 40.0);
++  const double omega = 2.0 * DN_EQ_PI * frequency / sampleRate;
++  const double alpha = sin(omega) / (2.0 * sqrt(2.0));
++  const double cosine = cos(omega), a0 = 1.0 + alpha / a;
++  return (DNEQCoefficients){(1.0 + alpha * a) / a0, -2.0 * cosine / a0,
++    (1.0 - alpha * a) / a0, -2.0 * cosine / a0, (1.0 - alpha / a) / a0};
++}
++
++static inline void DNEQPrepare(DNEqualizerDSP *eq, double sampleRate) {
++  memset(eq, 0, sizeof(*eq));
++  eq->sampleRate = isfinite(sampleRate) && sampleRate > 0 ? sampleRate : 48000;
++  eq->smoothing = 1.0 - exp(-32.0 / (0.020 * eq->sampleRate));
++  eq->gainSmoothing = 1.0 - exp(-1.0 / (0.020 * eq->sampleRate));
++  eq->preamp = eq->targetPreamp = 1.0;
++  eq->bypass = true;
++  for (int band = 0; band < DN_EQ_BANDS; band++) eq->coefficients[band].b0 = 1;
++}
++
++static inline double DNEQResponseSquared(DNEQCoefficients c, double omega) {
++  const double real = cos(omega), imag = sin(omega), real2 = cos(2 * omega), imag2 = sin(2 * omega);
++  const double nr = c.b0 + c.b1 * real + c.b2 * real2, ni = c.b1 * imag + c.b2 * imag2;
++  const double dr = 1 + c.a1 * real + c.a2 * real2, di = c.a1 * imag + c.a2 * imag2;
++  return (nr * nr + ni * ni) / fmax(1e-24, dr * dr + di * di);
++}
++
++static inline void DNEQSetTarget(DNEqualizerDSP *eq, bool enabled, const float gains[DN_EQ_BANDS]) {
++  DNEQCoefficients target[DN_EQ_BANDS];
++  for (int band = 0; band < DN_EQ_BANDS; band++) {
++    const double value = enabled && isfinite(gains[band]) ? fmax(-12, fmin(12, gains[band])) : 0;
++    eq->targets[band] = DNEQFrequencies[band] < eq->sampleRate * 0.49 ? value : 0;
++    target[band] = DNEQMakePeaking(DNEQFrequencies[band], eq->sampleRate, eq->targets[band]);
++  }
++  // Evaluate the combined response, not just max(band): adjacent peaks overlap.
++  double peak = 1;
++  for (int bin = 0; bin <= 256; bin++) {
++    const double frequency = 10 * pow(eq->sampleRate * 0.049, bin / 256.0);
++    const double omega = 2 * DN_EQ_PI * frequency / eq->sampleRate;
++    double response = 1;
++    for (int band = 0; band < DN_EQ_BANDS; band++) response *= DNEQResponseSquared(target[band], omega);
++    peak = fmax(peak, response);
++  }
++  eq->targetPreamp = peak > 1.0001 ? pow(10, -0.5 / 20.0) / sqrt(peak) : 1;
++  eq->bypass = false;
++  eq->step = 0;
++}
++
++static inline void DNEQBeginFrame(DNEqualizerDSP *eq) {
++  if (eq->bypass) return;
++  eq->preamp += (eq->targetPreamp - eq->preamp) * eq->gainSmoothing;
++  if (fabs(eq->targetPreamp - eq->preamp) < 1e-7) eq->preamp = eq->targetPreamp;
++  if (eq->step++ % 32 != 0) return;
++  bool flat = eq->preamp == 1 && eq->targetPreamp == 1;
++  for (int band = 0; band < DN_EQ_BANDS; band++) {
++    const double previous = eq->gains[band];
++    eq->gains[band] += (eq->targets[band] - eq->gains[band]) * eq->smoothing;
++    if (fabs(eq->targets[band] - eq->gains[band]) < 0.001) eq->gains[band] = eq->targets[band];
++    flat = flat && eq->gains[band] == 0;
++    if (previous != eq->gains[band]) eq->coefficients[band] = DNEQMakePeaking(DNEQFrequencies[band], eq->sampleRate, eq->gains[band]);
++  }
++  // Never reset filter history when a finger moves. Only clear after a smooth
++  // return to identity, or in prepare when the source/format really changes.
++  if (flat) { eq->bypass = true; memset(eq->channels, 0, sizeof(eq->channels)); }
++}
++
++static inline float DNEQProcessSample(DNEqualizerDSP *eq, unsigned int channel, float input) {
++  if (!isfinite(input)) return 0;
++  if (eq->bypass || channel >= DN_EQ_MAX_CHANNELS) return input;
++  double value = input * eq->preamp;
++  for (int band = 0; band < DN_EQ_BANDS; band++) {
++    DNEQCoefficients c = eq->coefficients[band];
++    DNEQState *s = &eq->channels[channel][band];
++    const double output = c.b0 * value + c.b1 * s->x1 + c.b2 * s->x2 - c.a1 * s->y1 - c.a2 * s->y2;
++    s->x2 = s->x1; s->x1 = value; s->y2 = s->y1; s->y1 = output;
++    value = output;
++  }
++  if (!isfinite(value)) { memset(eq->channels[channel], 0, sizeof(eq->channels[channel])); return 0; }
++  // Last-resort peak guard; response-based headroom prevents normal clipping.
++  return (float)fmax(-1, fmin(1, value));
++}
++#endif
+diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/expo-audio/ios/MediaController.swift
+index e977f57..2d056a2 100644
+--- a/node_modules/expo-audio/ios/MediaController.swift
++++ b/node_modules/expo-audio/ios/MediaController.swift
+@@ -246,7 +246,7 @@ class MediaController {
+         return .commandFailed
+       }
+ 
+-      player.ref.pause()
++      player.pause()
+       return .success
+     }
+ 
+@@ -256,7 +256,7 @@ class MediaController {
+       }
+ 
+       if player.isPlaying {
+-        player.ref.pause()
++        player.pause()
+       } else {
+         player.play(at: Float(player.currentRate > 0 ? player.currentRate : 1.0))
+       }
+diff --git a/node_modules/expo-audio/src/AudioModule.types.ts b/node_modules/expo-audio/src/AudioModule.types.ts
+index 7e75371..068b0e7 100644
+--- a/node_modules/expo-audio/src/AudioModule.types.ts
++++ b/node_modules/expo-audio/src/AudioModule.types.ts
+@@ -208,6 +208,13 @@ export declare class AudioPlayer extends SharedObject<AudioEvents> {
+    */
+   setAudioSamplingEnabled(enabled: boolean): void;
+ 
++  /**
++   * Applies a ten-band graphic equalizer to this player.
++   * Gains are expressed in dB for 31, 62, 125, 250, 500, 1k, 2k, 4k, 8k and 16k Hz.
++   * @hidden
++   */
++  setEqualizer(enabled: boolean, gains: number[]): void;
++
+   /**
+    * Sets or removes this audio player as the active player for lock screen controls.
+    * Only one player can control the lock screen at a time.
 diff --git a/node_modules/expo-audio/src/AudioPlayer.web.ts b/node_modules/expo-audio/src/AudioPlayer.web.ts
+index 61db2df..8164dce 100644
 --- a/node_modules/expo-audio/src/AudioPlayer.web.ts
 +++ b/node_modules/expo-audio/src/AudioPlayer.web.ts
-@@ -375,7 +375,15 @@
+@@ -22,6 +22,52 @@ import { mediaSessionController } from './MediaSessionController.web';
+ export const activePlayers = new Set<AudioPlayerWeb>();
+ 
+ let hasWarnedIOSVolume = false;
++const EQUALIZER_FREQUENCIES = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
++const equalizerFrequency = (frequency: number, sampleRate: number) => Math.min(frequency, sampleRate * 0.49);
++
++/** Combined peaking response, not just the largest slider: adjacent boosts overlap.
++ * RBJ coefficients match Web Audio's peaking filter (Q = sqrt(2)). Sample the
++ * log spectrum plus every centre; keep 1 dB extra margin for inter-bin peaks.
++ * This is headroom, not a brick-wall limiter or a promise of no true-peak overs.
++ */
++function equalizerHeadroom(gains: number[], sampleRate: number): number {
++  if (!gains.some(gain => gain > 0)) return 1;
++  const centres = EQUALIZER_FREQUENCIES.map(frequency => equalizerFrequency(frequency, sampleRate));
++  const coefficients = gains.map((gain, index) => {
++    const angle = 2 * Math.PI * centres[index] / sampleRate;
++    const amplitude = 10 ** (gain / 40);
++    const alpha = Math.sin(angle) / (2 * Math.SQRT2);
++    return [1 + alpha * amplitude, -2 * Math.cos(angle), 1 - alpha * amplitude,
++      1 + alpha / amplitude, -2 * Math.cos(angle), 1 - alpha / amplitude];
++  });
++  const probes = [...centres, ...Array.from({ length: 256 }, (_, index) =>
++    3 * (sampleRate * 0.499 / 3) ** (index / 255))];
++  let peakDb = 0;
++  for (const frequency of probes) {
++    const angle = 2 * Math.PI * frequency / sampleRate;
++    const cos = Math.cos(angle), sin = Math.sin(angle);
++    const cos2 = Math.cos(2 * angle), sin2 = Math.sin(2 * angle);
++    let db = 0;
++    for (const [b0, b1, b2, a0, a1, a2] of coefficients) {
++      const numerator = (b0 + b1 * cos + b2 * cos2) ** 2 + (b1 * sin + b2 * sin2) ** 2;
++      const denominator = (a0 + a1 * cos + a2 * cos2) ** 2 + (a1 * sin + a2 * sin2) ** 2;
++      db += 10 * Math.log10(Math.max(1e-24, numerator) / Math.max(1e-24, denominator));
++    }
++    peakDb = Math.max(peakDb, db);
++  }
++  return 10 ** (-(peakDb + 1) / 20);
++}
++
++function smoothEqualizerParam(param: AudioParam, target: number, now: number, timeConstant: number): void {
++  if (typeof param.cancelAndHoldAtTime === 'function') param.cancelAndHoldAtTime(now);
++  else {
++    const current = param.value;
++    param.cancelScheduledValues(now);
++    param.setValueAtTime(current, now);
++  }
++  param.setTargetAtTime(target, now, timeConstant);
++}
++
+ function isIOSSafari(): boolean {
+   return /iPad|iPhone|iPod/.test(navigator.userAgent);
+ }
+@@ -53,6 +99,10 @@ export class AudioPlayerWeb
+   private crossOrigin?: 'anonymous' | 'use-credentials';
+   private analyser: AnalyserNode | null = null;
+   private sourceNode: MediaElementAudioSourceNode | null = null;
++  private equalizerNodes: BiquadFilterNode[] = [];
++  private equalizerPreamp: GainNode | null = null;
++  private equalizerEnabled = false;
++  private equalizerGains = Array(10).fill(0) as number[];
+   private samplingFrameId: number | null = null;
+   private samplingEnabled = false;
+   private samplingBuffer: Float32Array<ArrayBuffer> | null = null;
+@@ -148,6 +198,12 @@ export class AudioPlayerWeb
+     this.loaded = false;
+     this.media = this._createMediaElement();
+ 
++    // createMediaElementSource belongs to the element it was created for.
++    // Reconnect the persisted EQ curve to the replacement element as well.
++    if (this.equalizerEnabled) {
++      this.setEqualizer(true, this.equalizerGains);
++    }
++
+     if (wasSampling) {
+       this.setAudioSamplingEnabled(true);
+     }
+@@ -197,9 +253,7 @@ export class AudioPlayerWeb
+       this.analyser = ctx.createAnalyser();
+       this.analyser.fftSize = 2048;
+ 
+-      this.sourceNode.disconnect();
+-      this.sourceNode.connect(this.analyser);
+-      this.analyser.connect(ctx.destination);
++      this.reconnectAudioGraph();
+ 
+       this.samplingBuffer = new Float32Array(this.analyser.frequencyBinCount);
+       this.samplingEnabled = true;
+@@ -216,17 +270,77 @@ export class AudioPlayerWeb
+         this.analyser = null;
+       }
+ 
+-      if (this.sourceNode) {
+-        const ctx = getAudioContext();
+-        this.sourceNode.disconnect();
+-        this.sourceNode.connect(ctx.destination);
+-      }
++      if (this.sourceNode) this.reconnectAudioGraph();
+ 
+       this.samplingBuffer = null;
+       this.samplingEnabled = false;
+     }
+   }
+ 
++  setEqualizer(enabled: boolean, gains: number[]): void {
++    this.equalizerEnabled = enabled;
++    this.equalizerGains = Array.from({ length: 10 }, (_, index) =>
++      Math.max(-12, Math.min(12, Number.isFinite(gains[index]) ? gains[index] : 0))
++    );
++
++    if (!enabled && !this.sourceNode) return;
++    if (!this.media.crossOrigin && this._isCrossOrigin()) return;
++
++    const ctx = getAudioContext();
++    if (ctx.state === 'suspended') void ctx.resume();
++    if (!this.sourceNode) this.sourceNode = ctx.createMediaElementSource(this.media);
++    let graphChanged = false;
++    if (!this.equalizerNodes.length) {
++      this.equalizerPreamp = ctx.createGain();
++      this.equalizerNodes = EQUALIZER_FREQUENCIES.map((frequency) => {
++        const node = ctx.createBiquadFilter();
++        node.type = 'peaking';
++        node.frequency.value = equalizerFrequency(frequency, ctx.sampleRate);
++        node.Q.value = Math.SQRT2;
++        return node;
++      });
++      graphChanged = true;
++    }
++    const headroom = enabled ? equalizerHeadroom(this.equalizerGains, ctx.sampleRate) : 1;
++    if (this.equalizerPreamp) {
++      // Attenuate before the boosted filters settle; recover more slowly when
++      // disabling/cutting. All updates start from the current rendered value.
++      const gain = this.equalizerPreamp.gain;
++      smoothEqualizerParam(gain, headroom, ctx.currentTime, headroom < gain.value ? 0.008 : 0.12);
++    }
++    this.equalizerNodes.forEach((node, index) => {
++      smoothEqualizerParam(node.gain, enabled ? this.equalizerGains[index] : 0, ctx.currentTime, 0.03);
++    });
++    if (graphChanged) this.reconnectAudioGraph();
++  }
++
++  private reconnectAudioGraph(): void {
++    if (!this.sourceNode) return;
++    const ctx = getAudioContext();
++    this.sourceNode.disconnect();
++    this.equalizerPreamp?.disconnect();
++    this.equalizerNodes.forEach((node) => node.disconnect());
++    this.analyser?.disconnect();
++
++    let tail: AudioNode = this.sourceNode;
++    // Once installed, bypass by smoothly returning to flat/unity. Disconnecting
++    // filters while their parameters are settling causes clicks and gain jumps.
++    if (this.equalizerPreamp && this.equalizerNodes.length) {
++      tail.connect(this.equalizerPreamp);
++      tail = this.equalizerPreamp;
++      for (const node of this.equalizerNodes) {
++        tail.connect(node);
++        tail = node;
++      }
++    }
++    if (this.analyser) {
++      tail.connect(this.analyser);
++      this.analyser.connect(ctx.destination);
++    } else {
++      tail.connect(ctx.destination);
++    }
++  }
++
+   private startSampling(): void {
+     if (!this.samplingEnabled || !this.analyser || !this.samplingBuffer) {
+       return;
+@@ -273,6 +387,11 @@ export class AudioPlayerWeb
+       this.sourceNode = null;
+     }
+ 
++    this.equalizerNodes.forEach(node => node.disconnect());
++    this.equalizerNodes = [];
++    this.equalizerPreamp?.disconnect();
++    this.equalizerPreamp = null;
++
+     this.samplingEnabled = false;
+     this.media.pause();
+     // Clear event handlers to prevent memory leaks
+@@ -375,7 +494,15 @@ export class AudioPlayerWeb
      };
  
      media.onended = () => {
@@ -349,24 +1105,3 @@ diff --git a/node_modules/expo-audio/src/AudioPlayer.web.ts b/node_modules/expo-
        mediaSessionController.updatePlaybackState(this);
      };
  
-diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/expo-audio/ios/MediaController.swift
---- a/node_modules/expo-audio/ios/MediaController.swift
-+++ b/node_modules/expo-audio/ios/MediaController.swift
-@@ -246,7 +246,7 @@
-         return .commandFailed
-       }
- 
--      player.ref.pause()
-+      player.pause()
-       return .success
-     }
- 
-@@ -256,7 +256,7 @@
-       }
- 
-       if player.isPlaying {
--        player.ref.pause()
-+        player.pause()
-       } else {
-         player.play(at: Float(player.currentRate > 0 ? player.currentRate : 1.0))
-       }

@@ -15,7 +15,7 @@ export function Aviso() {
   const activa = useAppActiva()
   const { texto, turno, malo } = useAviso()
   const hayActualizacion = useHayAvisoActualizacion()
-  const piso = usePiso(12) + (hayActualizacion ? SOBRE_ACTUALIZACION : 0)
+  const piso = usePiso(4) + (hayActualizacion ? SOBRE_ACTUALIZACION : 0)
   const host = useRef<SnackbarHostRef>(null)
 
   useEffect(() => {
@@ -30,8 +30,8 @@ export function Aviso() {
     return () => { vigente = false }
   }, [activa, malo, texto, turno])
 
-  return <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: piso, minHeight: 64 }}>
-    <AndroidHost style={{ width: '100%', height: 64 }}>
+  return <View pointerEvents="box-none" style={{ position: 'absolute', left: 8, right: 8, bottom: piso, minHeight: 52 }}>
+    <AndroidHost style={{ width: '100%', height: 52 }}>
       <SnackbarHost ref={host} modifiers={[fillMaxWidth()]}>
         <Snackbar containerColor={color.raised} contentColor={color.text} />
       </SnackbarHost>

@@ -1,10 +1,23 @@
 # expo-audio 57.0.3 / iOS y web
 
-`expo-audio+57.0.3.patch` mantiene correcciones locales en cinco archivos del SDK.
+`expo-audio+57.0.3.patch` mantiene correcciones locales del SDK y el DSP del ecualizador.
 Se aplica en `postinstall` con `--error-on-fail`. Los cambios Swift requieren
 recompilar la app de iOS; una actualización JS no los incorpora. El cambio web
 se incluye en el siguiente bundle web. Al actualizar Expo Audio, revisar el SDK
 y retirar o adaptar el parche.
+
+## Ecualizador iOS
+
+`DNEqualizerDSP.h` contiene diez biquads por canal, parámetros suavizados y
+compensación de realces según la respuesta conjunta. Lo incorpora el mismo
+`MTAudioProcessingTap` que usa el visualizador; no se reinicia el historial de
+los filtros en cada movimiento. El callback no espera locks y valida PCM
+Float32, canales y tamaño de buffers. Las muestras del visualizador respetan
+los frames realmente entregados, también si llegan intercaladas en estéreo.
+
+Prueba portable del DSP: `nix shell nixpkgs#gcc --command node --test tests/ecualizador-dsp.test.mjs`.
+Además de esa prueba y de reinstalar el parche, hace falta una nueva build iOS
+para verificar audio real y la pantalla nativa. Una OTA no incorpora este DSP.
 
 ## Muestreo sin reiniciar el grafo
 
@@ -16,6 +29,19 @@ El callback comprueba `samplingEnabled` antes de construir arrays PCM o emitir
 eventos JS. En segundo plano no ejecutamos FFT ni actualizamos barras. El tap
 se libera al reemplazar la fuente o destruir el reproductor; su referencia al
 item impide reutilizarlo en otra canción.
+
+Los players persistentes (`keepAudioSessionActive`) preparan también el tap al
+cargar una canción en segundo plano, antes del aviso de lista/play. Esto cubre
+los items precargados que ya estaban listos al construir el player. Activar el
+visual con ese player sonando sólo habilita la entrega de muestras: no instala
+ni reinstala `audioMix`. Si el tap no pudo prepararse, se conserva el audio y
+el indicador queda estático hasta una oportunidad sin reproducción activa.
+Los eventos consecutivos de item/listo reutilizan el mismo tap.
+
+Verificación en dispositivo: iniciar A, bloquear, pasar a B desde lock screen,
+esperar unos segundos y abrir la app varias veces. Confirmar que B mantiene
+posición/audio sin corte, tanto con caché local como con streaming y auriculares.
+Las pruebas Linux comprueban parche y transporte JS; no miden cortes de AVPlayer.
 
 ## Errores terminales observables
 

@@ -86,7 +86,7 @@ export type Profile = {
  * nada. Gira la imagen sobre su propio centro, después de agrandarla y
  * correrla; es la última capa de la misma cuenta (`ui/Encuadre`).
  */
-export type Encuadre = { x: number; y: number; escala: number; rotacion?: number }
+export type Encuadre = { x: number; y: number; escala: number; rotacion?: number; aspecto?: number }
 
 type ProfileRow = {
   user_id?: unknown
@@ -118,9 +118,11 @@ function encuadreDe(v: unknown): Encuadre | null {
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(escala)) return null
   /* La rotación solo viaja si es un número de verdad y distinto de cero: un
      encuadre sin girar se guarda con los tres números de siempre. */
-  return typeof rotacion === 'number' && Number.isFinite(rotacion) && rotacion !== 0
+  const base = typeof rotacion === 'number' && Number.isFinite(rotacion) && rotacion !== 0
     ? { x, y, escala, rotacion }
     : { x, y, escala }
+  return typeof r.aspecto === 'number' && Number.isFinite(r.aspecto) && r.aspecto > 0
+    ? { ...base, aspecto: r.aspecto } : base
 }
 
 function profileFromRow(row: ProfileRow | null | undefined): Profile | null {

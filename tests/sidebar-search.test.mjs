@@ -52,6 +52,8 @@ test('búsqueda compacta conserva texto, submit, ref y limpiar sin expulsar el b
   assert.equal(clear.props.style.width, 28)
   clear.props.onPress()
   assert.deepEqual(cambios, ['nuevo', ''])
+  assert.deepEqual(focos, ['focus', 'blur', 'focus'], 'limpiar vuelve al campo como en iOS')
+  assert.equal(ui.type, 'Glass', 'PC conserva una sola superficie de vidrio')
 })
 
 test('puntero táctil conserva 44px y los campos regulares mantienen 48px; loading tiene espacio propio', () => {
@@ -71,6 +73,7 @@ function scrollFixture(props = {}) {
   const effects = [], frames = new Map(), observed = [], listeners = new Map()
   let frameId = 0, disconnected = false
   const modulo = cargar('src/ui/ScrollArea.web.tsx', {
+    './SharedLayoutBg': { SharedLayoutBg: 'SharedLayoutBg' },
     './smoothScroll.web': { attachSmoothScroll: node => ({ stop() {}, destroy() {}, scrollTo(top) { node.scrollTop = top } }) },
     react: { forwardRef: (fn) => fn, useContext: () => props.techoPanel ?? 0, useRef: (current) => ({ current }), useCallback: (f) => f, useEffect: (f) => effects.push(f), useId: () => 'scroll-test' },
     'react-native': { ScrollView: 'ScrollView', View: 'View' },

@@ -6,6 +6,8 @@ import { useEstadoCopia } from '../state/copia'
 import { AndroidHost, ANDROID_COLORS, androidAccessibility } from './AndroidHost'
 import { BotonHoja, EncabezadoHoja } from './EncabezadoHoja'
 import type { AccionSocialProps } from './Social'
+import { ANDROID_CARD, ANDROID_TYPE } from './androidDesign'
+import { androidControlModifiers } from './androidComposeDesign'
 
 export function CabeceraSocial({ titulo, detalle, onCerrar, accion, ocupado = false }: {
   titulo: string; detalle?: string; onCerrar?: () => void; accion?: ReactNode; ocupado?: boolean
@@ -25,18 +27,18 @@ export function AccionSocial({ label, accessibilityLabel: nombreAccesible, onPre
   const inactiva = disabled || ocupado
   const rotulo = copyText !== undefined ? copyState === 'copied' ? 'Copiado'
     : copyState === 'pending' ? 'Copiando…' : copyState === 'error' ? 'Reintentar copia' : label : label
-  const color = inactiva ? ANDROID_COLORS.muted : secundaria ? ANDROID_COLORS.text : ANDROID_COLORS.onPrimary
+  const color = inactiva ? ANDROID_COLORS.muted : ANDROID_COLORS.text
   return <AndroidHost matchContents={expandir ? { vertical: true } : true}
     style={[{ minHeight: 48, maxWidth: '100%', alignSelf: expandir ? 'stretch' : 'flex-start', ...(expandir ? { width: '100%' as const } : {}) }, style]}>
     <Button enabled={!inactiva} onClick={inactiva ? undefined : onPress} shape={Shape.Pill({})}
-      colors={{ containerColor: secundaria ? ANDROID_COLORS.surface : ANDROID_COLORS.primary,
-        contentColor: color, disabledContainerColor: ANDROID_COLORS.surface, disabledContentColor: ANDROID_COLORS.muted }}
-      modifiers={[defaultMinSize({ minHeight: 48 }), ...(expandir ? [fillMaxWidth()] : []),
+      colors={{ containerColor: 'transparent',
+        contentColor: color, disabledContainerColor: 'transparent', disabledContentColor: ANDROID_COLORS.muted }}
+      modifiers={[defaultMinSize({ minHeight: 48 }), ...(expandir ? [fillMaxWidth()] : []), ...androidControlModifiers(!secundaria || selected),
         androidAccessibility(nombreAccesible ?? rotulo, ocupado ? 'En curso' : selected ? 'Seleccionado' : undefined)]}>
       <Row verticalAlignment="center" horizontalArrangement={{ spacedBy: 8 }}>
         {ocupado ? <CircularProgressIndicator color={color} strokeWidth={2} modifiers={[size(18, 18)]} />
           : icono ? <RNHostView matchContents><View pointerEvents="none">{icono}</View></RNHostView> : null}
-        <Text color={color} style={{ typography: 'labelLarge', fontWeight: '600', textAlign: 'center' }}>{rotulo}</Text>
+        <Text color={color} style={{ ...ANDROID_TYPE.body, textAlign: 'center' }}>{rotulo}</Text>
       </Row>
     </Button>
   </AndroidHost>
@@ -46,11 +48,11 @@ export function AccionSocial({ label, accessibilityLabel: nombreAccesible, onPre
 export function SeccionSocial({ titulo, detalle, children }: { titulo?: string; detalle?: string; children: ReactNode }) {
   return <View style={{ gap: 8 }}>
     {titulo ? <View accessibilityRole="header"><AndroidHost matchContents={{ vertical: true }} style={{ width: '100%' }}>
-      <Text color={ANDROID_COLORS.text} style={{ typography: 'titleSmall', fontWeight: '600' }}>{titulo}</Text>
+      <Text color={ANDROID_COLORS.text} style={ANDROID_TYPE.section}>{titulo}</Text>
     </AndroidHost></View> : null}
-    <View style={{ overflow: 'hidden', borderRadius: 16, backgroundColor: ANDROID_COLORS.surface }}>{children}</View>
+    <View style={ANDROID_CARD}><View style={{ overflow: 'hidden', borderRadius: 16 }}>{children}</View></View>
     {detalle ? <AndroidHost matchContents={{ vertical: true }} style={{ width: '100%' }}>
-      <Text color={ANDROID_COLORS.muted} style={{ typography: 'bodySmall' }}>{detalle}</Text>
+      <Text color={ANDROID_COLORS.muted} style={ANDROID_TYPE.body}>{detalle}</Text>
     </AndroidHost> : null}
   </View>
 }

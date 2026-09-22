@@ -114,7 +114,7 @@ test('vitrina global entrega borrador y navega sin invocar los servicios', async
   const calls = []
   const draft = { id: 'a', kind: 'texto', contenido: { kind: 'texto', texto: 'Pendiente' } }
   const { guardar } = funciones(vitrina, ['guardar', 'listo'], {
-    global: true, edicion: { ocupado: false }, subiendo: false, user: { id: 'yo' },
+    global: true, edicion: { ocupado: false }, enVuelo: { current: false }, subiendo: false, user: { id: 'yo' },
     borrador: draft, temporal: 'tmp', inicial: draft, borradorVitrinaCompleto: () => true,
     ponerVitrinaEdicion: (...args) => { calls.push(args); return 'a' },
     volver: () => calls.push('volver'), router: {},

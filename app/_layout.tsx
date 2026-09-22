@@ -30,6 +30,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { restaurarVolumen, restorePlayback, usePlaybackTrack } from '../src/state/playback'
 import { cargarNovedadesVistas } from '../src/state/novedadesVistas'
 import { cargarAjustes } from '../src/state/ajustes'
+import { cargarEcualizador } from '../src/state/ecualizador'
 import { cargarDescargas } from '../src/state/descargas'
 import { reconectarJam } from '../src/state/jam'
 import { iniciarEscucha } from '../src/state/escucha'
@@ -77,6 +78,7 @@ import { NovedadesAlAbrir } from '../src/ui/NovedadesAlAbrir'
 import { FilaChat } from '../src/ui/TabBar'
 import { Cascara } from '../src/ui/Cascara'
 import '../global.css'
+import { AndroidTheme } from '../src/ui/AndroidTheme'
 
 /** Debajo de esto no entran los tres paneles y la app pasa a pestañas. */
 const SHELL_PX = 780
@@ -144,7 +146,7 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <BandaVentana />
       <View style={{ flex: 1, minHeight: 0 }}>
-        <ControlActualizaciones><Chrome /></ControlActualizaciones>
+        <AndroidTheme><ControlActualizaciones><Chrome /></ControlActualizaciones></AndroidTheme>
         {splashListo ? null : <SplashAnimado onDone={() => setSplashListo(true)} />}
       </View>
     </GestureHandlerRootView>
@@ -903,6 +905,7 @@ function SessionGate() {
     startSession()
     void esOnboardingPendiente().then(setOnboardingPendiente)
     void cargarAjustes()
+    void cargarEcualizador()
     /* Antes que nada de música: es lo que decide si una canción suena del
        teléfono o de la red, y contrasta el índice contra el disco. */
     void cargarDescargas()
@@ -1068,7 +1071,7 @@ function SessionGate() {
       </Stack.Protected>
       <Stack.Protected guard={approved}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="importar" options={HOJA_SOCIAL} />
+      <Stack.Screen name="importar" options={Platform.OS === 'ios' ? { ...HOJA_SOCIAL, sheetAllowedDetents: [0.6, 1], sheetInitialDetentIndex: 0 } : HOJA_SOCIAL} />
       <Stack.Screen name="vincular-google" options={HOJA_SOCIAL} />
       <Stack.Screen name="ajustes/novedades" />
       <Stack.Screen name="ajustes/accesos" />
@@ -1096,7 +1099,8 @@ function SessionGate() {
       />
       <Stack.Screen name="ajustes/index" />
       <Stack.Screen name="ajustes/descargas" />
-          <Stack.Screen name="ajustes/diagnostico-audio" />
+      <Stack.Screen name="ajustes/ecualizador" />
+      <Stack.Screen name="ajustes/diagnostico-audio" />
       <Stack.Screen name="ajustes/bloqueados" />
       {/*
        * Sin animación: el perfil propio es una **pestaña**, aunque viva como
@@ -1128,7 +1132,8 @@ function SessionGate() {
             ? HOJA_WEB
             : {
                 presentation: 'formSheet',
-                sheetAllowedDetents: 'fitToContents',
+                sheetAllowedDetents: [0.85, 1],
+                sheetInitialDetentIndex: 0,
                 sheetGrabberVisible: true,
                 sheetCornerRadius: RADIO.hojaMedia,
               }

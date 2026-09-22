@@ -25,6 +25,7 @@ function harness(path, imports = {}) {
     if (id === '@expo/ui/swift-ui/modifiers') return new Proxy({}, { get: (_, k) => (...args) => ({ kind: k, args }) })
     if (id === './tiempos') return { formatClock: String }
     if (id in imports) return imports[id]
+    if (id === 'expo-glass-effect') return { isLiquidGlassAvailable: () => true }
     if (id === 'react-native') return { View: 'View', Text: 'Text' }
     throw Error(id)
   })
@@ -77,6 +78,18 @@ test('el buscador SwiftUI conserva foco externo, submit y limpiar el estado nati
   find(ui, 'Button').props.onPress()
   assert.equal(field.props.text.get(), '')
   assert.deepEqual(calls, ['focus', 'blur', 'submit', '', 'focus'])
+})
+
+test('el buscador usa una sola cápsula Liquid Glass, con respaldo para iOS anterior', () => {
+  for (const available of [true, false]) {
+    const h = harness('src/ui/SearchField.ios.tsx', { 'expo-glass-effect': { isLiquidGlassAvailable: () => available } })
+    const ui = h.render('SearchField', { value: '', onChangeText() {}, density: 'compact' })
+    const mods = find(ui, 'HStack').props.modifiers
+    assert.equal(ui.props.style.height, 44)
+    assert.equal(mods.filter(m => m.kind === 'glassEffect').length, available ? 1 : 0)
+    assert.equal(mods.some(m => m.kind === 'background'), !available)
+    assert.equal(mods.some(m => m.kind === 'clipShape'), !available)
+  }
 })
 
 test('acciones sociales nativas bloquean reenvíos y guardados mientras están ocupadas', () => {

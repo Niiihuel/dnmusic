@@ -2,7 +2,7 @@
 
 A music app with people at its center: listen, build playlists, and see what the same people you talk to are listening to. One TypeScript codebase runs in the browser, on iPhone, and in its own Windows or Linux window.
 
-It started as a messaging app with 3D flowers (first called Dany, then Flora) and eventually became, above all, a music app. None of that code remains — neither the flowers nor the couple of fixed users: today it has open registration, contact requests, and blocking.
+dnmusic combines music and conversations, with open registration, contact requests, and blocking.
 
 ## What it does
 
@@ -29,9 +29,9 @@ Each major piece has its own document in `docs/`, including the decisions behind
 | Styling | NativeWind 4 + Tailwind 3.4, custom tokens |
 | Animation | react-native-reanimated 4 |
 | Audio | expo-audio + custom Expo modules in Swift (`modules/`) |
-| Backend | **Supabase** — Postgres + Realtime + Auth + Storage + RLS |
-| Music service | Node (`server/`) as Vercel functions (`dnmusic-api.vercel.app`); the same handler runs in a container for local development |
-| Web / PWA | react-native-web → Vercel (`dnmusic-app.vercel.app`) |
+| Backend | **Supabase on Railway** — Postgres + Realtime + Auth + Storage + RLS |
+| Music service | Node (`server/`), hosted with the web app on Railway |
+| Web / PWA | react-native-web → Railway (`dnmusic-production-c3f4.up.railway.app`) |
 | Desktop | Electron (`desktop/`) — Windows and Linux, with auto-updates |
 | iOS | EAS Build + submit to App Store Connect |
 
@@ -115,52 +115,26 @@ There are currently 104 checks across 6 files: Jam, multi-device listening, coll
 
 ## Production
 
-**Supabase.** Create the project and apply the same schema:
+**Railway.** The production project is `dnmusic`. Its `dnmusic` service hosts
+the web app and music API at `https://dnmusic-production-c3f4.up.railway.app`.
+Supabase is self-hosted in the same Railway project; its public gateway is
+`https://envoy-production-2fb6.up.railway.app`. Keep production credentials
+in Railway variables, not in the repository.
 
-```bash
-npx supabase link --project-ref <REF>
-npx supabase db push
-```
+The running web service was deployed from a source upload, not a Git-connected
+`main` branch. Do not assume that pushing this repository deploys Railway.
+Confirm the source snapshot and service configuration before publishing.
 
-**Web.** Vercel uses `vercel.json` (`build:web` → `dist/`, with an SPA rewrite). Git deployments are intentionally disabled: publish with `vercel`.
+Vercel is no longer the production destination. Both legacy `vercel.json`
+files disable automatic Git deployments. Removing GitHub deployment records
+does not delete the old hosted sites; retiring those requires access to Vercel.
+See [repository maintenance](docs/REPOSITORIO.md).
 
-**Music service.** Vercel, deployed with `vercel --prod` from `server/` — not
-through git. It used to be a Railway container; nothing of it stayed behind.
+**Audio cache.** Datacenter requests may be blocked by the upstream provider.
+Devices can resolve audio on their own connection and contribute it to the
+shared cache (see `docs/ESCRITORIO.md` and `docs/MOTOR-TELEFONO.md`).
 
-It ships as **two** functions behind one origin, split by how heavy they are to
-start rather than by what they do:
-
-- `api/index.ts` — the five routes that never touch YouTube (`/img`,
-  `/translate`, `/spotify`, `/spotify/canciones`, `/artwork`), served from
-  `src/livianas.ts`. A small bundle, so it starts fast. `/img` is the app's
-  highest-volume route — one per artwork on screen — and sits behind the CDN,
-  which serves repeats without ever reaching the function.
-- `api/todo.ts` — everything else. It has no logic of its own: it imports the
-  handler from `src/index.ts`, the very same one the container runs, which works
-  because Vercel invokes with Node's `(IncomingMessage, ServerResponse)`
-  signature — exactly what `createServer` takes. This bundle carries
-  youtubei.js and static ffmpeg/ffprobe binaries, around 160 MB.
-
-`vercel.json` maps every route to one of the two with an explicit rewrite that
-passes the real path in a `ruta` parameter. A catch-all would be the natural
-thing, but it matches a single segment, so `/spotify/canciones` and
-`/resolve/progreso` returned a platform 404 without ever reaching the code.
-
-**What did not move, because it cannot.** Downloading audio from YouTube does
-not work from a datacenter IP — measured on Vercel, all seven clients answer
-`Sign in to confirm you're not a bot`, including IOS and ANDROID_VR, which never
-go through BotGuard. It did not work from Railway either, for the same reason,
-so nothing was lost in the move. Audio gets into the cache the way it already
-did: each device resolves it over its own home IP and contributes it for
-everyone (see `docs/ESCRITORIO.md` and `docs/MOTOR-TELEFONO.md`).
-
-jsdom does not load on Vercel at all — Node starts with
-`--no-experimental-require-module` and jsdom 28 is CommonJS that `require()`s a
-pure-ESM dependency. It is imported lazily so that only BotGuard depends on it:
-search, home and albums do not mint tokens and never load it.
-
-**Uploads do not go through the service.** A function caps the request body at
-4.5 MB on the free plan, and a five-minute song weighs more. `/aportar` and
+**Uploads do not go through the service.** `/aportar` and
 `/propia` hand out a single-use signed URL, the client `PUT`s the file straight
 to Supabase Storage, and only then asks the server to confirm it. Nothing is
 weakened: what gets uploaded lands in a quarantine path the app never plays

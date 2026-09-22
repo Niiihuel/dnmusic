@@ -66,13 +66,13 @@ test('iOS: abrir conserva la lupa de 44pt; el campo nativo está fuera de las ac
   assert.equal(h.animations(), 0)
   assert.equal(h.render('CampoBusquedaColeccion', props), null)
   const actions = []
-  const field = nodes(h.render('CampoBusquedaColeccion', { ...props, abierto: true, contexto: 'álbum', filtro: 'Tema',
-    onFiltro: q => actions.push(q), onCerrar: () => actions.push('cancelar') }), 'NativeSearch')[0]
+  const ui = h.render('CampoBusquedaColeccion', { ...props, abierto: true, contexto: 'álbum', filtro: 'Tema',
+    onFiltro: q => actions.push(q), onCerrar: () => actions.push('cancelar') })
+  const field = nodes(ui, 'SearchField')[0]
   assert.equal(field.props.placeholder, 'Buscar en este álbum')
-  assert.equal(field.props.style.width, '100%')
-  assert.equal(field.props.text, 'Tema')
-  field.props.onChangeText({ nativeEvent: { text: 'Artista' } })
-  field.props.onCancel()
+  assert.equal(field.props.value, 'Tema')
+  field.props.onChangeText('Artista')
+  nodes(ui, 'Pressable')[0].props.onPress()
   assert.deepEqual(actions, ['Artista', 'cancelar'])
 })
 
@@ -98,12 +98,12 @@ test('abrir, filtrar, cancelar y cambiar colección limpian estado y teclado', (
   assert.equal(state.abierto, false)
 })
 
-test('cliente iOS anterior conserva campo independiente, limpiar nativo y cancelar', () => {
+test('colecciones usan el mismo campo SwiftUI con o sin el módulo UIKit anterior', () => {
   const h = search('ios', null)
   let cancelled = false
   const ui = h.render('CampoBusquedaColeccion', { ...props, abierto: true, onCerrar: () => { cancelled = true } })
-  const field = nodes(ui, 'TextInput')[0]
-  assert.equal(field.props.clearButtonMode, 'while-editing')
+  const field = nodes(ui, 'SearchField')[0]
+  assert.equal(nodes(ui, 'TextInput').length, 0)
   assert.equal(field.props.autoFocus, true)
   nodes(ui, 'Pressable')[0].props.onPress()
   assert.equal(cancelled, true)
@@ -205,14 +205,15 @@ test('búsqueda persistente de playlist entra sin teclado y cancelar limpia sin 
   const queries = []
   let closes = 0
   let ui = h.render('CampoBusquedaColeccion', { ...props, siempreVisible: true, filtro: 'Tema', onFiltro: q => queries.push(q), onCerrar: () => closes++ })
-  const field = nodes(ui, 'NativeSearch')[0]
+  const field = nodes(ui, 'SearchField')[0]
   assert.equal(field.props.autoFocus, false)
-  field.props.onCancel()
+  nodes(ui, 'Pressable')[0].props.onPress()
   assert.deepEqual(queries, [''])
   assert.equal(closes, 0)
   assert.equal(h.dismisses(), 1)
   ui = h.render('CampoBusquedaColeccion', { ...props, siempreVisible: true })
-  assert.equal(nodes(ui, 'NativeSearch').length, 1)
+  assert.equal(nodes(ui, 'SearchField').length, 1)
+  assert.equal(nodes(ui, 'Pressable').length, 0, 'sin texto no ocupa espacio una acción vacía')
 })
 
 

@@ -1,3 +1,4 @@
+import { colaBusqueda } from '../src/lib/colaBusqueda'
 import { BordeScrollNativo, HAY_BORDE_SCROLL_NATIVO } from '../src/ui/CollectionScrollEdge'
 import { CabeceraChats, CargaChats, FilaConversacion, FilaSolicitudChat, TituloSeccionChats } from '../src/ui/ContenidoChats'
 import { BotonSuperficie } from '../src/ui/BotonSuperficie'
@@ -124,6 +125,7 @@ import {
   enqueueNext,
   canEnqueueNext,
   getPlaybackState,
+  playCollection,
   playQueue,
   registerPlaylistOpener,
   toggleView,
@@ -645,6 +647,8 @@ export default function Home() {
     registerTabHandler((tab) => {
       if (tab === 'perfil') return
       setMusic(tab !== 'chats')
+      dejarCara()
+      if (tab !== 'buscar') cerrarBusqueda()
       if (tab === 'chats') {
         setChatAbierto(false)
         return
@@ -658,7 +662,6 @@ export default function Home() {
          con el término viejo mostraría resultados de algo que ya no estabas
          buscando. */
       if (tab === 'buscar') abrirBusqueda('Buscá una canción o un artista')
-      else cerrarBusqueda()
       /* Entrar a «Listas» relee la biblioteca: pudiste haber creado una desde
          otro lado. Ver el efecto de `AppState` más abajo. */
       if (tab === 'listas') void loadPlaylists()
@@ -672,7 +675,7 @@ export default function Home() {
       setAt(0)
     })
     return () => registerTabHandler(null)
-  }, [loadPlaylists])
+  }, [loadPlaylists, dejarCara])
 
   /*
    * Poner una cara de la música, venga de donde venga.
@@ -1132,7 +1135,14 @@ export default function Home() {
    * cada cliente de YouTube y son seis renglones que empujaban «Tus listas»
    * fuera del panel. Y encima se decía dos veces, arriba y abajo.
    */
-  async function playSearchResult(track: TrackResult) {
+  async function playSearchResult(track: TrackResult, resultados?: TrackResult[]) {
+    // El motor resuelve la actual con prioridad y prepara las siguientes al sonar.
+    // Jam conserva su contrato: sólo se envía audio ya resuelto al grupo.
+    if (!hayJam()) {
+      const cola = colaBusqueda(track, resultados)
+      playQueue(cola.tracks, cola.index, null)
+      return
+    }
     setAddingTrack(track.videoId)
     try {
       playQueue([await resolveForPlayback(track)], 0, null)
@@ -1216,9 +1226,9 @@ export default function Home() {
    * todos—: la cola compartida exige el audio resuelto y resolver un disco
    * entero antes de poder tocarlo sería esperar minutos.
    */
-  function playAlbum(tracks: AlbumTrack[], artwork: string, at: number) {
+  function playAlbum(tracks: AlbumTrack[], artwork: string, at: number | null) {
     if (!collection) return
-    const elegida = tracks[at]
+    const elegida = tracks[at ?? 0]
     if (!elegida) return
     if (hayJam()) {
       void playSearchResult(albumTrackAsResult(elegida, artwork))
@@ -1237,10 +1247,9 @@ export default function Home() {
       durationMs: t.durationMs,
       truePeak: undefined,
     }))
-    playQueue(cola, at, {
-      id: `coleccion:${collection.kind}:${collection.id}`,
-      name: collection.name,
-    })
+    const origen = { id: `coleccion:${collection.kind}:${collection.id}`, name: collection.name }
+    if (at === null) playCollection(cola, origen)
+    else playQueue(cola, at, origen)
   }
 
   /** Una canción de la portada, en la forma que entiende el resto de la app. */
@@ -2448,7 +2457,7 @@ export default function Home() {
              * cierra por `dejarCara`.
              */
             <CentroSonando cara={caraCentro} pista={pistaSonando} sonando={sonandoAhora} />
-          ) : openPlaylist ? (
+          ) : music && openPlaylist ? (
             <PlaylistView
               playlist={openPlaylist}
               reloadToken={reloadToken}
@@ -2535,11 +2544,11 @@ export default function Home() {
                      una. Ver `state/recientes`. */
                   onSelect={(track) => {
                     recordarBusqueda(conversationQuery)
-                    void playSearchResult(track)
+                    void playSearchResult(track, trackResults)
                   }}
                   onPlay={(track) => {
                     recordarBusqueda(conversationQuery)
-                    void playSearchResult(track)
+                    void playSearchResult(track, trackResults)
                   }}
                   artists={artistResults}
                   onOpenArtist={(a) => {
@@ -2592,7 +2601,7 @@ export default function Home() {
                las de cualquier canción; «quitar» lo agrega la vista, porque
                quitar de acá ES desmarcar. */
             <MeGustaView
-              onSearch={() => searchRef.current?.focus()}
+              onSearch={() => setTab('buscar')}
               menuFor={(t) => menuForTrack(playlistTrackAsResult(t))}
             />
           ) : music && collection ? (
@@ -2611,7 +2620,7 @@ export default function Home() {
                   menuFor={(track, artwork) => menuForTrack(albumTrackAsResult(track, artwork))}
                   /* El disco entero como cola, no la primera suelta: es la
                      misma promesa que una playlist. Ver `playAlbum`. */
-                  onPlayAll={(tracks, artwork) => playAlbum(tracks, artwork, 0)}
+                  onPlayAll={(tracks, artwork) => playAlbum(tracks, artwork, null)}
                   onPlay={(track, artwork, tracks, at) => playAlbum(tracks, artwork, at)}
                   onAdd={(track, artwork) => {
                     const asResult = albumTrackAsResult(track, artwork)
@@ -3342,7 +3351,7 @@ function ConversationSidebar({
       )}
 
       <FlatList
-        renderScrollComponent={onBuscar ? (props) => <ScrollArea {...props} /> : undefined}
+        renderScrollComponent={(props) => <ScrollArea {...props} />}
         style={{ flex: 1, minHeight: 0 }}
         data={conversations}
         keyExtractor={(conversation) => conversation.pairId}

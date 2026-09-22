@@ -13,7 +13,7 @@ workflow se inicia manualmente y valida secretos en Linux antes de usar el Mac.
 
 1. Publicá en GitHub los cambios que querés incluir. El workflow compila el
    commit de la rama elegida; no ve cambios locales sin subir.
-2. Abrí [Actions → iOS — compilar](https://github.com/Niiihuel/dnmusic/actions/workflows/ios.yml).
+2. Abrí [Actions → iOS — compilar](https://github.com/Niihuel/dnmusic/actions/workflows/ios.yml).
 3. Elegí **Run workflow**, rama y perfil:
    - `production`: IPA firmado para TestFlight/App Store.
    - `preview`: distribución interna para los iPhones registrados en el perfil.
@@ -37,7 +37,7 @@ un número si una compilación falla después de reservarlo: es normal.
 
 ## Credenciales necesarias
 
-En [Settings → Secrets and variables → Actions](https://github.com/Niiihuel/dnmusic/settings/secrets/actions):
+En [Settings → Secrets and variables → Actions](https://github.com/Niihuel/dnmusic/settings/secrets/actions):
 
 | Secreto | Cuándo hace falta | Contenido |
 |---|---|---|
@@ -50,7 +50,7 @@ No subas tokens, certificados ni archivos `.p8` al repositorio ni los pegues en
 el chat. Para guardar una clave desde Linux sin imprimirla en la terminal:
 
 ```bash
-base64 -w 0 /ruta/segura/AuthKey_XXXXXXXXXX.p8 | gh secret set ASC_API_KEY_P8_BASE64 --repo Niiihuel/dnmusic
+base64 -w 0 /ruta/segura/AuthKey_XXXXXXXXXX.p8 | gh secret set ASC_API_KEY_P8_BASE64 --repo Niihuel/dnmusic
 ```
 
 Los certificados y provisioning profiles de iOS deben estar preparados en EAS
@@ -97,3 +97,12 @@ corregilos y ejecutá nuevamente.
 - [Tokens de Expo](https://docs.expo.dev/accounts/programmatic-access/)
 - [Credenciales de firma](https://docs.expo.dev/app-signing/syncing-credentials/)
 - [Facturación de GitHub Actions](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
+
+## Reenviar un IPA guardado sin compilar otra vez
+
+En `iOS — compilar`, elegí `production`, activá TestFlight y completá
+`ipa_release` con el tag del borrador `ios-build-ID-INTENTO`. La compilación se
+omite y se envía ese IPA con su versión original. El job verifica que sea un
+borrador de producción del mismo repositorio. El permiso `contents: write`
+en el job de envío permite consultar borradores privados; no publica el borrador.
+Dejá el campo vacío para compilar una versión nueva.

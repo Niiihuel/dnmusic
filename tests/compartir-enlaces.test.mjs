@@ -55,14 +55,14 @@ function caja() {
 const { compartir } = caja()
 
 test('cada compartible tiene su link y su versión para incrustar', () => {
-  assert.equal(compartir.linkDe('cancion', 'abc123'), 'https://dnmusic-app.vercel.app/cancion/abc123')
-  assert.equal(compartir.linkDe('lista', 'un-uuid'), 'https://dnmusic-app.vercel.app/lista/un-uuid')
-  assert.equal(compartir.baseDe('jam'), 'https://dnmusic-app.vercel.app/jam')
+  assert.equal(compartir.linkDe('cancion', 'abc123'), 'https://dnmusic-production-c3f4.up.railway.app/cancion/abc123')
+  assert.equal(compartir.linkDe('lista', 'un-uuid'), 'https://dnmusic-production-c3f4.up.railway.app/lista/un-uuid')
+  assert.equal(compartir.baseDe('jam'), 'https://dnmusic-production-c3f4.up.railway.app/jam')
   assert.equal(
     compartir.linkIncrustado('cancion', 'abc123'),
-    'https://dnmusic-app.vercel.app/embed/cancion/abc123',
+    'https://dnmusic-production-c3f4.up.railway.app/embed/cancion/abc123',
   )
-  assert.match(compartir.codigoIncrustado('cancion', 'abc123'), /^<iframe src="https:\/\/dnmusic-app\.vercel\.app\/embed\/cancion\/abc123"/)
+  assert.match(compartir.codigoIncrustado('cancion', 'abc123'), /^<iframe src="https:\/\/dnmusic-production-c3f4\.up\.railway\.app\/embed\/cancion\/abc123"/)
 })
 
 test('una canción propia sobrevive al viaje por la URL', () => {
@@ -74,7 +74,7 @@ test('una canción propia sobrevive al viaje por la URL', () => {
 
 test('reconoce las tres formas en que llega un link nuestro', () => {
   for (const url of [
-    'https://dnmusic-app.vercel.app/cancion/abc123',
+    'https://dnmusic-production-c3f4.up.railway.app/cancion/abc123',
     'dnmusic://cancion/abc123',
     'app://dnmusic/cancion/abc123',
   ]) {
@@ -86,10 +86,10 @@ test('reconoce las tres formas en que llega un link nuestro', () => {
 test('nunca convierte un link ajeno en una ruta de la app', () => {
   for (const url of [
     'https://otro.test/cancion/abc123',
-    'https://dnmusic-app.vercel.app.evil.test/cancion/abc123',
-    'https://dnmusic-app.vercel.app/ajustes/accesos',
-    'https://dnmusic-app.vercel.app/cancion/',
-    'javascript:alert(1)//dnmusic-app.vercel.app/cancion/x',
+    'https://dnmusic-production-c3f4.up.railway.app.evil.test/cancion/abc123',
+    'https://dnmusic-production-c3f4.up.railway.app/ajustes/accesos',
+    'https://dnmusic-production-c3f4.up.railway.app/cancion/',
+    'javascript:alert(1)//dnmusic-production-c3f4.up.railway.app/cancion/x',
     'dnmusic://cancion/%E0%A4%A',
     '',
   ]) {
@@ -142,4 +142,18 @@ test('si publicar falla, la canción se comparte igual', async () => {
   })
   await c.compartirCancion({ videoId: 'abc123', title: 'Tema', artist: 'Artista' })
   assert.deepEqual(hechos, ['copiar', 'aviso'])
+})
+
+
+test('copiar el link también publica primero la portada y devuelve el resultado real', async () => {
+  const { compartir: c, hechos } = caja()
+  assert.equal(await c.copiarEnlaceCancion({ videoId: 'abc123', title: 'Tema', artist: 'Artista' }), true)
+  assert.deepEqual(hechos, ['publicar', 'copiar'])
+})
+
+test('publicar informa los errores del RPC en lugar de simular éxito', async () => {
+  const c = cargar('src/services/compartidos.ts', {
+    '../lib/supabase': { getSupabase: () => ({ rpc: async () => ({ error: Error('sin acceso') }) }) },
+  })
+  await assert.rejects(c.publicarCancion({ videoId: 'abc', title: 'Tema', artist: 'Artista' }), /sin acceso/)
 })

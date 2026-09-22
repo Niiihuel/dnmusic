@@ -19,9 +19,10 @@
         "resourceClass": "m-medium"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://tdvndpjaxuqhibcpufat.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkdm5kcGpheHVxaGliY3B1ZmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0NzMwOTIsImV4cCI6MjEwMjA0OTA5Mn0.bQ-AXAYL79ECGXc19SG0lj7zD_vh0qgwedIeOhxGPXE",
-        "EXPO_PUBLIC_MUSIC_API": "https://dnmusic-api.vercel.app"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://envoy-production-2fb6.up.railway.app",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDB9.Lig2qI3IZZz7CaRC4mXKyMhBvcysgKi6FQTnF9n_blw",
+        "EXPO_PUBLIC_MUSIC_API": "https://dnmusic-production-c3f4.up.railway.app",
+        "EXPO_PUBLIC_SITE_URL": "https://dnmusic-production-c3f4.up.railway.app"
       }
     },
     "production": {
@@ -30,9 +31,10 @@
         "resourceClass": "m-medium"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://tdvndpjaxuqhibcpufat.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkdm5kcGpheHVxaGliY3B1ZmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0NzMwOTIsImV4cCI6MjEwMjA0OTA5Mn0.bQ-AXAYL79ECGXc19SG0lj7zD_vh0qgwedIeOhxGPXE",
-        "EXPO_PUBLIC_MUSIC_API": "https://dnmusic-api.vercel.app"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://envoy-production-2fb6.up.railway.app",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDB9.Lig2qI3IZZz7CaRC4mXKyMhBvcysgKi6FQTnF9n_blw",
+        "EXPO_PUBLIC_MUSIC_API": "https://dnmusic-production-c3f4.up.railway.app",
+        "EXPO_PUBLIC_SITE_URL": "https://dnmusic-production-c3f4.up.railway.app"
       }
     }
   },

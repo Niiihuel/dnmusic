@@ -4,11 +4,14 @@ import { BasicTextField, Box, CircularProgressIndicator, IconButton, RNHostView,
 import { background, clip, defaultMinSize, fillMaxWidth, padding, Shapes, size, weight } from '@expo/ui/jetpack-compose/modifiers'
 import { AndroidHost, ANDROID_COLORS, androidAccessibility } from './AndroidHost'
 import type { SearchFieldProps } from './SearchField.types'
+import { ANDROID_TYPE } from './androidDesign'
 
 /** SearchBar no expone valor ni ref en este SDK; BasicTextField conserva la búsqueda y foco controlados. */
 export function SearchField({ value, onChangeText, placeholder = 'Buscar', accessibilityLabel, onSubmit,
   autoFocus, loading = false, inputRef, onFocusChange }: SearchFieldProps) {
   const input = useRef<TextFieldRef>(null)
+  const focused = useRef(false)
+  const recibioFoco = useRef(false)
   const texto = useNativeState(value)
   // No reescribir teclas más recientes del buffer nativo al llegar un evento JS atrasado.
   const ultimoTexto = useRef(value)
@@ -25,12 +28,19 @@ export function SearchField({ value, onChangeText, placeholder = 'Buscar', acces
     <Row verticalAlignment="center" modifiers={[fillMaxWidth(), defaultMinSize({ minHeight: 48 }), clip(Shapes.RoundedCorner(24)), background(ANDROID_COLORS.surface), padding(14, 0, 0, 0)]}>
       <RNHostView matchContents><Search size={20} color={ANDROID_COLORS.muted} /></RNHostView>
       <BasicTextField ref={input} value={texto} selection={seleccion} autoFocus={autoFocus} singleLine onValueChange={next => { ultimoTexto.current = next; onChangeText(next) }}
-        onFocusChanged={onFocusChange} textStyle={{ color: ANDROID_COLORS.text, fontSize: 16 }} cursorColor={ANDROID_COLORS.text}
+        onFocusChanged={next => {
+          // Compose emite `false` al crear el campo, antes de procesar autoFocus.
+          // Propagar ese estado desmontaba SearchRow y el teclado nunca llegaba a abrirse.
+          if (focused.current === next) return
+          focused.current = next
+          if (next) recibioFoco.current = true
+          if (next || recibioFoco.current) onFocusChange?.(next)
+        }} textStyle={{ ...ANDROID_TYPE.body, color: ANDROID_COLORS.text }} cursorColor={ANDROID_COLORS.text}
         keyboardOptions={{ capitalization: 'none', autoCorrectEnabled: false, keyboardType: 'text', imeAction: 'search' }}
         keyboardActions={{ onSearch: () => onSubmit?.() }}
         modifiers={[weight(1), padding(10, 12, value || loading ? 0 : 14, 12), androidAccessibility(accessibilityLabel ?? placeholder)]}>
         <BasicTextField.DecorationBox><Box contentAlignment="centerStart" modifiers={[fillMaxWidth()]}>
-          <BasicTextField.Placeholder><Text color={ANDROID_COLORS.muted} style={{ fontSize: 16 }} maxLines={1}>{placeholder}</Text></BasicTextField.Placeholder>
+          <BasicTextField.Placeholder><Text color={ANDROID_COLORS.muted} style={ANDROID_TYPE.body} maxLines={1}>{placeholder}</Text></BasicTextField.Placeholder>
           <BasicTextField.InnerTextField />
         </Box></BasicTextField.DecorationBox>
       </BasicTextField>

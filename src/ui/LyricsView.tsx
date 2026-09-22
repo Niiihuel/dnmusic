@@ -204,9 +204,9 @@ export function LyricsView({
 
   if (size === 'xl' && translationPlacement === 'footer') {
     return (
-      <View style={{ flex: 1, minHeight: 0, paddingHorizontal: 24 }}>
+      <View style={{ flex: 1, minHeight: 0 }}>
         <FadedLyrics>{letra}</FadedLyrics>
-        {traductor ? <View style={{ minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' }}>{traductor}</View> : null}
+        {traductor ? <View style={{ minHeight: 44, paddingHorizontal: 24, alignItems: 'flex-end', justifyContent: 'center' }}>{traductor}</View> : null}
       </View>
     )
   }
@@ -219,7 +219,7 @@ export function LyricsView({
      * una franja que no era de nadie.
      */
     return (
-      <View className="min-h-0 flex-1 px-6">
+      <View className="min-h-0 flex-1">
         {letra}
         {/* El fundido de arriba, hermano del que hay contra el pie: las líneas
             que ya pasaron se apagan **antes** de llegar al encabezado, en vez
@@ -252,7 +252,7 @@ export function LyricsView({
   }
 
   return (
-    <View className="min-h-0 flex-1 px-5 pb-5">
+    <View className="min-h-0 flex-1 pb-5">
       {/* La letra se queda con **todo** el alto que sobra y el control de
           idioma se apoya contra el piso. Antes los dos iban uno detrás del
           otro, así que el botón terminaba justo debajo del último renglón —a

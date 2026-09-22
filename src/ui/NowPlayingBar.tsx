@@ -5,7 +5,7 @@ import { BotonSuperficie } from './BotonSuperficie'
 import { IconButton } from './IconButton'
 import { useRef, useState } from 'react'
 import { useRouter } from 'expo-router'
-import { ActivityIndicator, Image, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Image, Platform, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { artworkSource } from '../lib/artwork'
 import { abrirCara, hayQuienAbraCaras, useTabsVisible } from '../state/shell'
@@ -405,6 +405,7 @@ export function NowPlayingBar({
     </View>
   }
   if (!wide) {
+    const androidRecto = Platform.OS === 'android'
     /*
      * Plegada, los márgenes los pone la fila que la contiene: acá adentro
      * sumaría los suyos y la tarjeta quedaría más angosta que los redondeles de
@@ -415,12 +416,12 @@ export function NowPlayingBar({
         /* 22px y no 12: pegada al borde, la tarjeta se leía cortada contra la
            curva de la pantalla del teléfono. Es el mismo aire que le da la
            cáscara cuando la envuelve ella (ver RESPIRO_GRANDE en Cascara). */
-        className={compacta ? '' : `px-[22px] ${conTabs ? 'pb-2' : ''}`}
-        style={compacta || conTabs ? undefined : { paddingBottom: 8 + insets.bottom }}
+        className={androidRecto || compacta ? '' : `px-[22px] ${conTabs ? 'pb-2' : ''}`}
+        style={androidRecto ? { width: '100%', backgroundColor: '#1C1B1F' } : compacta || conTabs ? undefined : { paddingBottom: 8 + insets.bottom }}
       >
         <Glass
-          radius={compacta ? 26 : 18}
-          style={{ boxShadow: '0 6px 20px rgba(0,0,0,0.45)' }}
+          radius={androidRecto ? 0 : compacta ? 26 : 18}
+          style={androidRecto ? { backgroundColor: '#1C1B1F' } : { boxShadow: '0 6px 20px rgba(0,0,0,0.45)' }}
         >
         {/*
          * La fila es un View y **el área que abre «Sonando» es solo la mitad
@@ -487,7 +488,7 @@ export function NowPlayingBar({
            */}
           <View
             pointerEvents="none"
-            className="absolute bottom-0 left-3 right-3 h-[2px] overflow-hidden rounded-full bg-muted"
+            className={`absolute bottom-0 h-[2px] overflow-hidden bg-muted ${androidRecto ? 'left-0 right-0' : 'left-3 right-3 rounded-full'}`}
           >
             <View
               className="h-full rounded-full bg-foreground"
@@ -753,7 +754,7 @@ export function NowPlayingBar({
 
 /** Ancho explícito: el volumen y el transporte no se mueven al recibir hover o foco. */
 function AnchoPildora({ compacto, children }: { compacto: boolean; children: React.ReactNode }) {
-  return <View style={{ width: '100%', maxWidth: compacto ? 640 : 1080, alignSelf: 'center' }}>{children}</View>
+  return <View {...(ES_WEB ? { dataSet: { dnPlayerFrame: '' } } : {})} style={{ width: '100%', maxWidth: compacto ? 640 : 1080, alignSelf: 'center' }}>{children}</View>
 }
 
 /** Botón que enciende y apaga una vista del panel derecho. */

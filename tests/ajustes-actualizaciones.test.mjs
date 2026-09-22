@@ -56,11 +56,11 @@ test('escritorio ofrece sólo acciones de actualización válidas para el estado
 test('instalador manual tiene destino real; iOS/web sin capacidad no inventan un actualizador',()=>{
  const pc=fixture({state:{fase:'apagado',motivo:'se actualiza manualmente'}})
  pc.render().find(n=>n.props?.rotulo==='Ver descargas de DMusic').props.onPress()
- assert.deepEqual(pc.opened,['https://github.com/Niiihuel/dnmusic-releases/releases/latest'])
+ assert.deepEqual(pc.opened,['https://github.com/Niihuel/dnmusic-releases/releases/latest'])
  const ios=fixture({platform:'ios',installed:{platform:'ios',version:'1.10.0'},capability:false})
  assert.equal(ios.render().filter(n=>n.type==='FilaAccion').length,0)
  assert.equal(ios.api.orientacionActualizacion('ios','https://example.com/peligro').destino,null)
- assert.equal(ios.api.orientacionActualizacion('ios','https://github.com/Niiihuel/dnmusic-releases/releases/latest').destino,null)
+ assert.equal(ios.api.orientacionActualizacion('ios','https://github.com/Niihuel/dnmusic-releases/releases/latest').destino,null)
  assert.equal(ios.api.orientacionActualizacion('web').destino,null)
 })
 

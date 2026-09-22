@@ -122,3 +122,26 @@ test('iOS con URL firmada nueva inicia tarea fresh y borra sólo el parcial viej
   h.tasks[1].complete(20); assert.equal((await b.resultado).bytes, 20)
   assert.equal((await h.api.listarAudio()).length, 2)
 })
+
+
+test('iOS prepara la próxima canción en sesión normal y conserva background para offline', async () => {
+ const h = montar()
+ const a = h.api.transferirAudio('a.m4a', 'url:a', () => {}, undefined, 'reproduccion')
+ assert.equal(h.tasks[0].options.sessionType, 'foreground')
+ h.tasks[0].complete(10); await a.resultado
+ const b = h.api.transferirAudio('b.m4a', 'url:b', () => {})
+ assert.equal(h.tasks[1].options.sessionType, 'background')
+ h.tasks[1].complete(10); await b.resultado
+})
+test('adoptar un parcial offline cambia la sesión al reanudar sin publicar un archivo incompleto', async () => {
+ const h = montar()
+ const a = h.api.transferirAudio('a.m4a', 'url:a', () => {})
+ h.tasks[0].progress(5, 10)
+ const pausa = await a.pausar(); await a.resultado
+ const b = h.api.transferirAudio('a.m4a', 'url:a', () => {}, pausa, 'reproduccion')
+ assert.equal(h.tasks[1].options.sessionType, 'foreground')
+ assert.equal(h.tasks[1].resumed, true)
+ assert.deepEqual(await h.api.listarAudio(), [])
+ h.tasks[1].complete(10); await b.resultado
+ assert.equal((await h.api.listarAudio()).length, 1)
+})

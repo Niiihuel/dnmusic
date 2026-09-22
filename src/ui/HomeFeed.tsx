@@ -1,5 +1,7 @@
-import { superficieInteractivaWeb, artworkInteractivoWeb } from './estadoControl'
+import { estadoControlWeb, superficieInteractivaWeb, artworkInteractivoWeb } from './estadoControl'
 import { BotonSuperficie } from './BotonSuperficie'
+import { TarjetaGenero } from './TarjetaGenero'
+import { catalogoGeneros, identidadGenero, nombreGenero, subtituloEditorial, tituloEditorial, tituloListaEditorial } from '../lib/catalogoEditorial'
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import {
   Image,
@@ -85,7 +87,6 @@ const ES_CHART = /trending|tendencia|éxitos|exitos|\btop\b|charts?/i
 /** Medida deseable de una tarjeta de género; la grilla la recalcula. */
 const GENERO_W = 260
 /** Proporción apaisada, como las tarjetas de género de Apple Music. */
-const GENERO_RATIO = 0.58
 /** Lado de la cara de un artista en su fila. Más chico que una tapa: es un redondel. */
 const ARTISTA_LADO = 140
 /** El id de origen con que la radio personal entra a la cola. */
@@ -302,13 +303,13 @@ export function HomeFeed({
               <Section
                 key={`mio-${section.title}`}
                 section={section}
-                titulo={`${section.title} para vos`}
+                titulo={`${nombreGenero(section.title)} para vos`}
                 onOpen={() => {
                   const semilla = inicio.semillas.find(
                     (s: Semilla) => s.kind === 'genero' && s.name === section.title,
                   )
                   if (semilla && onOpenGenero)
-                    onOpenGenero({ params: semilla.ref, name: semilla.name, artworkUrl: semilla.artworkUrl })
+                    onOpenGenero({ params: semilla.ref, name: nombreGenero(semilla.name), artworkUrl: semilla.artworkUrl })
                 }}
                 onOpenAlbum={onOpenAlbum}
                 onOpenPlaylist={onOpenPlaylist}
@@ -321,7 +322,7 @@ export function HomeFeed({
               <Section
                 key={`chart-${section.title}-${section.items[0]?.id ?? index}`}
                 section={section}
-                titulo={/^trending$/i.test(section.title) ? 'Tendencias' : section.title}
+                titulo={tituloEditorial(section.title)}
                 onOpen={() => onOpenSection(section.title)}
                 onOpenAlbum={onOpenAlbum}
                 onOpenPlaylist={onOpenPlaylist}
@@ -343,6 +344,9 @@ export function HomeFeed({
                 onReintentar={recargar}
               />
             ) : null}
+            {inicio.generos.length > 0 && onOpenGenero && onOpenGeneros ? (
+              <GenerosRow generos={inicio.generos} onOpen={onOpenGenero} onVerTodo={onOpenGeneros} />
+            ) : null}
             {resto.map((section, i) => (
               <Fragment key={`section-${section.title}-${section.items[0]?.id ?? i}`}>
                 <Section
@@ -354,12 +358,6 @@ export function HomeFeed({
                   menuForSong={menuForSong}
                   pendingId={pendingId}
                 />
-                {/* Los géneros van después del primer carrusel, como el
-                    «Explorar por género» de Apple Music: arriba lo nuevo, y
-                    enseguida el mapa para el que no busca nada puntual. */}
-                {i === 0 && inicio.generos.length && onOpenGenero && onOpenGeneros ? (
-                  <GenerosRow generos={inicio.generos} onOpen={onOpenGenero} onVerTodo={onOpenGeneros} />
-                ) : null}
               </Fragment>
             ))}
           </>
@@ -438,7 +436,7 @@ function Section({
 
   return (
     <View className="gap-3">
-      <Encabezado titulo={titulo ?? section.title} onPress={onOpen} />
+      <Encabezado titulo={titulo ?? tituloEditorial(section.title)} onPress={onOpen} />
       {/*
        * Una fila desplazable por sección, como en Apple Music: los costados se
        * desvanecen en vez de cortarse contra el borde del panel, y con el
@@ -488,9 +486,9 @@ function Card({
   return (
     <TarjetaCuadrada
       lado={width}
-      label={item.title}
-      titulo={item.title}
-      detalle={item.subtitle}
+      label={item.kind === 'playlist' ? tituloListaEditorial(item.title) : item.title}
+      titulo={item.kind === 'playlist' ? tituloListaEditorial(item.title) : item.title}
+      detalle={subtituloEditorial(item.subtitle)}
       onPress={onPress}
       tapa={
         item.artworkUrl ? (
@@ -627,6 +625,7 @@ function SongRow({
     >
       <BotonSuperficie
         accessibilityRole="button"
+        {...estadoControlWeb('none')}
         accessibilityLabel={isCurrent && wantPlay ? `Pausar ${item.title}` : `Reproducir ${item.title}`}
         /* Si ya es la que suena, tocarla pausa o sigue. Antes volvía a
            resolverla y arrancaba de cero, y no había forma de pausar desde
@@ -773,9 +772,9 @@ function Destacadas({
   if (genero && deGenero) {
     tarjetas.push({
       id: `genero:${deGenero.id}`,
-      motivo: `Porque elegiste ${genero.title}`,
-      titulo: deGenero.title,
-      detalle: deGenero.subtitle || genero.title,
+      motivo: `Porque elegiste ${nombreGenero(genero.title)}`,
+      titulo: deGenero.kind === 'playlist' ? tituloListaEditorial(deGenero.title) : deGenero.title,
+      detalle: subtituloEditorial(deGenero.subtitle) || nombreGenero(genero.title),
       tapa: deGenero.artworkUrl || null,
       onPress: () => abrir(deGenero),
     })
@@ -786,9 +785,9 @@ function Destacadas({
   if (novedad && deNovedad) {
     tarjetas.push({
       id: `novedad:${deNovedad.id}`,
-      motivo: novedad.title,
-      titulo: deNovedad.title,
-      detalle: deNovedad.subtitle || 'Lo nuevo de la portada',
+      motivo: tituloEditorial(novedad.title),
+      titulo: deNovedad.kind === 'playlist' ? tituloListaEditorial(deNovedad.title) : deNovedad.title,
+      detalle: subtituloEditorial(deNovedad.subtitle) || 'Lo nuevo de la portada',
       tapa: deNovedad.artworkUrl || null,
       onPress: () => abrir(deNovedad),
     })
@@ -798,7 +797,7 @@ function Destacadas({
 
   return (
     <View className="gap-3">
-      <Encabezado titulo="Sugerencias destacadas para vos" />
+      <Encabezado titulo="Para vos" detalle="Tu música, un poco más allá" />
       <FadingRow gap={16} padding={24}>
         {tarjetas.slice(0, MAX_DESTACADAS).map((t) => (
           <TarjetaDestacada
@@ -1401,67 +1400,8 @@ function PorqueEscuchaste({
 
 /* ── Géneros ──────────────────────────────────────────────────────────────── */
 
-/**
- * La tarjeta de un género: la foto ocupa todo, el nombre abajo a la izquierda.
- *
- * Es la tarjeta de Apple Music traducida a este sistema: allá el color lo pone
- * la marca de cada género; acá la UI es acromática y **el color lo trae la
- * imagen** —la tapa de la primera lista del género—, con un degradado oscuro
- * abajo para que el nombre se lea sobre cualquier foto. Sin líneas ni bordes:
- * la tarjeta se separa del fondo por la foto misma.
- */
-function GeneroCard({
-  genero,
-  onPress,
-  width = GENERO_W,
-}: {
-  genero: Genero
-  onPress: () => void
-  width?: number
-}) {
-  const [over, setOver] = useState(false)
-  const alto = Math.round(width * GENERO_RATIO)
-  return (
-    <BotonSuperficie
-      {...superficieInteractivaWeb('card')}
-      accessibilityRole="button"
-      accessibilityLabel={genero.name}
-      onPress={onPress}
-      onPointerEnter={() => setOver(true)}
-      onPointerLeave={() => setOver(false)}
-      style={{ width }}
-      className="active:opacity-80"
-    >
-      <View {...artworkInteractivoWeb()} className="overflow-hidden rounded-lg bg-card" style={{ width, height: alto }}>
-        {genero.artworkUrl ? (
-          <Image
-            source={{ uri: proxiedImage(artworkUrlAtSize(genero.artworkUrl, 400)) }}
-            resizeMode="cover"
-            style={{ width, height: alto, opacity: Platform.OS === 'web' ? 1 : over ? 0.75 : 1 }}
-          />
-        ) : (
-          <View className="flex-1 items-center justify-center">
-            <IconMusic size={22} color={ICON_COLOR.muted} />
-          </View>
-        )}
-        {/* El velo de abajo: lo único que garantiza que el nombre se lea
-            sobre una tapa clara. Tres paradas para que no se vea la línea. */}
-        <LinearGradient
-          pointerEvents="none"
-          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.28)', 'rgba(0,0,0,0.78)']}
-          locations={[0.35, 0.62, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-        <Text
-          numberOfLines={1}
-          className="absolute bottom-2.5 left-3 right-3 text-foreground text-subheadline font-bold"
-          style={{ textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 6 }}
-        >
-          {genero.name}
-        </Text>
-      </View>
-    </BotonSuperficie>
-  )
+function GeneroCard({ genero, onPress, width = GENERO_W }: { genero: Genero; onPress: () => void; width?: number }) {
+  return <TarjetaGenero nombre={genero.name} ancho={width} onPress={onPress} />
 }
 
 /** La fila de géneros de la portada, con su «ver todo» en el título. */
@@ -1476,7 +1416,7 @@ function GenerosRow({
 }) {
   return (
     <View className="gap-3">
-      <Encabezado titulo="Géneros y momentos" onPress={onVerTodo} />
+      <Encabezado titulo="Explorá tu música" detalle="Encontrá otro sonido" onPress={onVerTodo} />
       <FadingRow gap={16} padding={24}>
         {generos.map((genero) => (
           <GeneroCard key={genero.params} genero={genero} onPress={() => onOpen(genero)} />
@@ -1514,27 +1454,30 @@ function GenerosPage({
       contentContainerStyle={{ paddingTop: techo, paddingBottom: piso }}
       {...colapso}
     >
-      <CabeceraDePagina titulo="Géneros y momentos" onBack={onBack} />
+      <CabeceraDePagina titulo="Explorá tu música" onBack={onBack} />
 
       {generos === null ? (
         <View className="flex-row flex-wrap gap-4">
           {[0, 1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} width={GENERO_W} height={GENERO_W * GENERO_RATIO} radius={8} />
+            <Skeleton key={i} width={GENERO_W} height={164} radius={18} />
           ))}
         </View>
       ) : (
-        <View
-          className="flex-row flex-wrap gap-4"
-          onLayout={(e) => setAncho(e.nativeEvent.layout.width)}
-        >
-          {generos.map((genero) => (
+        <View className="gap-8" onLayout={(e) => setAncho(e.nativeEvent.layout.width)}>
+          {(['genero', 'momento'] as const).map(tipo => {
+            const grupo = generos.filter(g => identidadGenero(g.name)?.tipo === tipo)
+            return grupo.length ? <View key={tipo} className="gap-4">
+              <Text className="text-foreground text-title3 font-semibold">{tipo === 'genero' ? 'Por género' : 'Para cada momento'}</Text>
+              <View className="flex-row flex-wrap gap-4">{grupo.map((genero) => (
             <GeneroCard
               key={genero.params}
               genero={genero}
               width={lado}
               onPress={() => onOpen(genero)}
             />
-          ))}
+              ))}</View>
+            </View> : null
+          })}
         </View>
       )}
     </ScrollArea>
@@ -1750,8 +1693,8 @@ function SectionPage({
       {...colapso}
     >
       <CabeceraDePagina
-        titulo={section.title}
-        detalle={`${section.items.length} ${section.items.length === 1 ? 'cosa' : 'cosas'}`}
+        titulo={tituloEditorial(section.title)}
+        detalle={`${section.items.length} ${songs ? (section.items.length === 1 ? 'canción' : 'canciones') : (section.items.length === 1 ? 'selección' : 'selecciones')}`}
         onBack={onBack}
       />
 
@@ -1883,7 +1826,7 @@ function useInicio(): { inicio: Inicio | null; recargar: () => void } {
       if (!vivo) return
       setInicio({
         sections,
-        generos,
+        generos: catalogoGeneros(generos),
         semillas,
         misGeneros,
         escuchas,

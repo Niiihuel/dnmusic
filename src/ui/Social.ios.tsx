@@ -28,7 +28,7 @@ export function AccionSocial({ label, accessibilityLabel: nombreAccesible, onPre
       <HStack spacing={8} modifiers={[frame({ minHeight: 28 })]}>
         {expandida ? <Spacer /> : null}
         {busy ? <ProgressView modifiers={[tint(secundaria ? '#FFFFFF' : '#121212')]} /> : null}
-        <Text modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' }), foregroundStyle(secundaria ? '#FFFFFF' : '#121212')]}>{label}</Text>
+        <Text modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' }), foregroundStyle(inactiva ? '#B3B3B3' : secundaria ? '#FFFFFF' : '#121212')]}>{label}</Text>
         {expandida ? <Spacer /> : null}
       </HStack>
     </Button>

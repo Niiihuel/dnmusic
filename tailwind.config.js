@@ -1,4 +1,6 @@
 const apple = require('./src/ui/apple.json')
+const android = require('./src/ui/android-design.json')
+const plugin = require('tailwindcss/plugin')
 
 /**
  * `largeTitle` → `large-title`, que es como se escribe una clase.
@@ -78,5 +80,16 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [plugin(({ addUtilities }) => {
+    // La misma clase semántica adopta las medidas Android sólo en esa plataforma.
+    const roles = { largeTitle: 'title', title1: 'title', title2: 'section', title3: 'section', headline: 'section', body: 'body', callout: 'body', subheadline: 'body', footnote: 'body', caption1: 'caption', caption2: 'caption' }
+    addUtilities({ '@media (display-mode: android)': Object.fromEntries(
+      Object.entries(roles).map(([name, role]) => {
+        const t = android.type[role]
+        return [`.text-${claseTexto(name)}`, {
+          fontSize: `${t.fontSize}px`, lineHeight: `${t.lineHeight}px`, letterSpacing: `${t.letterSpacing}px`, fontFamily: t.fontFamily, fontWeight: t.fontWeight,
+        }]
+      }),
+    ) })
+  })],
 }

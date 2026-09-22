@@ -1,5 +1,71 @@
 [
   {
+    "version": "1.16.3",
+    "fecha": "22 de septiembre de 2026",
+    "titulo": "Un inicio más tuyo.",
+    "cambios": [
+      "Los géneros estrenan tarjetas propias, nombres en español y una selección más clara, tanto en iPhone como en la computadora.",
+      "Pulimos la elección de artistas, recuperamos sus fotos y conservamos tus elecciones al volver entre pasos. El inicio tiene textos editoriales propios sin cambiar el algoritmo de recomendaciones.",
+      "Unificamos los buscadores de iPhone con Liquid Glass, incluidos Configuración, colecciones y el editor del perfil. En PC, limpiar la búsqueda devuelve el foco al campo."
+    ]
+  },
+  {
+    "version": "1.16.2",
+    "fecha": "22 de septiembre de 2026",
+    "titulo": "Tu sonido, a tu manera.",
+    "cambios": [
+      "El ecualizador estrena una curva de diez bandas y preajustes en Configuración → Reproducción, con controles nativos en iPhone y una pantalla adaptada a la computadora.",
+      "Tus ajustes se guardan al terminar de mover los controles. Si la música suena en otro dispositivo, la pantalla lo indica sin simular cambios de sonido locales.",
+      "En iPhone, suavizamos los cambios entre ajustes, compensamos el nivel para reducir la saturación y corregimos la lectura de muestras del visualizador."
+    ]
+  },
+  {
+    "version": "1.16.1",
+    "fecha": "22 de septiembre de 2026",
+    "titulo": "Más cómodo, más tuyo.",
+    "cambios": [
+      "Corregimos el cambio de pestaña desde una playlist y los indicadores de pausa, carga y descarga. Las filas resaltan completas, incluidos sus controles.",
+      "Suavizamos el borde superior de Configuración y Tus me gusta, y simplificamos la importación de Spotify.",
+      "Las letras tienen espacio para animarse sin recortarse a los costados.",
+      "El mosaico ofrece tamaños visibles, un control de resize más cómodo y opciones más simples. Mejoramos la selección de fotos de iOS y el encuadre con zoom bajo los dedos y grilla, también para videos de fondo.",
+      "Las opciones de tipografía de iOS muestran la fuente real de cada muestra."
+    ]
+  },
+  {
+    "version": "1.16.0",
+    "fecha": "22 de septiembre de 2026",
+    "titulo": "Tu biblioteca, más clara.",
+    "cambios": [
+      "Rediseñamos Playlists con secciones para tu música, una bienvenida cuando todavía no tenés listas y una tarjeta para traerlas de Spotify.",
+      "En iPhone, Configuración organiza las opciones por categorías con navegación nativa. Ajustamos la posición de la barra inferior y corregimos los cambios de sección que requerían tocar dos veces.",
+      "Las letras acompañan la canción con transiciones suaves y desenfoque en las líneas inactivas, respetando la opción de reducir movimiento.",
+      "Android estrena tipografía Inter Tight, controles con relieve suave y tarjetas más limpias. Configuración también se organiza en categorías."
+    ]
+  },
+  {
+    "version": "1.15.2",
+    "fecha": "21 de septiembre de 2026",
+    "titulo": "dnmusic ya vive en Railway.",
+    "cambios": [
+      "El acceso con Google, las cuentas y los archivos usan el nuevo servicio de Railway. La app deja de intentar abrir el proyecto de Supabase retirado.",
+      "En la computadora, el aviso de Google explica con claridad que el acceso se completa en el navegador y continúa en la misma ventana.",
+      "Las próximas actualizaciones del escritorio se publican desde la cuenta correcta de GitHub."
+    ]
+  },
+  {
+    "version": "1.15.1",
+    "fecha": "13 de septiembre de 2026",
+    "titulo": "Un escritorio más fluido.",
+    "cambios": [
+      "Los modales de computadora comparten un diseño de vidrio, bordes redondeados y animaciones al abrir, cerrar o cambiar su contenido.",
+      "Corregimos los fondos de hover para que cubran las filas completas y se muevan entre controles. Las tarjetas tienen más espacio alrededor y las flechas de los carruseles usan vidrio con borde.",
+      "Los tooltips conservan su indicador dentro del contorno de vidrio y esperan medio segundo sobre cada botón antes de aparecer.",
+      "La barra de progreso responde al arrastrarla sin actualizar toda la interfaz. El reproductor anima el cambio entre su tamaño compacto y expandido.",
+      "Discord recibe también la música de los Jam reproducida en esta computadora. Mostramos la cuenta detectada, mejoramos los reintentos y evitamos que un fallo al guardar la preferencia impida publicar la canción.",
+      "Cerrar sesión afecta solamente al dispositivo donde lo hacés, para conservar abiertas tus otras sesiones."
+    ]
+  },
+  {
     "version": "1.15.0",
     "fecha": "13 de septiembre de 2026",
     "titulo": "Tu música, más cerca.",

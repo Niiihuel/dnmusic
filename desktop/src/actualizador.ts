@@ -7,7 +7,7 @@ import { autoUpdater, type UpdateInfo } from 'electron-updater'
  * Se apoya en electron-updater, que lee `app-update.yml` —lo escribe
  * electron-builder con el `publish` de electron-builder.yml— y compara la
  * versión instalada contra el `latest.yml` del último release publicado en
- * Niiihuel/dnmusic-releases.
+ * Niihuel/dnmusic-releases.
  *
  * Ese repo es **público a propósito**, aunque el del código sea privado: contra
  * un repo privado electron-updater necesita un token de GitHub metido adentro

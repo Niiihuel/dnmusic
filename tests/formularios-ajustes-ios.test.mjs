@@ -11,6 +11,7 @@ function harness(path, injected = {}) {
     forwardRef: f => props => f(props, props.ref),
     createContext: value => ({ value, Provider: 'Provider' }), useContext: context => context.value,
     useRef: current => { const i = index++; return states[i] ??= { current } },
+    useState: initial => { const i = index++; states[i] ??= initial; return [states[i], value => { states[i] = value }] },
     useEffect: f => effects.push(f), useImperativeHandle: (ref, f) => { if (ref) ref.current = f() },
   }
   const native = { useNativeState: initial => { const r = react.useRef(initial); return { get: () => r.current, set: v => { r.current = v } } } }
@@ -22,6 +23,10 @@ function harness(path, injected = {}) {
     if (id === '@expo/ui/swift-ui') return new Proxy(native, { get: (o, k) => o[k] ?? k })
     if (id === '@expo/ui/swift-ui/modifiers') return new Proxy({}, { get: (_, k) => (...args) => ({ kind: k, args }) })
     if (id === 'react-native') return { View: 'View', StyleSheet: { flatten: style => Array.isArray(style) ? Object.assign({}, ...style) : style }, ...injected.native }
+    if (id === 'react-native-safe-area-context') return { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ bottom: 0 }) }
+    if (id === '../state/shell') return { useKeyboardH: () => 0 }
+    if (id === './SearchField') return { SearchField: 'SearchField' }
+    if (id === './CollectionScrollEdge') return { BordeScrollNativo: 'BordeScrollNativo' }
     if (id === './Ajustes.shared') return { GrupoAjustes: 'SharedGroup' }
     throw Error(id)
   })

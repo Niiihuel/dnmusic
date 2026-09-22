@@ -91,3 +91,28 @@ Si Metro tira `Unable to resolve module ./legacyWarnings from
 - **Bajar un álbum o el top de un artista.** Esas pantallas trabajan con canciones
   sin resolver (`TrackResult`), no con `PlaylistTrack`: hay que resolverlas antes,
   que es lo mismo que hace agregarlas a una lista.
+
+
+## Precarga durante la reproducción en iOS
+
+`transferirAudio` distingue descargas offline (`descarga`) de los archivos que
+el motor necesita enseguida (`reproduccion`). Las primeras usan la sesión
+`background`; las segundas usan `foreground` en iOS, es decir, una URLSession
+normal que trabaja mientras la sesión de audio mantiene la app ejecutándose.
+No significa que debamos mostrar la interfaz para descargar.
+
+El motivo es la programación de URLSession: [Apple documenta que las nuevas
+transferencias de una sesión background iniciadas con la app detrás siempre
+quedan a discreción del sistema](https://developer.apple.com/documentation/foundation/urlsessionconfiguration/isdiscretionary).
+Usar esa sesión para el siguiente tema podía dejar la cola sin reponer hasta
+abrir la app. Si una descarga offline en curso pasa a ser necesaria para la
+cola, se pausa y reanuda con el modo de reproducción, conservando su parcial y
+su condición de descarga permanente.
+
+Se mantienen las preferencias de red, la cuota, una transferencia por vez y la
+cancelación al pausar o cambiar la cola. Las pruebas cubren selección de sesión,
+adopción de una descarga y diez canciones reponiendo la ventana sin eventos de
+foreground. Falta validar tiempos reales en un iPhone bloqueado, por Wi-Fi y
+datos permitidos. No garantiza resolver canciones nuevas si el servidor falla
+y el resolutor WebView del teléfono está suspendido; tampoco mantiene ejecución
+indefinida cuando no hay audio sonando.

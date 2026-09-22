@@ -20,12 +20,13 @@ function cargar(path, deps, globals = {}, extra = '') {
 }
 const bytes = new Uint8Array([0, 0, 0, 20, 102, 116, 121, 112]).buffer
 const asset = { uri: 'file:///cache/exportado.mp4', fileName: 'IMG_1234.MOV', mimeType: 'video/quicktime', type: 'video', width: 720, height: 1280 }
-function picker({ os = 'ios', elegido = asset, size = bytes.byteLength, canceled = false, error, readError } = {}) {
-  let options, reads = 0, paths = []
+function picker({ os = 'ios', elegido = asset, size = bytes.byteLength, canceled = false, error, readError, conversionError } = {}) {
+  let options, reads = 0, paths = [], conversiones = [], liberadas = []
   const api = cargar('src/lib/pickImage.ts', {
     'react-native': { Platform: { OS: os } },
     'expo-image-picker': {
       VideoExportPreset: { H264_1280x720: 6 },
+      UIImagePickerPreferredAssetRepresentationMode: { Compatible: 'compatible' },
       async launchImageLibraryAsync(o) {
         options = o
         if (error) throw error
@@ -38,9 +39,39 @@ function picker({ os = 'ios', elegido = asset, size = bytes.byteLength, canceled
       get size() { return size }
       async arrayBuffer() { reads++; if (readError) throw readError; return size === 0 ? new ArrayBuffer(0) : bytes }
     } },
+    'expo-image-manipulator': { SaveFormat: { JPEG: 'jpeg' }, ImageManipulator: { manipulate(uri) {
+      conversiones.push(uri)
+      return { resize: size => conversiones.push(size), release: () => liberadas.push('contexto'),
+        async renderAsync() {
+          if (conversionError) throw conversionError
+          return { release: () => liberadas.push('imagen'), async saveAsync(options) {
+            conversiones.push(options)
+            return { uri: 'file:///cache/convertida.jpg', width: 3072, height: 4096 }
+          } }
+        } }
+    } } },
   }, { fetch() { assert.fail('No leer file:// mediante fetch/Blob de React Native') } })
-  return { ...api, get options() { return options }, get reads() { return reads }, paths }
+  return { ...api, get options() { return options }, get reads() { return reads }, paths, conversiones, liberadas }
 }
+
+test('HEIC se convierte realmente a JPEG, con proporción y bytes de la copia; libera recursos nativos', async () => {
+  const h = picker({ elegido: { ...asset, type: 'image', uri: 'file:///cache/foto.HEIC', mimeType: 'image/heic', width: 6000, height: 8000 } })
+  const result = await h.pickImage()
+  assert.equal(h.options.preferredAssetRepresentationMode, 'compatible')
+  assert.equal(result.mime, 'image/jpeg')
+  assert.equal(result.fileName, 'convertida.jpg')
+  assert.equal(result.alto, 4096 / 3072)
+  assert.deepEqual(h.paths, ['file:///cache/convertida.jpg'])
+  assert.deepEqual(h.conversiones, ['file:///cache/foto.HEIC', { height: 4096 }, { format: 'jpeg', compress: .9 }])
+  assert.deepEqual(h.liberadas, ['imagen', 'contexto'])
+})
+
+test('fallo de conversión no lee ni devuelve bytes falsamente etiquetados', async () => {
+  const h = picker({ elegido: { ...asset, type: 'image', uri: 'file:///cache/foto.heic' }, conversionError: new Error('No se pudo abrir') })
+  await assert.rejects(h.pickImage(), /No se pudo abrir/)
+  assert.equal(h.reads, 0)
+  assert.deepEqual(h.liberadas, ['contexto'])
+})
 
 test('iOS exporta el video de PHPicker a H.264 con descarga de iCloud y conserva los bytes MP4', async () => {
   const h = picker()
@@ -93,6 +124,7 @@ test('las fotos/GIF y Android mantienen sus opciones sin exportación iOS', asyn
     assert.equal((await h.pickImage({ conVideo: options.conVideo })).mime, 'image/gif')
     assert.equal(h.options.videoExportPreset, undefined)
     assert.equal(h.options.allowsEditing, false)
+    assert.equal(h.conversiones.length, 0, 'No aplanar GIF')
   }
 })
 
@@ -215,7 +247,7 @@ function fondo() {
 }
 
 test('VideoView nativo es mudo, en bucle, inline y reanuda al cargar o volver al primer plano', () => {
-  const h = fondo(), ui = h.render()
+  const h = fondo(), ui = h.render().props.children
   assert.equal(ui.type, 'VideoView')
   assert.equal(ui.props.nativeControls, false)
   assert.equal(ui.props.playsInline, true)
@@ -241,7 +273,7 @@ test('fallo asíncrono de AVPlayer se muestra y se limpia al recuperarse', () =>
   const ui = h.render()
   assert.equal(ui.props.children.props.accessibilityRole, 'alert')
   assert.match(ui.props.children.props.children, /No se pudo reproducir/)
-  h.status('readyToPlay'); assert.equal(h.render().type, 'VideoView')
+  h.status('readyToPlay'); assert.equal(h.render().props.children.type, 'VideoView')
 })
 
 test('FondoPerfil elige VideoView para MOV/MP4 y reinicia el componente al cambiar de clip', () => {

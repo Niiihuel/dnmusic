@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import androidDesign from './helpers/androidDesign.mjs'
 
 function harness(path, imports = {}) {
   let index = 0
@@ -29,6 +30,8 @@ function harness(path, imports = {}) {
   const code = ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
   new Function('exports', 'require', code)(exports, id => {
     if (id in imports) return imports[id]
+    if (id === './androidDesign') return androidDesign
+    if (id === './androidComposeDesign') return { androidControlModifiers: () => [] }
     if (id === 'react') return react
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx }
     if (id === 'react-native') return { View: 'View', Text: 'Text', useWindowDimensions: () => ({ width: 390 }), StyleSheet: { flatten: style => Array.isArray(style) ? Object.assign({}, ...style) : style } }
@@ -86,10 +89,12 @@ test('Android búsqueda: foco externo, teclado Buscar, limpiar y cambios de valo
   field.props.ref.current = { focus: () => calls.push('focus'), blur: () => calls.push('blur') }
   inputRef.current.focus(); inputRef.current.blur()
   assert.equal(field.props.keyboardOptions.imeAction, 'search')
-  field.props.keyboardActions.onSearch('Tema'); field.props.onFocusChanged(true)
+  field.props.onFocusChanged(false)
+  assert.deepEqual(calls, ['focus', 'blur'], 'Compose no debe cerrar la búsqueda con su false inicial')
+  field.props.keyboardActions.onSearch('Tema'); field.props.onFocusChanged(true); field.props.onFocusChanged(false)
   find(ui, 'IconButton').props.onClick()
   assert.equal(field.props.value.get(), '')
-  assert.deepEqual(calls, ['focus', 'blur', 'submit', true, '', 'focus'])
+  assert.deepEqual(calls, ['focus', 'blur', 'submit', true, false, '', 'focus'])
   const changed = find(h.render('SearchField', { ...props, value: 'Otro tema' }), 'BasicTextField')
   assert.equal(changed.props.value.get(), 'Otro tema')
   const busy = h.render('SearchField', { ...props, loading: true })
@@ -194,7 +199,7 @@ test('Android acción social: deshabilita reenvíos durante guardado y conserva 
   let button = find(h.render('AccionSocial', props), 'Button')
   button.props.onClick()
   assert.deepEqual(calls, ['guardar'])
-  assert.equal(find(button, 'Text').props.color, '#121212')
+  assert.equal(find(button, 'Text').props.color, '#FFFFFF')
   for (const patch of [{ disabled: true }, { busy: true }]) {
     button = find(h.render('AccionSocial', { ...props, ...patch }), 'Button')
     assert.equal(button.props.enabled, false)

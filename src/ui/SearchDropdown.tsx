@@ -3,11 +3,12 @@ import { ScrollArea } from './ScrollArea'
 import { ES_WEB, vidrioCss } from './Glass'
 import { useState } from 'react'
 import { Image, Platform, Pressable, Text, View } from 'react-native'
-import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
+import { togglePlayback, usePlaybackCargada, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { useKeyboardH, usePiso } from '../state/shell'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { useClicDerecho } from './useClicDerecho'
 import { EstadoTapa } from './CoverState'
+import { RowSurface } from './RowSurface'
 import { SkeletonList } from './Skeleton'
 import { ICON_COLOR, IconMusic, IconPlus, IconUser } from './icons'
 import { proxiedImage, type ArtistResult, type TrackResult } from '../services/music'
@@ -100,6 +101,7 @@ export function SearchDropdown({
    */
   const current = usePlaybackTrack()
   const wantPlay = useWantPlay()
+  const cargada = usePlaybackCargada()
   /* Los resultados terminan justo antes del teclado: si siguen por debajo, los
      últimos quedan tapados y no hay forma de llegar a ellos sin cerrarlo. */
   const teclado = useKeyboardH()
@@ -182,7 +184,7 @@ export function SearchDropdown({
               track={r}
               sounding={current?.videoId === r.videoId}
               playing={wantPlay}
-              busy={pendingId === r.videoId}
+              busy={pendingId === r.videoId || (current?.videoId === r.videoId && wantPlay && !cargada)}
               alwaysSelect={alwaysSelect}
               onSelect={onSelect}
               onQuickAdd={onQuickAdd}
@@ -249,7 +251,7 @@ function ResultadoFila({
        * <button> dentro de otro <button>. Lo tocable es la parte de la
        * izquierda, que ocupa todo lo que sobra.
        */
-      <View
+      <RowSurface
         {...clic.gestos}
         onPointerEnter={() => setOver(true)}
         onPointerLeave={() => setOver(false)}
@@ -353,7 +355,7 @@ function ResultadoFila({
         {clic.punto && items.length ? (
           <Menu items={items} sinDisparador abiertoEn={clic.punto} onCerrarPunto={clic.cerrar} />
         ) : null}
-      </View>
+      </RowSurface>
   )
 
   if (!items.length) return fila
@@ -368,6 +370,7 @@ function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => v
   return (
     <MantenerApretado items={[{ label: 'Ir al artista', sfSymbol: 'music.microphone', onPress }]}
       preview={{ title: artist.name, subtitle: 'Artista', artwork: photo }} onPreviewPress={onPress}>
+    <RowSurface>
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Ir a ${artist.name}`}
@@ -393,6 +396,7 @@ function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => v
         </Text>
       </View>
     </Pressable>
+    </RowSurface>
     </MantenerApretado>
   )
 }

@@ -1,3 +1,5 @@
+import { ScrollArea } from '../../../src/ui/ScrollArea'
+import { superficieInteractivaWeb } from '../../../src/ui/estadoControl'
 import { EditorPerfilNativo } from '../../../src/ui/EditorPerfilNativo'
 import { AccionSocial } from '../../../src/ui/Social'
 import { IconButton } from '../../../src/ui/IconButton'
@@ -28,7 +30,7 @@ import { nombreDePlaca } from '../../../src/ui/Placas'
 import { esDecoracionPropia } from '../../../src/services/decoraciones'
 import { Marco, MARCOS } from '../../../src/ui/Marco'
 import { pickImage } from '../../../src/lib/pickImage'
-import { esVideo, uploadIlustracionConProgreso } from '../../../src/services/showcases'
+import { uploadIlustracionConProgreso } from '../../../src/services/showcases'
 import { setMyProfile, useMyProfile, useUser } from '../../../src/state/session'
 import { useKeyboardH, usePiso } from '../../../src/state/shell'
 import { avisar } from '../../../src/state/aviso'
@@ -182,7 +184,7 @@ export default function EditarPerfil() {
   }
 
   const avatarPath = profile?.avatarPath ?? null
-  const puedeEncuadrarFondo = !!profile?.bannerPath && !esVideo(profile.bannerPath)
+  const puedeEncuadrarFondo = !!profile?.bannerPath
   const nombre = profile?.displayName?.trim() || profile?.username || '?'
 
   async function elegirFoto() {
@@ -547,7 +549,7 @@ function Movil({ secciones, previa, espacioBarra, pisoVisible, onVolver, childre
             <View className="gap-1">
               {secciones.map(s => {
                 const Icono = s.icono
-                return <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo} onPress={() => setElegida(s.id)}
+                return <Pressable key={s.id} {...superficieInteractivaWeb('row')} accessibilityRole="button" accessibilityLabel={s.titulo} onPress={() => setElegida(s.id)}
                   className="min-h-[44px] flex-row items-center gap-2.5 rounded-md px-2 active:bg-muted">
                   <Icono size={16} color={ICON_COLOR.muted} /><Text className="min-w-0 flex-1 text-foreground text-subheadline">{s.titulo}</Text><IconChevronRight size={16} color={ICON_COLOR.muted} />
                 </Pressable>
@@ -602,18 +604,18 @@ function Escritorio({ secciones, cuenta, onVolver, previa, espacioBarra }: {
                 icono={<IconCollapseLeft size={16} color={ICON_COLOR.muted} />} />
             </CabeceraLateral>
             {cuenta}
-            <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-0.5 px-2 pt-3"
+            <ScrollArea className="min-h-0 flex-1" contentContainerClassName="gap-0.5 px-2 pt-3"
               contentContainerStyle={{ paddingBottom: 24 + espacioBarra }}>
               {secciones.map(s => {
                 const activa = s.id === actual?.id
                 const Icono = s.icono
-                return <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo} accessibilityState={{ selected: activa }} onPress={() => setElegida(s.id)}
-                  className={`h-[30px] flex-row items-center gap-2.5 rounded-md px-2 ${activa ? 'bg-muted' : 'hover:bg-white/5 active:bg-muted'}`}>
+                return <Pressable key={s.id} {...superficieInteractivaWeb('row')} accessibilityRole="button" accessibilityLabel={s.titulo} accessibilityState={{ selected: activa }} onPress={() => setElegida(s.id)}
+                  className={`h-[30px] flex-row items-center gap-2.5 rounded-md px-2 ${activa ? 'bg-muted' : 'active:bg-muted'}`}>
                   <Icono size={16} color={activa ? ICON_COLOR.foreground : ICON_COLOR.muted} />
                   <Text className={`min-w-0 flex-1 text-footnote ${activa ? 'text-foreground font-medium' : 'text-foreground'}`} numberOfLines={1}>{s.titulo}</Text>
                 </Pressable>
               })}
-            </ScrollView>
+            </ScrollArea>
           </Panel>}
       </View>
       <Panel className="min-w-0 flex-1">
@@ -621,13 +623,13 @@ function Escritorio({ secciones, cuenta, onVolver, previa, espacioBarra }: {
           <BotonVolver label="Volver al perfil" onPress={onVolver} />
           <Text className="min-w-0 flex-1 text-foreground text-subheadline font-semibold" numberOfLines={1}>{actual?.titulo}</Text>
         </View>
-        <ScrollView className="min-h-0 flex-1" keyboardShouldPersistTaps="handled"
+        <ScrollArea className="min-h-0 flex-1" keyboardShouldPersistTaps="handled"
           contentContainerClassName="items-center px-6 pt-5" contentContainerStyle={{ paddingBottom: 40 + espacioBarra }}>
           <View className="w-full min-w-0 gap-6" style={{ maxWidth: MAX_W }}>
             {!lateralPrevia ? <PreviaPlegable abierta={!previaPlegada} onCambiar={() => setPreviaPlegada(v => !v)}>{previa}</PreviaPlegable> : null}
             <AjustesCompactos>{actual?.bloques}</AjustesCompactos>
           </View>
-        </ScrollView>
+        </ScrollArea>
       </Panel>
       {lateralPrevia ? <View testID="editor-previa-lateral" style={{ width: previaPlegada ? 64 : 350, flexShrink: 0 }}
         onPointerEnter={() => setHoverDerecho(true)} onPointerLeave={() => setHoverDerecho(false)}>
@@ -639,7 +641,7 @@ function Escritorio({ secciones, cuenta, onVolver, previa, espacioBarra }: {
               <BotonLateral label="Ocultar vista previa" onPress={() => setPreviaPlegada(true)}
                 icono={<IconCollapseRight size={16} color={ICON_COLOR.muted} />} />
             </CabeceraLateral>
-            <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 24 + espacioBarra }}>{previa}</ScrollView>
+            <ScrollArea contentContainerStyle={{ padding: 12, paddingBottom: 24 + espacioBarra }}>{previa}</ScrollArea>
           </Panel>}
       </View> : null}
     </SafeAreaView>

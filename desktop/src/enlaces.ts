@@ -39,7 +39,7 @@ export function rutaDeEnlace(entrada: string): string | null {
   const texto = (entrada ?? '').trim()
   if (!texto) return null
   const m = new RegExp(
-    `^(?:${ESQUEMA_ENLACE}:/|https://dnmusic-app\\.vercel\\.app)` +
+    `^(?:${ESQUEMA_ENLACE}:/|https://(?:dnmusic-app\\.vercel\\.app|dnmusic-production-c3f4\\.up\\.railway\\.app))` +
       `/(${COMPARTIBLES.join('|')})/([^/?#\\s]+)`,
     'i',
   ).exec(texto)

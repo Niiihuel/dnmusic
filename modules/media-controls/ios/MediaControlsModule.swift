@@ -5,6 +5,8 @@ public final class MediaControlsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("MediaControls")
     Constant("miniPlayerVersion") { 1 }
+    Constant("rowHighlightVersion") { 1 }
+    View(MediaRowHighlightView.self) {}
     View(MediaTrackView.self) {
       Events("onActivate")
       Prop("title") { (view: MediaTrackView, value: String) in view.titleLabel.text = value }
@@ -18,6 +20,7 @@ public final class MediaControlsModule: Module {
       Prop("busy") { (view: MediaTrackView, value: Bool) in view.busy = value; view.updateState() }
       Prop("disabled") { (view: MediaTrackView, value: Bool) in view.button.isEnabled = !value; view.alpha = value ? 0.5 : 1 }
       Prop("selected") { (view: MediaTrackView, value: Bool) in view.selected = value; view.updateState() }
+      Prop("drawsHighlight") { (view: MediaTrackView, value: Bool) in view.drawsHighlight = value }
     }
     View(MediaActionView.self) {
       Events("onActivate", "onLongActivate", "onHighlight")
@@ -97,6 +100,7 @@ final class MediaTrackView: ExpoView {
   var playing = false
   var busy = false
   var selected = false
+  var drawsHighlight = true
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -163,7 +167,7 @@ final class MediaTrackView: ExpoView {
   }
 
   @objc private func activate() { onActivate([:]) }
-  @objc private func highlight() { button.backgroundColor = UIColor(white: 0.16, alpha: 1) }
+  @objc private func highlight() { if drawsHighlight { button.backgroundColor = UIColor(white: 0.16, alpha: 1) } }
   @objc private func unhighlight() { updateState() }
 
   func updateState() {
@@ -174,7 +178,7 @@ final class MediaTrackView: ExpoView {
     titleLabel.font = sounding ? UIFont(descriptor: normal.fontDescriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: UIFont.Weight.semibold]]), size: 0) : normal
     veil.isHidden = !busy && !sounding
     stateImage.isHidden = busy || !sounding
-    stateImage.image = UIImage(systemName: playing ? "waveform" : "pause.fill")
+    stateImage.image = UIImage(systemName: playing ? "waveform" : "play.fill")
     if busy { spinner.startAnimating() } else { spinner.stopAnimating() }
   }
 
@@ -230,6 +234,7 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
   private let tabBar = UITabBar()
   private let ids = ["inicio", "listas", "chats", "perfil", "buscar"]
   private var confirmedSelection = "inicio"
+  private var pendingRollback: DispatchWorkItem?
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -277,6 +282,8 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
 
   override func layoutSubviews() { super.layoutSubviews(); tabBar.frame = bounds }
   func select(_ id: String) {
+    pendingRollback?.cancel()
+    pendingRollback = nil
     confirmedSelection = id
     guard let index = ids.firstIndex(of: id), let item = tabBar.items?[index],
       tabBar.selectedItem !== item else { return }
@@ -290,10 +297,21 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
   }
   func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
     guard ids.indices.contains(item.tag) else { return }
-    // Navigation can be cancelled by the unsaved-profile guard. Keep the
-    // confirmed section until React sends the destination after navigation.
-    if let index = ids.firstIndex(of: confirmedSelection) { tabBar.selectedItem = tabBar.items?[index] }
-    onSelect(["id": ids[item.tag]])
+    let requested = ids[item.tag]
+    /* Keep UIKit on the item the person just touched while React and the
+       router change sections. Resetting it synchronously made the control
+       jump back and could turn the first tap into a visual no-op. If a route
+       guard really cancels navigation, React won't confirm `requested` and
+       this delayed check restores the last confirmed destination. */
+    onSelect(["id": requested])
+    pendingRollback?.cancel()
+    let rollback = DispatchWorkItem { [weak self, weak tabBar] in
+      guard let self, let tabBar, self.confirmedSelection != requested,
+        let index = self.ids.firstIndex(of: self.confirmedSelection) else { return }
+      tabBar.selectedItem = tabBar.items?[index]
+    }
+    pendingRollback = rollback
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: rollback)
   }
 }
 
@@ -333,7 +351,11 @@ final class MediaActionView: ExpoView {
     return result
   }
   @objc private func activate() { guard !held, button.isEnabled else { return }; onActivate(event()) }
-  @objc private func highlight() { held = false; button.backgroundColor = UIColor.white.withAlphaComponent(0.1); onHighlight(event(pressed: true)) }
+  @objc private func highlight() {
+    held = false
+    button.backgroundColor = hasMediaRowHighlight ? .clear : UIColor.white.withAlphaComponent(0.1)
+    onHighlight(event(pressed: true))
+  }
   @objc private func unhighlight() { button.backgroundColor = .clear; onHighlight(event(pressed: false)) }
   @objc private func longPressed(_ gesture: UILongPressGestureRecognizer) {
     switch gesture.state {

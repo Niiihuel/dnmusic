@@ -4,6 +4,7 @@ import { cssInterop } from 'nativewind'
 import { BasicTextField, Box, Text, useNativeState, type TextFieldKeyboardType, type TextFieldImeAction, type TextFieldRef, type TextFieldTextStyle } from '@expo/ui/jetpack-compose'
 import { defaultMinSize, fillMaxWidth, semantics } from '@expo/ui/jetpack-compose/modifiers'
 import { AndroidHost, ANDROID_COLORS, androidAccessibility } from './AndroidHost'
+import { ANDROID_TYPE } from './androidDesign'
 
 /** El buffer, la selección y el teclado pertenecen a Compose; RN conserva el contrato del formulario. */
 export const EntradaTexto = forwardRef<TextInput, TextInputProps>(function EntradaTexto(props, ref) {
@@ -22,9 +23,9 @@ export const EntradaTexto = forwardRef<TextInput, TextInputProps>(function Entra
   const fontWeight = typeof styles.fontWeight === 'number' ? String(styles.fontWeight) : styles.fontWeight
   const alignment = props.textAlign ?? styles.textAlign
   const textStyle: TextFieldTextStyle = {
-    color: styles.color ?? ANDROID_COLORS.text, fontSize: styles.fontSize ?? 16,
-    fontFamily: styles.fontFamily, fontWeight: fontWeight as TextFieldTextStyle['fontWeight'],
-    textAlign: alignment === 'auto' ? undefined : alignment, lineHeight: styles.lineHeight, letterSpacing: styles.letterSpacing,
+    color: styles.color ?? ANDROID_COLORS.text, fontSize: styles.fontSize ?? ANDROID_TYPE.body.fontSize,
+    fontFamily: styles.fontFamily ?? ANDROID_TYPE.body.fontFamily, fontWeight: fontWeight as TextFieldTextStyle['fontWeight'],
+    textAlign: alignment === 'auto' ? undefined : alignment, lineHeight: styles.lineHeight ?? ANDROID_TYPE.body.lineHeight, letterSpacing: styles.letterSpacing ?? ANDROID_TYPE.body.letterSpacing,
   }
   useEffect(() => {
     if (value !== undefined && value !== ultimoTexto.current) {

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Image, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
+import { Image } from 'expo-image'
 import { avatarUrl, initialsFor, type Encuadre } from '../services/profile'
 import { estiloEncuadrado } from './Encuadre'
 
@@ -44,7 +45,11 @@ export function Avatar({
           source={{ uri }}
           onError={() => setFailed(true)}
           style={estiloEncuadrado(size, encuadre)}
-          resizeMode="cover"
+          contentFit="cover"
+          autoplay
+          recyclingKey={uri}
+          transition={0}
+          cachePolicy="memory-disk"
           accessibilityLabel={`Foto de ${name}`}
         />
       ) : (

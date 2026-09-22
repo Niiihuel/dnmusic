@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import ts from 'typescript'
 import React from 'react'
+import { transform } from 'lightningcss'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 const require = createRequire(import.meta.url)
@@ -177,7 +178,7 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
     return step(reply, method).finally(() => pending.delete(id))
   }
   const evaluate = async expression => { const r = await send('Runtime.evaluate', { expression, returnByValue: true }); if (r.exceptionDetails) throw Error(JSON.stringify(r.exceptionDetails)); return r.result.value }
-  const css = readFileSync('global.css', 'utf8')
+  const css = transform({ filename: 'global.css', code: Buffer.from(readFileSync('global.css', 'utf8')), minify: true }).code.toString()
   const vidrio = botonesVidrioHTML()
   const html = `<style>${vidrio.css}</style><style>${css}</style><style>body{background:#121212;color:white}#hitbox,#content-card{background:transparent;border:0}#active,#disabled,#aria,#child,#busy,#backdrop,#primary,#link,#outer,#inner{display:inline-block;margin:12px;padding:12px;border:0;border-radius:12px;background-color:#181818;color:white} .viewport{height:80px;width:160px;overflow:auto}.content{height:500px}.hidden-native{scrollbar-width:none}</style>
     <button id="active" data-dn-hover="normal">Icono</button><button id="disabled" data-dn-hover="normal" disabled>Icono</button><div id="aria" data-dn-hover="normal" role="button" aria-disabled="true">Icono</div><div aria-disabled="true"><button id="child" data-dn-hover="normal">Icono</button></div>
@@ -187,6 +188,7 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
     <div id="content-row" data-dn-surface="row" style="border-radius:12px"><button id="hitbox">Reproducir canción</button><button data-dn-hover="normal">Opciones</button></div>
     <button id="content-card" data-dn-surface="card"><div id="artwork" data-dn-artwork style="height:80px;width:80px;background:#333;opacity:.8;border-radius:12px"></div><span>Tu radio</span></button>
     <div id="native" class="viewport"><div class="content"></div></div><div id="hidden" class="viewport hidden-native"><div class="content"></div></div>
+    <div id="tooltip-glass" data-dn-glass="regular" data-dn-tooltip role="tooltip">Ayuda</div>
     ${vidrio.markup}${expandiblesHTML()}<div class="dn-scroll-area"><div id="custom" class="dn-scrollbar"><div id="thumb" class="dn-scrollbar-thumb"></div></div></div>`
   await send('Page.enable')
   const { frameTree } = await send('Page.getFrameTree')
@@ -200,6 +202,18 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   for (const id of ['active', 'disabled', 'aria', 'child', 'busy', 'backdrop', 'primary', 'decorative', 'link', 'role-link', 'outer', 'inner', 'row', 'content-row', 'hitbox', 'content-card', 'artwork']) ids[id] = (await send('DOM.querySelector', { nodeId: root.nodeId, selector: `#${id}` })).nodeId
   assert.equal(await evaluate('matchMedia("(hover: hover) and (pointer: fine)").matches'), true)
   const style = (id, prop, pseudo = '') => evaluate(`getComputedStyle(document.getElementById(${JSON.stringify(id)}), ${JSON.stringify(pseudo)})[${JSON.stringify(prop)}]`)
+  // Headless Chrome may defer its first animation frame until styles are read.
+  // Poll the computed result instead of assuming a fixed sleep advanced a transition.
+  const settledStyle = async (id, prop, accepts) => {
+    const until = Math.min(deadline, performance.now() + 3000)
+    let value
+    do {
+      value = await style(id, prop)
+      if (accepts(value)) return value
+      await sleep(30)
+    } while (performance.now() < until)
+    return value
+  }
   for (const id of ['active', 'primary', 'link', 'role-link']) {
     const before = await evaluate(`JSON.stringify(document.getElementById('${id}').getBoundingClientRect())`)
     await send('CSS.forcePseudoState', { nodeId: ids[id], forcedPseudoClasses: ['hover'] })
@@ -222,16 +236,14 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   // La fila contiene reproducción y acciones: no son dos cajas de hover.
   await send('CSS.forcePseudoState', { nodeId: ids['content-row'], forcedPseudoClasses: ['hover'] })
   await send('CSS.forcePseudoState', { nodeId: ids.hitbox, forcedPseudoClasses: ['hover'] })
-  await new Promise(resolve => setTimeout(resolve, 220))
-  assert.notEqual(await style('content-row', 'backgroundColor'), 'rgba(0, 0, 0, 0)')
+  assert.notEqual(await settledStyle('content-row', 'backgroundColor', value => value !== 'rgba(0, 0, 0, 0)'), 'rgba(0, 0, 0, 0)')
   assert.equal(await style('hitbox', 'backgroundImage'), 'none')
   assert.equal(await style('hitbox', 'backgroundColor'), 'rgba(0, 0, 0, 0)')
   const cardRect = await evaluate('JSON.stringify(document.getElementById("content-card").getBoundingClientRect())')
   await send('CSS.forcePseudoState', { nodeId: ids['content-card'], forcedPseudoClasses: ['hover'] })
-  await new Promise(resolve => setTimeout(resolve, 250))
   assert.equal(await style('content-card', 'backgroundImage'), 'none')
   assert.equal(await style('artwork', 'opacity'), '1')
-  assert.equal(await style('artwork', 'filter'), 'brightness(1.1)')
+  assert.equal(await settledStyle('artwork', 'filter', value => value === 'brightness(1.1)'), 'brightness(1.1)')
   assert.equal(await evaluate('JSON.stringify(document.getElementById("content-card").getBoundingClientRect())'), cardRect)
   await send('CSS.forcePseudoState', { nodeId: ids.row, forcedPseudoClasses: ['focus', 'focus-visible'] })
   assert.equal(await style('row', 'outlineWidth'), '2px', 'reproducción conserva foco accesible')
@@ -261,6 +273,9 @@ test('CSS real en Chrome: hover/foco habilitados y scrolls más anchos sin flech
   assert.equal(await evaluate("getComputedStyle(document.querySelector('#glass-disabled [data-dn-hover]').parentElement).outlineStyle"), 'none')
   // El ancho debe crecer con texto real y volver a 44px, sin escalar la etiqueta.
   await send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 850, deviceScaleFactor: 1, mobile: false })
+  assert.match(await evaluate("getComputedStyle(document.getElementById('tooltip-glass')).backdropFilter"), /blur\(22px\)/, 'el CSS procesado conserva el desenfoque del tooltip en Chrome')
+  assert.equal(await evaluate("getComputedStyle(document.getElementById('active')).boxShadow"), 'none', 'los controles simples no reciben aro')
+
   const width = id => evaluate(`document.querySelector('#${id} button').getBoundingClientRect().width`)
   const settle = () => new Promise(resolve => setTimeout(resolve, 360))
   assert.equal(await width('expand-toggle'), 44)

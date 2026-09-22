@@ -9,10 +9,10 @@ import { Avatar } from './Avatar'
 import { Marco } from './Marco'
 import { TarjetaPerfil } from './TarjetaPerfil'
 import { FondoPerfil } from './PerfilPublico'
-import { esVideo } from '../services/showcases'
 import { TITULO_CAMPO, type EditorCampoPerfil } from './EditorDeCampo'
 import { normalizeUsername } from '../models/username'
 import { proxiedImage } from '../services/music'
+import { SearchField } from './SearchField'
 import type { BusquedaPerfilNativoProps, CampoPerfilNativoProps, EditorPerfilNativoProps } from './EditorPerfilNativo.types'
 
 const FONDO = '#111111'
@@ -97,7 +97,7 @@ export function EditorPerfilNativo(props: EditorPerfilNativoProps) {
             </View></RNHostView></VStack> : null}
             <Accion titulo={tieneFondo ? 'Cambiar fondo' : 'Elegir fondo'} symbol="photo" onPress={props.onElegirFondo} ocupado={ocupado} busy={props.subiendoFondo} />
             {props.progresoFondo !== null ? <ProgressView value={props.progresoFondo} modifiers={fila}><Text>{props.progresoFondo >= 1 ? 'Preparando vista previa…' : 'Subiendo fondo…'}</Text></ProgressView> : null}
-            {tieneFondo && !esVideo(perfil.bannerPath!) ? <Accion titulo="Encuadrar fondo" symbol="crop" onPress={() => onAbrir({ pathname: '/perfil/encuadrar', params: { que: 'fondo' } })} ocupado={ocupado} /> : null}
+            {tieneFondo ? <Accion titulo="Encuadrar fondo" symbol="crop" onPress={() => onAbrir({ pathname: '/perfil/encuadrar', params: { que: 'fondo' } })} ocupado={ocupado} /> : null}
             {tieneFondo ? <Accion titulo="Quitar fondo" symbol="trash" onPress={() => props.onQuitar('fondo')} ocupado={ocupado} destructiva /> : null}
           </Section>)}
         </NavigationDestination>
@@ -213,18 +213,19 @@ export function CampoPerfilNativo({ cual, editor, piso, onVolver }: CampoPerfilN
 
 /** El buscador del editor posee su campo; no compite con la barra de pestañas. */
 export function BusquedaPerfilNativa({ termino, resultados, cargando, error, piso, onCambiar, onElegir, onVolver }: BusquedaPerfilNativoProps) {
-  const texto = useNativeState(termino)
-  useEffect(() => { if (texto.get() !== termino) texto.set(termino) }, [termino, texto])
   return <Host style={{ flex: 1 }} useViewportSizeMeasurement colorScheme="dark" seedColor="#FFFFFF">
     <NavigationStack>
       <Toolbar>
         <Form modifiers={[navigationTitle('Agregar música'), scrollContentBackground('hidden'), background(FONDO), scrollDismissesKeyboard('interactively')]}>
           <Section>
-            <HStack spacing={8} modifiers={fila}>
-              <Image systemName="magnifyingglass" size={18} color={SECUNDARIO} />
-              <TextField text={texto} onTextChange={onCambiar} placeholder="Canción o artista" autoFocus modifiers={[accessibilityLabel('Buscar música para el perfil'), textInputAutocapitalization('never'), autocorrectionDisabled(), submitLabel('search')]} />
-              {cargando ? <ProgressView /> : null}
-            </HStack>
+            <VStack modifiers={[listRowBackground('clear'), listRowSeparator('hidden'), frame({ height: 56, maxWidth: Infinity })]}>
+              <RNHostView>
+                <View style={{ width: '100%', paddingVertical: 4 }}>
+                  <SearchField value={termino} onChangeText={onCambiar} placeholder="Canción o artista"
+                    accessibilityLabel="Buscar música para el perfil" autoFocus loading={cargando} />
+                </View>
+              </RNHostView>
+            </VStack>
           </Section>
           <Section title={termino.trim() ? 'Canciones' : undefined} footer={<Text>Tocá una canción y elegí si querés fijarla completa o compartir un fragmento.</Text>}>
             {error ? <Text modifiers={fila}>{error}</Text> : !termino.trim() ? <Text modifiers={[...fila, foregroundStyle(SECUNDARIO)]}>Buscá una canción para agregar a tu perfil.</Text> : null}
