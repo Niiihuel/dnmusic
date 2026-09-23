@@ -1,4 +1,5 @@
 import { accesoAprobado } from './acceso.js'
+import { cors as cabecerasCors } from './cors.js'
 import { createServer } from 'node:http'
 import { pathToFileURL } from 'node:url'
 import { waitUntil } from '@vercel/functions'
@@ -180,36 +181,8 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const supabase =
   SUPABASE_URL && SERVICE_KEY ? createClient(SUPABASE_URL, SERVICE_KEY) : null
 
-/**
- * Los orígenes que pueden leer nuestras respuestas, separados por coma.
- *
- * Era **uno solo**, y eso no daba: la app vive en más de un dominio a la vez
- * —el canónico y el que Vercel asigna al proyecto— y `Access-Control-Allow-Origin`
- * no acepta una lista. Con un valor fijo, el dominio que no estuviera ahí se
- * comía un error de CORS en cada búsqueda, que se ve como «no encuentra
- * canciones» sin ninguna pista de por qué.
- *
- * La forma correcta es la de siempre: se compara el `Origin` del pedido contra
- * la lista y **se devuelve ese mismo**, uno solo. Sin lista configurada se
- * responde `*`, que es lo que hacía antes y lo que sirve en desarrollo.
- */
-const ORIGENES = (process.env.ALLOWED_ORIGIN ?? '')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean)
-
 function cors(req: import('node:http').IncomingMessage) {
-  const origen = req.headers.origin
-  return {
-    'Access-Control-Allow-Origin':
-      ORIGENES.length === 0 ? '*' : origen && ORIGENES.includes(origen) ? origen : ORIGENES[0],
-    /* Le avisa a las cachés intermedias que la respuesta cambia según quién
-       pregunta. Sin esto, un proxy podría servirle a un dominio la cabecera
-       que se calculó para el otro. */
-    Vary: 'Origin',
-    'Access-Control-Allow-Headers': 'content-type, authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  }
+  return cabecerasCors(req.headers.origin)
 }
 
 function responder(

@@ -86,7 +86,7 @@ export function usePrecargaCola({ current, proximas, url, player, wantPlay, mudo
       const preparar = async (original: PlaylistTrack): Promise<Preparada> => {
         let track = original
         if (!sigue()) throw Object.assign(new Error('Cancelado'), { name: 'AbortError' })
-        if (buffers.current.has(track.id) || rutaLocal(track.audioPath)) return { track }
+        if (buffers.current.has(track.id) || rutaLocal(track.audioPath ?? '', track.videoId)) return { track }
         let remota: string
         if (!track.audioPath) {
           const song = await resolveSong({ ...track, album: '', albumId: null }, abort.signal)
@@ -125,7 +125,7 @@ export function usePrecargaCola({ current, proximas, url, player, wantPlay, mudo
           const remota = lista.valor.remota
           // La próxima resolución corre mientras esta canción baja al disco.
           anticipar(posicion + 1)
-          let local = rutaLocal(track.audioPath)
+          let local = rutaLocal(track.audioPath ?? '', track.videoId)
           if (!local && HAY_DESCARGAS) local = await prepararCache(track, abort.signal)
           if (!sigue()) return
           if (local && Platform.OS === 'ios' && posicion === 0) {

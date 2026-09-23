@@ -75,8 +75,10 @@ mismo. Para probar en el iPhone, poné la IP de tu máquina en la red local:
 ```
 
 Los perfiles `preview` y `production` apuntan al servicio publicado definido
-en `eas.json`: `https://dnmusic-api.vercel.app`. También declaran las variables
-públicas de Supabase; no hay que copiar `.env.local` al archivo de build.
+en `eas.json`: `https://dnmusic-production-c3f4.up.railway.app`. También declaran
+las variables públicas del gateway de Supabase en Railway
+(`https://envoy-production-2fb6.up.railway.app`); no hay que copiar `.env.local`
+al archivo de build.
 
 ## Cuánto sale
 

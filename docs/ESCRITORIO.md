@@ -427,15 +427,19 @@ ver [YOUTUBE-DIAGNOSTICO.md](YOUTUBE-DIAGNOSTICO.md).
 ### Verificar el servicio antes de publicar
 
 `EXPO_PUBLIC_MUSIC_API` de GitHub Actions debe apuntar a
-`https://dnmusic-api.vercel.app`, igual que el despliegue web. Las variables
-locales y las de Vercel no actualizan ese secret: son configuraciones distintas.
-La 1.9.1 conservó el dominio retirado de Railway, que devolvía 404 incluso después
-de que la computadora descargara el audio. La 1.9.2 corrige la configuración.
+`https://dnmusic-production-c3f4.up.railway.app`, igual que el despliegue web.
+Las variables locales y las de Railway no actualizan ese secret de GitHub:
+son configuraciones distintas. El bundle de escritorio usa el origen
+`app://dnmusic`; la API debe aceptarlo en CORS para que Chromium permita
+búsqueda, importación de Spotify y emparejado. La comprobación del workflow
+detecta si un despliegue vuelve a bloquear ese origen.
 
 El workflow ahora ejecuta `desktop/scripts/verificar-servicio.mjs` antes de
 compilar. Exige salud 200 y respuesta de autenticación 401 JSON en búsqueda y
-las dos rutas de aporte, sin iniciar sesión ni subir archivos. Si una ruta
-apunta a un despliegue inexistente o un rewrite falta, la publicación se corta.
+las rutas de Spotify, emparejado y aporte, además del preflight CORS desde
+Electron, sin iniciar sesión ni subir archivos. Si una ruta apunta a un
+despliegue inexistente, falta un rewrite o el origen queda bloqueado, la
+publicación se corta.
 
 ### Ícono de Windows y Linux
 

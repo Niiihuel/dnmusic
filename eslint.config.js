@@ -23,6 +23,7 @@ module.exports = defineConfig([
       "dist/*",
       "server/dist/*",
       ".expo/*",
+      ".railway-config-pull-*/**",
       "supabase/.temp/*",
       "desktop/dist/*",
       "desktop/web/*",

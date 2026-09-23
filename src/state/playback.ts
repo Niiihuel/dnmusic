@@ -48,6 +48,8 @@ type PlaybackState = {
   index: number
   /** Intención de quien escucha. Lo que suena de verdad depende del audio. */
   wantPlay: boolean
+  /** Cambia al elegir explícitamente una cola, aunque repita el mismo track. */
+  seleccionRevision: number
   positionMs: number
   durationMs: number
   /** 0..1, elegido por quien escucha. Se multiplica por la atenuación técnica. */
@@ -125,6 +127,7 @@ const EMPTY: PlaybackState = {
   origin: null,
   index: -1,
   wantPlay: false,
+  seleccionRevision: 0,
   positionMs: 0,
   durationMs: 0,
   volume: 1,
@@ -698,6 +701,7 @@ export function playQueue(
     shuffle,
     modoReproduccion,
     wantPlay: true,
+    seleccionRevision: store.get().seleccionRevision + 1,
     positionMs: 0,
     durationMs: track.durationMs,
     error: null,

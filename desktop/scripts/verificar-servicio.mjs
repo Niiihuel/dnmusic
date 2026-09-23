@@ -14,6 +14,8 @@ export async function verificarServicio(valor, pedir = fetch) {
   const rutas = [
     ['/health', 'GET', 200],
     ['/search', 'GET', 401],
+    ['/spotify', 'GET', 401],
+    ['/emparejar', 'POST', 401],
     ['/aportar/url', 'POST', 401],
     ['/aportar/confirmar', 'POST', 401],
   ]
@@ -29,13 +31,33 @@ export async function verificarServicio(valor, pedir = fetch) {
       throw new Error(`El servicio no cumple el contrato en ${ruta}: HTTP ${respuesta.status}. Revisá EXPO_PUBLIC_MUSIC_API antes de publicar.`)
     }
   }))
+
+  // Electron carga el export desde app://dnmusic. Un servicio sano que sólo
+  // permite el origen web sigue dejando al escritorio sin buscar ni importar.
+  // /spotify usa el manejador liviano; /search y /emparejar, el principal.
+  await Promise.all(['/search', '/spotify', '/emparejar'].map(async (ruta) => {
+    const method = ruta === '/emparejar' ? 'POST' : 'GET'
+    const respuesta = await pedir(`${origen}${ruta}`, {
+      method: 'OPTIONS',
+      redirect: 'error',
+      signal: AbortSignal.timeout(30_000),
+      headers: {
+        Origin: 'app://dnmusic',
+        'Access-Control-Request-Method': method,
+        'Access-Control-Request-Headers': method === 'POST' ? 'authorization,content-type' : 'authorization',
+      },
+    })
+    if (respuesta.status !== 204 || respuesta.headers.get('access-control-allow-origin') !== 'app://dnmusic') {
+      throw new Error(`El servicio no permite el escritorio en ${ruta}: CORS HTTP ${respuesta.status}. Desplegá la API corregida antes de publicar.`)
+    }
+  }))
   return origen
 }
 
 async function main() {
   try {
     await verificarServicio(process.env.EXPO_PUBLIC_MUSIC_API)
-    console.log('✓ Servicio disponible; búsqueda y aportes alcanzan la API protegida.')
+    console.log('✓ Servicio disponible; búsqueda, importación y aportes aceptan el escritorio.')
   } catch (error) {
     console.error(`✗ ${error.message}`)
     process.exitCode = 1
