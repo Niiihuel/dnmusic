@@ -124,6 +124,7 @@ export function MotorAudio() {
     repetir,
     origin,
     wantPlay,
+    seleccionRevision,
     positionMs,
     volume,
   } = usePlaybackState()
@@ -198,7 +199,7 @@ export function MotorAudio() {
       const uri = entrada && (fuenteEnUso === entrada.url || entrada.hasta > Date.now()) ? entrada.url : null
       if (!uri || !track) return null
       // Una caché temporal puede haberse eliminado desde la última escucha.
-      if ((uri.startsWith('file:') || uri.startsWith('app://dnmusic/_audio/')) && rutaLocal(track.audioPath) !== uri) return null
+      if ((uri.startsWith('file:') || uri.startsWith('app://dnmusic/_audio/')) && rutaLocal(track.audioPath, track.videoId) !== uri) return null
       return uri
     },
     [urls, fuenteEnUso],
@@ -278,25 +279,28 @@ export function MotorAudio() {
    */
   const espejo = useEscuchaEspejo()
   const mudo = silencioso || espejo
+  // Si una recuperación encuentra otra fuente, volver a consultar el índice:
+  // el archivo elegido pudo desaparecer desde que empezó la canción.
+  const [reaperturaRevision, setReaperturaRevision] = useState(0)
   // Elegir disco al entrar a un tema; una descarga que termine durante ese
   // tema no cambia su fuente ni reinicia la reproducción.
   const idActual = current?.id
   const pathActual = current?.audioPath
-  const fuenteLocal = useMemo(() => pathActual ? rutaLocal(pathActual) : null,
-    // idActual diferencia una nueva selección de la misma fuente.
+  const videoActual = current?.videoId
+  const fuenteLocal = useMemo(() => pathActual || videoActual ? rutaLocal(pathActual ?? '', videoActual) : null,
+    // La revisión distingue volver a elegir la misma pista desde otra cola.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [idActual, pathActual, indiceLocalListo])
+    [idActual, pathActual, videoActual, indiceLocalListo, seleccionRevision, reaperturaRevision])
   /*
-   * Una URL que ya está en uso manda sobre una descarga que acaba de terminar.
-   * useAudioPlayer recrea su reproductor cuando cambia la fuente; priorizar
-   * el archivo local nuevo hacía un microcorte al volver a la app (y podía
-   * devolver la canción al principio). La próxima selección de este tema sí
-   * tomará el archivo local desde el comienzo.
+   * Al seleccionar una pista se elige primero la copia local. Esa elección
+   * queda fija hasta la próxima selección: una descarga que termine mientras
+   * suena no recrea useAudioPlayer ni reinicia la canción. Una URL remota
+   * guardada de una selección anterior no puede tapar un archivo descargado.
    */
-  const url = mudo ? null : urlOf(current) ?? fuenteLocal
+  const url = mudo ? null : fuenteLocal ?? urlOf(current)
   useEffect(() => {
-    if (!mudo && pathActual && fuenteLocal) marcarAudioUsado(pathActual)
-  }, [mudo, pathActual, fuenteLocal])
+    if (!mudo && current && fuenteLocal) marcarAudioUsado(pathActual ?? '', current.videoId)
+  }, [mudo, current, pathActual, fuenteLocal])
   const raf = useRef<number | null>(null)
   /** El último aviso al store, para no inundarlo. Ver `AVISO_CADA_MS`. */
   const ultimoAviso = useRef(0)
@@ -503,7 +507,7 @@ export function MotorAudio() {
         completarCancion(track.videoId, {
           audioPath: song.path, artworkPath: song.artworkPath, durationMs: song.durationMs,
         })
-        remember(track.id, rutaLocal(song.path) ?? song.url)
+        remember(track.id, rutaLocal(song.path, track.videoId) ?? song.url)
         return song
       })
     }, [remember],
@@ -515,8 +519,10 @@ export function MotorAudio() {
     // De control remoto o de espejo no se firma nada: no hay reproductor que
     // alimentar.
     if (mudo || !wantPlay || (HAY_DESCARGAS && !indiceLocalListo && !errorIndiceLocal)) return
-    // Si la veníamos preparando ya está firmada, y encima a medio bajar.
-    if (!current || urlOf(current)) return
+    // La fuente se eligió al seleccionar la pista. Si terminó una descarga
+    // mientras sonaba en remoto, no reemplazarla hasta la próxima selección
+    // o un fallo del player: eso recrearía el reproductor en mitad del tema.
+    if (!current || fuenteLocal || urlOf(current)) return
     /*
      * Una candidata sin audio primero se resuelve. El error sí se muestra: es
      * la canción que la persona está esperando escuchar, y el servicio ya
@@ -527,21 +533,7 @@ export function MotorAudio() {
       void resolver(current).catch((causa: unknown) => { if (alive) reportError(mensajeError(causa)) })
       return () => { alive = false }
     }
-    /*
-     * Si está bajada, suena del teléfono y no se firma nada.
-     *
-     * Se consulta **acá**, en el momento de conseguir la fuente, y no en un
-     * efecto que reaccione a las descargas: cambiarle la URL a `useAudioPlayer`
-     * lo hace recrear el reproductor, así que una canción que termine de bajarse
-     * mientras suena volvería a empezar de cero. Terminar una descarga no puede
-     * cortar la música. Lo que ya suena sigue por donde venía; lo local se usa la
-     * próxima vez que le toque.
-     */
-    const local = rutaLocal(current.audioPath)
-    if (local) {
-      remember(current.id, local)
-      return
-    }
+    // Sin descarga ni URL preparada, hay que pedir una firma para este tema.
     let alive = true
     const id = current.id
     const abort = new AbortController()
@@ -556,7 +548,7 @@ export function MotorAudio() {
       alive = false
       abort.abort()
     }
-  }, [current, urlOf, remember, mudo, wantPlay, resolver, indiceLocalListo, errorIndiceLocal])
+  }, [current, fuenteLocal, urlOf, remember, mudo, wantPlay, resolver, indiceLocalListo, errorIndiceLocal])
 
   usePrecargaCola({ current, proximas, url, player, wantPlay, mudo, remember, olvidar })
 
@@ -751,8 +743,16 @@ export function MotorAudio() {
       incidencia: evento => { void registrarIncidenciaAudio({ ...evento, enSegundoPlano: AppState.currentState !== 'active' }) },
       agotado: () => reportError('No se pudo continuar el audio. Revisá la conexión y tocá reproducir para reintentar. El detalle quedó en Configuración → Diagnóstico de audio.'),
       recargar: async (posicion, signal) => {
-        if (!current?.audioPath) throw new Error('No se pudo recuperar la fuente de audio')
-        const nueva = await esperarAperturaAudio(() => signedUrl(current.audioPath), signal)
+        const trackId = current?.id
+        const audioPath = current?.audioPath
+        if (!trackId) throw new Error('No se pudo recuperar la fuente de audio')
+        const local = rutaLocal(audioPath ?? '', current?.videoId)
+        let nueva: string
+        if (local) nueva = local
+        else {
+          if (!audioPath) throw new Error('No se pudo recuperar la fuente de audio')
+          nueva = await esperarAperturaAudio(() => signedUrl(audioPath), signal)
+        }
         if (!sigue() || signal.aborted) return
         // Reabrir el mismo tema conservando su último segundo, sin avanzar la cola.
         const objetivoJam = enJam ? jamPosicionObjetivoMs() : null
@@ -761,7 +761,10 @@ export function MotorAudio() {
         if (nueva === url) {
           player.replace({ uri: nueva })
           player.play()
-        } else remember(current.id, nueva)
+        } else {
+          remember(trackId, nueva)
+          if (fuenteLocal && nueva !== fuenteLocal) setReaperturaRevision(revision => revision + 1)
+        }
       },
     })
     const sub = player.addListener('playbackStatusUpdate', (status) => {
@@ -835,7 +838,7 @@ export function MotorAudio() {
       soundingBefore.current = nowPlaying
     })
     return () => { vigilancia.cancelar(); sub.remove() }
-  }, [player, lease, finish, current?.id, current?.audioPath, url, mudo, remember, enJam, wantPlay, medidorEscucha])
+  }, [player, lease, finish, current?.id, current?.audioPath, current?.videoId, url, fuenteLocal, mudo, remember, enJam, wantPlay, medidorEscucha])
 
   useEffect(() => {
     if (!wantPlay) player.pause()

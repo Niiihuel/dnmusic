@@ -122,16 +122,25 @@ async function inicializar() {
   impulsar()
 }
 
-export function rutaLocal(audioPath: string): string | null {
-  const key = buscar(audioPath)
-  const d = key ? store.get().items[key] : null
-  if (!d || d.estado !== 'lista' || !d.uri) return null
-  return d.uri
+function descargaLista(audioPath: string, videoId?: string): { key: string; descarga: Descarga } | null {
+  const items = store.get().items
+  // El path del bucket puede cambiar al migrar o volver a resolver una canción.
+  // La descarga local pertenece al mismo videoId y sigue siendo reproducible.
+  const key = audioPath ? buscar(audioPath) : undefined
+  const descarga = key ? items[key] : null
+  if (key && descarga?.estado === 'lista' && descarga.uri && (!videoId || descarga.videoId === videoId)) return { key, descarga }
+  if (videoId) for (const [key, descarga] of Object.entries(items)) {
+    if (descarga.videoId === videoId && descarga.estado === 'lista' && descarga.uri) return { key, descarga }
+  }
+  return null
+}
+export function rutaLocal(audioPath: string, videoId?: string): string | null {
+  return descargaLista(audioPath, videoId)?.descarga.uri ?? null
 }
 /** Sólo desde un efecto de reproducción; rutaLocal también se consulta durante render. */
-export function marcarAudioUsado(audioPath: string) {
-  const key = buscar(audioPath), d = key ? store.get().items[key] : null
-  if (key && d?.estado === 'lista' && Date.now() - d.ultimoUso > 30_000) poner(key, { ultimoUso: Date.now() })
+export function marcarAudioUsado(audioPath: string, videoId?: string) {
+  const local = descargaLista(audioPath, videoId)
+  if (local && Date.now() - local.descarga.ultimoUso > 30_000) poner(local.key, { ultimoUso: Date.now() })
 }
 export function espacioUsado(items: Record<string, Descarga>) { return Object.values(items).reduce((s, d) => s + d.bytes, 0) }
 export function cuantasListas(items: Record<string, Descarga>) { return Object.values(items).filter(d => d.estado === 'lista').length }
@@ -209,7 +218,7 @@ export async function prepararCache(track: PlaylistTrack, signal?: AbortSignal):
   if (!HAY_DESCARGAS || signal?.aborted) return null
   await cargarDescargas()
   if (signal?.aborted || !store.get().cargado) return null
-  const local = track.audioPath ? rutaLocal(track.audioPath) : null
+  const local = rutaLocal(track.audioPath ?? '', track.videoId)
   if (local) return local
   if (store.get().limiteCacheMB <= 0) return null
   const key = encolar(track, true)

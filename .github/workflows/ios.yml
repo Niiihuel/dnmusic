@@ -154,7 +154,8 @@ jobs:
     permissions:
       contents: write # GitHub exige escritura para consultar borradores de Release.
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # EAS Submit puede seguir en cola más de 30 minutos después de recibir el IPA.
+    timeout-minutes: 120
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     steps:

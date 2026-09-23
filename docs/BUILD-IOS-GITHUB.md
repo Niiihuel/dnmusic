@@ -5,7 +5,7 @@ Este es el camino alternativo a EAS Cloud: el workflow `iOS — compilar` ejecut
 la numeración y las credenciales de firma que ya guardamos allí; la compilación
 ocurre en GitHub y no consume el cupo de builds de EAS Cloud.
 
-El repositorio es privado: los runners macOS consumen minutos de GitHub Actions
+Los runners macOS consumen minutos de GitHub Actions
 y pueden generar cargos según el plan y el presupuesto de la cuenta. Por eso el
 workflow se inicia manualmente y valida secretos en Linux antes de usar el Mac.
 
@@ -13,7 +13,7 @@ workflow se inicia manualmente y valida secretos en Linux antes de usar el Mac.
 
 1. Publicá en GitHub los cambios que querés incluir. El workflow compila el
    commit de la rama elegida; no ve cambios locales sin subir.
-2. Abrí [Actions → iOS — compilar](https://github.com/Niihuel/dnmusic/actions/workflows/ios.yml).
+2. Abrí [Actions → iOS — compilar](https://github.com/Niiihuel/dnmusic/actions/workflows/ios.yml).
 3. Elegí **Run workflow**, rama y perfil:
    - `production`: IPA firmado para TestFlight/App Store.
    - `preview`: distribución interna para los iPhones registrados en el perfil.
@@ -37,7 +37,7 @@ un número si una compilación falla después de reservarlo: es normal.
 
 ## Credenciales necesarias
 
-En [Settings → Secrets and variables → Actions](https://github.com/Niihuel/dnmusic/settings/secrets/actions):
+En [Settings → Secrets and variables → Actions](https://github.com/Niiihuel/dnmusic/settings/secrets/actions):
 
 | Secreto | Cuándo hace falta | Contenido |
 |---|---|---|
@@ -50,7 +50,7 @@ No subas tokens, certificados ni archivos `.p8` al repositorio ni los pegues en
 el chat. Para guardar una clave desde Linux sin imprimirla en la terminal:
 
 ```bash
-base64 -w 0 /ruta/segura/AuthKey_XXXXXXXXXX.p8 | gh secret set ASC_API_KEY_P8_BASE64 --repo Niihuel/dnmusic
+base64 -w 0 /ruta/segura/AuthKey_XXXXXXXXXX.p8 | gh secret set ASC_API_KEY_P8_BASE64 --repo Niiihuel/dnmusic
 ```
 
 Los certificados y provisioning profiles de iOS deben estar preparados en EAS

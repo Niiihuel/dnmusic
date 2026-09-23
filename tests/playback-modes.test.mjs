@@ -43,6 +43,14 @@ const tracks = [0, 1, 2, 3].map(i => ({
 const radio = { ...tracks[0], id: 'radio:nueva', videoId: 'radio-video' }
 const manual = { ...tracks[1], id: 'manual:nueva', videoId: 'manual-video' }
 
+test('elegir de nuevo la misma canción cambia la revisión de fuente', () => {
+  const { api } = fixture()
+  api.playQueue([tracks[0]], 0, null)
+  const primera = api.getPlaybackState().seleccionRevision
+  api.playQueue([tracks[0]], 0, null)
+  assert.equal(api.getPlaybackState().seleccionRevision, primera + 1)
+})
+
 test('releer la playlist que suena no reinicia ni reemplaza la pista activa', () => {
   const { api } = fixture()
   api.playQueue(tracks, 1, { id: 'lista', name: 'Lista' })

@@ -1,4 +1,5 @@
 import { accesoAprobado } from './acceso.js'
+import { cors } from './cors.js'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { cacheImage } from './artwork.js'
 import { leerCanciones, leerLista } from './spotify.js'
@@ -54,29 +55,6 @@ const supabase: SupabaseClient | null =
  */
 async function autorizado(cabecera: string | null): Promise<boolean> {
   return accesoAprobado(supabase, cabecera)
-}
-
-const ORIGENES = (process.env.ALLOWED_ORIGIN ?? '')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean)
-
-/**
- * Las cabeceras de CORS para quien pregunta. Se devuelve **un** origen, el que
- * coincide con la lista, y nunca la lista entera: un navegador que recibe dos
- * valores en `Access-Control-Allow-Origin` descarta la respuesta.
- */
-export function cors(origen: string | null): Record<string, string> {
-  return {
-    'Access-Control-Allow-Origin':
-      ORIGENES.length === 0 ? '*' : origen && ORIGENES.includes(origen) ? origen : ORIGENES[0],
-    /* Le avisa a las cachés intermedias que la respuesta cambia según quién
-       pregunta. En Vercel esto importa más que en un contenedor pelado:
-       adelante hay un CDN de verdad, y `/img` se cachea. */
-    Vary: 'Origin',
-    'Access-Control-Allow-Headers': 'content-type, authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  }
 }
 
 function json(status: number, body: unknown, origen: string | null): Response {

@@ -12,13 +12,13 @@ const microtasks = async () => { for (let i = 0; i < 12; i++) await Promise.reso
 // Executes the production MotorAudio and recovery/lease/listening helpers.
 // React's hook slots, effect cleanup order, native players and clock are the
 // boundary mocks. Network/preload/Jam are independent of these integration cases.
-function montar({ local = true, falloFirma = false } = {}) {
-  let now = 0, cursor = 0, dirty = true, timerId = 0, firmadoFalla = falloFirma
+function montar({ local = true, falloFirma = false, rotatingSignature = false } = {}) {
+  let now = 0, cursor = 0, dirty = true, timerId = 0, firmadoFalla = falloFirma, descargada = local
   let engine = null, siguienteId = 0, enJam = false, mirrored = false, visible = false
   const slots = [], layouts = [], effects = [], timers = new Map(), players = []
   const calls = { advance: 0, progress: [], listens: [], errors: [], signatures: 0, raf: 0, events: [] }
   let state = { tracks: ['a', 'b', 'c'].map(pista), index: 0, manual: null, upNext: [], shuffle: null,
-    repetir: 'no', origin: null, wantPlay: true, positionMs: 0, durationMs: 180000, volume: 1, error: null }
+    repetir: 'no', origin: null, wantPlay: true, seleccionRevision: 0, positionMs: 0, durationMs: 180000, volume: 1, error: null }
   const actual = () => state.manual ?? state.tracks[state.index]
   const setState = patch => {
     if (Object.keys(patch).some(key => !Object.is(state[key], patch[key]))) { state = { ...state, ...patch }; dirty = true }
@@ -95,12 +95,12 @@ function montar({ local = true, falloFirma = false } = {}) {
     './usePrecargaCola': { usePrecargaCola: noop }, './useEspectroAudio': { useEspectroAudio: noop },
     '../lib/artwork': { artworkSource: () => null },
     '../services/music': { headroomGain: () => 1, perceptualGain: n => n,
-      signedUrl: async path => { calls.signatures++; if (firmadoFalla) throw Error('sin conexión'); return `https://audio/${path}` },
+      signedUrl: async path => { calls.signatures++; if (firmadoFalla) throw Error('sin conexión'); return `https://audio/${path}${rotatingSignature ? `?v=${calls.signatures}` : ''}` },
       resolveSong: async () => { throw Error('unexpected resolveSong') } },
     '../state/lockScreen': { useLockScreen: noop },
     '../services/plays': { anotarEscucha: async value => { calls.listens.push(value) } },
     '../services/recomendaciones': { proximasRecomendadas: async () => [] },
-    '../state/descargas': { HAY_DESCARGAS: true, marcarAudioUsado: noop, rutaLocal: path => local ? `file://${path}` : null,
+    '../state/descargas': { HAY_DESCARGAS: true, marcarAudioUsado: noop, rutaLocal: path => descargada ? `file://${path}` : null,
       useDescargasCargadas: () => true, useDescargasError: () => null },
     '../state/jam': { jamEsperaArranqueMs: () => 0, jamPosicionObjetivoMs: () => null, jamSuena: () => false,
       rellenarJamSiFalta: noop, useJamActivo: () => enJam, useJamRevision: () => 0, useJamSilencioso: () => false, useJamSincronizo: () => false },
@@ -142,7 +142,9 @@ function montar({ local = true, falloFirma = false } = {}) {
     mirror(value) { mirrored = value; dirty = true },
     foreground(value) { visible = value; deps['react-native'].AppState.currentState = value ? 'active' : 'background'; dirty = true },
     signingFails(value) { firmadoFalla = value },
+    download(value) { descargada = value },
     select(index) { setState({ index, manual: null, positionMs: 0 }) },
+    reselect() { setState({ seleccionRevision: state.seleccionRevision + 1, positionMs: 0 }) },
     wantPlay(value) { setState({ wantPlay: value }) },
     configure(patch) { setState(patch) },
     jam(value) { enJam = value; dirty = true },
@@ -251,7 +253,7 @@ test('una pausa nativa cancela el reintento aunque el último estado conserve un
 })
 
 test('el segundo intento conserva la posición si el player nuevo falla antes de cargar', async () => {
-  const h = montar(); h.render(); await h.settle()
+  const h = montar({ local: false, rotatingSignature: true }); h.render(); await h.settle()
   await h.status(42)
   const primero = h.player
   await h.status(0, { playing: false, isLoaded: false, error: 'primera fuente fallida', playbackState: 'failed', timeControlStatus: 'paused' })
@@ -262,6 +264,58 @@ test('el segundo intento conserva la posición si el player nuevo falla antes de
   await h.status(0)
   assert.equal(h.player.seeks.at(-1), 42, 'la última posición confirmada sobrevive a ambos players')
   assert.equal(h.calls.advance, 0)
+  h.unmount()
+})
+
+test('una descarga gana a la URL remota recordada y la recuperación bloqueada no pide red', async () => {
+  const h = montar({ local: false }); h.render(); await h.settle()
+  assert.equal(h.player.source.uri, 'https://audio/a.m4a')
+  assert.equal(h.calls.signatures, 1)
+  const remoto = h.player
+  h.download(true)
+  h.configure({ volume: 0.8 }); await h.settle()
+  assert.equal(h.player, remoto, 'terminar una descarga no corta la pista que está sonando')
+  h.reselect(); await h.settle()
+  assert.equal(h.player.source.uri, 'file://a.m4a', 'la URL remota anterior no tapa la descarga')
+  await h.status(42)
+  await h.status(0, { playing: false, isLoaded: false, error: 'Sin conexión de red', playbackState: 'failed' })
+  await h.advanceClock(1000)
+  assert.equal(h.calls.signatures, 1, 'la renovación del archivo local no firma en Storage')
+  assert.deepEqual(h.player.replacements, [{ uri: 'file://a.m4a' }])
+  await h.status(0)
+  assert.equal(h.player.seeks.at(-1), 42)
+  assert.equal(h.state.wantPlay, true)
+  h.unmount()
+})
+
+test('si una descarga termina durante streaming, un fallo detrás pasa al archivo sin firmar', async () => {
+  const h = montar({ local: false }); h.render(); await h.settle()
+  await h.status(42)
+  h.download(true)
+  await h.status(0, { playing: false, isLoaded: false, error: 'Sin conexión de red', playbackState: 'failed' })
+  await h.advanceClock(1000)
+  assert.equal(h.player.source.uri, 'file://a.m4a')
+  assert.equal(h.calls.signatures, 1)
+  await h.status(0)
+  assert.equal(h.player.seeks.at(-1), 42)
+  assert.equal(h.state.wantPlay, true)
+  h.unmount()
+})
+
+test('si desaparece el archivo elegido, la recuperación conmuta a remoto', async () => {
+  const h = montar(); h.render(); await h.settle()
+  assert.equal(h.player.source.uri, 'file://a.m4a')
+  await h.status(42)
+  const anterior = h.player
+  h.download(false)
+  await h.status(0, { playing: false, isLoaded: false, error: 'No se pudo abrir el archivo', playbackState: 'failed' })
+  await h.advanceClock(1000)
+  assert.equal(h.calls.signatures, 1)
+  assert.notEqual(h.player, anterior)
+  assert.equal(h.player.source.uri, 'https://audio/a.m4a')
+  await h.status(0)
+  assert.equal(h.player.seeks.at(-1), 42)
+  assert.equal(h.state.wantPlay, true)
   h.unmount()
 })
 

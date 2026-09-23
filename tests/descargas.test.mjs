@@ -231,6 +231,21 @@ test('rutaLocal es lookup puro; marcarAudioUsado registra LRU desde el efecto', 
   assert.equal(h.items['uno.m4a'].ultimoUso, 100000); assert.equal(h.escritos.length, writes + 1)
 })
 
+test('una descarga lista se recupera por videoId si el bucket cambió de path', async () => {
+  const pendiente = { ...done('otro'), audioPath: '', estado: 'espera', uri: undefined, bytes: 0 }
+  const h = montar({
+    datos: persistido({ 'video:otro': pendiente, 'uno.m4a': done('uno') }),
+    archivos: new Map([['uno.m4a', { key: 'uno.m4a', uri: 'local:uno', bytes: MB }]]),
+    red: { conectada: false, segura: false },
+  })
+  await h.iniciar()
+  assert.equal(h.api.rutaLocal('', 'uno'), 'local:uno')
+  assert.equal(h.api.rutaLocal('nuevo-path.m4a', 'uno'), 'local:uno')
+  assert.equal(h.api.rutaLocal('', 'otro'), null, 'un path vacío no toma otra descarga')
+  assert.equal(await h.api.prepararCache(track('uno', 'nuevo-path.m4a')), 'local:uno')
+  assert.equal(h.jobs.length, 0, 'no descarga otra vez por el path nuevo')
+})
+
 test('precarga abortada todavía protegida no arranca después; liberar protección cancela huérfana', async () => {
   const h = montar(); await h.iniciar(); const c = new AbortController()
   h.api.protegerDescargas(['uno.m4a']); h.api.priorizarReproduccion(true)
