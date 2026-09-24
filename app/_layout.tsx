@@ -31,6 +31,8 @@ import { restaurarVolumen, restorePlayback, usePlaybackTrack } from '../src/stat
 import { cargarNovedadesVistas } from '../src/state/novedadesVistas'
 import { cargarAjustes } from '../src/state/ajustes'
 import { cargarEcualizador } from '../src/state/ecualizador'
+import { cargarTransicionesGlobales } from '../src/state/transiciones'
+import { cargarPreferenciasSonidoPlaylist } from '../src/state/playlistSoundPreference'
 import { cargarDescargas } from '../src/state/descargas'
 import { reconectarJam } from '../src/state/jam'
 import { iniciarEscucha } from '../src/state/escucha'
@@ -199,6 +201,7 @@ function Chrome() {
    */
   const sinReproductor =
     enEditor ||
+    (segmentos[0] === 'lista' && segmentos[1] === 'mix') ||
     segmentos[0] === 'ajustes' ||
     segmentos[0] === 'onboarding' ||
     (segmentos[0] === 'profile' && segmentos[1] === 'editar')
@@ -244,6 +247,7 @@ function Chrome() {
        poder nacer donde está la tarjeta del reproductor (ver `app/playing.tsx`),
        así que ya no hay controlador que tape la cáscara por nosotros. */
     segmentos[0] === 'playing' ||
+    (segmentos[0] === 'lista' && segmentos[1] === 'mix') ||
     (ES_WEB &&
       (segmentos[0] === 'vincular-google' || segmentos[0] === 'cola' || segmentos[0] === 'message' || segmentos[0] === 'jam'))
   const tabGuardada = useTab()
@@ -908,6 +912,8 @@ function SessionGate() {
     void esOnboardingPendiente().then(setOnboardingPendiente)
     void cargarAjustes()
     void cargarEcualizador()
+    void cargarTransicionesGlobales()
+    void cargarPreferenciasSonidoPlaylist()
     /* Antes que nada de música: es lo que decide si una canción suena del
        teléfono o de la red, y contrasta el índice contra el disco. */
     void cargarDescargas()
@@ -1104,6 +1110,8 @@ function SessionGate() {
       <Stack.Screen name="ajustes/ecualizador" />
       <Stack.Screen name="ajustes/diagnostico-audio" />
       <Stack.Screen name="ajustes/bloqueados" />
+      {/* El editor de mixes necesita todo el ancho para las ondas y los controles. */}
+      <Stack.Screen name="lista/mix" />
       {/*
        * Sin animación: el perfil propio es una **pestaña**, aunque viva como
        * ruta. Las otras cuatro pestañas intercambian el contenido en el lugar,

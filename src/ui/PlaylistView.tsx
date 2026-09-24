@@ -5,6 +5,7 @@ import { BotonSuperficie } from './BotonSuperficie'
 import { NativeMediaRow } from '../../modules/media-controls'
 import { IconButton } from './IconButton'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'expo-router'
 import { FlatList, Platform, Text, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import {
@@ -46,7 +47,8 @@ import { useColorPortada } from '../lib/colorPortada'
 import { BuscadorColeccion, CampoBusquedaColeccion, useBusquedaColeccion } from './BusquedaColeccion'
 import { useConTooltip } from './Tooltip'
 import { Menu, type MenuItem } from './Menu'
-import { entradaDeTrack, menuDescarga, menuDescargasLista, type DescargaUI } from './descargasControl'
+import { entradaDeTrack, menuDescargaCancion, menuDescargasLista } from './descargasControl'
+import { Confirmar } from './Confirmar'
 import { Panel } from './Panel'
 import { ScrollArea } from './ScrollArea'
 import { Vacio } from './Vacio'
@@ -57,6 +59,11 @@ import { SkeletonList } from './Skeleton'
 import { TrackColumnHeader, TrackRow } from './TrackRow'
 import { BotonMeGusta } from './BotonMeGusta'
 import { BotonAleatorio } from './Transport'
+import { BotonMixPlaylist } from './BotonMixPlaylist'
+import { PlaylistTransitionRow } from './PlaylistTransitionRow'
+import { loadActivePlaylistMix, useMixPlaylistRevision, type ActivePlaylistMix } from '../state/mixPlayback'
+import { usePlaylistContentRevision } from '../state/playlistContent'
+import { usePlaylistBpms } from '../state/playlistBpm'
 import {
   ICON_COLOR,
   IconClose,
@@ -79,7 +86,6 @@ import {
   IconMinus,
 } from './icons'
 import {
-  descargar,
   descargarLista,
   HAY_DESCARGAS,
   resumenLista,
@@ -190,8 +196,8 @@ export function PlaylistView({
    * Las arma la pantalla porque dependen de cosas que la lista no conoce —a
    * dónde se puede navegar, qué otras listas tenés—. Son las mismas que en el
    * buscador y en la página de un artista: una canción ofrece lo mismo en toda
-   * la app, esté guardada o no. «Quitar de la lista» se agrega acá abajo, que
-   * es lo único que solo se puede hacer desde adentro.
+   * la app, esté guardada o no. Descargar y Quitar se muestran como botones
+   * de la fila, separados de este menú.
    */
   menuFor?: (track: PlaylistTrack) => MenuItem[]
   /**
@@ -206,6 +212,7 @@ export function PlaylistView({
   /** Canción que se está resolviendo, para mostrarla ocupada en el pie. */
   pendingId?: string | null
 }) {
+  const router = useRouter()
   /*
    * Las canciones se guardan **junto al id de su lista**.
    *
@@ -217,9 +224,12 @@ export function PlaylistView({
   const [loaded, setLoaded] = useState<{
     playlistId: string
     token: number
+    contentRevision: number
     tracks: PlaylistTrack[]
   } | null>(null)
+  const contentRevision = usePlaylistContentRevision(playlist.id)
   const fresh = loaded?.playlistId === playlist.id && loaded.token === reloadToken
+    && loaded.contentRevision === contentRevision
   /*
    * Mientras se relee la misma lista, **se sigue mostrando lo que había**.
    *
@@ -230,7 +240,24 @@ export function PlaylistView({
    * canción sumada, segundos de esqueleto en dos lugares.
    */
   const tracks = loaded?.playlistId === playlist.id ? loaded.tracks : null
+  const bpms = usePlaylistBpms(tracks ?? [])
+  const mixRevision = useMixPlaylistRevision(playlist.id)
+  const [loadedMix, setLoadedMix] = useState<{ playlistId: string; revision: number; data: ActivePlaylistMix | null } | null>(null)
+  useEffect(() => {
+    let alive = true
+    loadActivePlaylistMix(playlist.id)
+      .then(data => { if (alive) setLoadedMix({ playlistId: playlist.id, revision: mixRevision, data }) })
+      .catch(() => { if (alive) setLoadedMix({ playlistId: playlist.id, revision: mixRevision, data: null }) })
+    return () => { alive = false }
+  }, [playlist.id, mixRevision])
+  const activeMix = loadedMix?.playlistId === playlist.id && loadedMix.revision === mixRevision
+    ? loadedMix.data?.mix ? loadedMix.data : null : null
+  const transitionsByPair = useMemo(() => new Map(
+    (activeMix?.edges ?? []).map(edge => [`${edge.fromPlaylistTrackId}:${edge.toPlaylistTrackId}`, edge]),
+  ), [activeMix])
   const [error, setError] = useState<string | null>(null)
+  const [porQuitar, setPorQuitar] = useState<{ playlistId: string; trackId: string; title: string } | null>(null)
+  const quitarActual = porQuitar?.playlistId === playlist.id ? porQuitar : null
   const editorNombre = useRenombrarLista(playlist.id, playlist.name, onRename)
 
   /*
@@ -276,20 +303,21 @@ export function PlaylistView({
 
   const refresh = useCallback(async () => {
     const next = await listTracks(playlist.id)
-    setLoaded({ playlistId: playlist.id, token: reloadToken, tracks: next })
+    setLoaded({ playlistId: playlist.id, token: reloadToken, contentRevision, tracks: next })
     syncQueue(playlist.id, next)
     onChanged()
-  }, [playlist.id, reloadToken, onChanged])
+  }, [playlist.id, reloadToken, contentRevision, onChanged])
 
   useEffect(() => {
     if (fresh) return
     let alive = true
     const id = playlist.id
     const token = reloadToken
+    const revision = contentRevision
     listTracks(id)
       .then((t) => {
         if (!alive) return
-        setLoaded({ playlistId: id, token, tracks: t })
+        setLoaded({ playlistId: id, token, contentRevision: revision, tracks: t })
         /*
          * Y se reconcilia la cola con lo que se acaba de leer.
          *
@@ -309,7 +337,7 @@ export function PlaylistView({
     return () => {
       alive = false
     }
-  }, [playlist.id, reloadToken, fresh])
+  }, [playlist.id, reloadToken, contentRevision, fresh])
 
   async function drop(trackId: string) {
     // La cola se reacomoda sola: quitar una canción de más arriba no tiene por
@@ -348,23 +376,16 @@ export function PlaylistView({
     else playQueue(tracks, at, { id: playlist.id, name: playlist.name })
   }
 
-  /** Lo que ofrece una canción de esta lista, para el botón y para el gesto. */
-  const opcionesDe = (track: PlaylistTrack): MenuItem[] => [
+  /** Una sola lista de opciones para tres puntos, toque largo y clic derecho. */
+  const opcionesDe = (track: PlaylistTrack, entrada: ReturnType<typeof entradaDeTrack>): MenuItem[] => [
     ...(menuFor?.(track) ?? []),
-    ...(HAY_DESCARGAS ? (() => {
-      const entrada = entradaDeTrack(track, descargas)
-      return entrada && !entrada.descarga.temporal ? menuDescarga(entrada) : [{
-        label: 'Descargar para escuchar sin conexión', separadorAntes: true,
-        onPress: () => descargar(track), icon: <IconDownload size={16} color={ICON_COLOR.muted} />,
-        sfSymbol: 'arrow.down.circle' as const,
-      }]
-    })() : []),
+    ...menuDescargaCancion(track, entrada),
     {
       label: 'Quitar de la lista',
-      onPress: () => void drop(track.id),
+      onPress: () => setPorQuitar({ playlistId: playlist.id, trackId: track.id, title: track.title }),
       destructive: true,
       icon: <IconMinus size={15} color={ICON_COLOR.muted} />,
-      sfSymbol: 'minus.circle' as const,
+      sfSymbol: 'minus.circle',
     },
   ]
 
@@ -679,7 +700,7 @@ export function PlaylistView({
           updateCellsBatchingPeriod={32}
           windowSize={9}
           className="min-h-0 flex-1"
-          contentContainerClassName="gap-1"
+          contentContainerClassName="gap-2"
           /* Lo que ocupan el reproductor y las pestañas: la última canción
              tiene que quedar al alcance, aunque las de arriba pasen por
              detrás del material. Arriba, lo mismo con el encabezado. */
@@ -708,6 +729,9 @@ export function PlaylistView({
                 if (isMine && !hayJam) togglePlayback()
                 else playCollection(tracks, { id: playlist.id, name: playlist.name })
               }}
+              onMix={() => router.push({ pathname: '/lista/mix', params: {
+                id: playlist.id, nombre: playlist.name, owner: playlist.mia ? '1' : '0',
+              } })}
               onPickCover={onPickCover}
               toolbarIOS={toolbarIOS}
               buscando={buscando}
@@ -721,7 +745,7 @@ export function PlaylistView({
                 </View>
               ) : null}
 
-              {total > 0 ? <TrackColumnHeader /> : null}
+              {total > 0 ? <TrackColumnHeader bpm /> : null}
             </Header>
             </>
           }
@@ -796,13 +820,22 @@ export function PlaylistView({
             /* El índice de la lista filtrada no sirve para tocar ni numerar:
                se traduce al de la lista entera, que es la cola de verdad. */
             const real = indiceReal.get(item.id) ?? index
-            const descarga = HAY_DESCARGAS ? entradaDeTrack(item, descargas)?.descarga : undefined
-            const opciones = opcionesDe(item)
+            const entrada = HAY_DESCARGAS ? entradaDeTrack(item, descargas) : null
+            const descarga = entrada?.descarga
+            const opciones = opcionesDe(item, entrada)
+            const next = !q ? tracks?.[real + 1] : null
+            const transition = activeMix?.mix && next
+              ? transitionsByPair.get(`${item.id}:${next.id}`)
+              : null
+            const preset = transition?.preset ?? activeMix?.mix?.defaultPreset
+            const duration = transition?.durationMs ?? activeMix?.mix?.defaultDurationMs
             return (
+            <View style={activeMix?.mix && next && preset ? { gap: 8 } : undefined}>
             <TrackRow
               index={real}
               title={item.title}
               artist={item.artist}
+              bpm={bpms.get(item.audioPath) ?? null}
               downloaded={descarga?.estado === 'lista' && !descarga.temporal}
               artwork={artworkSource(item.artworkPath, item.artworkUrl, 96)}
               durationMs={item.durationMs}
@@ -817,21 +850,24 @@ export function PlaylistView({
               /* Va siempre: `TrackRow` decide si se ve —en el teléfono sí, en
                  escritorio bajo el cursor—. Antes se decidía acá con `hovered`
                  y en el teléfono no aparecía nunca. */
-              trailing={
-                <>
-                  <MarcaDescarga descarga={descarga} />
-                  <Menu
-                    items={opciones}
-                    label={`Opciones de ${item.title}`}
-                    size={14}
-                  />
-                </>
-              }
+              trailing={<Menu items={opciones} label={`Opciones de ${item.title}`} size={14} />}
             />
+            {activeMix?.mix && next && preset ? <PlaylistTransitionRow
+              from={item.title} to={next.title} preset={preset} durationMs={duration ?? 0}
+              onPress={() => router.push({ pathname: '/lista/mix', params: {
+                id: playlist.id, nombre: playlist.name, fromTrackId: item.id,
+              } })}
+            /> : null}
+            </View>
             )
           }}
         />
       </View>
+      <Confirmar visible={!!quitarActual} titulo="¿Quitar de la lista?"
+        mensaje={quitarActual ? `«${quitarActual.title}» dejará de aparecer en «${playlist.name}».` : ''}
+        rotulo="Quitar"
+        onCancelar={() => setPorQuitar(null)}
+        onConfirmar={() => { const id = quitarActual?.trackId; setPorQuitar(null); if (id) void drop(id) }} />
     </Panel>
   )
 }
@@ -898,6 +934,7 @@ function Header({
   onDescarga,
   opcionesDescarga,
   onPlay,
+  onMix,
   onPickCover,
   toolbarIOS,
   buscando,
@@ -920,6 +957,7 @@ function Header({
   onDescarga: () => void
   opcionesDescarga: MenuItem[]
   onPlay: () => void
+  onMix: () => void
   onPickCover: () => void
   /** El campo de búsqueda de la lista está abierto. */
   toolbarIOS: boolean
@@ -988,7 +1026,7 @@ function Header({
           </BotonSuperficie>
         }
         title={<TituloNombreLista nombre={playlist.name} editor={editorNombre} />}
-        actions={inline && editorNombre.borrador ? <AccionesNombreLista editor={editorNombre} /> :
+        actions={inline && editorNombre.borrador ? <AccionesNombreLista editor={editorNombre} inline /> :
           <>
             {Platform.OS === 'ios' ? <BotonAleatorio size={19} lado={44} disabled={total === 0} /> : null}
             {Platform.OS === 'ios' ? <CollectionPlayButton playing={playing} disabled={total === 0} onPress={onPlay} /> : <IconButton label={playing ? 'Pausar' : 'Reproducir la lista'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={onPlay} disabled={total === 0} lado={56} size={20} variant="primary" icon={playing ? (
@@ -1012,6 +1050,7 @@ function Header({
              * Apagado queda en gris, como cualquier control inactivo.
              */}
             {Platform.OS !== 'ios' ? <BotonAleatorio size={19} lado={44} disabled={total === 0} /> : null}
+            {total >= 2 ? <BotonMixPlaylist playlistId={playlist.id} name={playlist.name} onPress={onMix} /> : null}
             {/*
              * Buscar adentro de la lista, al lado de los otros controles de la
              * lista. Filtra las filas que ya están, sin ir al servidor —el de
@@ -1064,32 +1103,4 @@ function BotonDescarga({ total, bajado, onPress, opciones }: {
     trigger={<View className="h-11 w-11 items-center justify-center">{contenido}</View>} />
   return <IconButton label="Descargar para escuchar sin conexión" symbol="arrow.down.circle"
     disabled={total === 0} onPress={onPress} icon={contenido} size={19} muted />
-}
-
-/**
- * El progreso pendiente queda al final de la fila. La descarga terminada se
- * indica discretamente junto al artista, sin competir con los tres puntos.
- *
- * Es de solo mirar: lo que se puede hacer con ella está en el menú de la propia
- * canción. Un control más en la fila competiría con los tres puntos por el mismo
- * rincón, y en el teléfono ese rincón ya está justo.
- */
-function MarcaDescarga({ descarga }: { descarga: DescargaUI | undefined }) {
-  if (!HAY_DESCARGAS || !descarga || descarga.temporal || descarga.estado === 'lista') return null
-
-  return (
-    <View className="mr-1">
-      {descarga.estado === 'bajando' ? (
-        <Text className="text-muted-foreground text-caption2 tabular-nums">
-          {Math.round(descarga.progreso * 100)}%
-        </Text>
-      ) : (
-        /* En espera: el ícono a media luz dice «va a bajar» sin fingir progreso
-           con un 0% que se queda quieto. */
-        <View style={{ opacity: 0.5 }}>
-          <IconDownload size={13} color={ICON_COLOR.muted} />
-        </View>
-      )}
-    </View>
-  )
 }

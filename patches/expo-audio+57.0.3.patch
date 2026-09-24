@@ -1,8 +1,335 @@
+diff --git a/node_modules/expo-audio/android/build.gradle b/node_modules/expo-audio/android/build.gradle
+index 6023673..06185c1 100644
+--- a/node_modules/expo-audio/android/build.gradle
++++ b/node_modules/expo-audio/android/build.gradle
+@@ -23,6 +23,7 @@ repositories {
+ }
+ 
+ dependencies {
++  testImplementation 'junit:junit:4.13.2'
+   implementation 'androidx.appcompat:appcompat:1.7.1'
+   implementation 'androidx.core:core-ktx:1.15.0'
+ 
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioCrossfade.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioCrossfade.kt
+new file mode 100644
+index 0000000..bb9fdeb
+--- /dev/null
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioCrossfade.kt
+@@ -0,0 +1,232 @@
++package expo.modules.audio
++
++import android.os.Handler
++import android.os.Looper
++import android.os.SystemClock
++import androidx.media3.common.MediaItem
++import androidx.media3.common.PlaybackException
++import androidx.media3.common.Player
++import androidx.media3.common.util.UnstableApi
++import kotlin.math.PI
++import kotlin.math.cos
++import kotlin.math.sin
++
++private const val FADE_TICK_MS = 20L
++private const val START_TIMEOUT_MS = 1_500L
++// The shortest requested fade is 250 ms. A scheduler tick can cross its cue
++// after the exact start, so its remaining media time can be slightly shorter.
++private const val MIN_EFFECTIVE_FADE_MS = 50L
++
++/** Volume envelopes are applied to ExoPlayer.volume every 20 ms. Temporary
++ * EQ and filter effects run separately on decoded PCM in the audio renderer. */
++internal fun validCrossfadeCurve(points: List<CrossfadeVolumePoint>?, incoming: Boolean): Boolean {
++  if (points == null) return true
++  if (points.size !in 2..16) return false
++  if (kotlin.math.abs(points.first().t) > 0.000001 || kotlin.math.abs(points.last().t - 1.0) > 0.000001) return false
++  if (kotlin.math.abs(points.first().value - (if (incoming) 0.0 else 1.0)) > 0.000001 ||
++    kotlin.math.abs(points.last().value - (if (incoming) 1.0 else 0.0)) > 0.000001) return false
++  var previous = -1.0
++  for (point in points) {
++    if (!point.t.isFinite() || !point.value.isFinite() || point.t <= previous ||
++      point.t !in 0.0..1.0 || point.value !in 0.0..1.0) return false
++    previous = point.t
++  }
++  return true
++}
++
++internal fun crossfadeValue(
++  points: List<CrossfadeVolumePoint>?, incoming: Boolean, law: CrossfadeVolumeLaw, position: Double
++): Float {
++  val t = position.coerceIn(0.0, 1.0)
++  if (points != null) {
++    for (index in 1 until points.size) {
++      val next = points[index]
++      if (t <= next.t) {
++        val previous = points[index - 1]
++        return (previous.value + (next.value - previous.value) *
++          (t - previous.t) / (next.t - previous.t)).toFloat()
++      }
++    }
++    return points.last().value.toFloat()
++  }
++  return when (law) {
++    CrossfadeVolumeLaw.EQUAL_POWER -> if (incoming) sin(t * PI / 2).toFloat() else cos(t * PI / 2).toFloat()
++    CrossfadeVolumeLaw.LINEAR -> if (incoming) t.toFloat() else (1 - t).toFloat()
++  }
++}
++
++/** Two ExoPlayers sharing one transition. The main-looper poll checks actual
++ * media positions, so a paused or buffered outgoing deck cannot advance the
++ * fade from elapsed wall time. The next deck stays at zero gain until ready. */
++@UnstableApi
++internal class AudioCrossfade(
++  private val outgoing: AudioPlayer,
++  private val incoming: AudioPlayer,
++  private val requestedStartMs: Long,
++  private val requestedDurationMs: Long,
++  private val options: CrossfadeOptions
++) {
++  private val handler = Handler(Looper.getMainLooper())
++  private val outgoingItem: MediaItem? = outgoing.ref.currentMediaItem
++  private val incomingItem: MediaItem? = incoming.ref.currentMediaItem
++  private var started = false
++  private var fading = false
++  private var closed = false
++  private var pausedIncomingForOutgoing = false
++  private var startedAtElapsedMs = 0L
++  private var fadeStartMs = 0L
++  private var fadeDurationMs = 0L
++
++  private val tick = object : Runnable {
++    override fun run() {
++      update()
++    }
++  }
++
++  private val listener = object : Player.Listener {
++    override fun onPositionDiscontinuity(
++      oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int
++    ) {
++      if (reason == Player.DISCONTINUITY_REASON_SEEK) cancel()
++    }
++
++    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
++      cancel()
++    }
++
++    override fun onPlayerError(error: PlaybackException) {
++      cancel()
++    }
++
++    override fun onPlaybackStateChanged(playbackState: Int) {
++      if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
++        if (outgoing.ref.playbackState == Player.STATE_ENDED && this@AudioCrossfade.onOutgoingEnded()) return
++        cancel()
++      } else {
++        handler.removeCallbacks(tick)
++        handler.post(tick)
++      }
++    }
++
++    override fun onIsPlayingChanged(isPlaying: Boolean) {
++      handler.removeCallbacks(tick)
++      handler.post(tick)
++    }
++  }
++
++  fun arm() {
++    if (closed) return
++    if (hasTransitionEffects(options)) {
++      val eq = options.eqSettings?.takeIf { it.enabled }
++      val filter = options.filterSettings?.takeIf { it.enabled }
++      outgoing.setTransitionEffect(if (eq != null || filter?.out != null) TransitionDeckEffect(
++        eq?.out, filter?.out, requestedStartMs / 1000.0, requestedDurationMs / 1000.0
++      ) else null)
++      incoming.setTransitionEffect(if (eq != null || filter?.`in` != null) TransitionDeckEffect(
++        eq?.`in`, filter?.`in`, options.toStartSeconds ?: 0.0, requestedDurationMs / 1000.0
++      ) else null)
++    }
++    incoming.setCrossfadeGain(0f)
++    outgoing.ref.addListener(listener)
++    incoming.ref.addListener(listener)
++    handler.post(tick)
++  }
++
++  private fun sameSources(): Boolean =
++    outgoing.ref.currentMediaItem == outgoingItem && incoming.ref.currentMediaItem == incomingItem &&
++      outgoing.ref.repeatMode != Player.REPEAT_MODE_ONE && incoming.ref.repeatMode != Player.REPEAT_MODE_ONE
++
++  private fun scheduleNext() {
++    if (!closed) handler.postDelayed(tick, if (outgoing.ref.isPlaying) FADE_TICK_MS else 100L)
++  }
++
++  private fun update() {
++    if (closed) return
++    if (!sameSources()) { cancel(); return }
++    if (hasTransitionEffects(options) &&
++      (!outgoing.supportsTransitionEffects || !incoming.supportsTransitionEffects)) { cancel(); return }
++    val outgoingPosition = outgoing.ref.currentPosition
++    if (!started) {
++      if (!outgoing.ref.isPlaying) { scheduleNext(); return }
++      if (outgoingPosition < requestedStartMs) { scheduleNext(); return }
++      if (outgoing.ref.duration - outgoingPosition < MIN_EFFECTIVE_FADE_MS ||
++        incoming.ref.playbackState != Player.STATE_READY) { cancel(); return }
++      started = true
++      startedAtElapsedMs = SystemClock.elapsedRealtime()
++      incoming.ref.play()
++    }
++
++    if (!outgoing.ref.isPlaying) {
++      pausedIncomingForOutgoing = true
++      if (incoming.ref.isPlaying) incoming.ref.pause()
++      scheduleNext()
++      return
++    }
++    if (pausedIncomingForOutgoing) {
++      pausedIncomingForOutgoing = false
++      startedAtElapsedMs = SystemClock.elapsedRealtime()
++      incoming.ref.play()
++    }
++
++    if (!fading) {
++      if (!incoming.ref.isPlaying) {
++        if (SystemClock.elapsedRealtime() - startedAtElapsedMs > START_TIMEOUT_MS ||
++          outgoing.ref.duration - outgoingPosition < MIN_EFFECTIVE_FADE_MS) { cancel(); return }
++        scheduleNext()
++        return
++      }
++      fadeStartMs = outgoingPosition
++      fadeDurationMs = minOf(requestedDurationMs,
++        outgoing.ref.duration - outgoingPosition,
++        incoming.ref.duration - incoming.ref.currentPosition)
++      if (fadeDurationMs < MIN_EFFECTIVE_FADE_MS) { cancel(); return }
++      fading = true
++    } else if (!incoming.ref.isPlaying) {
++      // Do not advance the old deck into silence while the new source buffers.
++      cancel()
++      return
++    }
++
++    val progress = ((outgoingPosition - fadeStartMs).toDouble() / fadeDurationMs).coerceIn(0.0, 1.0)
++    outgoing.setCrossfadeGain(crossfadeValue(options.volumeOut, false, options.volumeLaw, progress))
++    incoming.setCrossfadeGain(crossfadeValue(options.volumeIn, true, options.volumeLaw, progress))
++    if (progress >= 1.0 || outgoing.ref.playbackState == Player.STATE_ENDED) complete()
++    else scheduleNext()
++  }
++
++  /** Called from AudioPlayer's end callback if the 20 ms tick loses the race. */
++  fun onOutgoingEnded(): Boolean {
++    if (closed || !fading || !incoming.ref.isPlaying) return false
++    complete()
++    return true
++  }
++
++  private fun complete() {
++    if (closed) return
++    close()
++    outgoing.markCrossfadeCompleted()
++    outgoing.ref.pause()
++    outgoing.setCrossfadeGain(1f)
++    incoming.setCrossfadeGain(1f)
++  }
++
++  fun cancel() {
++    if (closed) return
++    close()
++    if (started) incoming.ref.pause()
++    outgoing.setCrossfadeGain(1f)
++    incoming.setCrossfadeGain(1f)
++  }
++
++  private fun close() {
++    if (closed) return
++    closed = true
++    outgoing.setTransitionEffect(null)
++    incoming.setTransitionEffect(null)
++    handler.removeCallbacks(tick)
++    outgoing.outgoingCrossfade = null
++    incoming.incomingCrossfade = null
++    outgoing.ref.removeListener(listener)
++    incoming.ref.removeListener(listener)
++  }
++}
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
-index 992239b..83ad312 100644
+index 992239b..2b7d994 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
-@@ -531,6 +531,12 @@ class AudioModule : Module() {
+@@ -18,6 +18,7 @@ import androidx.media3.common.C.CONTENT_TYPE_HLS
+ import androidx.media3.common.C.CONTENT_TYPE_OTHER
+ import androidx.media3.common.C.CONTENT_TYPE_SS
+ import androidx.media3.common.MediaItem
++import androidx.media3.common.PlaybackException
+ import androidx.media3.common.Player
+ import androidx.media3.common.util.Util
+ import androidx.media3.datasource.DataSource
+@@ -40,9 +41,13 @@ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.GlobalScope
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.runBlocking
++import kotlinx.coroutines.suspendCancellableCoroutine
++import kotlinx.coroutines.withContext
++import kotlinx.coroutines.withTimeoutOrNull
+ import okhttp3.OkHttpClient
+ import java.io.File
+ import java.util.concurrent.ConcurrentHashMap
++import kotlin.coroutines.resume
+ 
+ @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+ class AudioModule : Module() {
+@@ -62,6 +67,37 @@ class AudioModule : Module() {
+   private var allowsBackgroundRecording = false
+   private var playsInSilentMode = true
+ 
++  private suspend fun awaitCrossfadeReady(player: AudioPlayer): Boolean =
++    withTimeoutOrNull(2_500) {
++      suspendCancellableCoroutine { continuation ->
++        if (player.ref.playbackState == Player.STATE_READY) {
++          continuation.resume(true)
++          return@suspendCancellableCoroutine
++        }
++        val listener = object : Player.Listener {
++          private fun finish(ready: Boolean) {
++            player.ref.removeListener(this)
++            if (continuation.isActive) continuation.resume(ready)
++          }
++
++          override fun onPlaybackStateChanged(state: Int) {
++            if (state == Player.STATE_READY) finish(true)
++            else if (state == Player.STATE_IDLE || state == Player.STATE_ENDED) finish(false)
++          }
++
++          override fun onPlayerError(error: PlaybackException) {
++            finish(false)
++          }
++        }
++        player.ref.addListener(listener)
++        continuation.invokeOnCancellation { player.ref.removeListener(listener) }
++        if (player.ref.playbackState == Player.STATE_READY) {
++          player.ref.removeListener(listener)
++          if (continuation.isActive) continuation.resume(true)
++        }
++      }
++    } ?: false
++
+   private val allPlayables: Sequence<Playable>
+     get() = players.values.asSequence() + playlists.values.asSequence()
+ 
+@@ -336,6 +372,7 @@ class AudioModule : Module() {
+       GlobalScope.launch(Dispatchers.Main) {
+         releaseAudioFocus()
+         players.values.forEach {
++          it.cancelCrossfade()
+           it.ref.stop()
+         }
+ 
+@@ -458,7 +495,7 @@ class AudioModule : Module() {
+ 
+       Property("volume") { player ->
+         runOnMain {
+-          player.ref.volume
++          player.volume
+         }
+       }.set { ref, volume: Float? ->
+         ref.setVolume(volume)
+@@ -531,6 +568,38 @@ class AudioModule : Module() {
          }
        }
  
@@ -12,11 +339,45 @@ index 992239b..83ad312 100644
 +        }
 +      }
 +
++      AsyncFunction("scheduleCrossfade") Coroutine { player: AudioPlayer, incoming: AudioPlayer, options: CrossfadeOptions ->
++        withContext(Dispatchers.Main) {
++          if (player === incoming || incoming.incomingCrossfade != null || incoming.outgoingCrossfade != null ||
++            !options.durationSeconds.isFinite() || options.durationSeconds !in 0.25..30.0 ||
++            options.fromStartSeconds?.isFinite() == false || options.toStartSeconds?.isFinite() == false ||
++            (options.toStartSeconds ?: 0.0) < 0) return@withContext false
++
++          val generation = player.beginCrossfadeRequest()
++          val incomingGeneration = incoming.crossfadeGeneration
++          val incomingStart = options.toStartSeconds ?: 0.0
++          try {
++            if (kotlin.math.abs(incoming.currentTime - incomingStart) > 0.02) {
++              incoming.seekForCrossfade(incomingStart)
++              if (!awaitCrossfadeReady(incoming)) return@withContext false
++            }
++          } finally {
++            incoming.finishCrossfadeSeek()
++          }
++          player.scheduleCrossfade(incoming, options, generation, incomingGeneration)
++        }
++      }
++
++      Function("cancelCrossfade") { player: AudioPlayer ->
++        runOnMain { player.cancelCrossfade() }
++      }
++
        AsyncFunction("seekTo") { player: AudioPlayer, seekTime: Double, _: Double?, _: Double? ->
          player.seekTo(seekTime)
        }.runOnQueue(Queues.MAIN)
+@@ -542,6 +611,7 @@ class AudioModule : Module() {
+       }
+ 
+       Function("remove") { player: AudioPlayer ->
++        runOnMain { player.cancelCrossfade() }
+         players.remove(player.id)
+       }
+     }
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
-index c76a9fd..19783df 100644
+index c76a9fd..d809245 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
 @@ -4,6 +4,7 @@ import android.Manifest
@@ -27,7 +388,63 @@ index c76a9fd..19783df 100644
  import android.util.Log
  import androidx.core.content.ContextCompat
  import androidx.media3.common.AudioAttributes
-@@ -78,6 +79,15 @@ class AudioPlayer(
+@@ -11,9 +12,15 @@ import androidx.media3.common.C
+ import androidx.media3.common.PlaybackException
+ import androidx.media3.common.PlaybackParameters
+ import androidx.media3.common.Player
++import androidx.media3.common.MediaItem
++import androidx.media3.common.TrackSelectionParameters
+ import androidx.media3.common.util.UnstableApi
+ import androidx.media3.exoplayer.DefaultLoadControl
++import androidx.media3.exoplayer.DefaultRenderersFactory
+ import androidx.media3.exoplayer.ExoPlayer
++import androidx.media3.exoplayer.audio.AudioCapabilities
++import androidx.media3.exoplayer.audio.AudioSink
++import androidx.media3.exoplayer.audio.DefaultAudioSink
+ import androidx.media3.exoplayer.source.MediaSource
+ import androidx.media3.session.MediaSession
+ import expo.modules.audio.service.AudioPlaybackServiceConnection
+@@ -21,20 +28,37 @@ import expo.modules.audio.service.ServiceBindingState
+ import expo.modules.kotlin.AppContext
+ import expo.modules.kotlin.exception.Exceptions
+ import java.lang.ref.WeakReference
++import kotlinx.coroutines.launch
+ 
+ private const val PLAYBACK_STATUS_UPDATE = "playbackStatusUpdate"
+ private const val AUDIO_SAMPLE_UPDATE = "audioSampleUpdate"
+ private const val SEEK_JUMP_INTERVAL_MS: Long = 10_000
+ 
++@UnstableApi
++private class TransitionRenderersFactory(
++  context: Context, private val processor: TransitionPcmProcessor
++) : DefaultRenderersFactory(context) {
++  override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
++                              enableAudioOutputPlaybackParameters: Boolean): AudioSink =
++    DefaultAudioSink.Builder(context)
++      // Encoded passthrough would skip the processor entirely. Decode to PCM.
++      .setAudioCapabilities(AudioCapabilities(intArrayOf(C.ENCODING_PCM_16BIT), 8))
++      .setEnableFloatOutput(false)
++      .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParameters)
++      .setAudioProcessors(arrayOf(processor))
++      .build()
++}
++
+ @UnstableApi
+ class AudioPlayer(
+   context: Context,
+   appContext: AppContext,
+   source: MediaSource?,
+   updateInterval: Double,
+-  bufferDurationMs: Long = 0
++  bufferDurationMs: Long = 0,
++  private val transitionPcmProcessor: TransitionPcmProcessor = TransitionPcmProcessor()
+ ) : BaseAudioPlayer(
+-  player = ExoPlayer.Builder(context)
++  player = ExoPlayer.Builder(context, TransitionRenderersFactory(context, transitionPcmProcessor))
+     .setLooper(context.mainLooper)
+     .setAudioAttributes(AudioAttributes.DEFAULT, false)
+     .setSeekForwardIncrementMs(SEEK_JUMP_INTERVAL_MS)
+@@ -78,19 +102,69 @@ class AudioPlayer(
  
    private var samplingEnabled = false
    private var visualizer: Visualizer? = null
@@ -35,23 +452,89 @@ index c76a9fd..19783df 100644
 +  private var equalizerSessionId = C.AUDIO_SESSION_ID_UNSET
 +  private var equalizerEnabled = false
 +  private var equalizerGains = FloatArray(10)
++  internal var outgoingCrossfade: AudioCrossfade? = null
++  internal var incomingCrossfade: AudioCrossfade? = null
++  internal var crossfadeGeneration = 0L
++    private set
++  private var crossfadeSeekTargetMs: Long? = null
++  private var crossfadedMediaItem: MediaItem? = null
++  private var requestedVolume = 1f
++  private var crossfadeGain = 1f
 +  private val equalizerListener = object : Player.Listener {
 +    override fun onAudioSessionIdChanged(audioSessionId: Int) {
 +      if (equalizerEnabled && audioSessionId != equalizerSessionId) rebuildEqualizer(audioSessionId)
 +    }
 +  }
++  private val crossfadeListener = object : Player.Listener {
++    override fun onIsPlayingChanged(isPlaying: Boolean) {
++      // A later replay of the same media item should end normally again.
++      if (isPlaying) crossfadedMediaItem = null
++    }
++
++    override fun onPositionDiscontinuity(
++      oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int
++    ) {
++      if (reason != Player.DISCONTINUITY_REASON_SEEK) return
++      crossfadedMediaItem = null
++      val target = crossfadeSeekTargetMs
++      crossfadeSeekTargetMs = null
++      if (target == null || kotlin.math.abs(newPosition.positionMs - target) > 20) cancelCrossfade()
++    }
++
++    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
++      crossfadedMediaItem = null
++      cancelCrossfade()
++    }
++  }
    private val context by lazy {
      appContext.reactContext
        ?: throw Exceptions.ReactContextLost()
-@@ -85,6 +95,7 @@ class AudioPlayer(
+   }
  
    init {
++    // Offload writes encoded frames directly to the device, bypassing Media3's
++    // AudioProcessor. Keep all deck playback in the verified PCM path.
++    ref.trackSelectionParameters = ref.trackSelectionParameters.buildUpon()
++      .setAudioOffloadPreferences(
++        TrackSelectionParameters.AudioOffloadPreferences.Builder()
++          .setAudioOffloadMode(TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED)
++          .build()
++      ).build()
      installPlayerListeners()
 +    ref.addListener(equalizerListener)
++    ref.addListener(crossfadeListener)
      source?.let {
        setMediaSource(source)
      }
-@@ -180,6 +191,65 @@ class AudioPlayer(
+   }
+ 
+   fun setMediaSource(source: MediaSource) {
++    cancelCrossfade()
++    crossfadedMediaItem = null
+     previousPlaybackState = Player.STATE_IDLE
+     ref.setMediaSource(source)
+     ref.prepare()
+@@ -145,6 +219,11 @@ class AudioPlayer(
+   }
+ 
+   override fun onPlaybackStateUpdated(playbackState: Int, justFinished: Boolean) {
++    if (justFinished) {
++      if (outgoingCrossfade?.onOutgoingEnded() == true ||
++        (crossfadedMediaItem != null && ref.currentMediaItem == crossfadedMediaItem)) return
++      outgoingCrossfade?.cancel()
++    }
+     val updateMap = mutableMapOf<String, Any?>(
+       "playbackState" to playbackStateToString(playbackState)
+     )
+@@ -156,6 +235,7 @@ class AudioPlayer(
+   }
+ 
+   override fun onPlayerError(error: PlaybackException) {
++    cancelCrossfade()
+     sendStatusUpdate(
+       mapOf(
+         "error" to error.message
+@@ -180,6 +260,65 @@ class AudioPlayer(
      }
    }
  
@@ -117,16 +600,1756 @@ index c76a9fd..19783df 100644
    override fun setPlaybackRate(rate: Float) {
      val playbackRate = rate.coerceIn(0.1f, 2.0f)
      val pitch = if (preservesPitch) 1f else playbackRate
-@@ -283,6 +353,9 @@ class AudioPlayer(
+@@ -192,7 +331,7 @@ class AudioPlayer(
+   }
+ 
+   override fun currentStatus(): Map<String, Any?> {
+-    val isMuted = ref.volume == 0f
++    val isMuted = requestedVolume == 0f || this.isMuted
+     val isLooping = ref.repeatMode == Player.REPEAT_MODE_ONE
+     val isLoaded = ref.playbackState == Player.STATE_READY
+     val isBuffering = ref.playbackState == Player.STATE_BUFFERING
+@@ -219,6 +358,100 @@ class AudioPlayer(
+     )
+   }
+ 
++  /** User volume stays separate from the deck envelope. A volume or mute
++   * change during a transition therefore applies to the next gain tick too. */
++  override val volume: Float
++    get() = requestedVolume
++
++  override fun setVolume(volume: Float?) = appContext?.mainQueue?.launch {
++    val bounded = volume?.coerceIn(0f, 1f) ?: 1f
++    if (isMuted) {
++      if (bounded > 0f) previousVolume = bounded
++      requestedVolume = 0f
++    } else {
++      previousVolume = bounded
++      requestedVolume = bounded
++    }
++    applyEffectiveVolume()
++  }
++
++  internal fun setCrossfadeGain(gain: Float) {
++    crossfadeGain = gain.coerceIn(0f, 1f)
++    applyEffectiveVolume()
++  }
++
++  private fun applyEffectiveVolume() {
++    ref.volume = requestedVolume * crossfadeGain
++  }
++
++  internal fun beginCrossfadeRequest(): Long {
++    cancelCrossfade()
++    return crossfadeGeneration
++  }
++
++  internal fun seekForCrossfade(seconds: Double) {
++    val targetMs = (seconds * 1000).toLong()
++    crossfadeSeekTargetMs = targetMs
++    ref.seekTo(targetMs)
++  }
++
++  internal fun finishCrossfadeSeek() {
++    crossfadeSeekTargetMs = null
++  }
++
++  fun cancelCrossfade() {
++    crossfadeGeneration++
++    (outgoingCrossfade ?: incomingCrossfade)?.cancel()
++  }
++
++  internal fun scheduleCrossfade(
++    incoming: AudioPlayer, options: CrossfadeOptions,
++    generation: Long, incomingGeneration: Long
++  ): Boolean {
++    if (generation != crossfadeGeneration || incomingGeneration != incoming.crossfadeGeneration ||
++      this === incoming || outgoingCrossfade != null || incoming.incomingCrossfade != null ||
++      incoming.outgoingCrossfade != null || incomingCrossfade != null ||
++      ref.playbackState != Player.STATE_READY || incoming.ref.playbackState != Player.STATE_READY ||
++      incoming.ref.isPlaying ||
++      ref.repeatMode == Player.REPEAT_MODE_ONE || incoming.ref.repeatMode == Player.REPEAT_MODE_ONE ||
++      duration <= 0 || incoming.duration <= 0 ||
++      !options.durationSeconds.isFinite() || options.durationSeconds !in 0.25..30.0 ||
++      options.fromStartSeconds?.isFinite() == false || options.toStartSeconds?.isFinite() == false ||
++      !validCrossfadeCurve(options.volumeOut, false) || !validCrossfadeCurve(options.volumeIn, true) ||
++      !validTransitionEffects(options) ||
++      (hasTransitionEffects(options) &&
++        (!transitionPcmProcessor.supportsEffects || !incoming.transitionPcmProcessor.supportsEffects))) return false
++
++    val start = options.fromStartSeconds ?: duration - options.durationSeconds
++    val incomingStart = options.toStartSeconds ?: 0.0
++    val immediateStart = start <= 0.001 && currentTime <= 0.05
++    if (start < 0 || incomingStart < 0 ||
++      start + options.durationSeconds > duration + 0.02 ||
++      incomingStart + options.durationSeconds > incoming.duration + 0.02 ||
++      (!immediateStart && (!ref.isPlaying || currentTime + 0.25 >= start)) ||
++      kotlin.math.abs(incoming.currentTime - incomingStart) > 0.25) return false
++
++    val controller = AudioCrossfade(
++      this, incoming, (start * 1000).toLong(), (options.durationSeconds * 1000).toLong(), options
++    )
++    outgoingCrossfade = controller
++    incoming.incomingCrossfade = controller
++    controller.arm()
++    return true
++  }
++
++  internal fun markCrossfadeCompleted() {
++    crossfadedMediaItem = ref.currentMediaItem
++    sendStatusUpdate(mapOf("playing" to false, "didJustCrossfade" to true))
++  }
++
++  internal val supportsTransitionEffects: Boolean
++    get() = transitionPcmProcessor.supportsEffects
++
++  internal fun setTransitionEffect(effect: TransitionDeckEffect?) {
++    transitionPcmProcessor.arm(effect)
++  }
++
+   internal fun assignBasicMediaSession() {
+     mediaSession.release()
+     mediaSession = buildBasicMediaSession(context, ref)
+@@ -277,12 +510,17 @@ class AudioPlayer(
+   }
+ 
+   override fun releasePlayer() {
++    cancelCrossfade()
+     mediaSession.release()
+     if (isActiveForLockScreen) {
+       serviceConnection.playbackServiceBinder?.service?.unregisterPlayer()
      }
      serviceConnection.unbind()
      visualizer?.release()
 +    ref.removeListener(equalizerListener)
++    ref.removeListener(crossfadeListener)
 +    equalizer?.release()
 +    equalizer = null
      super.releasePlayer()
    }
  
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
+index 86880d9..0d80c35 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
+@@ -113,6 +113,62 @@ class AudioLockScreenOptions(
+   @Field val isLiveStream: Boolean? = null
+ ) : Record
+ 
++enum class CrossfadeVolumeLaw(val value: String) : Enumerable {
++  LINEAR("linear"),
++  EQUAL_POWER("equal_power")
++}
++
++@OptimizedRecord
++class CrossfadeVolumePoint(
++  @Field val t: Double,
++  @Field val value: Double
++) : Record
++
++@OptimizedRecord
++class CrossfadeThreeBand(
++  @Field val low: List<CrossfadeVolumePoint>,
++  @Field val mid: List<CrossfadeVolumePoint>,
++  @Field val high: List<CrossfadeVolumePoint>
++) : Record
++
++@OptimizedRecord
++class CrossfadeTransitionEq(
++  @Field val version: Int,
++  @Field val enabled: Boolean,
++  @Field val out: CrossfadeThreeBand,
++  @Field val `in`: CrossfadeThreeBand
++) : Record
++
++enum class CrossfadeTransitionFilterKind(val value: String) : Enumerable {
++  LOWPASS("lowpass"), HIGHPASS("highpass")
++}
++
++@OptimizedRecord
++class CrossfadeTransitionFilterDeck(
++  @Field val kind: CrossfadeTransitionFilterKind,
++  @Field val cutoff: List<CrossfadeVolumePoint>
++) : Record
++
++@OptimizedRecord
++class CrossfadeTransitionFilter(
++  @Field val version: Int,
++  @Field val enabled: Boolean,
++  @Field val out: CrossfadeTransitionFilterDeck? = null,
++  @Field val `in`: CrossfadeTransitionFilterDeck? = null
++) : Record
++
++@OptimizedRecord
++class CrossfadeOptions(
++  @Field val durationSeconds: Double,
++  @Field val fromStartSeconds: Double? = null,
++  @Field val toStartSeconds: Double? = null,
++  @Field val volumeLaw: CrossfadeVolumeLaw = CrossfadeVolumeLaw.LINEAR,
++  @Field val volumeOut: List<CrossfadeVolumePoint>? = null,
++  @Field val volumeIn: List<CrossfadeVolumePoint>? = null,
++  @Field val eqSettings: CrossfadeTransitionEq? = null,
++  @Field val filterSettings: CrossfadeTransitionFilter? = null
++) : Record
++
+ enum class InterruptionMode(val value: String) : Enumerable {
+   DO_NOT_MIX("doNotMix"),
+   DUCK_OTHERS("duckOthers"),
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/TransitionPcmProcessor.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/TransitionPcmProcessor.kt
+new file mode 100644
+index 0000000..a73f881
+--- /dev/null
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/TransitionPcmProcessor.kt
+@@ -0,0 +1,298 @@
++package expo.modules.audio
++
++import androidx.media3.common.C
++import androidx.media3.common.audio.AudioProcessor
++import androidx.media3.common.audio.BaseAudioProcessor
++import androidx.media3.common.util.UnstableApi
++import java.nio.ByteBuffer
++import java.nio.ByteOrder
++import kotlin.math.PI
++import kotlin.math.abs
++import kotlin.math.cos
++import kotlin.math.max
++import kotlin.math.min
++import kotlin.math.pow
++import kotlin.math.sin
++import kotlin.math.sqrt
++
++/** A temporary effect for one deck. The renderer thread owns all mutable DSP
++ * state; the main thread only swaps an immutable configuration. */
++internal data class TransitionDeckEffect(
++  val eq: CrossfadeThreeBand?,
++  val filter: CrossfadeTransitionFilterDeck?,
++  val startSeconds: Double,
++  val durationSeconds: Double
++)
++
++internal fun validTransitionEffectCurve(
++  points: List<CrossfadeVolumePoint>, minValue: Double, maxValue: Double
++): Boolean {
++  if (points.size !in 2..16 || abs(points.first().t) > 0.000001 ||
++    abs(points.last().t - 1.0) > 0.000001) return false
++  var previous = -1.0
++  for (point in points) {
++    if (!point.t.isFinite() || !point.value.isFinite() || point.t <= previous ||
++      point.t !in 0.0..1.0 || point.value !in minValue..maxValue) return false
++    previous = point.t
++  }
++  return true
++}
++
++internal fun validTransitionEffects(options: CrossfadeOptions): Boolean {
++  options.eqSettings?.let { eq ->
++    if (eq.version != 1 || listOf(eq.out, eq.`in`).any { bands ->
++        listOf(bands.low, bands.mid, bands.high).any { !validTransitionEffectCurve(it, -24.0, 24.0) }
++      }) return false
++  }
++  options.filterSettings?.let { filter ->
++    if (filter.version != 1 || listOfNotNull(filter.out, filter.`in`).any {
++        !validTransitionEffectCurve(it.cutoff, 20.0, 20_000.0)
++      }) return false
++  }
++  return true
++}
++
++internal fun hasTransitionEffects(options: CrossfadeOptions): Boolean =
++  options.eqSettings?.enabled == true || options.filterSettings?.enabled == true
++
++private data class Biquad(
++  val b0: Double = 1.0, val b1: Double = 0.0, val b2: Double = 0.0,
++  val a1: Double = 0.0, val a2: Double = 0.0
++)
++
++private class BiquadState {
++  var x1 = 0.0
++  var x2 = 0.0
++  var y1 = 0.0
++  var y2 = 0.0
++
++  fun process(input: Double, c: Biquad): Double {
++    val output = c.b0 * input + c.b1 * x1 + c.b2 * x2 - c.a1 * y1 - c.a2 * y2
++    x2 = x1; x1 = input; y2 = y1; y1 = output
++    return output
++  }
++
++  fun reset() { x1 = 0.0; x2 = 0.0; y1 = 0.0; y2 = 0.0 }
++}
++
++private fun normalize(b0: Double, b1: Double, b2: Double,
++                      a0: Double, a1: Double, a2: Double): Biquad =
++  if (!a0.isFinite() || a0 <= 1e-12) Biquad()
++  else Biquad(b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0)
++
++private fun shelf(high: Boolean, frequency: Double, sampleRate: Double, gainDb: Double): Biquad {
++  if (abs(gainDb) < 0.0001) return Biquad()
++  val f = frequency.coerceIn(20.0, sampleRate * 0.45)
++  val a = 10.0.pow(gainDb / 40.0)
++  val omega = 2.0 * PI * f / sampleRate
++  val cosine = cos(omega)
++  val alpha = sin(omega) / sqrt(2.0)
++  val beta = 2.0 * sqrt(a) * alpha
++  return if (high) normalize(
++    a * ((a + 1) + (a - 1) * cosine + beta),
++    -2 * a * ((a - 1) + (a + 1) * cosine),
++    a * ((a + 1) + (a - 1) * cosine - beta),
++    (a + 1) - (a - 1) * cosine + beta,
++    2 * ((a - 1) - (a + 1) * cosine),
++    (a + 1) - (a - 1) * cosine - beta
++  ) else normalize(
++    a * ((a + 1) - (a - 1) * cosine + beta),
++    2 * a * ((a - 1) - (a + 1) * cosine),
++    a * ((a + 1) - (a - 1) * cosine - beta),
++    (a + 1) + (a - 1) * cosine + beta,
++    -2 * ((a - 1) + (a + 1) * cosine),
++    (a + 1) + (a - 1) * cosine - beta
++  )
++}
++
++private fun peaking(frequency: Double, sampleRate: Double, gainDb: Double): Biquad {
++  if (abs(gainDb) < 0.0001 || frequency >= sampleRate * 0.49) return Biquad()
++  val a = 10.0.pow(gainDb / 40.0)
++  val omega = 2.0 * PI * frequency / sampleRate
++  val alpha = sin(omega) / (2.0 * sqrt(2.0))
++  val cosine = cos(omega)
++  val a0 = 1.0 + alpha / a
++  return normalize(1.0 + alpha * a, -2.0 * cosine, 1.0 - alpha * a,
++    a0, -2.0 * cosine, 1.0 - alpha / a)
++}
++
++private fun filter(kind: CrossfadeTransitionFilterKind?, cutoff: Double, sampleRate: Double): Biquad {
++  if (kind == null) return Biquad()
++  val f = cutoff.coerceIn(20.0, sampleRate * 0.45)
++  val omega = 2.0 * PI * f / sampleRate
++  val cosine = cos(omega)
++  val alpha = sin(omega) / sqrt(2.0)
++  val low = kind == CrossfadeTransitionFilterKind.LOWPASS
++  val edge = if (low) 1.0 - cosine else 1.0 + cosine
++  return normalize(edge / 2.0, if (low) edge else -edge, edge / 2.0,
++    1.0 + alpha, -2.0 * cosine, 1.0 - alpha)
++}
++
++private fun curveValue(points: List<CrossfadeVolumePoint>, t: Double): Double {
++  if (t <= points.first().t) return points.first().value
++  for (index in 1 until points.size) {
++    val next = points[index]
++    if (t <= next.t) {
++      val previous = points[index - 1]
++      return previous.value + (next.value - previous.value) *
++        (t - previous.t) / (next.t - previous.t)
++    }
++  }
++  return points.last().value
++}
++
++/** Pure per-frame DSP, separate from Android buffers so coefficients and
++ * boundary behaviour can be tested with generated PCM. */
++internal class TransitionDsp(private val sampleRate: Int, channels: Int) {
++  private val state = Array(channels) { Array(4) { BiquadState() } }
++  private val coefficients = Array(4) { Biquad() }
++  private val probeCos = DoubleArray(32)
++  private val probeSin = DoubleArray(32)
++  private val probeCos2 = DoubleArray(32)
++  private val probeSin2 = DoubleArray(32)
++  private var config: TransitionDeckEffect? = null
++  private var step = 0L
++  private var preamp = 1.0
++  private var targetPreamp = 1.0
++  private var wet = 0.0
++
++  init {
++    for (probe in 0 until 32) {
++      val frequency = 20.0 * (sampleRate * 0.45 / 20.0).pow(probe / 31.0)
++      val omega = 2.0 * PI * frequency / sampleRate
++      probeCos[probe] = cos(omega); probeSin[probe] = sin(omega)
++      probeCos2[probe] = cos(2.0 * omega); probeSin2[probe] = sin(2.0 * omega)
++    }
++  }
++
++  fun setConfig(next: TransitionDeckEffect?) {
++    if (config === next) return
++    config = next
++    step = 0L
++    preamp = 1.0
++    targetPreamp = 1.0
++    for (channel in state) for (band in channel) band.reset()
++  }
++
++  fun beginFrame(mediaTimeSeconds: Double) {
++    val active = config ?: return
++    val elapsed = mediaTimeSeconds - active.startSeconds
++    wet = (min(elapsed, active.durationSeconds - elapsed) / 0.015).coerceIn(0.0, 1.0)
++    if (wet <= 0.0) return
++    val t = (elapsed / active.durationSeconds).coerceIn(0.0, 1.0)
++    if (step++ % 32L == 0L) {
++      coefficients[0] = shelf(false, 200.0, sampleRate.toDouble(), active.eq?.let { curveValue(it.low, t) } ?: 0.0)
++      coefficients[1] = peaking(1000.0, sampleRate.toDouble(), active.eq?.let { curveValue(it.mid, t) } ?: 0.0)
++      coefficients[2] = shelf(true, 5000.0, sampleRate.toDouble(), active.eq?.let { curveValue(it.high, t) } ?: 0.0)
++      coefficients[3] = filter(active.filter?.kind,
++        active.filter?.let { curveValue(it.cutoff, t) } ?: 20_000.0, sampleRate.toDouble())
++      var peakSquared = 1.0
++      for (probe in 0 until 32) {
++        var response = 1.0
++        for (c in coefficients) {
++          val nr = c.b0 + c.b1 * probeCos[probe] + c.b2 * probeCos2[probe]
++          val ni = c.b1 * probeSin[probe] + c.b2 * probeSin2[probe]
++          val dr = 1.0 + c.a1 * probeCos[probe] + c.a2 * probeCos2[probe]
++          val di = c.a1 * probeSin[probe] + c.a2 * probeSin2[probe]
++          response *= (nr * nr + ni * ni) / max(1e-24, dr * dr + di * di)
++        }
++        peakSquared = max(peakSquared, response)
++      }
++      targetPreamp = if (peakSquared > 1.0001) 10.0.pow(-0.5 / 20.0) / sqrt(peakSquared) else 1.0
++      if (step == 1L || targetPreamp < preamp) preamp = targetPreamp
++    }
++    if (preamp < targetPreamp) preamp += (targetPreamp - preamp) * 0.00025
++  }
++
++  fun processSample(channel: Int, input: Float): Float {
++    if (config == null || !input.isFinite()) return if (input.isFinite()) input else 0f
++    if (wet <= 0.0) return input
++    var value = input * preamp
++    for (band in 0..3) {
++      value = state[channel][band].process(value, coefficients[band])
++    }
++    if (!value.isFinite()) {
++      for (band in state[channel]) band.reset()
++      return 0f
++    }
++    return (input + (value - input) * wet).coerceIn(-1.0, 1.0).toFloat()
++  }
++}
++
++/** Media3 invokes this on the audio renderer thread before the AudioTrack.
++ * It deliberately rejects formats outside interleaved PCM16/float and never
++ * claims to have applied an effect to passthrough or offloaded audio. */
++@UnstableApi
++class TransitionPcmProcessor : BaseAudioProcessor() {
++  @Volatile internal var supportsEffects = false
++    private set
++  @Volatile private var requestedEffect: TransitionDeckEffect? = null
++  private var appliedEffect: TransitionDeckEffect? = null
++  private var dsp: TransitionDsp? = null
++  private var positionOffsetUs = 0L
++  private var frameIndex = 0L
++
++  internal fun arm(effect: TransitionDeckEffect?) { requestedEffect = effect }
++
++  override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
++    supportsEffects = inputAudioFormat.sampleRate > 0 && inputAudioFormat.channelCount in 1..8 &&
++      (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT || inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT)
++    return if (supportsEffects) inputAudioFormat else AudioProcessor.AudioFormat.NOT_SET
++  }
++
++  override fun onFlush(streamMetadata: AudioProcessor.StreamMetadata) {
++    positionOffsetUs = streamMetadata.positionOffsetUs
++    frameIndex = 0L
++    dsp = if (supportsEffects) TransitionDsp(inputAudioFormat.sampleRate, inputAudioFormat.channelCount) else null
++    appliedEffect = null
++  }
++
++  override fun onFlush() {
++    positionOffsetUs = 0L
++    frameIndex = 0L
++    dsp = if (supportsEffects) TransitionDsp(inputAudioFormat.sampleRate, inputAudioFormat.channelCount) else null
++    appliedEffect = null
++  }
++
++  override fun onReset() {
++    supportsEffects = false
++    requestedEffect = null
++    appliedEffect = null
++    dsp = null
++    frameIndex = 0L
++  }
++
++  override fun queueInput(inputBuffer: ByteBuffer) {
++    val processor = dsp ?: return
++    val next = requestedEffect
++    if (next !== appliedEffect) {
++      processor.setConfig(next)
++      appliedEffect = next
++    }
++    val frameBytes = inputAudioFormat.bytesPerFrame
++    val frames = inputBuffer.remaining() / frameBytes
++    val output = replaceOutputBuffer(frames * frameBytes)
++    inputBuffer.order(ByteOrder.LITTLE_ENDIAN)
++    output.order(ByteOrder.LITTLE_ENDIAN)
++    if (next == null) {
++      output.put(inputBuffer)
++    } else {
++      val channels = inputAudioFormat.channelCount
++      val floatPcm = inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT
++      for (frame in 0 until frames) {
++        processor.beginFrame((positionOffsetUs + (frameIndex + frame) * 1_000_000L /
++          inputAudioFormat.sampleRate) / 1_000_000.0)
++        for (channel in 0 until channels) {
++          if (floatPcm) {
++            output.putFloat(processor.processSample(channel, inputBuffer.float))
++          } else {
++            val value = processor.processSample(channel, inputBuffer.short / 32768f)
++            output.putShort((value * 32768f).toInt().coerceIn(-32768, 32767).toShort())
++          }
++        }
++      }
++    }
++    frameIndex += frames
++    output.flip()
++  }
++}
+diff --git a/node_modules/expo-audio/android/src/test/java/expo/modules/audio/AudioCrossfadeCurveTest.kt b/node_modules/expo-audio/android/src/test/java/expo/modules/audio/AudioCrossfadeCurveTest.kt
+new file mode 100644
+index 0000000..0102acf
+--- /dev/null
++++ b/node_modules/expo-audio/android/src/test/java/expo/modules/audio/AudioCrossfadeCurveTest.kt
+@@ -0,0 +1,36 @@
++package expo.modules.audio
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import kotlin.math.sqrt
++
++class AudioCrossfadeCurveTest {
++  @Test fun validatesEndpointsAndRejectsInvalidEnvelope() {
++    val outgoing = listOf(
++      CrossfadeVolumePoint(0.0, 1.0),
++      CrossfadeVolumePoint(0.5, 0.8),
++      CrossfadeVolumePoint(1.0, 0.0)
++    )
++    assertTrue(validCrossfadeCurve(outgoing, false))
++    assertFalse(validCrossfadeCurve(outgoing, true))
++    assertFalse(validCrossfadeCurve(outgoing + CrossfadeVolumePoint(1.0, 0.0), false))
++    assertFalse(validCrossfadeCurve(listOf(outgoing[0], CrossfadeVolumePoint(1.0, Double.NaN)), false))
++  }
++
++  @Test fun interpolatesCustomCurvesAndEqualPowerLaw() {
++    val incoming = listOf(
++      CrossfadeVolumePoint(0.0, 0.0),
++      CrossfadeVolumePoint(0.5, 0.2),
++      CrossfadeVolumePoint(1.0, 1.0)
++    )
++    assertEquals(0.1f, crossfadeValue(incoming, true, CrossfadeVolumeLaw.LINEAR, 0.25), 0.00001f)
++    assertEquals(1f, crossfadeValue(null, false, CrossfadeVolumeLaw.LINEAR, -1.0), 0.00001f)
++    assertEquals(0f, crossfadeValue(null, false, CrossfadeVolumeLaw.LINEAR, 2.0), 0.00001f)
++    assertEquals((sqrt(0.5)).toFloat(),
++      crossfadeValue(null, true, CrossfadeVolumeLaw.EQUAL_POWER, 0.5), 0.00001f)
++    assertEquals((sqrt(0.5)).toFloat(),
++      crossfadeValue(null, false, CrossfadeVolumeLaw.EQUAL_POWER, 0.5), 0.00001f)
++  }
++}
+diff --git a/node_modules/expo-audio/android/src/test/java/expo/modules/audio/TransitionDspTest.kt b/node_modules/expo-audio/android/src/test/java/expo/modules/audio/TransitionDspTest.kt
+new file mode 100644
+index 0000000..886e64e
+--- /dev/null
++++ b/node_modules/expo-audio/android/src/test/java/expo/modules/audio/TransitionDspTest.kt
+@@ -0,0 +1,124 @@
++package expo.modules.audio
++
++import androidx.media3.common.C
++import androidx.media3.common.audio.AudioProcessor
++import java.nio.ByteBuffer
++import java.nio.ByteOrder
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import kotlin.math.PI
++import kotlin.math.abs
++import kotlin.math.sin
++import kotlin.math.sqrt
++
++class TransitionDspTest {
++  private fun curve(first: Double, last: Double = first) = listOf(
++    CrossfadeVolumePoint(0.0, first), CrossfadeVolumePoint(1.0, last)
++  )
++
++  private fun rms(frequency: Double, effect: TransitionDeckEffect?): Double {
++    val sampleRate = 48_000
++    val dsp = TransitionDsp(sampleRate, 1)
++    dsp.setConfig(effect)
++    var sum = 0.0
++    var count = 0
++    for (index in 0 until sampleRate) {
++      val time = index.toDouble() / sampleRate
++      dsp.beginFrame(time)
++      val input = (0.1 * sin(2.0 * PI * frequency * time)).toFloat()
++      val output = dsp.processSample(0, input)
++      if (time in 0.2..0.8) {
++        sum += output * output
++        count++
++      }
++    }
++    return sqrt(sum / count)
++  }
++
++  @Test fun lowpassAttenuatesHighFrequencies() {
++    val effect = TransitionDeckEffect(null,
++      CrossfadeTransitionFilterDeck(CrossfadeTransitionFilterKind.LOWPASS, curve(500.0)), 0.0, 1.0)
++    assertTrue(rms(100.0, effect) > rms(5000.0, effect) * 10.0)
++  }
++
++  @Test fun highpassAttenuatesLowFrequencies() {
++    val effect = TransitionDeckEffect(null,
++      CrossfadeTransitionFilterDeck(CrossfadeTransitionFilterKind.HIGHPASS, curve(1000.0)), 0.0, 1.0)
++    assertTrue(rms(5000.0, effect) > rms(100.0, effect) * 10.0)
++  }
++
++  @Test fun shelvesChangeToneAndHeadroomPreventsClipping() {
++    val eq = CrossfadeThreeBand(curve(18.0), curve(0.0), curve(0.0))
++    val effect = TransitionDeckEffect(eq, null, 0.0, 1.0)
++    val boostedLow = rms(80.0, effect) / rms(80.0, null)
++    val high = rms(10_000.0, effect) / rms(10_000.0, null)
++    assertTrue(boostedLow > high * 3.0)
++    assertTrue(boostedLow < 1.1)
++  }
++
++  @Test fun effectHasDryBoundariesAndRejectsMalformedCurves() {
++    val dsp = TransitionDsp(48_000, 1)
++    dsp.setConfig(TransitionDeckEffect(null,
++      CrossfadeTransitionFilterDeck(CrossfadeTransitionFilterKind.LOWPASS, curve(100.0)), 1.0, 1.0))
++    dsp.beginFrame(1.0)
++    assertTrue(abs(dsp.processSample(0, 0.4f) - 0.4f) < 0.00001)
++    dsp.beginFrame(2.0)
++    assertTrue(abs(dsp.processSample(0, 0.4f) - 0.4f) < 0.00001)
++    assertFalse(validTransitionEffectCurve(listOf(
++      CrossfadeVolumePoint(0.0, 20.0), CrossfadeVolumePoint(1.0, 20_001.0)), 20.0, 20_000.0))
++  }
++
++  @Test fun pcmProcessorProcessesSupportedFormatAndRejectsUnsupportedEncoding() {
++    val processor = TransitionPcmProcessor()
++    val format = AudioProcessor.AudioFormat(48_000, 1, C.ENCODING_PCM_16BIT)
++    assertTrue(processor.configure(format) == format)
++    assertTrue(processor.supportsEffects)
++    processor.flush(AudioProcessor.StreamMetadata(5_000_000L))
++    processor.arm(TransitionDeckEffect(null,
++      CrossfadeTransitionFilterDeck(CrossfadeTransitionFilterKind.LOWPASS, curve(100.0)), 5.0, 1.0))
++    val input = ByteBuffer.allocateDirect(48_000 * 2).order(ByteOrder.LITTLE_ENDIAN)
++    for (index in 0 until 48_000) {
++      input.putShort((0.2 * 32767 * sin(2.0 * PI * 5000 * index / 48_000)).toInt().toShort())
++    }
++    input.flip()
++    processor.queueInput(input)
++    val output = processor.output.order(ByteOrder.LITTLE_ENDIAN)
++    var energy = 0.0
++    while (output.hasRemaining()) {
++      val value = output.short / 32768.0
++      energy += value * value
++    }
++    assertTrue(energy / 48_000 < 0.001)
++
++    processor.reset()
++    processor.configure(AudioProcessor.AudioFormat(48_000, 1, C.ENCODING_PCM_24BIT))
++    assertFalse(processor.supportsEffects)
++  }
++
++  @Test fun floatPcmProcessorPreservesDrySamplesAndProcessesWetSamples() {
++    val processor = TransitionPcmProcessor()
++    val format = AudioProcessor.AudioFormat(48_000, 1, C.ENCODING_PCM_FLOAT)
++    processor.configure(format)
++    assertTrue(processor.supportsEffects)
++    processor.flush(AudioProcessor.StreamMetadata(0L))
++    processor.arm(TransitionDeckEffect(null,
++      CrossfadeTransitionFilterDeck(CrossfadeTransitionFilterKind.LOWPASS, curve(100.0)), 0.25, 0.5))
++    val input = ByteBuffer.allocateDirect(48_000 * 4).order(ByteOrder.LITTLE_ENDIAN)
++    for (index in 0 until 48_000) {
++      input.putFloat((0.2 * sin(2.0 * PI * 1000 * index / 48_000)).toFloat())
++    }
++    input.flip()
++    processor.queueInput(input)
++    val output = processor.output.order(ByteOrder.LITTLE_ENDIAN)
++    output.position(1_000 * 4)
++    val before = output.float
++    val expectedBefore = (0.2 * sin(2.0 * PI * 1000 * 1_000 / 48_000)).toFloat()
++    assertTrue(abs(before - expectedBefore) < 0.00001f)
++    output.position(24_000 * 4)
++    val wet = output.float
++    val expectedWet = (0.2 * sin(2.0 * PI * 1000 * 24_000 / 48_000)).toFloat()
++    // At the exact zero crossing, a low-pass retains a phase-shifted tail.
++    assertTrue(abs(wet - expectedWet) > 0.0001f)
++  }
++}
+diff --git a/node_modules/expo-audio/build/Audio.types.d.ts b/node_modules/expo-audio/build/Audio.types.d.ts
+index 2560478..1001d81 100644
+--- a/node_modules/expo-audio/build/Audio.types.d.ts
++++ b/node_modules/expo-audio/build/Audio.types.d.ts
+@@ -207,6 +207,8 @@ export type AudioStatus = {
+     loop: boolean;
+     /** Whether the audio just finished playing. */
+     didJustFinish: boolean;
++    /** Transient two-deck handoff; distinct from natural item completion. */
++    didJustCrossfade?: boolean;
+     /** Whether the player is currently buffering data. */
+     isBuffering: boolean;
+     /** Whether the audio has finished loading and is ready to play. */
+diff --git a/node_modules/expo-audio/build/AudioModule.types.d.ts b/node_modules/expo-audio/build/AudioModule.types.d.ts
+index f3ae4ee..6deb412 100644
+--- a/node_modules/expo-audio/build/AudioModule.types.d.ts
++++ b/node_modules/expo-audio/build/AudioModule.types.d.ts
+@@ -160,6 +160,31 @@ export declare class AudioPlayer extends SharedObject<AudioEvents> {
+      * @hidden
+      */
+     setAudioSamplingEnabled(enabled: boolean): void;
++    /** Applies a ten-band graphic equalizer to this player. */
++    setEqualizer(enabled: boolean, gains: number[]): void;
++    /** Arms a two-deck crossfade; false means the source or audio graph is unavailable. */
++    scheduleCrossfade(toPlayer: AudioPlayer, options: {
++        durationSeconds: number;
++        fromStartSeconds?: number;
++        toStartSeconds?: number;
++        volumeLaw?: 'linear' | 'equal_power';
++        volumeOut?: { t: number; value: number }[];
++        volumeIn?: { t: number; value: number }[];
++        eqSettings?: {
++            version: 1;
++            enabled: boolean;
++            out: Record<'low' | 'mid' | 'high', { t: number; value: number }[]>;
++            in: Record<'low' | 'mid' | 'high', { t: number; value: number }[]>;
++        };
++        filterSettings?: {
++            version: 1;
++            enabled: boolean;
++            out: { kind: 'lowpass' | 'highpass'; cutoff: { t: number; value: number }[] } | null;
++            in: { kind: 'lowpass' | 'highpass'; cutoff: { t: number; value: number }[] } | null;
++        };
++    }): Promise<boolean>;
++    /** Cancels a pending or active crossfade. */
++    cancelCrossfade(): void;
+     /**
+      * Sets or removes this audio player as the active player for lock screen controls.
+      * Only one player can control the lock screen at a time.
+diff --git a/node_modules/expo-audio/build/AudioPlayer.web.d.ts b/node_modules/expo-audio/build/AudioPlayer.web.d.ts
+index 1a78841..4794915 100644
+--- a/node_modules/expo-audio/build/AudioPlayer.web.d.ts
++++ b/node_modules/expo-audio/build/AudioPlayer.web.d.ts
+@@ -16,6 +16,20 @@ export declare class AudioPlayerWeb extends globalThis.expo.SharedObject<AudioEv
+     private crossOrigin?;
+     private analyser;
+     private sourceNode;
++    private equalizerNodes;
++    private equalizerPreamp;
++    private equalizerEnabled;
++    private equalizerGains;
++    private crossfadeGain;
++    private transitionPreamp;
++    private transitionDry;
++    private transitionWet;
++    private transitionEqNodes;
++    private transitionFilterNode;
++    private transitionReleaseTimer;
++    private crossfade;
++    private crossfadeGeneration;
++    private crossfadedMedia;
+     private samplingFrameId;
+     private samplingEnabled;
+     private samplingBuffer;
+@@ -38,6 +52,9 @@ export declare class AudioPlayerWeb extends globalThis.expo.SharedObject<AudioEv
+     replace(source: AudioSource): void;
+     seekTo(seconds: number, toleranceMillisBefore?: number, toleranceMillisAfter?: number): Promise<void>;
+     setAudioSamplingEnabled(enabled: boolean): void;
++    setEqualizer(enabled: boolean, gains: number[]): void;
++    scheduleCrossfade(toPlayer: AudioPlayer, options: Parameters<AudioPlayer['scheduleCrossfade']>[1]): Promise<boolean>;
++    cancelCrossfade(): void;
+     private startSampling;
+     private stopSampling;
+     setPlaybackRate(second: number, pitchCorrectionQuality?: PitchCorrectionQuality): void;
+diff --git a/node_modules/expo-audio/build/AudioPlayer.web.js b/node_modules/expo-audio/build/AudioPlayer.web.js
+index 89bc872..9efb006 100644
+--- a/node_modules/expo-audio/build/AudioPlayer.web.js
++++ b/node_modules/expo-audio/build/AudioPlayer.web.js
+@@ -4,6 +4,204 @@ import { getAudioContext, getSourceUri, getStatusFromMedia, nextId, preloadCache
+ import { mediaSessionController } from './MediaSessionController.web';
+ export const activePlayers = new Set();
+ let hasWarnedIOSVolume = false;
++const EQUALIZER_FREQUENCIES = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
++const equalizerFrequency = (frequency, sampleRate) => Math.min(frequency, sampleRate * 0.49);
++function validCrossfadeCurve(points, incoming) {
++    if (!points)
++        return true;
++    if (points.length < 2 || points.length > 16)
++        return false;
++    const first = points[0], last = points[points.length - 1];
++    if (!first || !last)
++        return false;
++    if (Math.abs(first.t) > 1e-6 || Math.abs(last.t - 1) > 1e-6 ||
++        Math.abs(first.value - (incoming ? 0 : 1)) > 1e-6 ||
++        Math.abs(last.value - (incoming ? 1 : 0)) > 1e-6)
++        return false;
++    let previous = -1;
++    for (const point of points) {
++        if (!point || !Number.isFinite(point.t) || !Number.isFinite(point.value) ||
++            point.t <= previous || point.t < 0 || point.t > 1 ||
++            point.value < 0 || point.value > 1)
++            return false;
++        previous = point.t;
++    }
++    return true;
++}
++function canArmCrossfadeCue(currentTime, start) {
++    // An immediate cue may be scheduled from a play gesture, but must not
++    // restart a zero-cue transition after playback has already moved on.
++    return currentTime + 0.03 < start ||
++        (start <= 0.03 && currentTime >= 0 && currentTime <= 0.05);
++}
++function crossfadeValue(points, incoming, law, position) {
++    const t = Math.max(0, Math.min(1, position));
++    if (points) {
++        for (let index = 1; index < points.length; index++) {
++            if (t <= points[index].t) {
++                const previous = points[index - 1], next = points[index];
++                return previous.value + (next.value - previous.value) *
++                    (t - previous.t) / (next.t - previous.t);
++            }
++        }
++        return points[points.length - 1].value;
++    }
++    if (law === 'equal_power')
++        return incoming ? Math.sin(t * Math.PI / 2) : Math.cos(t * Math.PI / 2);
++    return incoming ? t : 1 - t;
++}
++function validEffectCurve(points, min, max) {
++    if (!Array.isArray(points) || points.length < 2 || points.length > 16 ||
++        Math.abs(points[0]?.t ?? Infinity) > 1e-6 ||
++        Math.abs((points[points.length - 1]?.t ?? -Infinity) - 1) > 1e-6)
++        return false;
++    let previous = -1;
++    for (const point of points) {
++        if (!point || !Number.isFinite(point.t) || !Number.isFinite(point.value) ||
++            point.t <= previous || point.t < 0 || point.t > 1 ||
++            point.value < min || point.value > max)
++            return false;
++        previous = point.t;
++    }
++    return true;
++}
++function validTransitionEq(eq) {
++    if (eq == null)
++        return true;
++    if (eq.version !== 1 || typeof eq.enabled !== 'boolean' || !eq.out || !eq.in)
++        return false;
++    return ['out', 'in'].every(deck => ['low', 'mid', 'high'].every(band => validEffectCurve(eq[deck][band], -24, 24)));
++}
++function validTransitionFilter(filter) {
++    if (filter == null)
++        return true;
++    if (filter.version !== 1 || typeof filter.enabled !== 'boolean')
++        return false;
++    return ['out', 'in'].every(deck => {
++        const setting = filter[deck];
++        return setting == null || ((setting.kind === 'lowpass' || setting.kind === 'highpass') &&
++            validEffectCurve(setting.cutoff, 20, 20000));
++    });
++}
++function curveValue(points, position) {
++    if (position <= points[0].t)
++        return points[0].value;
++    for (let index = 1; index < points.length; index++) {
++        if (position <= points[index].t) {
++            const previous = points[index - 1], next = points[index];
++            return previous.value + (next.value - previous.value) *
++                (position - previous.t) / (next.t - previous.t);
++        }
++    }
++    return points[points.length - 1].value;
++}
++function scheduleEffectParam(param, now, seconds, progress, points) {
++    const value = curveValue(points, progress);
++    holdGain(param, now, value);
++    param.setValueAtTime(value, now);
++    for (const point of points) {
++        if (point.t > progress)
++            param.linearRampToValueAtTime(point.value, now + seconds * (point.t - progress) / (1 - progress));
++    }
++}
++function cloneCurve(points) {
++    return points.map(point => ({ t: point.t, value: point.value }));
++}
++function transitionHeadroomCurve(eq, deck) {
++    if (!eq?.enabled)
++        return [{ t: 0, value: 1 }, { t: 1, value: 1 }];
++    const bands = eq[deck];
++    const times = new Set(Array.from({ length: 65 }, (_, index) => index / 64));
++    for (const band of ['low', 'mid', 'high']) {
++        for (const point of bands[band])
++            times.add(point.t);
++    }
++    return [...times].sort((a, b) => a - b).map(t => {
++        // Each shelf/bell has no larger positive response than its requested dB.
++        // Product with the independent global EQ headroom therefore stays bounded.
++        const positiveDb = ['low', 'mid', 'high'].reduce((sum, band) => sum + Math.max(0, curveValue(bands[band], t)), 0);
++        return { t, value: positiveDb > 0 ? 10 ** (-(positiveDb + 0.5) / 20) : 1 };
++    });
++}
++function effectWetCurves(duration) {
++    const edge = Math.min(0.2, 0.015 / duration);
++    return {
++        wet: [{ t: 0, value: 0 }, { t: edge, value: 1 },
++            { t: 1 - edge, value: 1 }, { t: 1, value: 0 }],
++        dry: [{ t: 0, value: 1 }, { t: edge, value: 0 },
++            { t: 1 - edge, value: 0 }, { t: 1, value: 1 }],
++    };
++}
++function holdGain(param, now, fallback) {
++    if (typeof param.cancelAndHoldAtTime === 'function')
++        param.cancelAndHoldAtTime(now);
++    else {
++        param.cancelScheduledValues(now);
++        param.setValueAtTime(fallback, now);
++    }
++}
++function scheduleCrossfadeGain(param, now, seconds, progress, points, incoming, law) {
++    const value = (t) => crossfadeValue(points, incoming, law, t);
++    holdGain(param, now, value(progress));
++    param.setValueAtTime(value(progress), now);
++    if (points) {
++        for (const point of points) {
++            if (point.t > progress)
++                param.linearRampToValueAtTime(point.value, now + seconds * (point.t - progress) / (1 - progress));
++        }
++    }
++    else if (law === 'equal_power') {
++        for (let step = 1; step <= 64; step++) {
++            const t = progress + (1 - progress) * step / 64;
++            param.linearRampToValueAtTime(value(t), now + seconds * step / 64);
++        }
++    }
++    else {
++        param.linearRampToValueAtTime(incoming ? 1 : 0, now + seconds);
++    }
++}
++/** Combined peaking response, not just the largest slider: adjacent boosts overlap.
++ * RBJ coefficients match Web Audio's peaking filter (Q = sqrt(2)). Sample the
++ * log spectrum plus every centre; keep 1 dB extra margin for inter-bin peaks.
++ * This is headroom, not a brick-wall limiter or a promise of no true-peak overs.
++ */
++function equalizerHeadroom(gains, sampleRate) {
++    if (!gains.some(gain => gain > 0))
++        return 1;
++    const centres = EQUALIZER_FREQUENCIES.map(frequency => equalizerFrequency(frequency, sampleRate));
++    const coefficients = gains.map((gain, index) => {
++        const angle = 2 * Math.PI * centres[index] / sampleRate;
++        const amplitude = 10 ** (gain / 40);
++        const alpha = Math.sin(angle) / (2 * Math.SQRT2);
++        return [1 + alpha * amplitude, -2 * Math.cos(angle), 1 - alpha * amplitude,
++            1 + alpha / amplitude, -2 * Math.cos(angle), 1 - alpha / amplitude];
++    });
++    const probes = [...centres, ...Array.from({ length: 256 }, (_, index) => 3 * (sampleRate * 0.499 / 3) ** (index / 255))];
++    let peakDb = 0;
++    for (const frequency of probes) {
++        const angle = 2 * Math.PI * frequency / sampleRate;
++        const cos = Math.cos(angle), sin = Math.sin(angle);
++        const cos2 = Math.cos(2 * angle), sin2 = Math.sin(2 * angle);
++        let db = 0;
++        for (const [b0, b1, b2, a0, a1, a2] of coefficients) {
++            const numerator = (b0 + b1 * cos + b2 * cos2) ** 2 + (b1 * sin + b2 * sin2) ** 2;
++            const denominator = (a0 + a1 * cos + a2 * cos2) ** 2 + (a1 * sin + a2 * sin2) ** 2;
++            db += 10 * Math.log10(Math.max(1e-24, numerator) / Math.max(1e-24, denominator));
++        }
++        peakDb = Math.max(peakDb, db);
++    }
++    return 10 ** (-(peakDb + 1) / 20);
++}
++function smoothEqualizerParam(param, target, now, timeConstant) {
++    if (typeof param.cancelAndHoldAtTime === 'function')
++        param.cancelAndHoldAtTime(now);
++    else {
++        const current = param.value;
++        param.cancelScheduledValues(now);
++        param.setValueAtTime(current, now);
++    }
++    param.setTargetAtTime(target, now, timeConstant);
++}
+ function isIOSSafari() {
+     return /iPad|iPhone|iPod/.test(navigator.userAgent);
+ }
+@@ -29,6 +227,20 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+     crossOrigin;
+     analyser = null;
+     sourceNode = null;
++    equalizerNodes = [];
++    equalizerPreamp = null;
++    equalizerEnabled = false;
++    equalizerGains = Array(10).fill(0);
++    crossfadeGain = null;
++    transitionPreamp = null;
++    transitionDry = null;
++    transitionWet = null;
++    transitionEqNodes = [];
++    transitionFilterNode = null;
++    transitionReleaseTimer = null;
++    crossfade = null;
++    crossfadeGeneration = 0;
++    crossfadedMedia = null;
+     samplingFrameId = null;
+     samplingEnabled = false;
+     samplingBuffer = null;
+@@ -64,6 +276,8 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+     }
+     set playbackRate(value) {
+         this.media.playbackRate = value;
++        if (this.crossfade?.from === this && this.crossfade.fading)
++            this.rescheduleCrossfade(this.crossfade);
+     }
+     get volume() {
+         return this.media.volume;
+@@ -83,16 +297,31 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+         if (!isAudioActive) {
+             return;
+         }
+-        this.media.play();
++        if (this.crossfadedMedia === this.media)
++            this.crossfadedMedia = null;
++        const crossfade = this.crossfade;
++        if (crossfade?.to === this && !crossfade.started)
++            this.cancelCrossfade();
++        const playResult = this.media.play();
+         this.isPlaying = true;
+         this.startSampling();
++        if (crossfade?.from === this && crossfade.paused) {
++            void playResult.then(() => this.resumeCrossfade(crossfade))
++                .catch(() => this.cancelCrossfade());
++        }
+     }
+     pause() {
++        if (this.crossfade) {
++            this.pauseCrossfade(this.crossfade);
++            return;
++        }
+         this.media.pause();
+         this.isPlaying = false;
+         this.stopSampling();
+     }
+     replace(source) {
++        this.cancelCrossfade();
++        this.crossfadedMedia = null;
+         const wasPlaying = this.isPlaying;
+         const wasSampling = this.samplingEnabled;
+         const mediaSessionState = mediaSessionController.getActiveState(this);
+@@ -102,6 +331,11 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+         this.isPlaying = false;
+         this.loaded = false;
+         this.media = this._createMediaElement();
++        // createMediaElementSource belongs to the element it was created for.
++        // Reconnect the persisted EQ curve to the replacement element as well.
++        if (this.equalizerEnabled) {
++            this.setEqualizer(true, this.equalizerGains);
++        }
+         if (wasSampling) {
+             this.setAudioSamplingEnabled(true);
+         }
+@@ -114,6 +348,8 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+         }
+     }
+     async seekTo(seconds, toleranceMillisBefore, toleranceMillisAfter) {
++        this.cancelCrossfade();
++        this.crossfadedMedia = null;
+         this.media.currentTime = seconds;
+     }
+     setAudioSamplingEnabled(enabled) {
+@@ -134,9 +370,7 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+             }
+             this.analyser = ctx.createAnalyser();
+             this.analyser.fftSize = 2048;
+-            this.sourceNode.disconnect();
+-            this.sourceNode.connect(this.analyser);
+-            this.analyser.connect(ctx.destination);
++            this.reconnectAudioGraph();
+             this.samplingBuffer = new Float32Array(this.analyser.frequencyBinCount);
+             this.samplingEnabled = true;
+             if (this.isPlaying) {
+@@ -150,15 +384,581 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+                 this.analyser.disconnect();
+                 this.analyser = null;
+             }
+-            if (this.sourceNode) {
+-                const ctx = getAudioContext();
+-                this.sourceNode.disconnect();
+-                this.sourceNode.connect(ctx.destination);
+-            }
++            if (this.sourceNode)
++                this.reconnectAudioGraph();
+             this.samplingBuffer = null;
+             this.samplingEnabled = false;
+         }
+     }
++    setEqualizer(enabled, gains) {
++        this.equalizerEnabled = enabled;
++        this.equalizerGains = Array.from({ length: 10 }, (_, index) => Math.max(-12, Math.min(12, Number.isFinite(gains[index]) ? gains[index] : 0)));
++        if (!enabled && !this.sourceNode)
++            return;
++        if (!this.media.crossOrigin && this._isCrossOrigin())
++            return;
++        const ctx = getAudioContext();
++        if (ctx.state === 'suspended')
++            void ctx.resume();
++        if (!this.sourceNode)
++            this.sourceNode = ctx.createMediaElementSource(this.media);
++        let graphChanged = false;
++        if (!this.equalizerNodes.length) {
++            this.equalizerPreamp = ctx.createGain();
++            this.equalizerNodes = EQUALIZER_FREQUENCIES.map((frequency) => {
++                const node = ctx.createBiquadFilter();
++                node.type = 'peaking';
++                node.frequency.value = equalizerFrequency(frequency, ctx.sampleRate);
++                node.Q.value = Math.SQRT2;
++                return node;
++            });
++            graphChanged = true;
++        }
++        const headroom = enabled ? equalizerHeadroom(this.equalizerGains, ctx.sampleRate) : 1;
++        if (this.equalizerPreamp) {
++            // Attenuate before the boosted filters settle; recover more slowly when
++            // disabling/cutting. All updates start from the current rendered value.
++            const gain = this.equalizerPreamp.gain;
++            smoothEqualizerParam(gain, headroom, ctx.currentTime, headroom < gain.value ? 0.008 : 0.12);
++        }
++        this.equalizerNodes.forEach((node, index) => {
++            smoothEqualizerParam(node.gain, enabled ? this.equalizerGains[index] : 0, ctx.currentTime, 0.03);
++        });
++        if (graphChanged)
++            this.reconnectAudioGraph();
++    }
++    async scheduleCrossfade(toPlayer, options) {
++        this.cancelCrossfade();
++        const generation = this.crossfadeGeneration;
++        if (!(toPlayer instanceof AudioPlayerWeb))
++            return false;
++        const incoming = toPlayer;
++        const duration = options.durationSeconds;
++        const fromStart = options.fromStartSeconds ?? this.duration - duration;
++        const toStart = options.toStartSeconds ?? 0;
++        if (incoming === this || !this.loaded || !incoming.loaded || incoming.playing ||
++            this.loop || incoming.loop || incoming.crossfade ||
++            !Number.isFinite(duration) || duration < 0.25 || duration > 30 ||
++            !Number.isFinite(fromStart) || !Number.isFinite(toStart) ||
++            !Number.isFinite(this.duration) || !Number.isFinite(incoming.duration) ||
++            fromStart < 0 || toStart < 0 ||
++            fromStart + duration > this.duration + 0.02 ||
++            toStart + duration > incoming.duration + 0.02 ||
++            !canArmCrossfadeCue(this.currentTime, fromStart) ||
++            (options.volumeLaw != null && options.volumeLaw !== 'linear' && options.volumeLaw !== 'equal_power') ||
++            !validCrossfadeCurve(options.volumeOut, false) || !validCrossfadeCurve(options.volumeIn, true) ||
++            !validTransitionEq(options.eqSettings) || !validTransitionFilter(options.filterSettings) ||
++            !this.canUseCrossfadeGraph() || !incoming.canUseCrossfadeGraph())
++            return false;
++        let context;
++        try {
++            context = getAudioContext();
++            if (context.state === 'suspended') {
++                let timeout;
++                await Promise.race([
++                    context.resume(),
++                    new Promise((_, reject) => {
++                        timeout = setTimeout(() => reject(new Error('AudioContext did not resume')), 1500);
++                    }),
++                ]).finally(() => { if (timeout)
++                    clearTimeout(timeout); });
++            }
++            if (context.state !== 'running')
++                return false;
++            if (Math.abs(incoming.currentTime - toStart) > 0.02) {
++                const sought = await incoming.seekForCrossfade(toStart);
++                if (!sought)
++                    return false;
++            }
++            if (generation !== this.crossfadeGeneration || incoming.crossfade ||
++                !this.loaded || !incoming.loaded || !canArmCrossfadeCue(this.currentTime, fromStart))
++                return false;
++            if (!this.ensureCrossfadeGraph(context) || !incoming.ensureCrossfadeGraph(context))
++                return false;
++        }
++        catch {
++            return false;
++        }
++        const state = {
++            from: this, to: incoming, context,
++            options: {
++                ...options,
++                volumeOut: options.volumeOut?.map(point => ({ t: point.t, value: point.value })),
++                volumeIn: options.volumeIn?.map(point => ({ t: point.t, value: point.value })),
++                eqSettings: options.eqSettings && {
++                    ...options.eqSettings,
++                    out: Object.fromEntries(['low', 'mid', 'high'].map(band => [band, cloneCurve(options.eqSettings.out[band])])),
++                    in: Object.fromEntries(['low', 'mid', 'high'].map(band => [band, cloneCurve(options.eqSettings.in[band])])),
++                },
++                filterSettings: options.filterSettings && {
++                    ...options.filterSettings,
++                    out: options.filterSettings.out && { ...options.filterSettings.out,
++                        cutoff: cloneCurve(options.filterSettings.out.cutoff) },
++                    in: options.filterSettings.in && { ...options.filterSettings.in,
++                        cutoff: cloneCurve(options.filterSettings.in.cutoff) },
++                },
++            },
++            fromStart, toStart,
++            started: false, startGeneration: 0, fading: false, paused: this.media.paused, done: false,
++            fadeStart: 0, fadeDuration: 0, fadeEnd: 0,
++            cueTimer: null, startTimer: null, endTimer: null,
++        };
++        this.crossfade = state;
++        incoming.crossfade = state;
++        this.setCrossfadeGain(1);
++        incoming.setCrossfadeGain(0);
++        this.armCrossfadeCue(state);
++        this.checkCrossfade(state);
++        return true;
++    }
++    cancelCrossfade() {
++        this.crossfadeGeneration++;
++        const state = this.crossfade;
++        if (!state || state.done)
++            return;
++        state.done = true;
++        state.startGeneration++;
++        this.clearCrossfadeTimers(state);
++        state.from.crossfade = null;
++        state.to.crossfade = null;
++        // A cancellation must not pause the outgoing song or emit didJustPause.
++        if (state.started) {
++            state.to.media.pause();
++            state.to.isPlaying = false;
++            state.to.stopSampling();
++        }
++        state.to.setCrossfadeGain(1);
++        const progress = state.fading ? Math.max(0, Math.min(1, (state.from.currentTime - state.fadeStart) / state.fadeDuration)) : 0;
++        state.from.restoreCrossfadeGain(crossfadeValue(state.options.volumeOut, false, state.options.volumeLaw, progress));
++        state.from.releaseTransitionGraph(progress, state.fadeDuration);
++        state.to.clearTransitionGraph();
++    }
++    canUseCrossfadeGraph() {
++        // A MediaElementAudioSourceNode is silent for a CORS-cross-origin source.
++        return !this._isCrossOrigin() || this.media.crossOrigin === 'anonymous' ||
++            this.media.crossOrigin === 'use-credentials';
++    }
++    async seekForCrossfade(seconds) {
++        return new Promise(resolve => {
++            let settled = false;
++            const finish = (ok) => {
++                if (settled)
++                    return;
++                settled = true;
++                clearTimeout(timeout);
++                this.media.removeEventListener('seeked', onSeeked);
++                this.media.removeEventListener('error', onError);
++                resolve(ok);
++            };
++            const onSeeked = () => finish(Math.abs(this.currentTime - seconds) <= 0.25);
++            const onError = () => finish(false);
++            const timeout = setTimeout(() => finish(false), 3000);
++            this.media.addEventListener('seeked', onSeeked);
++            this.media.addEventListener('error', onError);
++            try {
++                this.media.currentTime = seconds;
++            }
++            catch {
++                finish(false);
++            }
++        });
++    }
++    ensureCrossfadeGraph(context) {
++        try {
++            if (!this.sourceNode)
++                this.sourceNode = context.createMediaElementSource(this.media);
++            if (!this.crossfadeGain)
++                this.crossfadeGain = context.createGain();
++            this.reconnectAudioGraph();
++            return true;
++        }
++        catch {
++            // Once created, a MediaElementAudioSourceNode owns this media element.
++            // Reconnect any partial graph so an unsupported fade cannot mute it.
++            try {
++                if (this.sourceNode)
++                    this.reconnectAudioGraph();
++            }
++            catch { /* unsupported graph */ }
++            return false;
++        }
++    }
++    installTransitionGraph(context, options, deck) {
++        this.clearTransitionGraph();
++        const eq = options.eqSettings?.enabled ? options.eqSettings[deck] : null;
++        const filter = options.filterSettings?.enabled ? options.filterSettings[deck] : null;
++        if (!eq && !filter)
++            return true;
++        try {
++            this.transitionPreamp = context.createGain();
++            this.transitionDry = context.createGain();
++            this.transitionWet = context.createGain();
++            this.transitionDry.gain.value = 1;
++            this.transitionWet.gain.value = 0;
++            this.transitionPreamp.gain.value = transitionHeadroomCurve(options.eqSettings, deck)[0].value;
++            if (eq) {
++                this.transitionEqNodes = ['low', 'mid', 'high'].map((band, index) => {
++                    const node = context.createBiquadFilter();
++                    node.type = index === 0 ? 'lowshelf' : index === 1 ? 'peaking' : 'highshelf';
++                    node.frequency.value = [200, 1000, 5000][index];
++                    if (index === 1)
++                        node.Q.value = Math.SQRT2;
++                    node.gain.value = eq[band][0].value;
++                    return node;
++                });
++            }
++            if (filter) {
++                this.transitionFilterNode = context.createBiquadFilter();
++                this.transitionFilterNode.type = filter.kind;
++                this.transitionFilterNode.Q.value = Math.SQRT1_2;
++                this.transitionFilterNode.frequency.value = filter.cutoff[0].value;
++            }
++            this.reconnectAudioGraph();
++            return true;
++        }
++        catch {
++            this.clearTransitionGraph();
++            return false;
++        }
++    }
++    clearTransitionGraph() {
++        if (this.transitionReleaseTimer)
++            clearTimeout(this.transitionReleaseTimer);
++        this.transitionReleaseTimer = null;
++        if (!this.transitionPreamp && !this.transitionDry && !this.transitionWet &&
++            !this.transitionEqNodes.length && !this.transitionFilterNode)
++            return;
++        this.transitionPreamp?.disconnect();
++        this.transitionDry?.disconnect();
++        this.transitionWet?.disconnect();
++        this.transitionEqNodes.forEach(node => node.disconnect());
++        this.transitionFilterNode?.disconnect();
++        this.transitionPreamp = null;
++        this.transitionDry = null;
++        this.transitionWet = null;
++        this.transitionEqNodes = [];
++        this.transitionFilterNode = null;
++        if (this.sourceNode)
++            this.reconnectAudioGraph();
++    }
++    releaseTransitionGraph(progress, duration) {
++        if (!this.transitionDry || !this.transitionWet)
++            return;
++        try {
++            const now = getAudioContext().currentTime;
++            const mix = effectWetCurves(duration);
++            holdGain(this.transitionDry.gain, now, curveValue(mix.dry, progress));
++            holdGain(this.transitionWet.gain, now, curveValue(mix.wet, progress));
++            this.transitionDry.gain.linearRampToValueAtTime(1, now + 0.015);
++            this.transitionWet.gain.linearRampToValueAtTime(0, now + 0.015);
++            this.transitionReleaseTimer = setTimeout(() => this.clearTransitionGraph(), 20);
++        }
++        catch {
++            this.clearTransitionGraph();
++        }
++    }
++    scheduleTransitionEffects(state, deck, progress, seconds, now) {
++        const options = state.options;
++        const eq = options.eqSettings?.enabled ? options.eqSettings[deck] : null;
++        const filter = options.filterSettings?.enabled ? options.filterSettings[deck] : null;
++        if (!this.transitionDry || !this.transitionWet || !this.transitionPreamp)
++            return;
++        const mix = effectWetCurves(state.fadeDuration);
++        scheduleEffectParam(this.transitionDry.gain, now, seconds, progress, mix.dry);
++        scheduleEffectParam(this.transitionWet.gain, now, seconds, progress, mix.wet);
++        scheduleEffectParam(this.transitionPreamp.gain, now, seconds, progress, transitionHeadroomCurve(options.eqSettings, deck));
++        if (eq)
++            this.transitionEqNodes.forEach((node, index) => {
++                const band = ['low', 'mid', 'high'][index];
++                scheduleEffectParam(node.gain, now, seconds, progress, eq[band]);
++            });
++        if (filter && this.transitionFilterNode)
++            scheduleEffectParam(this.transitionFilterNode.frequency, now, seconds, progress, filter.cutoff);
++    }
++    holdTransitionEffects(state, deck, progress, now) {
++        const options = state.options;
++        const eq = options.eqSettings?.enabled ? options.eqSettings[deck] : null;
++        const filter = options.filterSettings?.enabled ? options.filterSettings[deck] : null;
++        if (!this.transitionDry || !this.transitionWet || !this.transitionPreamp)
++            return;
++        const mix = effectWetCurves(state.fadeDuration);
++        holdGain(this.transitionDry.gain, now, curveValue(mix.dry, progress));
++        holdGain(this.transitionWet.gain, now, curveValue(mix.wet, progress));
++        holdGain(this.transitionPreamp.gain, now, curveValue(transitionHeadroomCurve(options.eqSettings, deck), progress));
++        if (eq)
++            this.transitionEqNodes.forEach((node, index) => {
++                const band = ['low', 'mid', 'high'][index];
++                holdGain(node.gain, now, curveValue(eq[band], progress));
++            });
++        if (filter && this.transitionFilterNode)
++            holdGain(this.transitionFilterNode.frequency, now, curveValue(filter.cutoff, progress));
++    }
++    setCrossfadeGain(value) {
++        if (!this.crossfadeGain)
++            return;
++        const param = this.crossfadeGain.gain;
++        const now = getAudioContext().currentTime;
++        holdGain(param, now, value);
++        param.setValueAtTime(value, now);
++    }
++    restoreCrossfadeGain(fallback) {
++        if (!this.crossfadeGain)
++            return;
++        const param = this.crossfadeGain.gain;
++        const now = getAudioContext().currentTime;
++        holdGain(param, now, fallback);
++        param.linearRampToValueAtTime(1, now + 0.015);
++    }
++    clearCrossfadeTimers(state) {
++        if (state.cueTimer)
++            clearTimeout(state.cueTimer);
++        if (state.startTimer)
++            clearTimeout(state.startTimer);
++        if (state.endTimer)
++            clearTimeout(state.endTimer);
++        state.cueTimer = null;
++        state.startTimer = null;
++        state.endTimer = null;
++    }
++    armCrossfadeCue(state) {
++        if (state.done || state.paused || state.started)
++            return;
++        if (state.cueTimer)
++            clearTimeout(state.cueTimer);
++        const rate = Math.max(0.1, state.from.media.playbackRate);
++        const delay = Math.max(0, (state.fromStart - state.from.currentTime) / rate * 1000);
++        state.cueTimer = setTimeout(() => {
++            state.cueTimer = null;
++            state.from.checkCrossfade(state);
++        }, Math.max(10, delay));
++    }
++    checkCrossfade(state) {
++        if (state.done || state.paused || state.from.media.paused)
++            return;
++        if (!state.started && state.from.currentTime + 0.015 >= state.fromStart) {
++            void state.from.startCrossfadeIncoming(state);
++        }
++        else if (!state.started && !state.cueTimer) {
++            state.from.armCrossfadeCue(state);
++        }
++        if (state.fading && state.from.currentTime + 0.002 >= state.fadeEnd) {
++            state.from.completeCrossfade(state);
++        }
++    }
++    async startCrossfadeIncoming(state) {
++        if (state.done || state.started || state.paused)
++            return;
++        if (state.from.duration - state.from.currentTime < 0.14) {
++            this.cancelCrossfade();
++            return;
++        }
++        state.started = true;
++        const attempt = ++state.startGeneration;
++        if (state.cueTimer)
++            clearTimeout(state.cueTimer);
++        state.cueTimer = null;
++        state.startTimer = setTimeout(() => {
++            state.startTimer = null;
++            if (!state.fading && !state.done && attempt === state.startGeneration)
++                this.cancelCrossfade();
++        }, 1500);
++        try {
++            // The incoming deck may be the same element that faded out one song
++            // earlier. This direct media.play() bypasses AudioPlayerWeb.play().
++            state.to.crossfadedMedia = null;
++            await state.to.media.play();
++            if (state.done || attempt !== state.startGeneration) {
++                // play() may resolve after an external pause/cancel. A stale start must
++                // never leave the next deck audible while the outgoing deck is paused.
++                if (state.paused)
++                    state.to.media.pause();
++                return;
++            }
++            if (state.startTimer)
++                clearTimeout(state.startTimer);
++            state.startTimer = null;
++            if (state.paused) {
++                state.to.media.pause();
++                return;
++            }
++            state.to.isPlaying = true;
++            state.to.startSampling();
++            const remaining = state.from.duration - state.from.currentTime;
++            const fadeDuration = Math.min(state.options.durationSeconds, remaining - 0.04);
++            if (fadeDuration < 0.10 || state.to.media.paused) {
++                this.cancelCrossfade();
++                return;
++            }
++            state.fading = true;
++            state.fadeStart = state.from.currentTime;
++            state.fadeDuration = fadeDuration;
++            state.fadeEnd = state.fadeStart + fadeDuration;
++            if (!state.from.installTransitionGraph(state.context, state.options, 'out') ||
++                !state.to.installTransitionGraph(state.context, state.options, 'in')) {
++                this.cancelCrossfade();
++                return;
++            }
++            this.rescheduleCrossfade(state);
++        }
++        catch {
++            if (state.startTimer)
++                clearTimeout(state.startTimer);
++            state.startTimer = null;
++            if (!state.done && attempt === state.startGeneration)
++                this.cancelCrossfade();
++        }
++    }
++    rescheduleCrossfade(state) {
++        if (state.done || !state.fading || state.paused ||
++            !state.from.crossfadeGain || !state.to.crossfadeGain)
++            return;
++        const progress = Math.max(0, Math.min(1, (state.from.currentTime - state.fadeStart) / state.fadeDuration));
++        if (progress >= 1) {
++            this.completeCrossfade(state);
++            return;
++        }
++        const seconds = state.fadeDuration * (1 - progress) /
++            Math.max(0.1, state.from.media.playbackRate);
++        const now = state.context.currentTime;
++        try {
++            scheduleCrossfadeGain(state.from.crossfadeGain.gain, now, seconds, progress, state.options.volumeOut, false, state.options.volumeLaw);
++            scheduleCrossfadeGain(state.to.crossfadeGain.gain, now, seconds, progress, state.options.volumeIn, true, state.options.volumeLaw);
++            state.from.scheduleTransitionEffects(state, 'out', progress, seconds, now);
++            state.to.scheduleTransitionEffects(state, 'in', progress, seconds, now);
++        }
++        catch {
++            this.cancelCrossfade();
++            return;
++        }
++        if (state.endTimer)
++            clearTimeout(state.endTimer);
++        state.endTimer = setTimeout(() => {
++            state.endTimer = null;
++            this.checkCrossfade(state);
++        }, seconds * 1000 + 20);
++    }
++    pauseCrossfade(state) {
++        if (state.done || state.paused)
++            return;
++        state.paused = true;
++        const incomingStartPending = state.started;
++        if (state.started && !state.fading) {
++            state.started = false;
++            state.startGeneration++;
++        }
++        this.clearCrossfadeTimers(state);
++        if (state.fading) {
++            const progress = Math.max(0, Math.min(1, (state.from.currentTime - state.fadeStart) / state.fadeDuration));
++            const now = state.context.currentTime;
++            if (state.from.crossfadeGain)
++                holdGain(state.from.crossfadeGain.gain, now, crossfadeValue(state.options.volumeOut, false, state.options.volumeLaw, progress));
++            if (state.to.crossfadeGain)
++                holdGain(state.to.crossfadeGain.gain, now, crossfadeValue(state.options.volumeIn, true, state.options.volumeLaw, progress));
++            state.from.holdTransitionEffects(state, 'out', progress, now);
++            state.to.holdTransitionEffects(state, 'in', progress, now);
++        }
++        state.from.media.pause();
++        if (incomingStartPending)
++            state.to.media.pause();
++        state.from.isPlaying = false;
++        state.to.isPlaying = false;
++        state.from.stopSampling();
++        state.to.stopSampling();
++    }
++    resumeCrossfade(state) {
++        if (state.done || !state.paused)
++            return;
++        state.paused = false;
++        if (!state.started) {
++            this.armCrossfadeCue(state);
++            return;
++        }
++        void state.to.media.play().then(() => {
++            if (!state.done && !state.paused) {
++                state.to.isPlaying = true;
++                state.to.startSampling();
++                this.rescheduleCrossfade(state);
++            }
++        }).catch(() => this.cancelCrossfade());
++    }
++    completeCrossfade(state) {
++        if (state.done || !state.fading || state.to.media.paused) {
++            this.cancelCrossfade();
++            return;
++        }
++        state.done = true;
++        this.clearCrossfadeTimers(state);
++        state.from.crossfade = null;
++        state.to.crossfade = null;
++        state.from.crossfadedMedia = state.from.media;
++        state.from.media.pause();
++        state.from.isPlaying = false;
++        state.from.stopSampling();
++        state.from.setCrossfadeGain(1);
++        state.to.setCrossfadeGain(1);
++        state.from.clearTransitionGraph();
++        state.to.clearTransitionGraph();
++        state.from.emit(PLAYBACK_STATUS_UPDATE, {
++            ...getStatusFromMedia(state.from.media, state.from.id),
++            playing: false,
++            didJustFinish: false,
++            didJustCrossfade: true,
++        });
++    }
++    reconnectAudioGraph() {
++        if (!this.sourceNode)
++            return;
++        const ctx = getAudioContext();
++        this.sourceNode.disconnect();
++        this.equalizerPreamp?.disconnect();
++        this.equalizerNodes.forEach((node) => node.disconnect());
++        this.transitionPreamp?.disconnect();
++        this.transitionDry?.disconnect();
++        this.transitionWet?.disconnect();
++        this.transitionEqNodes.forEach((node) => node.disconnect());
++        this.transitionFilterNode?.disconnect();
++        this.crossfadeGain?.disconnect();
++        this.analyser?.disconnect();
++        let tail = this.sourceNode;
++        // Once installed, bypass by smoothly returning to flat/unity. Disconnecting
++        // filters while their parameters are settling causes clicks and gain jumps.
++        if (this.equalizerPreamp && this.equalizerNodes.length) {
++            tail.connect(this.equalizerPreamp);
++            tail = this.equalizerPreamp;
++            for (const node of this.equalizerNodes) {
++                tail.connect(node);
++                tail = node;
++            }
++        }
++        if (this.transitionPreamp && this.transitionDry && this.transitionWet && this.crossfadeGain) {
++            tail.connect(this.transitionDry);
++            this.transitionDry.connect(this.crossfadeGain);
++            tail.connect(this.transitionPreamp);
++            let effectTail = this.transitionPreamp;
++            for (const node of this.transitionEqNodes) {
++                effectTail.connect(node);
++                effectTail = node;
++            }
++            if (this.transitionFilterNode) {
++                effectTail.connect(this.transitionFilterNode);
++                effectTail = this.transitionFilterNode;
++            }
++            effectTail.connect(this.transitionWet);
++            this.transitionWet.connect(this.crossfadeGain);
++            tail = this.crossfadeGain;
++        }
++        else if (this.crossfadeGain) {
++            tail.connect(this.crossfadeGain);
++            tail = this.crossfadeGain;
++        }
++        if (this.analyser) {
++            tail.connect(this.analyser);
++            this.analyser.connect(ctx.destination);
++        }
++        else {
++            tail.connect(ctx.destination);
++        }
++    }
+     startSampling() {
+         if (!this.samplingEnabled || !this.analyser || !this.samplingBuffer) {
+             return;
+@@ -184,11 +984,16 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+     }
+     setPlaybackRate(second, pitchCorrectionQuality) {
+         this.media.playbackRate = second;
++        if (this.crossfade?.from === this && this.crossfade.fading)
++            this.rescheduleCrossfade(this.crossfade);
+         this.shouldCorrectPitch = pitchCorrectionQuality === 'high';
+         this.media.preservesPitch = this.shouldCorrectPitch;
+         mediaSessionController.updatePositionState(this);
+     }
+     remove() {
++        this.cancelCrossfade();
++        this.clearTransitionGraph();
++        this.crossfadedMedia = null;
+         mediaSessionController.clear(this);
+         this.stopSampling();
+         if (this.analyser) {
+@@ -199,6 +1004,12 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+             this.sourceNode.disconnect();
+             this.sourceNode = null;
+         }
++        this.equalizerNodes.forEach(node => node.disconnect());
++        this.equalizerNodes = [];
++        this.equalizerPreamp?.disconnect();
++        this.equalizerPreamp = null;
++        this.crossfadeGain?.disconnect();
++        this.crossfadeGain = null;
+         this.samplingEnabled = false;
+         this.media.pause();
+         // Clear event handlers to prevent memory leaks
+@@ -209,6 +1020,8 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+         this.media.onended = null;
+         this.media.onloadeddata = null;
+         this.media.onerror = null;
++        this.media.onwaiting = null;
++        this.media.onstalled = null;
+         this.media.removeAttribute('src');
+         this.media.load();
+         activePlayers.delete(this);
+@@ -250,6 +1063,8 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+         // Throttled status updates based on interval
+         media.ontimeupdate = () => {
+             const now = media.currentTime;
++            if (this.crossfade?.from === this)
++                this.checkCrossfade(this.crossfade);
+             // Handle backwards time (loop/seek)
+             if (now < lastEmitTime) {
+                 lastEmitTime = now;
+@@ -279,14 +1094,31 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+             });
+             mediaSessionController.updatePlaybackState(this);
+             mediaSessionController.updatePositionState(this);
++            if (this.crossfade && !this.crossfade.paused && !this.crossfade.done) {
++                this.pauseCrossfade(this.crossfade);
++            }
+         };
+         media.onseeked = () => {
++            if (this.crossfade)
++                this.cancelCrossfade();
+             lastEmitTime = media.currentTime;
+             this.emit(PLAYBACK_STATUS_UPDATE, getStatusFromMedia(media, this.id));
+             mediaSessionController.updatePositionState(this);
+         };
+         media.onended = () => {
++            if (this.crossfadedMedia === media)
++                return;
++            if (this.crossfade)
++                this.cancelCrossfade();
++            this.isPlaying = false;
+             lastEmitTime = 0;
++            // Deliver completion even when the final timeupdate was throttled or JS
++            // animation frames are suspended in a hidden browser tab.
++            this.emit(PLAYBACK_STATUS_UPDATE, {
++                ...getStatusFromMedia(media, this.id),
++                playing: false,
++                didJustFinish: true,
++            });
+             mediaSessionController.updatePlaybackState(this);
+         };
+         media.onloadeddata = () => {
+@@ -299,6 +1131,8 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+             mediaSessionController.updatePositionState(this);
+         };
+         media.onerror = () => {
++            if (this.crossfade)
++                this.cancelCrossfade();
+             this.loaded = false;
+             this.isPlaying = false;
+             const errorMessage = media.error
+@@ -311,7 +1145,12 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+                 error: errorMessage,
+             });
+         };
++        const cancelFadeOnStall = () => {
++            if (this.crossfade?.fading)
++                this.cancelCrossfade();
++        };
++        media.onwaiting = cancelFadeOnStall;
++        media.onstalled = cancelFadeOnStall;
+         return media;
+     }
+ }
+-//# sourceMappingURL=AudioPlayer.web.js.map
+\ No newline at end of file
 diff --git a/node_modules/expo-audio/ios/AudioComponentRegistry.swift b/node_modules/expo-audio/ios/AudioComponentRegistry.swift
 index 036d166..b347f2f 100644
 --- a/node_modules/expo-audio/ios/AudioComponentRegistry.swift
@@ -216,8 +2439,272 @@ index 036d166..b347f2f 100644
      registryQueue.async(flags: .barrier) {
        self.players.values.forEach { $0.owningRegistry = nil }
        self.players.removeAll()
+diff --git a/node_modules/expo-audio/ios/AudioCrossfade.swift b/node_modules/expo-audio/ios/AudioCrossfade.swift
+new file mode 100644
+index 0000000..e648b62
+--- /dev/null
++++ b/node_modules/expo-audio/ios/AudioCrossfade.swift
+@@ -0,0 +1,258 @@
++import AVFoundation
++import Foundation
++
++// One native transition between two AudioPlayer instances. The player-item
++// clock arms the next deck while PCM envelopes run in the audio render tap.
++// No React render, JS timer or background task is needed during the overlap.
++final class AudioCrossfade {
++  private weak var outgoing: AudioPlayer?
++  private weak var incoming: AudioPlayer?
++  private weak var outgoingItem: AVPlayerItem?
++  private weak var incomingItem: AVPlayerItem?
++  private let requestedStart: Double
++  private let requestedDuration: Double
++  private let volumeLaw: CrossfadeVolumeLaw
++  private let volumeOut: [CrossfadeVolumePoint]?
++  private let volumeIn: [CrossfadeVolumePoint]?
++  private let transitionEq: CrossfadeTransitionEq?
++  private let transitionFilter: CrossfadeTransitionFilter?
++
++  private var startObserver: Any?
++  private var endObserver: Any?
++  private var progressObserver: Any?
++  private var incomingStatusObserver: NSKeyValueObservation?
++  private var outgoingStatusObserver: NSKeyValueObservation?
++  private var failureObserver: NSObjectProtocol?
++  private var startDeadline: DispatchWorkItem?
++  private var started = false
++  private var fading = false
++  private var fadeEndSeconds: Double?
++  private var paused = false
++  private var closed = false
++
++  init(outgoing: AudioPlayer, incoming: AudioPlayer, start: Double, duration: Double, options: CrossfadeOptions) {
++    self.outgoing = outgoing
++    self.incoming = incoming
++    self.outgoingItem = outgoing.ref.currentItem
++    self.incomingItem = incoming.ref.currentItem
++    self.requestedStart = start
++    self.requestedDuration = duration
++    self.volumeLaw = options.volumeLaw
++    self.volumeOut = options.volumeOut
++    self.volumeIn = options.volumeIn
++    self.transitionEq = options.eqSettings
++    self.transitionFilter = options.filterSettings
++  }
++
++  func arm() {
++    guard let outgoing, let incoming else { return }
++    // Copy the immutable v1 curves into each tap before activating its fade.
++    // The render path bypasses these effects in modes 0 and 2.
++    outgoing.setCrossfadeEffects(eq: transitionEq, filter: transitionFilter, incoming: false)
++    incoming.setCrossfadeEffects(eq: transitionEq, filter: transitionFilter, incoming: true)
++    // A prepared next deck may start decoding before the boundary. Keep it
++    // silent in the tap without changing the caller's headroom/user volume.
++    incoming.setCrossfadeEnvelope(mode: 2, start: 0, duration: 1, law: volumeLaw, points: volumeIn)
++    let startTime = CMTime(seconds: requestedStart, preferredTimescale: 1_000_000)
++    startObserver = outgoing.ref.addBoundaryTimeObserver(
++      forTimes: [NSValue(time: startTime)], queue: .main
++    ) { [weak self] in
++      self?.checkProgress()
++    }
++    // AVPlayer does not promise every boundary callback. The periodic
++    // observer checks actual media time and recovers a missed boundary.
++    progressObserver = outgoing.ref.addPeriodicTimeObserver(
++      forInterval: CMTime(seconds: 0.1, preferredTimescale: 1_000_000), queue: .main
++    ) { [weak self] _ in self?.checkProgress() }
++
++    incomingStatusObserver = incoming.ref.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
++      DispatchQueue.main.async { [weak self] in self?.incomingStatusChanged() }
++    }
++    outgoingStatusObserver = outgoing.ref.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
++      DispatchQueue.main.async { [weak self] in self?.outgoingStatusChanged() }
++    }
++    failureObserver = NotificationCenter.default.addObserver(
++      forName: AVPlayerItem.failedToPlayToEndTimeNotification,
++      object: incomingItem,
++      queue: .main
++    ) { [weak self] _ in self?.cancel() }
++    // A cue at zero is already behind the AVPlayer boundary observer when
++    // called from a play gesture. Start as soon as the outgoing deck plays.
++    checkProgress()
++  }
++
++  private func sameItemsAreCurrent() -> Bool {
++    guard let outgoing, let incoming else { return false }
++    return outgoing.ref.currentItem === outgoingItem && incoming.ref.currentItem === incomingItem
++  }
++
++  private func checkProgress() {
++    guard !closed, sameItemsAreCurrent(), let outgoing else {
++      cancel()
++      return
++    }
++    if !started && outgoing.isPlaying && outgoing.currentTime >= requestedStart {
++      startIncoming()
++    }
++    if fading, let fadeEndSeconds, outgoing.currentTime + 0.002 >= fadeEndSeconds {
++      complete()
++    }
++  }
++
++  private func startIncoming() {
++    guard !closed, !started, sameItemsAreCurrent(), let outgoing, let incoming else {
++      cancel()
++      return
++    }
++    // If the observer arrives late, a short fade is preferable to trying to
++    // start a second deck after the first item has already ended.
++    guard outgoing.duration - outgoing.currentTime > 0.14 else {
++      cancel()
++      return
++    }
++    started = true
++    incoming.play(at: incoming.currentRate > 0 ? incoming.currentRate : 1)
++    // An unavailable next source must leave the old track untouched. This is
++    // only a deadline for the start; the fade itself follows media time.
++    let deadline = DispatchWorkItem { [weak self] in
++      guard let self, !self.fading else { return }
++      self.cancel()
++    }
++    startDeadline = deadline
++    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: deadline)
++    incomingStatusChanged()
++  }
++
++  private func incomingStatusChanged() {
++    guard !closed, started, !paused, sameItemsAreCurrent(), let outgoing, let incoming else { return }
++    if incoming.ref.timeControlStatus == .playing {
++      guard !fading else { return }
++      startDeadline?.cancel()
++      startDeadline = nil
++      let remaining = outgoing.duration - outgoing.currentTime
++      let fadeDuration = min(requestedDuration, remaining - 0.04)
++      guard fadeDuration >= 0.10 else {
++        cancel()
++        return
++      }
++      fading = true
++      let endSeconds = outgoing.currentTime + fadeDuration
++      fadeEndSeconds = endSeconds
++      outgoing.setCrossfadeEnvelope(mode: 1, start: outgoing.currentTime, duration: fadeDuration, law: volumeLaw, points: volumeOut)
++      incoming.setCrossfadeEnvelope(mode: 3, start: incoming.currentTime, duration: fadeDuration, law: volumeLaw, points: volumeIn)
++
++      let endTime = CMTime(seconds: endSeconds, preferredTimescale: 1_000_000)
++      endObserver = outgoing.ref.addBoundaryTimeObserver(
++        forTimes: [NSValue(time: endTime)], queue: .main
++      ) { [weak self] in self?.checkProgress() }
++    } else if fading && incoming.ref.timeControlStatus == .waitingToPlayAtSpecifiedRate {
++      // Do not hand off to a deck that stopped advancing during the fade.
++      cancel()
++    }
++  }
++
++  private func outgoingStatusChanged() {
++    guard !closed, !paused, sameItemsAreCurrent(), let outgoing, let incoming else { return }
++    if !started {
++      if outgoing.isPlaying { checkProgress() }
++      return
++    }
++    guard fading else { return }
++    if outgoing.ref.timeControlStatus == .waitingToPlayAtSpecifiedRate {
++      incoming.ref.pause()
++    } else if outgoing.ref.timeControlStatus == .playing && incoming.ref.timeControlStatus == .paused {
++      incoming.ref.playImmediately(atRate: incoming.currentRate > 0 ? incoming.currentRate : 1)
++    }
++  }
++
++  func pause() {
++    if !Thread.isMainThread {
++      DispatchQueue.main.sync { self.pause() }
++      return
++    }
++    guard !closed else { return }
++    paused = true
++    outgoing?.ref.pause()
++    if started { incoming?.ref.pause() }
++  }
++
++  func resume() {
++    if !Thread.isMainThread {
++      DispatchQueue.main.sync { self.resume() }
++      return
++    }
++    guard !closed, paused else { return }
++    paused = false
++    if started {
++      incoming?.ref.playImmediately(atRate: incoming?.currentRate ?? 1)
++    }
++  }
++
++  private func complete() {
++    guard !closed, fading, sameItemsAreCurrent(), let outgoing, let incoming,
++      incoming.isPlaying else {
++      cancel()
++      return
++    }
++    // Mark before pausing: the item-end notification may already be queued.
++    outgoing.suppressNaturalEndForCrossfade()
++    outgoing.ref.pause()
++    outgoing.setCrossfadeEnvelope(mode: 0, start: 0, duration: 1)
++    incoming.setCrossfadeEnvelope(mode: 0, start: 0, duration: 1)
++    closeObservers()
++    outgoing.outgoingCrossfade = nil
++    incoming.incomingCrossfade = nil
++    outgoing.updateStatus(with: ["playing": false, "didJustCrossfade": true])
++  }
++
++  func cancel() {
++    if !Thread.isMainThread {
++      DispatchQueue.main.sync { self.cancel() }
++      return
++    }
++    guard !closed else { return }
++    let shouldStopIncoming = started
++    let outgoing = self.outgoing
++    let incoming = self.incoming
++    closeObservers()
++    outgoing?.setCrossfadeEnvelope(mode: 0, start: 0, duration: 1)
++    // Stop the next deck before bypassing its held-silent envelope.
++    if shouldStopIncoming { incoming?.ref.pause() }
++    incoming?.setCrossfadeEnvelope(mode: 0, start: 0, duration: 1)
++    outgoing?.outgoingCrossfade = nil
++    incoming?.incomingCrossfade = nil
++  }
++
++  private func closeObservers() {
++    guard !closed else { return }
++    closed = true
++    startDeadline?.cancel()
++    startDeadline = nil
++    if let outgoing {
++      let player = outgoing.ref
++      let startToken = startObserver
++      let endToken = endObserver
++      let progressToken = progressObserver
++      // A boundary callback may be closing itself. Removing its token from
++      // inside that callback can wait for the callback to finish and deadlock.
++      DispatchQueue.main.async {
++        if let startToken { player.removeTimeObserver(startToken) }
++        if let endToken { player.removeTimeObserver(endToken) }
++        if let progressToken { player.removeTimeObserver(progressToken) }
++      }
++    }
++    startObserver = nil
++    endObserver = nil
++    progressObserver = nil
++    incomingStatusObserver?.invalidate()
++    outgoingStatusObserver?.invalidate()
++    incomingStatusObserver = nil
++    outgoingStatusObserver = nil
++    if let failureObserver { NotificationCenter.default.removeObserver(failureObserver) }
++    failureObserver = nil
++  }
++
++  deinit {
++    closeObservers()
++  }
++}
 diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-audio/ios/AudioModule.swift
-index d265606..7c1f5eb 100644
+index d265606..2b7bb7c 100644
 --- a/node_modules/expo-audio/ios/AudioModule.swift
 +++ b/node_modules/expo-audio/ios/AudioModule.swift
 @@ -107,6 +107,7 @@ public class AudioModule: Module {
@@ -237,7 +2724,7 @@ index d265606..7c1f5eb 100644
          if !player.keepAudioSessionActive {
            deactivateSession()
          }
-@@ -258,6 +259,10 @@ public class AudioModule: Module {
+@@ -258,6 +259,33 @@ public class AudioModule: Module {
          }
        }
  
@@ -245,10 +2732,33 @@ index d265606..7c1f5eb 100644
 +        player.setEqualizer(enabled: enabled, gains: gains)
 +      }
 +
++      AsyncFunction("scheduleCrossfade") { (player: AudioPlayer, incoming: AudioPlayer, options: CrossfadeOptions) async -> Bool in
++        guard player !== incoming, options.durationSeconds.isFinite,
++          (0.25...30).contains(options.durationSeconds),
++          options.fromStartSeconds?.isFinite ?? true,
++          options.toStartSeconds?.isFinite ?? true else { return false }
++        let generation = await MainActor.run { player.beginCrossfadeRequest() }
++        let incomingStart = options.toStartSeconds ?? 0
++        if incomingStart >= 0 && abs(incoming.currentTime - incomingStart) > 0.02 {
++          await incoming.seekTo(
++            seconds: incomingStart,
++            toleranceMillisBefore: 0,
++            toleranceMillisAfter: 0
++          )
++        }
++        return await MainActor.run {
++          player.scheduleCrossfade(to: incoming, options: options, generation: generation)
++        }
++      }
++
++      Function("cancelCrossfade") { (player: AudioPlayer) in
++        player.cancelCrossfade()
++      }
++
        Function("setActiveForLockScreen") { (player: AudioPlayer, active: Bool, metadata: Metadata?, options: LockScreenOptions?) in
          player.setActiveForLockScreen(active, metadata: metadata, options: options)
        }
-@@ -600,6 +605,11 @@ public class AudioModule: Module {
+@@ -600,6 +628,11 @@ public class AudioModule: Module {
          case .doNotMix, .mixWithOthers:
            playable.pause()
          }
@@ -261,16 +2771,20 @@ index d265606..7c1f5eb 100644
      }
  
 diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-audio/ios/AudioPlayer.swift
-index 0742943..b399682 100644
+index 0742943..724b2c8 100644
 --- a/node_modules/expo-audio/ios/AudioPlayer.swift
 +++ b/node_modules/expo-audio/ios/AudioPlayer.swift
-@@ -23,7 +23,17 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -23,7 +23,21 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      ref.rate == 0.0
    }
    var samplingEnabled = false
 -  var keepAudioSessionActive = false
 +  private var equalizerEnabled = false
 +  private var equalizerGains = Array(repeating: 0.0, count: 10)
++  var outgoingCrossfade: AudioCrossfade?
++  weak var incomingCrossfade: AudioCrossfade?
++  private var crossfadeRequestGeneration: UInt64 = 0
++  private weak var crossfadedItem: AVPlayerItem?
 +  var keepAudioSessionActive = false {
 +    didSet {
 +      // A cached item may already be ready before this option is assigned.
@@ -283,7 +2797,7 @@ index 0742943..b399682 100644
  
    var isLooping = false {
      didSet {
-@@ -47,9 +57,13 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -47,9 +61,13 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
    private var timeToken: Any?
    private var cancellables = Set<AnyCancellable>()
    private var endObserver: NSObjectProtocol?
@@ -297,17 +2811,29 @@ index 0742943..b399682 100644
    private var shouldInstallAudioTap = false
    weak var owningRegistry: AudioComponentRegistry?
    var onPlaybackComplete: (() -> Void)?
-@@ -100,6 +114,9 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -100,6 +118,13 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
    }
  
    func play(at rate: Float) {
++    // A deck that previously faded out may be reused as the next song (for
++    // example A -> B -> A in a two-song loop). Its old end suppression must
++    // not hide the natural end of this new playback.
++    crossfadedItem = nil
 +    if keepAudioSessionActive && !isPlaying {
 +      installTap()
 +    }
      ref.actionAtItemEnd = isLooping ? .advance : .pause
      if isLooping {
        enqueueNextLoopItem()
-@@ -119,24 +136,46 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -107,6 +132,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+     addPlaybackEndNotification()
+     registerTimeObserver()
+     ref.playImmediately(atRate: rate)
++    outgoingCrossfade?.resume()
+ 
+     if isActiveForLockScreen {
+       MediaController.shared.updateNowPlayingInfo(for: self)
+@@ -119,24 +145,187 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      }
      samplingEnabled = enabled
      if enabled {
@@ -341,6 +2867,147 @@ index 0742943..b399682 100644
 +    audioProcessor?.setEqualizerEnabled(enabled, gains: equalizerGains.map { NSNumber(value: $0) })
 +  }
 +
++  // This request token prevents an asynchronous cue seek from arming a stale
++  // transition after a skip, replace, pause or newer schedule request.
++  func beginCrossfadeRequest() -> UInt64 {
++    cancelCrossfade()
++    return crossfadeRequestGeneration
++  }
++
++  func scheduleCrossfade(to incoming: AudioPlayer, options: CrossfadeOptions, generation: UInt64) -> Bool {
++    guard generation == crossfadeRequestGeneration,
++      self !== incoming, isLoaded, incoming.isLoaded,
++      !isLooping, !incoming.isLooping, !incoming.isPlaying,
++      incoming.outgoingCrossfade == nil, incoming.incomingCrossfade == nil,
++      options.durationSeconds.isFinite,
++      (0.25...30).contains(options.durationSeconds),
++      duration.isFinite, duration > 0,
++      incoming.duration.isFinite, incoming.duration > 0 else { return false }
++
++    let start = options.fromStartSeconds ?? duration - options.durationSeconds
++    let incomingStart = options.toStartSeconds ?? 0
++    let canArmCue = currentTime + 0.03 < start ||
++      (start <= 0.03 && currentTime >= 0 && currentTime <= 0.05)
++    guard start.isFinite, incomingStart.isFinite,
++      start >= 0, incomingStart >= 0,
++      start + options.durationSeconds <= duration + 0.02,
++      incomingStart + options.durationSeconds <= incoming.duration + 0.02,
++      canArmCue,
++      abs(incoming.currentTime - incomingStart) <= 0.25,
++      validCrossfadeCurve(options.volumeOut, incoming: false),
++      validCrossfadeCurve(options.volumeIn, incoming: true),
++      validTransitionEq(options.eqSettings),
++      validTransitionFilter(options.filterSettings),
++      prepareCrossfadeTap(), incoming.prepareCrossfadeTap() else { return false }
++
++    let crossfade = AudioCrossfade(
++      outgoing: self, incoming: incoming, start: start,
++      duration: options.durationSeconds, options: options
++    )
++    outgoingCrossfade = crossfade
++    incoming.incomingCrossfade = crossfade
++    crossfade.arm()
++    return true
++  }
++
++  func cancelCrossfade() {
++    if !Thread.isMainThread {
++      DispatchQueue.main.sync { self.cancelCrossfade() }
++      return
++    }
++    crossfadeRequestGeneration &+= 1
++    (outgoingCrossfade ?? incomingCrossfade)?.cancel()
++  }
++
++  func setCrossfadeEnvelope(
++    mode: Int, start: Double, duration: Double,
++    law: CrossfadeVolumeLaw = .linear, points: [CrossfadeVolumePoint]? = nil
++  ) {
++    audioProcessor?.setCrossfadeMode(
++      mode, startSeconds: start, durationSeconds: duration,
++      equalPower: law == .equalPower,
++      times: points?.map { NSNumber(value: $0.t) } ?? [],
++      values: points?.map { NSNumber(value: $0.value) } ?? []
++    )
++  }
++
++  func setCrossfadeEffects(
++    eq: CrossfadeTransitionEq?, filter: CrossfadeTransitionFilter?, incoming: Bool
++  ) {
++    let bands = incoming ? eq?.`in` : eq?.out
++    let curves = bands.map { [$0.low, $0.mid, $0.high] } ?? []
++    audioProcessor?.setTransitionEqualizerEnabled(
++      eq?.enabled == true,
++      times: curves.map { $0.map { NSNumber(value: $0.t) } },
++      values: curves.map { $0.map { NSNumber(value: $0.value) } }
++    )
++    let filterDeck = filter?.enabled == true ? (incoming ? filter?.`in` : filter?.out) : nil
++    audioProcessor?.setTransitionFilterKind(
++      filterDeck == nil ? 0 : (filterDeck?.kind == .lowpass ? 1 : 2),
++      times: filterDeck?.cutoff.map { NSNumber(value: $0.t) } ?? [],
++      values: filterDeck?.cutoff.map { NSNumber(value: $0.value) } ?? []
++    )
++  }
++
++  private func validEffectCurve(_ points: [CrossfadeVolumePoint], min: Double, max: Double) -> Bool {
++    guard (2...16).contains(points.count), let first = points.first, let last = points.last,
++      abs(first.t) < 0.000001, abs(last.t - 1) < 0.000001 else { return false }
++    var previous = -1.0
++    for point in points {
++      guard point.t.isFinite, point.value.isFinite,
++        point.t > previous, (0...1).contains(point.t),
++        (min...max).contains(point.value) else { return false }
++      previous = point.t
++    }
++    return true
++  }
++
++  private func validTransitionEq(_ eq: CrossfadeTransitionEq?) -> Bool {
++    guard let eq else { return true }
++    guard eq.version == 1 else { return false }
++    for bands in [eq.out, eq.`in`] {
++      for curve in [bands.low, bands.mid, bands.high] {
++        if !validEffectCurve(curve, min: -24, max: 24) { return false }
++      }
++    }
++    return true
++  }
++
++  private func validTransitionFilter(_ filter: CrossfadeTransitionFilter?) -> Bool {
++    guard let filter else { return true }
++    guard filter.version == 1 else { return false }
++    for deck in [filter.out, filter.`in`] {
++      if let deck, !validEffectCurve(deck.cutoff, min: 20, max: 20_000) { return false }
++    }
++    return true
++  }
++
++  private func validCrossfadeCurve(_ points: [CrossfadeVolumePoint]?, incoming: Bool) -> Bool {
++    guard let points else { return true }
++    guard (2...16).contains(points.count),
++      let first = points.first, let last = points.last,
++      abs(first.t) < 0.000001, abs(last.t - 1) < 0.000001,
++      abs(first.value - (incoming ? 0 : 1)) < 0.000001,
++      abs(last.value - (incoming ? 1 : 0)) < 0.000001 else { return false }
++    var previous = -1.0
++    for point in points {
++      guard point.t.isFinite, point.value.isFinite,
++        point.t > previous, (0...1).contains(point.t),
++        (0...1).contains(point.value) else { return false }
++      previous = point.t
++    }
++    return true
++  }
++
++  private func prepareCrossfadeTap() -> Bool {
++    installTap()
++    return tapInstalled && sampledItem === ref.currentItem
++  }
++
++  func suppressNaturalEndForCrossfade() {
++    crossfadedItem = ref.currentItem
++  }
++
    func currentStatus() -> [String: Any?] {
      let currentDuration = ref.status == .readyToPlay ? duration : 0.0
      let rate = isPlaying ? ref.rate : currentRate
@@ -356,7 +3023,7 @@ index 0742943..b399682 100644
        "timeControlStatus": timeControlStatusString(status: ref.timeControlStatus),
        "reasonForWaitingToPlay": reasonForWaitingToPlayString(status: ref.reasonForWaitingToPlay),
        "mute": ref.isMuted,
-@@ -150,7 +189,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -150,7 +339,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        "isBuffering": isBuffering,
        "isLive": isLive,
        "currentOffsetFromLive": currentOffsetFromLive,
@@ -365,7 +3032,15 @@ index 0742943..b399682 100644
      ]
    }
  
-@@ -198,22 +237,31 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -177,6 +366,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+   }
+ 
+   func seekTo(seconds: Double, toleranceMillisBefore: Double? = nil, toleranceMillisAfter: Double? = nil) async {
++    cancelCrossfade()
+     let time = CMTime(seconds: seconds, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+     let toleranceBefore = toleranceMillisBefore.map {
+       CMTime(seconds: $0 / 1000.0, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+@@ -198,22 +388,31 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
    }
  
    private func setupPublisher() {
@@ -401,7 +3076,7 @@ index 0742943..b399682 100644
          }
          if status == .failed {
            self.updateStatus(with: [
-@@ -228,12 +276,14 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -228,12 +427,14 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
          guard let self else {
            return
          }
@@ -418,7 +3093,14 @@ index 0742943..b399682 100644
            self.installTap()
          }
        }
-@@ -246,9 +296,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -241,14 +442,14 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+   }
+ 
+   func replaceWithPreloadedItem(_ item: AVPlayerItem?) {
++    cancelCrossfade()
++    crossfadedItem = nil
+     let wasPlaying = ref.timeControlStatus == .playing
+     let wasSamplingEnabled = samplingEnabled
      removeQueuedLoopItems()
      ref.pause()
  
@@ -429,7 +3111,15 @@ index 0742943..b399682 100644
      replacePlayerItem(with: item)
  
      if wasSamplingEnabled {
-@@ -267,9 +315,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -261,15 +462,15 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+   }
+ 
+   func replaceCurrentSource(source: AudioSource) {
++    cancelCrossfade()
++    crossfadedItem = nil
+     self.source = source
+     let wasPlaying = ref.timeControlStatus == .playing
+     let wasSamplingEnabled = samplingEnabled
      removeQueuedLoopItems()
      ref.pause()
  
@@ -440,9 +3130,12 @@ index 0742943..b399682 100644
      let item = AudioUtils.createAVPlayerItem(from: source)
      replacePlayerItem(with: item)
  
-@@ -320,9 +366,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -319,10 +520,10 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+   }
  
    private func teardownPlayer() {
++    cancelCrossfade()
++    crossfadedItem = nil
      removeQueuedLoopItems()
 -    if samplingEnabled {
 -      uninstallTap()
@@ -451,7 +3144,7 @@ index 0742943..b399682 100644
      if let timeToken {
        ref.removeTimeObserver(timeToken)
        self.timeToken = nil
-@@ -331,6 +375,12 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -331,6 +532,12 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        NotificationCenter.default.removeObserver(endObserver)
        self.endObserver = nil
      }
@@ -464,7 +3157,7 @@ index 0742943..b399682 100644
      cancellables.removeAll()
      ref.pause()
    }
-@@ -358,7 +408,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -358,7 +565,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
        return
      }
  
@@ -473,7 +3166,7 @@ index 0742943..b399682 100644
        tapInstalled = true
        return
      }
-@@ -370,8 +420,10 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -370,8 +577,10 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      audioProcessor = AudioTapProcessor(player: ref)
      let success = audioProcessor?.installTap() ?? false
      tapInstalled = success
@@ -484,7 +3177,7 @@ index 0742943..b399682 100644
        audioProcessor?.sampleBufferCallback = { [weak self] buffer, frameCount, timestamp in
          guard let self = self,
            let audioBuffer = buffer?.pointee,
-@@ -381,10 +433,12 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -381,10 +590,12 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
          }
  
          let channelCount = Int(audioBuffer.mNumberChannels)
@@ -498,7 +3191,7 @@ index 0742943..b399682 100644
              dataPointer[frameIndex]
            }
            return ["frames": channelData]
-@@ -400,6 +454,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -400,6 +611,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
  
    private func uninstallTap() {
      tapInstalled = false
@@ -506,7 +3199,7 @@ index 0742943..b399682 100644
      audioProcessor?.uninstallTap()
      audioProcessor?.sampleBufferCallback = nil
    }
-@@ -439,6 +494,32 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -439,6 +651,32 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      }
    }
  
@@ -539,7 +3232,7 @@ index 0742943..b399682 100644
    private func addPlaybackEndNotification() {
      if let endObserver {
        NotificationCenter.default.removeObserver(endObserver)
-@@ -447,7 +528,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -447,7 +685,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
      endObserver = NotificationCenter.default.addObserver(
        forName: .AVPlayerItemDidPlayToEndTime,
        object: nil,
@@ -548,9 +3241,13 @@ index 0742943..b399682 100644
      ) { [weak self] notification in
        guard let self,
          let finishedItem = notification.object as? AVPlayerItem else {
-@@ -460,6 +541,11 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -459,7 +697,15 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+         return
        }
  
++      if finishedItem === self.crossfadedItem { return }
++      if self.outgoingCrossfade != nil { self.cancelCrossfade() }
++
        if !self.isLooping {
 +        // The next item is selected in JS, which can outlive this player.
 +        // Request a short native transition window before emitting its end.
@@ -560,10 +3257,17 @@ index 0742943..b399682 100644
          let currentTime = finishedItem.duration.seconds
          self.updateStatus(with: [
            "playing": false,
-@@ -497,6 +583,10 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+@@ -496,7 +742,16 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+   }
  
    func pause() {
-     ref.pause()
+-    ref.pause()
++    if let crossfade = outgoingCrossfade ?? incomingCrossfade {
++      crossfade.pause()
++    } else {
++      cancelCrossfade()
++      ref.pause()
++    }
 +    if keepAudioSessionActive {
 +      owningRegistry?.endPlaybackTransition()
 +    }
@@ -571,32 +3275,120 @@ index 0742943..b399682 100644
    }
  
    func resumePlayback() {
+@@ -504,6 +759,7 @@ public class AudioPlayer: SharedRef<AVPlayer>, Playable {
+   }
+ 
+   public override func sharedObjectWillRelease() {
++    cancelCrossfade()
+     ref.currentItem?.cancelPendingSeeks()
+     owningRegistry?.remove(self)
+ 
+diff --git a/node_modules/expo-audio/ios/AudioRecords.swift b/node_modules/expo-audio/ios/AudioRecords.swift
+index 33db27c..21de73d 100644
+--- a/node_modules/expo-audio/ios/AudioRecords.swift
++++ b/node_modules/expo-audio/ios/AudioRecords.swift
+@@ -72,6 +72,57 @@ struct LockScreenOptions: Record {
+   @Field var isLiveStream: Bool? = false
+ }
+ 
++struct CrossfadeOptions: Record {
++  @Field var durationSeconds: Double
++  @Field var fromStartSeconds: Double?
++  @Field var toStartSeconds: Double?
++  @Field var volumeLaw: CrossfadeVolumeLaw = .linear
++  @Field var volumeOut: [CrossfadeVolumePoint]?
++  @Field var volumeIn: [CrossfadeVolumePoint]?
++  @Field var eqSettings: CrossfadeTransitionEq?
++  @Field var filterSettings: CrossfadeTransitionFilter?
++}
++
++enum CrossfadeVolumeLaw: String, Enumerable {
++  case linear
++  case equalPower = "equal_power"
++}
++
++struct CrossfadeVolumePoint: Record {
++  @Field var t: Double
++  @Field var value: Double
++}
++
++struct CrossfadeThreeBand: Record {
++  @Field var low: [CrossfadeVolumePoint]
++  @Field var mid: [CrossfadeVolumePoint]
++  @Field var high: [CrossfadeVolumePoint]
++}
++
++struct CrossfadeTransitionEq: Record {
++  @Field var version: Int
++  @Field var enabled: Bool
++  @Field var out: CrossfadeThreeBand
++  @Field var `in`: CrossfadeThreeBand
++}
++
++enum CrossfadeTransitionFilterKind: String, Enumerable {
++  case lowpass
++  case highpass
++}
++
++struct CrossfadeTransitionFilterDeck: Record {
++  @Field var kind: CrossfadeTransitionFilterKind
++  @Field var cutoff: [CrossfadeVolumePoint]
++}
++
++struct CrossfadeTransitionFilter: Record {
++  @Field var version: Int
++  @Field var enabled: Bool
++  @Field var out: CrossfadeTransitionFilterDeck?
++  @Field var `in`: CrossfadeTransitionFilterDeck?
++}
++
+ enum BitRateStrategy: String, Enumerable {
+   case constant
+   case longTermAverage
 diff --git a/node_modules/expo-audio/ios/AudioTapProcessor.h b/node_modules/expo-audio/ios/AudioTapProcessor.h
-index ddd4f23..73d5882 100644
+index ddd4f23..44c2650 100644
 --- a/node_modules/expo-audio/ios/AudioTapProcessor.h
 +++ b/node_modules/expo-audio/ios/AudioTapProcessor.h
-@@ -11,6 +11,7 @@ typedef void (^SampleBufferCallback)(AudioBuffer *audioBuffer, long frameCount,
+@@ -11,6 +11,23 @@ typedef void (^SampleBufferCallback)(AudioBuffer *audioBuffer, long frameCount,
  
  - (instancetype)initWithPlayer:(AVPlayer *)player;
  - (BOOL)installTap;
 +- (void)setEqualizerEnabled:(BOOL)enabled gains:(NSArray<NSNumber *> *)gains;
++// Multiplies rendered PCM; AVPlayer.volume remains owned by the caller.
++// 0 = bypass, 1 = outgoing, 2 = incoming held silent, 3 = incoming fade.
++- (void)setCrossfadeMode:(NSInteger)mode
++             startSeconds:(double)startSeconds
++          durationSeconds:(double)durationSeconds
++               equalPower:(BOOL)equalPower
++                    times:(NSArray<NSNumber *> *)times
++                   values:(NSArray<NSNumber *> *)values;
++// Temporary effects are kept separate from the ten-band global equalizer.
++- (void)setTransitionEqualizerEnabled:(BOOL)enabled
++                                times:(NSArray<NSArray<NSNumber *> *> *)times
++                               values:(NSArray<NSArray<NSNumber *> *> *)values;
++// 0 = bypass, 1 = low-pass, 2 = high-pass.
++- (void)setTransitionFilterKind:(NSInteger)kind
++                           times:(NSArray<NSNumber *> *)times
++                          values:(NSArray<NSNumber *> *)values;
  - (void)uninstallTap;
  - (void)invalidate;
  
 diff --git a/node_modules/expo-audio/ios/AudioTapProcessor.m b/node_modules/expo-audio/ios/AudioTapProcessor.m
-index 6f8fb16..b0c8d82 100644
+index 6f8fb16..dfbda80 100644
 --- a/node_modules/expo-audio/ios/AudioTapProcessor.m
 +++ b/node_modules/expo-audio/ios/AudioTapProcessor.m
-@@ -3,6 +3,8 @@
+@@ -3,6 +3,10 @@
  #import "AudioTapProcessor.h"
  #import <AudioToolbox/AudioToolbox.h>
  #import <os/lock.h>
 +#import <math.h>
 +#import "DNEqualizerDSP.h"
++#import "DNCrossfadeDSP.h"
++#import "DNTransitionDSP.h"
  
  NS_ASSUME_NONNULL_BEGIN
  
-@@ -11,6 +13,10 @@ typedef struct AVAudioTapProcessorContext {
+@@ -11,6 +15,22 @@ typedef struct AVAudioTapProcessorContext {
    Boolean supportedTapProcessingFormat;
    void *self;
    Boolean isValid;
@@ -604,10 +3396,22 @@ index 6f8fb16..b0c8d82 100644
 +  UInt32 channelCount;
 +  uint64_t equalizerVersion;
 +  DNEqualizerDSP equalizer;
++  uint64_t crossfadeVersion;
++  NSInteger crossfadeMode;
++  double crossfadeStartSeconds;
++  double crossfadeDurationSeconds;
++  Boolean crossfadeEqualPower;
++  DNCrossfadeCurve crossfadeCurve;
++  float lastCrossfadeGain;
++  float releaseStartGain;
++  UInt32 releaseTotalFrames;
++  UInt32 releaseRemainingFrames;
++  DNTransitionSettings transitionSettings;
++  DNTransitionDSP transition;
  } AVAudioTapProcessorContext;
  
  
-@@ -19,6 +25,10 @@ typedef struct AVAudioTapProcessorContext {
+@@ -19,6 +39,31 @@ typedef struct AVAudioTapProcessorContext {
    MTAudioProcessingTapRef _audioProcessingTap;
    BOOL _isTapInstalled;
    BOOL _isInvalidated;
@@ -615,10 +3419,31 @@ index 6f8fb16..b0c8d82 100644
 +  BOOL _equalizerEnabled;
 +  float _equalizerGains[DN_EQ_BANDS];
 +  uint64_t _equalizerVersion;
++  os_unfair_lock _crossfadeLock;
++  NSInteger _crossfadeMode;
++  double _crossfadeStartSeconds;
++  double _crossfadeDurationSeconds;
++  BOOL _crossfadeEqualPower;
++  DNCrossfadeCurve _crossfadeCurve;
++  DNTransitionSettings _transitionSettings;
++  uint64_t _crossfadeVersion;
++}
++
++static DNCrossfadeCurve DNMakeTransitionCurve(NSArray<NSNumber *> *times,
++                                              NSArray<NSNumber *> *values) {
++  DNCrossfadeCurve curve = {0};
++  if (times.count == values.count && times.count >= 2 && times.count <= DN_CROSSFADE_MAX_POINTS) {
++    curve.count = (int)times.count;
++    for (NSInteger index = 0; index < times.count; index++) {
++      curve.times[index] = times[index].doubleValue;
++      curve.values[index] = values[index].doubleValue;
++    }
++  }
++  return curve;
  }
  
  - (instancetype)initWithPlayer:(AVPlayer *)player {
-@@ -29,10 +39,68 @@ typedef struct AVAudioTapProcessorContext {
+@@ -29,10 +74,151 @@ typedef struct AVAudioTapProcessorContext {
      _isTapInstalled = NO;
      _isInvalidated = NO;
      _audioProcessingTap = NULL;
@@ -626,10 +3451,52 @@ index 6f8fb16..b0c8d82 100644
 +    _equalizerEnabled = NO;
 +    _equalizerVersion = 1;
 +    memset(_equalizerGains, 0, sizeof(_equalizerGains));
++    _crossfadeLock = OS_UNFAIR_LOCK_INIT;
++    _crossfadeVersion = 1;
    }
    return self;
  }
  
++- (void)setCrossfadeMode:(NSInteger)mode
++             startSeconds:(double)startSeconds
++          durationSeconds:(double)durationSeconds
++               equalPower:(BOOL)equalPower
++                    times:(NSArray<NSNumber *> *)times
++                   values:(NSArray<NSNumber *> *)values {
++  os_unfair_lock_lock(&_crossfadeLock);
++  _crossfadeMode = mode >= 0 && mode <= 3 ? mode : 0;
++  _crossfadeStartSeconds = isfinite(startSeconds) ? startSeconds : 0;
++  _crossfadeDurationSeconds = isfinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : 0;
++  _crossfadeEqualPower = equalPower;
++  _crossfadeCurve = DNMakeTransitionCurve(times, values);
++  _crossfadeVersion++;
++  os_unfair_lock_unlock(&_crossfadeLock);
++}
++
++- (void)setTransitionEqualizerEnabled:(BOOL)enabled
++                                times:(NSArray<NSArray<NSNumber *> *> *)times
++                               values:(NSArray<NSArray<NSNumber *> *> *)values {
++  os_unfair_lock_lock(&_crossfadeLock);
++  _transitionSettings.eqEnabled = enabled && times.count == DN_TRANSITION_BANDS &&
++    values.count == DN_TRANSITION_BANDS;
++  for (NSInteger band = 0; band < DN_TRANSITION_BANDS; band++) {
++    _transitionSettings.eq[band] = _transitionSettings.eqEnabled
++      ? DNMakeTransitionCurve(times[band], values[band]) : (DNCrossfadeCurve){0};
++  }
++  _crossfadeVersion++;
++  os_unfair_lock_unlock(&_crossfadeLock);
++}
++
++- (void)setTransitionFilterKind:(NSInteger)kind
++                           times:(NSArray<NSNumber *> *)times
++                          values:(NSArray<NSNumber *> *)values {
++  os_unfair_lock_lock(&_crossfadeLock);
++  _transitionSettings.filterKind = kind == 1 || kind == 2 ? (int)kind : 0;
++  _transitionSettings.cutoff = DNMakeTransitionCurve(times, values);
++  _crossfadeVersion++;
++  os_unfair_lock_unlock(&_crossfadeLock);
++}
++
 +- (void)setEqualizerEnabled:(BOOL)enabled gains:(NSArray<NSNumber *> *)gains {
 +  os_unfair_lock_lock(&_equalizerLock);
 +  _equalizerEnabled = enabled;
@@ -643,7 +3510,8 @@ index 6f8fb16..b0c8d82 100644
 +
 +- (void)processEqualizer:(AVAudioTapProcessorContext *)context
 +              bufferList:(AudioBufferList *)bufferList
-+                   frames:(CMItemCount)frameCount {
++                   frames:(CMItemCount)frameCount
++             startSeconds:(double)startSeconds {
 +  if (!context->supportedTapProcessingFormat || !bufferList || frameCount <= 0) return;
 +  // The render callback must never wait for the UI thread. If a control write
 +  // owns the lock, keep the previous curve for this buffer and retry next time.
@@ -660,6 +3528,31 @@ index 6f8fb16..b0c8d82 100644
 +    }
 +  }
 +
++  // A control write never blocks the render thread. The last envelope remains
++  // valid for this buffer and the new one is picked up on the next callback.
++  if (os_unfair_lock_trylock(&_crossfadeLock)) {
++    if (context->crossfadeVersion != _crossfadeVersion) {
++      if (context->crossfadeMode == 1 && _crossfadeMode == 0) {
++        // Restore the outgoing deck without a discontinuity on cancellation.
++        context->releaseStartGain = context->lastCrossfadeGain;
++        context->releaseTotalFrames = (UInt32)fmax(1, context->sampleRate * 0.015);
++        context->releaseRemainingFrames = context->releaseTotalFrames;
++      } else {
++        context->releaseRemainingFrames = 0;
++      }
++      context->crossfadeMode = _crossfadeMode;
++      context->crossfadeStartSeconds = _crossfadeStartSeconds;
++      context->crossfadeDurationSeconds = _crossfadeDurationSeconds;
++      context->crossfadeEqualPower = _crossfadeEqualPower;
++      context->crossfadeCurve = _crossfadeCurve;
++      context->transitionSettings = _transitionSettings;
++      DNTSetSettings(&context->transition, &context->transitionSettings,
++        (int)_crossfadeMode);
++      context->crossfadeVersion = _crossfadeVersion;
++    }
++    os_unfair_lock_unlock(&_crossfadeLock);
++  }
++
 +  // Validate the actual AudioBufferList, for planar AND interleaved Float32.
 +  UInt32 channels = 0;
 +  CMItemCount safeFrames = frameCount;
@@ -672,13 +3565,28 @@ index 6f8fb16..b0c8d82 100644
 +  if (channels != context->channelCount || channels > DN_EQ_MAX_CHANNELS) return;
 +  for (CMItemCount frame = 0; frame < safeFrames; frame++) {
 +    DNEQBeginFrame(&context->equalizer);
++    // Media time is supplied by the tap. Pausing both decks freezes the fade.
++    float crossfadeGain = DNCrossfadeGain((int)context->crossfadeMode,
++      context->crossfadeEqualPower, &context->crossfadeCurve,
++      startSeconds + (double)frame / context->sampleRate,
++      context->crossfadeStartSeconds, context->crossfadeDurationSeconds);
++    if (context->crossfadeMode == 0 && context->releaseRemainingFrames > 0) {
++      const float progress = 1.0f - (float)context->releaseRemainingFrames / context->releaseTotalFrames;
++      crossfadeGain = context->releaseStartGain + (1.0f - context->releaseStartGain) * progress;
++      context->releaseRemainingFrames--;
++    }
++    context->lastCrossfadeGain = crossfadeGain;
++    DNTBeginFrame(&context->transition,
++      startSeconds + (double)frame / context->sampleRate,
++      context->crossfadeStartSeconds, context->crossfadeDurationSeconds);
 +    UInt32 channel = 0;
 +    for (UInt32 index = 0; index < bufferList->mNumberBuffers; index++) {
 +      AudioBuffer buffer = bufferList->mBuffers[index];
 +      float *samples = (float *)buffer.mData;
 +      for (UInt32 local = 0; local < buffer.mNumberChannels; local++, channel++) {
 +        const CMItemCount offset = frame * buffer.mNumberChannels + local;
-+        samples[offset] = DNEQProcessSample(&context->equalizer, channel, samples[offset]);
++        const float globalSample = DNEQProcessSample(&context->equalizer, channel, samples[offset]);
++        samples[offset] = DNTProcessSample(&context->transition, channel, globalSample) * crossfadeGain;
 +      }
 +    }
 +  }
@@ -687,7 +3595,7 @@ index 6f8fb16..b0c8d82 100644
  - (BOOL)isTapInstalled {
    os_unfair_lock_lock(&_lock);
    BOOL installed = _isTapInstalled;
-@@ -53,7 +121,13 @@ typedef struct AVAudioTapProcessorContext {
+@@ -53,7 +239,13 @@ typedef struct AVAudioTapProcessorContext {
      return NO;
    }
    
@@ -702,7 +3610,7 @@ index 6f8fb16..b0c8d82 100644
    if (!track) {
      os_unfair_lock_unlock(&_lock);
      return NO;
-@@ -168,7 +242,18 @@ void tapFinalize(MTAudioProcessingTapRef tap) {
+@@ -168,7 +360,21 @@ void tapFinalize(MTAudioProcessingTapRef tap) {
  
  void tapPrepare(MTAudioProcessingTapRef tap, CMItemCount maxFrames, const AudioStreamBasicDescription *processingFormat) {
    AVAudioTapProcessorContext *context = (AVAudioTapProcessorContext *)MTAudioProcessingTapGetStorage(tap);
@@ -718,11 +3626,14 @@ index 6f8fb16..b0c8d82 100644
 +  context->sampleRate = processingFormat->mSampleRate;
 +  context->channelCount = processingFormat->mChannelsPerFrame;
 +  context->equalizerVersion = 0;
++  context->crossfadeVersion = 0;
++  context->lastCrossfadeGain = 1.0f;
 +  DNEQPrepare(&context->equalizer, processingFormat->mSampleRate);
++  DNTPrepare(&context->transition, processingFormat->mSampleRate);
    
    if (processingFormat->mFormatID != kAudioFormatLinearPCM) {
      NSLog(@"Audio Format ID for audioProcessingTap: LinearPCM");
-@@ -178,9 +263,7 @@ void tapPrepare(MTAudioProcessingTapRef tap, CMItemCount maxFrames, const AudioS
+@@ -178,15 +384,14 @@ void tapPrepare(MTAudioProcessingTapRef tap, CMItemCount maxFrames, const AudioS
      NSLog(@"Audio Format ID for audioProcessingTap: Float only");
    }
    
@@ -733,11 +3644,20 @@ index 6f8fb16..b0c8d82 100644
  }
  
  void tapProcess(MTAudioProcessingTapRef tap, CMItemCount numberFrames, MTAudioProcessingTapFlags flags, AudioBufferList *bufferListInOut, CMItemCount *numberFramesOut, MTAudioProcessingTapFlags *flagsOut) {
-@@ -201,10 +284,12 @@ void tapProcess(MTAudioProcessingTapRef tap, CMItemCount numberFrames, MTAudioPr
+   AVAudioTapProcessorContext *context = (AVAudioTapProcessorContext *)MTAudioProcessingTapGetStorage(tap);
+   
+-  OSStatus status = MTAudioProcessingTapGetSourceAudio(tap, numberFrames, bufferListInOut, flagsOut, NULL, numberFramesOut);
++  CMTimeRange timeRange = kCMTimeRangeInvalid;
++  OSStatus status = MTAudioProcessingTapGetSourceAudio(tap, numberFrames, bufferListInOut, flagsOut, &timeRange, numberFramesOut);
+   if (status != noErr) {
+     return;
+   }
+@@ -201,10 +406,13 @@ void tapProcess(MTAudioProcessingTapRef tap, CMItemCount numberFrames, MTAudioPr
      return;
    }
    
-+  [processor processEqualizer:context bufferList:bufferListInOut frames:*numberFramesOut];
++  double startSeconds = CMTIME_IS_NUMERIC(timeRange.start) ? CMTimeGetSeconds(timeRange.start) : NAN;
++  [processor processEqualizer:context bufferList:bufferListInOut frames:*numberFramesOut startSeconds:startSeconds];
 +
    SampleBufferCallback callback = processor.sampleBufferCallback;
 -  if (callback && bufferListInOut && bufferListInOut->mNumberBuffers > 0) {
@@ -748,6 +3668,58 @@ index 6f8fb16..b0c8d82 100644
    }
  }
  
+diff --git a/node_modules/expo-audio/ios/DNCrossfadeDSP.h b/node_modules/expo-audio/ios/DNCrossfadeDSP.h
+new file mode 100644
+index 0000000..8520ed0
+--- /dev/null
++++ b/node_modules/expo-audio/ios/DNCrossfadeDSP.h
+@@ -0,0 +1,46 @@
++#ifndef DN_CROSSFADE_DSP_H
++#define DN_CROSSFADE_DSP_H
++
++#include <math.h>
++
++#define DN_CROSSFADE_MAX_POINTS 16
++
++typedef struct DNCrossfadeCurve {
++  int count;
++  double times[DN_CROSSFADE_MAX_POINTS];
++  double values[DN_CROSSFADE_MAX_POINTS];
++} DNCrossfadeCurve;
++
++static inline double DNCrossfadeCurveValue(const DNCrossfadeCurve *curve, double position) {
++  if (!curve || curve->count < 2 || curve->count > DN_CROSSFADE_MAX_POINTS) return NAN;
++  for (int index = 1; index < curve->count; index++) {
++    if (position <= curve->times[index]) {
++      const double span = curve->times[index] - curve->times[index - 1];
++      if (span <= 0) return NAN;
++      const double local = (position - curve->times[index - 1]) / span;
++      return curve->values[index - 1] + local * (curve->values[index] - curve->values[index - 1]);
++    }
++  }
++  return curve->values[curve->count - 1];
++}
++
++// Media-time linear envelope. Caller multiplies this with processed PCM, so
++// AVPlayer.volume (user volume and track headroom) is never overwritten.
++static inline float DNCrossfadeGain(int mode, int equalPower, const DNCrossfadeCurve *curve,
++                                    double mediaTime, double start, double duration) {
++  if (mode == 2) return 0.0f; // incoming deck waiting for the overlap
++  if (mode != 1 && mode != 3) return 1.0f;
++  if (!isfinite(mediaTime) || !isfinite(start) ||
++      !isfinite(duration) || duration <= 0) return mode == 3 ? 0.0f : 1.0f;
++  double position = (mediaTime - start) / duration;
++  position = fmax(0.0, fmin(1.0, position));
++  const double custom = DNCrossfadeCurveValue(curve, position);
++  if (isfinite(custom)) return (float)fmax(0.0, fmin(1.0, custom));
++  if (equalPower) {
++    const double angle = position * 1.5707963267948966;
++    return mode == 1 ? (float)cos(angle) : (float)sin(angle);
++  }
++  return mode == 1 ? (float)(1.0 - position) : (float)position;
++}
++
++#endif
 diff --git a/node_modules/expo-audio/ios/DNEqualizerDSP.h b/node_modules/expo-audio/ios/DNEqualizerDSP.h
 new file mode 100644
 index 0000000..5c59b84
@@ -862,6 +3834,191 @@ index 0000000..5c59b84
 +  return (float)fmax(-1, fmin(1, value));
 +}
 +#endif
+diff --git a/node_modules/expo-audio/ios/DNTransitionDSP.h b/node_modules/expo-audio/ios/DNTransitionDSP.h
+new file mode 100644
+index 0000000..b81c793
+--- /dev/null
++++ b/node_modules/expo-audio/ios/DNTransitionDSP.h
+@@ -0,0 +1,179 @@
++// A temporary three-band DJ EQ and resonant-free low/high-pass sweep.
++// This state belongs to one audio render tap and runs only during overlap.
++#ifndef DN_TRANSITION_DSP_H
++#define DN_TRANSITION_DSP_H
++
++#include "DNCrossfadeDSP.h"
++#include "DNEqualizerDSP.h"
++
++#define DN_TRANSITION_BANDS 3
++#define DN_TRANSITION_FILTER_INDEX 3
++#define DN_TRANSITION_PROBES 32
++
++typedef struct {
++  bool eqEnabled;
++  DNCrossfadeCurve eq[DN_TRANSITION_BANDS]; // low shelf, mid bell, high shelf
++  int filterKind; // 0 bypass, 1 low-pass, 2 high-pass
++  DNCrossfadeCurve cutoff;
++} DNTransitionSettings;
++
++typedef struct {
++  double sampleRate;
++  double probeCos[DN_TRANSITION_PROBES], probeSin[DN_TRANSITION_PROBES];
++  double probeCos2[DN_TRANSITION_PROBES], probeSin2[DN_TRANSITION_PROBES];
++  double preamp;
++  double targetPreamp;
++  double wet;
++  DNEQCoefficients coefficients[DN_TRANSITION_BANDS + 1];
++  DNEQState channels[DN_EQ_MAX_CHANNELS][DN_TRANSITION_BANDS + 1];
++  DNTransitionSettings settings;
++  unsigned int step;
++  bool active;
++} DNTransitionDSP;
++
++static inline DNEQCoefficients DNTIdentity(void) {
++  return (DNEQCoefficients){1, 0, 0, 0, 0};
++}
++
++static inline DNEQCoefficients DNTNormalize(double b0, double b1, double b2,
++                                             double a0, double a1, double a2) {
++  if (!isfinite(a0) || a0 <= 1e-12) return DNTIdentity();
++  return (DNEQCoefficients){b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0};
++}
++
++// RBJ shelf, S=1. Low and high are broad tone controls; mid uses Q=sqrt(2).
++static inline DNEQCoefficients DNTShelf(bool high, double frequency,
++                                         double sampleRate, double gainDb) {
++  if (!isfinite(gainDb) || fabs(gainDb) < 0.0001) return DNTIdentity();
++  frequency = fmax(20, fmin(sampleRate * 0.45, frequency));
++  const double a = pow(10, gainDb / 40), omega = 2 * DN_EQ_PI * frequency / sampleRate;
++  const double cosine = cos(omega), alpha = sin(omega) / sqrt(2);
++  const double beta = 2 * sqrt(a) * alpha;
++  if (high) return DNTNormalize(
++    a * ((a + 1) + (a - 1) * cosine + beta),
++    -2 * a * ((a - 1) + (a + 1) * cosine),
++    a * ((a + 1) + (a - 1) * cosine - beta),
++    (a + 1) - (a - 1) * cosine + beta,
++    2 * ((a - 1) - (a + 1) * cosine),
++    (a + 1) - (a - 1) * cosine - beta);
++  return DNTNormalize(
++    a * ((a + 1) - (a - 1) * cosine + beta),
++    2 * a * ((a - 1) - (a + 1) * cosine),
++    a * ((a + 1) - (a - 1) * cosine - beta),
++    (a + 1) + (a - 1) * cosine + beta,
++    -2 * ((a - 1) + (a + 1) * cosine),
++    (a + 1) + (a - 1) * cosine - beta);
++}
++
++static inline DNEQCoefficients DNTFilter(int kind, double cutoff, double sampleRate) {
++  if (kind != 1 && kind != 2) return DNTIdentity();
++  cutoff = fmax(20, fmin(sampleRate * 0.45, cutoff));
++  const double omega = 2 * DN_EQ_PI * cutoff / sampleRate;
++  const double cosine = cos(omega), alpha = sin(omega) / sqrt(2);
++  const double edge = kind == 1 ? 1 - cosine : 1 + cosine;
++  return DNTNormalize(edge / 2, kind == 1 ? edge : -edge, edge / 2,
++    1 + alpha, -2 * cosine, 1 - alpha);
++}
++
++static inline double DNTResponseSquared(DNEQCoefficients c,
++                                         double cosine, double sine,
++                                         double cosine2, double sine2) {
++  const double nr = c.b0 + c.b1 * cosine + c.b2 * cosine2;
++  const double ni = c.b1 * sine + c.b2 * sine2;
++  const double dr = 1 + c.a1 * cosine + c.a2 * cosine2;
++  const double di = c.a1 * sine + c.a2 * sine2;
++  return (nr * nr + ni * ni) / fmax(1e-24, dr * dr + di * di);
++}
++
++static inline void DNTPrepare(DNTransitionDSP *dsp, double sampleRate) {
++  memset(dsp, 0, sizeof(*dsp));
++  dsp->sampleRate = isfinite(sampleRate) && sampleRate > 0 ? sampleRate : 48000;
++  dsp->preamp = dsp->targetPreamp = 1;
++  for (int band = 0; band <= DN_TRANSITION_BANDS; band++)
++    dsp->coefficients[band] = DNTIdentity();
++  for (int index = 0; index < DN_TRANSITION_PROBES; index++) {
++    const double frequency = 20 * pow(dsp->sampleRate * 0.45 / 20,
++      (double)index / (DN_TRANSITION_PROBES - 1));
++    const double omega = 2 * DN_EQ_PI * frequency / dsp->sampleRate;
++    dsp->probeCos[index] = cos(omega);
++    dsp->probeSin[index] = sin(omega);
++    dsp->probeCos2[index] = cos(2 * omega);
++    dsp->probeSin2[index] = sin(2 * omega);
++  }
++}
++
++static inline void DNTSetSettings(DNTransitionDSP *dsp,
++                                   const DNTransitionSettings *settings, int mode) {
++  const bool active = (mode == 1 || mode == 3) && settings &&
++    (settings->eqEnabled || settings->filterKind == 1 || settings->filterKind == 2);
++  if (settings) dsp->settings = *settings;
++  if (active && !dsp->active) {
++    memset(dsp->channels, 0, sizeof(dsp->channels));
++    dsp->step = 0;
++    dsp->preamp = 1;
++  }
++  dsp->active = active;
++}
++
++static inline void DNTBeginFrame(DNTransitionDSP *dsp, double mediaTime,
++                                  double start, double duration) {
++  if (!dsp->active) return;
++  const double elapsed = mediaTime - start;
++  dsp->wet = isfinite(elapsed) && isfinite(duration) && duration > 0
++    ? fmax(0, fmin(1, fmin(elapsed, duration - elapsed) / 0.015)) : 0;
++  if (dsp->step++ % 32 == 0) {
++    const double t = isfinite(mediaTime) && isfinite(start) && isfinite(duration) && duration > 0
++      ? fmax(0, fmin(1, (mediaTime - start) / duration)) : 0;
++    for (int band = 0; band < DN_TRANSITION_BANDS; band++) {
++      const double gain = dsp->settings.eqEnabled
++        ? DNCrossfadeCurveValue(&dsp->settings.eq[band], t) : 0;
++      const double safeGain = isfinite(gain) ? fmax(-24, fmin(24, gain)) : 0;
++      dsp->coefficients[band] = band == 1
++        ? DNEQMakePeaking(1000, dsp->sampleRate, safeGain)
++        : DNTShelf(band == 2, band == 0 ? 200 : 5000, dsp->sampleRate, safeGain);
++    }
++    const double cutoff = DNCrossfadeCurveValue(&dsp->settings.cutoff, t);
++    dsp->coefficients[DN_TRANSITION_FILTER_INDEX] = DNTFilter(
++      dsp->settings.filterKind, isfinite(cutoff) ? cutoff : 20000, dsp->sampleRate);
++
++    // The transition EQ is independent of the global EQ. Reserve headroom
++    // for the combined temporary response before processing its first sample.
++    double peakSquared = 1;
++    for (int probe = 0; probe < DN_TRANSITION_PROBES; probe++) {
++      double response = 1;
++      for (int band = 0; band <= DN_TRANSITION_BANDS; band++)
++        response *= DNTResponseSquared(dsp->coefficients[band],
++          dsp->probeCos[probe], dsp->probeSin[probe],
++          dsp->probeCos2[probe], dsp->probeSin2[probe]);
++      peakSquared = fmax(peakSquared, response);
++    }
++    dsp->targetPreamp = peakSquared > 1.0001 ? pow(10, -0.5 / 20) / sqrt(peakSquared) : 1;
++    if (dsp->step == 1 || dsp->targetPreamp < dsp->preamp)
++      dsp->preamp = dsp->targetPreamp;
++  }
++  // Recover slowly when the EQ becomes gentler; attenuation is immediate.
++  if (dsp->preamp < dsp->targetPreamp)
++    dsp->preamp += (dsp->targetPreamp - dsp->preamp) * 0.00025;
++}
++
++static inline float DNTProcessSample(DNTransitionDSP *dsp, unsigned int channel, float input) {
++  if (!dsp->active || channel >= DN_EQ_MAX_CHANNELS) return input;
++  if (!isfinite(input)) return 0;
++  double value = input * dsp->preamp;
++  for (int band = 0; band <= DN_TRANSITION_BANDS; band++) {
++    const DNEQCoefficients c = dsp->coefficients[band];
++    DNEQState *s = &dsp->channels[channel][band];
++    const double output = c.b0 * value + c.b1 * s->x1 + c.b2 * s->x2 - c.a1 * s->y1 - c.a2 * s->y2;
++    s->x2 = s->x1; s->x1 = value; s->y2 = s->y1; s->y1 = output;
++    value = output;
++  }
++  if (!isfinite(value)) {
++    memset(dsp->channels[channel], 0, sizeof(dsp->channels[channel]));
++    return 0;
++  }
++  // Enter and leave the temporary chain over 15 ms so a non-neutral endpoint
++  // can bypass cleanly without changing the persistent ten-band EQ.
++  return (float)fmax(-1, fmin(1, input + (value - input) * dsp->wet));
++}
++
++#endif
 diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/expo-audio/ios/MediaController.swift
 index e977f57..2d056a2 100644
 --- a/node_modules/expo-audio/ios/MediaController.swift
@@ -884,11 +4041,24 @@ index e977f57..2d056a2 100644
        } else {
          player.play(at: Float(player.currentRate > 0 ? player.currentRate : 1.0))
        }
+diff --git a/node_modules/expo-audio/src/Audio.types.ts b/node_modules/expo-audio/src/Audio.types.ts
+index 906753f..edb3a26 100644
+--- a/node_modules/expo-audio/src/Audio.types.ts
++++ b/node_modules/expo-audio/src/Audio.types.ts
+@@ -220,6 +220,8 @@ export type AudioStatus = {
+   loop: boolean;
+   /** Whether the audio just finished playing. */
+   didJustFinish: boolean;
++  /** Transient native two-deck handoff; distinct from natural item completion. */
++  didJustCrossfade?: boolean;
+   /** Whether the player is currently buffering data. */
+   isBuffering: boolean;
+   /** Whether the audio has finished loading and is ready to play. */
 diff --git a/node_modules/expo-audio/src/AudioModule.types.ts b/node_modules/expo-audio/src/AudioModule.types.ts
-index 7e75371..068b0e7 100644
+index 7e75371..1f5b587 100644
 --- a/node_modules/expo-audio/src/AudioModule.types.ts
 +++ b/node_modules/expo-audio/src/AudioModule.types.ts
-@@ -208,6 +208,13 @@ export declare class AudioPlayer extends SharedObject<AudioEvents> {
+@@ -208,6 +208,50 @@ export declare class AudioPlayer extends SharedObject<AudioEvents> {
     */
    setAudioSamplingEnabled(enabled: boolean): void;
  
@@ -899,19 +4069,257 @@ index 7e75371..068b0e7 100644
 +   */
 +  setEqualizer(enabled: boolean, gains: number[]): void;
 +
++  /**
++   * Arms a two-deck crossfade with gain automation. Returns false when either
++   * source is not ready, the cue is too close/past, or the audio graph is unavailable.
++   * The outgoing status emits didJustCrossfade once after handoff.
++   * Temporary eqSettings/filterSettings are supported on iOS and web.
++   * @platform ios
++   * @platform android
++   * @platform web
++   */
++  scheduleCrossfade(toPlayer: AudioPlayer, options: {
++    durationSeconds: number;
++    fromStartSeconds?: number;
++    toStartSeconds?: number;
++    volumeLaw?: 'linear' | 'equal_power';
++    /** Normalized points. Starts at {t:0,value:1}, ends at {t:1,value:0}. */
++    volumeOut?: { t: number; value: number }[];
++    /** Normalized points. Starts at {t:0,value:0}, ends at {t:1,value:1}. */
++    volumeIn?: { t: number; value: number }[];
++    /** Versioned, temporary three-band EQ curves in dB; applies only during overlap. */
++    eqSettings?: {
++      version: 1;
++      enabled: boolean;
++      out: Record<'low' | 'mid' | 'high', { t: number; value: number }[]>;
++      in: Record<'low' | 'mid' | 'high', { t: number; value: number }[]>;
++    };
++    /** Versioned cutoff sweep in Hz. Each deck may be bypassed with null. */
++    filterSettings?: {
++      version: 1;
++      enabled: boolean;
++      out: { kind: 'lowpass' | 'highpass'; cutoff: { t: number; value: number }[] } | null;
++      in: { kind: 'lowpass' | 'highpass'; cutoff: { t: number; value: number }[] } | null;
++    };
++  }): Promise<boolean>;
++
++  /** Cancels a pending/active crossfade and restores the outgoing deck. */
++  cancelCrossfade(): void;
++
    /**
     * Sets or removes this audio player as the active player for lock screen controls.
     * Only one player can control the lock screen at a time.
 diff --git a/node_modules/expo-audio/src/AudioPlayer.web.ts b/node_modules/expo-audio/src/AudioPlayer.web.ts
-index 61db2df..8164dce 100644
+index 61db2df..02cf23d 100644
 --- a/node_modules/expo-audio/src/AudioPlayer.web.ts
 +++ b/node_modules/expo-audio/src/AudioPlayer.web.ts
-@@ -22,6 +22,52 @@ import { mediaSessionController } from './MediaSessionController.web';
+@@ -22,6 +22,253 @@ import { mediaSessionController } from './MediaSessionController.web';
  export const activePlayers = new Set<AudioPlayerWeb>();
  
  let hasWarnedIOSVolume = false;
 +const EQUALIZER_FREQUENCIES = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 +const equalizerFrequency = (frequency: number, sampleRate: number) => Math.min(frequency, sampleRate * 0.49);
++type CrossfadePoint = { t: number; value: number };
++type TransitionBand = 'low' | 'mid' | 'high';
++type TransitionEq = {
++  version: 1;
++  enabled: boolean;
++  out: Record<TransitionBand, CrossfadePoint[]>;
++  in: Record<TransitionBand, CrossfadePoint[]>;
++};
++type TransitionFilterDeck = { kind: 'lowpass' | 'highpass'; cutoff: CrossfadePoint[] };
++type TransitionFilter = {
++  version: 1;
++  enabled: boolean;
++  out: TransitionFilterDeck | null;
++  in: TransitionFilterDeck | null;
++};
++type CrossfadeOptions = {
++  durationSeconds: number;
++  fromStartSeconds?: number;
++  toStartSeconds?: number;
++  volumeLaw?: 'linear' | 'equal_power';
++  volumeOut?: CrossfadePoint[];
++  volumeIn?: CrossfadePoint[];
++  eqSettings?: TransitionEq;
++  filterSettings?: TransitionFilter;
++};
++type WebCrossfade = {
++  from: AudioPlayerWeb;
++  to: AudioPlayerWeb;
++  context: AudioContext;
++  options: CrossfadeOptions;
++  fromStart: number;
++  toStart: number;
++  started: boolean;
++  startGeneration: number;
++  fading: boolean;
++  paused: boolean;
++  done: boolean;
++  fadeStart: number;
++  fadeDuration: number;
++  fadeEnd: number;
++  cueTimer: ReturnType<typeof setTimeout> | null;
++  startTimer: ReturnType<typeof setTimeout> | null;
++  endTimer: ReturnType<typeof setTimeout> | null;
++};
++
++function validCrossfadeCurve(points: CrossfadePoint[] | undefined, incoming: boolean): boolean {
++  if (!points) return true;
++  if (points.length < 2 || points.length > 16) return false;
++  const first = points[0], last = points[points.length - 1];
++  if (!first || !last) return false;
++  if (Math.abs(first.t) > 1e-6 || Math.abs(last.t - 1) > 1e-6 ||
++      Math.abs(first.value - (incoming ? 0 : 1)) > 1e-6 ||
++      Math.abs(last.value - (incoming ? 1 : 0)) > 1e-6) return false;
++  let previous = -1;
++  for (const point of points) {
++    if (!point || !Number.isFinite(point.t) || !Number.isFinite(point.value) ||
++        point.t <= previous || point.t < 0 || point.t > 1 ||
++        point.value < 0 || point.value > 1) return false;
++    previous = point.t;
++  }
++  return true;
++}
++
++function canArmCrossfadeCue(currentTime: number, start: number): boolean {
++  // An immediate cue may be scheduled from a play gesture, but must not
++  // restart a zero-cue transition after playback has already moved on.
++  return currentTime + 0.03 < start ||
++    (start <= 0.03 && currentTime >= 0 && currentTime <= 0.05);
++}
++
++function crossfadeValue(points: CrossfadePoint[] | undefined, incoming: boolean,
++                        law: CrossfadeOptions['volumeLaw'], position: number): number {
++  const t = Math.max(0, Math.min(1, position));
++  if (points) {
++    for (let index = 1; index < points.length; index++) {
++      if (t <= points[index].t) {
++        const previous = points[index - 1], next = points[index];
++        return previous.value + (next.value - previous.value) *
++          (t - previous.t) / (next.t - previous.t);
++      }
++    }
++    return points[points.length - 1].value;
++  }
++  if (law === 'equal_power') return incoming ? Math.sin(t * Math.PI / 2) : Math.cos(t * Math.PI / 2);
++  return incoming ? t : 1 - t;
++}
++
++function validEffectCurve(points: CrossfadePoint[] | undefined, min: number, max: number): boolean {
++  if (!Array.isArray(points) || points.length < 2 || points.length > 16 ||
++      Math.abs(points[0]?.t ?? Infinity) > 1e-6 ||
++      Math.abs((points[points.length - 1]?.t ?? -Infinity) - 1) > 1e-6) return false;
++  let previous = -1;
++  for (const point of points) {
++    if (!point || !Number.isFinite(point.t) || !Number.isFinite(point.value) ||
++        point.t <= previous || point.t < 0 || point.t > 1 ||
++        point.value < min || point.value > max) return false;
++    previous = point.t;
++  }
++  return true;
++}
++
++function validTransitionEq(eq: TransitionEq | undefined): boolean {
++  if (eq == null) return true;
++  if (eq.version !== 1 || typeof eq.enabled !== 'boolean' || !eq.out || !eq.in) return false;
++  return (['out', 'in'] as const).every(deck =>
++    (['low', 'mid', 'high'] as const).every(band =>
++      validEffectCurve(eq[deck][band], -24, 24)));
++}
++
++function validTransitionFilter(filter: TransitionFilter | undefined): boolean {
++  if (filter == null) return true;
++  if (filter.version !== 1 || typeof filter.enabled !== 'boolean') return false;
++  return (['out', 'in'] as const).every(deck => {
++    const setting = filter[deck];
++    return setting == null || ((setting.kind === 'lowpass' || setting.kind === 'highpass') &&
++      validEffectCurve(setting.cutoff, 20, 20000));
++  });
++}
++
++function curveValue(points: CrossfadePoint[], position: number): number {
++  if (position <= points[0].t) return points[0].value;
++  for (let index = 1; index < points.length; index++) {
++    if (position <= points[index].t) {
++      const previous = points[index - 1], next = points[index];
++      return previous.value + (next.value - previous.value) *
++        (position - previous.t) / (next.t - previous.t);
++    }
++  }
++  return points[points.length - 1].value;
++}
++
++function scheduleEffectParam(param: AudioParam, now: number, seconds: number,
++                             progress: number, points: CrossfadePoint[]): void {
++  const value = curveValue(points, progress);
++  holdGain(param, now, value);
++  param.setValueAtTime(value, now);
++  for (const point of points) {
++    if (point.t > progress) param.linearRampToValueAtTime(point.value,
++      now + seconds * (point.t - progress) / (1 - progress));
++  }
++}
++
++function cloneCurve(points: CrossfadePoint[]): CrossfadePoint[] {
++  return points.map(point => ({ t: point.t, value: point.value }));
++}
++
++function transitionHeadroomCurve(eq: TransitionEq | undefined,
++                                 deck: 'out' | 'in'): CrossfadePoint[] {
++  if (!eq?.enabled) return [{ t: 0, value: 1 }, { t: 1, value: 1 }];
++  const bands = eq[deck];
++  const times = new Set(Array.from({ length: 65 }, (_, index) => index / 64));
++  for (const band of ['low', 'mid', 'high'] as const) {
++    for (const point of bands[band]) times.add(point.t);
++  }
++  return [...times].sort((a, b) => a - b).map(t => {
++    // Each shelf/bell has no larger positive response than its requested dB.
++    // Product with the independent global EQ headroom therefore stays bounded.
++    const positiveDb = (['low', 'mid', 'high'] as const).reduce((sum, band) =>
++      sum + Math.max(0, curveValue(bands[band], t)), 0);
++    return { t, value: positiveDb > 0 ? 10 ** (-(positiveDb + 0.5) / 20) : 1 };
++  });
++}
++
++function effectWetCurves(duration: number): { wet: CrossfadePoint[]; dry: CrossfadePoint[] } {
++  const edge = Math.min(0.2, 0.015 / duration);
++  return {
++    wet: [{ t: 0, value: 0 }, { t: edge, value: 1 },
++      { t: 1 - edge, value: 1 }, { t: 1, value: 0 }],
++    dry: [{ t: 0, value: 1 }, { t: edge, value: 0 },
++      { t: 1 - edge, value: 0 }, { t: 1, value: 1 }],
++  };
++}
++
++function holdGain(param: AudioParam, now: number, fallback: number): void {
++  if (typeof param.cancelAndHoldAtTime === 'function') param.cancelAndHoldAtTime(now);
++  else {
++    param.cancelScheduledValues(now);
++    param.setValueAtTime(fallback, now);
++  }
++}
++
++function scheduleCrossfadeGain(param: AudioParam, now: number, seconds: number,
++                               progress: number, points: CrossfadePoint[] | undefined,
++                               incoming: boolean, law: CrossfadeOptions['volumeLaw']): void {
++  const value = (t: number) => crossfadeValue(points, incoming, law, t);
++  holdGain(param, now, value(progress));
++  param.setValueAtTime(value(progress), now);
++  if (points) {
++    for (const point of points) {
++      if (point.t > progress) param.linearRampToValueAtTime(point.value,
++        now + seconds * (point.t - progress) / (1 - progress));
++    }
++  } else if (law === 'equal_power') {
++    for (let step = 1; step <= 64; step++) {
++      const t = progress + (1 - progress) * step / 64;
++      param.linearRampToValueAtTime(value(t), now + seconds * step / 64);
++    }
++  } else {
++    param.linearRampToValueAtTime(incoming ? 1 : 0, now + seconds);
++  }
++}
 +
 +/** Combined peaking response, not just the largest slider: adjacent boosts overlap.
 + * RBJ coefficients match Web Audio's peaking filter (Q = sqrt(2)). Sample the
@@ -959,7 +4367,7 @@ index 61db2df..8164dce 100644
  function isIOSSafari(): boolean {
    return /iPad|iPhone|iPod/.test(navigator.userAgent);
  }
-@@ -53,6 +99,10 @@ export class AudioPlayerWeb
+@@ -53,6 +300,20 @@ export class AudioPlayerWeb
    private crossOrigin?: 'anonymous' | 'use-credentials';
    private analyser: AnalyserNode | null = null;
    private sourceNode: MediaElementAudioSourceNode | null = null;
@@ -967,10 +4375,61 @@ index 61db2df..8164dce 100644
 +  private equalizerPreamp: GainNode | null = null;
 +  private equalizerEnabled = false;
 +  private equalizerGains = Array(10).fill(0) as number[];
++  private crossfadeGain: GainNode | null = null;
++  private transitionPreamp: GainNode | null = null;
++  private transitionDry: GainNode | null = null;
++  private transitionWet: GainNode | null = null;
++  private transitionEqNodes: BiquadFilterNode[] = [];
++  private transitionFilterNode: BiquadFilterNode | null = null;
++  private transitionReleaseTimer: ReturnType<typeof setTimeout> | null = null;
++  private crossfade: WebCrossfade | null = null;
++  private crossfadeGeneration = 0;
++  private crossfadedMedia: HTMLAudioElement | null = null;
    private samplingFrameId: number | null = null;
    private samplingEnabled = false;
    private samplingBuffer: Float32Array<ArrayBuffer> | null = null;
-@@ -148,6 +198,12 @@ export class AudioPlayerWeb
+@@ -99,6 +360,7 @@ export class AudioPlayerWeb
+ 
+   set playbackRate(value: number) {
+     this.media.playbackRate = value;
++    if (this.crossfade?.from === this && this.crossfade.fading) this.rescheduleCrossfade(this.crossfade);
+   }
+ 
+   get volume(): number {
+@@ -124,18 +386,31 @@ export class AudioPlayerWeb
+     if (!isAudioActive) {
+       return;
+     }
+-    this.media.play();
++    if (this.crossfadedMedia === this.media) this.crossfadedMedia = null;
++    const crossfade = this.crossfade;
++    if (crossfade?.to === this && !crossfade.started) this.cancelCrossfade();
++    const playResult = this.media.play();
+     this.isPlaying = true;
+     this.startSampling();
++    if (crossfade?.from === this && crossfade.paused) {
++      void playResult.then(() => this.resumeCrossfade(crossfade))
++        .catch(() => this.cancelCrossfade());
++    }
+   }
+ 
+   pause(): void {
++    if (this.crossfade) {
++      this.pauseCrossfade(this.crossfade);
++      return;
++    }
+     this.media.pause();
+     this.isPlaying = false;
+     this.stopSampling();
+   }
+ 
+   replace(source: AudioSource): void {
++    this.cancelCrossfade();
++    this.crossfadedMedia = null;
+     const wasPlaying = this.isPlaying;
+     const wasSampling = this.samplingEnabled;
+     const mediaSessionState = mediaSessionController.getActiveState(this);
+@@ -148,6 +423,12 @@ export class AudioPlayerWeb
      this.loaded = false;
      this.media = this._createMediaElement();
  
@@ -983,7 +4442,16 @@ index 61db2df..8164dce 100644
      if (wasSampling) {
        this.setAudioSamplingEnabled(true);
      }
-@@ -197,9 +253,7 @@ export class AudioPlayerWeb
+@@ -171,6 +452,8 @@ export class AudioPlayerWeb
+     toleranceMillisBefore?: number,
+     toleranceMillisAfter?: number
+   ): Promise<void> {
++    this.cancelCrossfade();
++    this.crossfadedMedia = null;
+     this.media.currentTime = seconds;
+   }
+ 
+@@ -197,9 +480,7 @@ export class AudioPlayerWeb
        this.analyser = ctx.createAnalyser();
        this.analyser.fftSize = 2048;
  
@@ -994,7 +4462,7 @@ index 61db2df..8164dce 100644
  
        this.samplingBuffer = new Float32Array(this.analyser.frequencyBinCount);
        this.samplingEnabled = true;
-@@ -216,17 +270,77 @@ export class AudioPlayerWeb
+@@ -216,17 +497,555 @@ export class AudioPlayerWeb
          this.analyser = null;
        }
  
@@ -1047,12 +4515,470 @@ index 61db2df..8164dce 100644
 +    if (graphChanged) this.reconnectAudioGraph();
 +  }
 +
++  async scheduleCrossfade(toPlayer: AudioPlayer, options: CrossfadeOptions): Promise<boolean> {
++    this.cancelCrossfade();
++    const generation = this.crossfadeGeneration;
++    if (!(toPlayer instanceof AudioPlayerWeb)) return false;
++    const incoming = toPlayer;
++    const duration = options.durationSeconds;
++    const fromStart = options.fromStartSeconds ?? this.duration - duration;
++    const toStart = options.toStartSeconds ?? 0;
++    if (incoming === this || !this.loaded || !incoming.loaded || incoming.playing ||
++        this.loop || incoming.loop || incoming.crossfade ||
++        !Number.isFinite(duration) || duration < 0.25 || duration > 30 ||
++        !Number.isFinite(fromStart) || !Number.isFinite(toStart) ||
++        !Number.isFinite(this.duration) || !Number.isFinite(incoming.duration) ||
++        fromStart < 0 || toStart < 0 ||
++        fromStart + duration > this.duration + 0.02 ||
++        toStart + duration > incoming.duration + 0.02 ||
++        !canArmCrossfadeCue(this.currentTime, fromStart) ||
++        (options.volumeLaw != null && options.volumeLaw !== 'linear' && options.volumeLaw !== 'equal_power') ||
++        !validCrossfadeCurve(options.volumeOut, false) || !validCrossfadeCurve(options.volumeIn, true) ||
++        !validTransitionEq(options.eqSettings) || !validTransitionFilter(options.filterSettings) ||
++        !this.canUseCrossfadeGraph() || !incoming.canUseCrossfadeGraph()) return false;
++
++    let context: AudioContext;
++    try {
++      context = getAudioContext();
++      if (context.state === 'suspended') {
++        let timeout: ReturnType<typeof setTimeout> | undefined;
++        await Promise.race([
++          context.resume(),
++          new Promise<void>((_, reject) => {
++            timeout = setTimeout(() => reject(new Error('AudioContext did not resume')), 1500);
++          }),
++        ]).finally(() => { if (timeout) clearTimeout(timeout); });
++      }
++      if (context.state !== 'running') return false;
++      if (Math.abs(incoming.currentTime - toStart) > 0.02) {
++        const sought = await incoming.seekForCrossfade(toStart);
++        if (!sought) return false;
++      }
++      if (generation !== this.crossfadeGeneration || incoming.crossfade ||
++          !this.loaded || !incoming.loaded || !canArmCrossfadeCue(this.currentTime, fromStart)) return false;
++      if (!this.ensureCrossfadeGraph(context) || !incoming.ensureCrossfadeGraph(context)) return false;
++    } catch {
++      return false;
++    }
++
++    const state: WebCrossfade = {
++      from: this, to: incoming, context,
++      options: {
++        ...options,
++        volumeOut: options.volumeOut?.map(point => ({ t: point.t, value: point.value })),
++        volumeIn: options.volumeIn?.map(point => ({ t: point.t, value: point.value })),
++        eqSettings: options.eqSettings && {
++          ...options.eqSettings,
++          out: Object.fromEntries((['low', 'mid', 'high'] as const).map(band =>
++            [band, cloneCurve(options.eqSettings!.out[band])])) as TransitionEq['out'],
++          in: Object.fromEntries((['low', 'mid', 'high'] as const).map(band =>
++            [band, cloneCurve(options.eqSettings!.in[band])])) as TransitionEq['in'],
++        },
++        filterSettings: options.filterSettings && {
++          ...options.filterSettings,
++          out: options.filterSettings.out && { ...options.filterSettings.out,
++            cutoff: cloneCurve(options.filterSettings.out.cutoff) },
++          in: options.filterSettings.in && { ...options.filterSettings.in,
++            cutoff: cloneCurve(options.filterSettings.in.cutoff) },
++        },
++      },
++      fromStart, toStart,
++      started: false, startGeneration: 0, fading: false, paused: this.media.paused, done: false,
++      fadeStart: 0, fadeDuration: 0, fadeEnd: 0,
++      cueTimer: null, startTimer: null, endTimer: null,
++    };
++    this.crossfade = state;
++    incoming.crossfade = state;
++    this.setCrossfadeGain(1);
++    incoming.setCrossfadeGain(0);
++    this.armCrossfadeCue(state);
++    this.checkCrossfade(state);
++    return true;
++  }
++
++  cancelCrossfade(): void {
++    this.crossfadeGeneration++;
++    const state = this.crossfade;
++    if (!state || state.done) return;
++    state.done = true;
++    state.startGeneration++;
++    this.clearCrossfadeTimers(state);
++    state.from.crossfade = null;
++    state.to.crossfade = null;
++    // A cancellation must not pause the outgoing song or emit didJustPause.
++    if (state.started) {
++      state.to.media.pause();
++      state.to.isPlaying = false;
++      state.to.stopSampling();
++    }
++    state.to.setCrossfadeGain(1);
++    const progress = state.fading ? Math.max(0, Math.min(1,
++      (state.from.currentTime - state.fadeStart) / state.fadeDuration)) : 0;
++    state.from.restoreCrossfadeGain(crossfadeValue(
++      state.options.volumeOut, false, state.options.volumeLaw, progress));
++    state.from.releaseTransitionGraph(progress, state.fadeDuration);
++    state.to.clearTransitionGraph();
++  }
++
++  private canUseCrossfadeGraph(): boolean {
++    // A MediaElementAudioSourceNode is silent for a CORS-cross-origin source.
++    return !this._isCrossOrigin() || this.media.crossOrigin === 'anonymous' ||
++      this.media.crossOrigin === 'use-credentials';
++  }
++
++  private async seekForCrossfade(seconds: number): Promise<boolean> {
++    return new Promise<boolean>(resolve => {
++      let settled = false;
++      const finish = (ok: boolean) => {
++        if (settled) return;
++        settled = true;
++        clearTimeout(timeout);
++        this.media.removeEventListener('seeked', onSeeked);
++        this.media.removeEventListener('error', onError);
++        resolve(ok);
++      };
++      const onSeeked = () => finish(Math.abs(this.currentTime - seconds) <= 0.25);
++      const onError = () => finish(false);
++      const timeout = setTimeout(() => finish(false), 3000);
++      this.media.addEventListener('seeked', onSeeked);
++      this.media.addEventListener('error', onError);
++      try {
++        this.media.currentTime = seconds;
++      } catch { finish(false); }
++    });
++  }
++
++  private ensureCrossfadeGraph(context: AudioContext): boolean {
++    try {
++      if (!this.sourceNode) this.sourceNode = context.createMediaElementSource(this.media);
++      if (!this.crossfadeGain) this.crossfadeGain = context.createGain();
++      this.reconnectAudioGraph();
++      return true;
++    } catch {
++      // Once created, a MediaElementAudioSourceNode owns this media element.
++      // Reconnect any partial graph so an unsupported fade cannot mute it.
++      try { if (this.sourceNode) this.reconnectAudioGraph(); } catch { /* unsupported graph */ }
++      return false;
++    }
++  }
++
++  private installTransitionGraph(context: AudioContext, options: CrossfadeOptions,
++                                 deck: 'out' | 'in'): boolean {
++    this.clearTransitionGraph();
++    const eq = options.eqSettings?.enabled ? options.eqSettings[deck] : null;
++    const filter = options.filterSettings?.enabled ? options.filterSettings[deck] : null;
++    if (!eq && !filter) return true;
++    try {
++      this.transitionPreamp = context.createGain();
++      this.transitionDry = context.createGain();
++      this.transitionWet = context.createGain();
++      this.transitionDry.gain.value = 1;
++      this.transitionWet.gain.value = 0;
++      this.transitionPreamp.gain.value = transitionHeadroomCurve(options.eqSettings, deck)[0].value;
++      if (eq) {
++        this.transitionEqNodes = (['low', 'mid', 'high'] as const).map((band, index) => {
++          const node = context.createBiquadFilter();
++          node.type = index === 0 ? 'lowshelf' : index === 1 ? 'peaking' : 'highshelf';
++          node.frequency.value = [200, 1000, 5000][index];
++          if (index === 1) node.Q.value = Math.SQRT2;
++          node.gain.value = eq[band][0].value;
++          return node;
++        });
++      }
++      if (filter) {
++        this.transitionFilterNode = context.createBiquadFilter();
++        this.transitionFilterNode.type = filter.kind;
++        this.transitionFilterNode.Q.value = Math.SQRT1_2;
++        this.transitionFilterNode.frequency.value = filter.cutoff[0].value;
++      }
++      this.reconnectAudioGraph();
++      return true;
++    } catch {
++      this.clearTransitionGraph();
++      return false;
++    }
++  }
++
++  private clearTransitionGraph(): void {
++    if (this.transitionReleaseTimer) clearTimeout(this.transitionReleaseTimer);
++    this.transitionReleaseTimer = null;
++    if (!this.transitionPreamp && !this.transitionDry && !this.transitionWet &&
++        !this.transitionEqNodes.length && !this.transitionFilterNode) return;
++    this.transitionPreamp?.disconnect();
++    this.transitionDry?.disconnect();
++    this.transitionWet?.disconnect();
++    this.transitionEqNodes.forEach(node => node.disconnect());
++    this.transitionFilterNode?.disconnect();
++    this.transitionPreamp = null;
++    this.transitionDry = null;
++    this.transitionWet = null;
++    this.transitionEqNodes = [];
++    this.transitionFilterNode = null;
++    if (this.sourceNode) this.reconnectAudioGraph();
++  }
++
++  private releaseTransitionGraph(progress: number, duration: number): void {
++    if (!this.transitionDry || !this.transitionWet) return;
++    try {
++      const now = getAudioContext().currentTime;
++      const mix = effectWetCurves(duration);
++      holdGain(this.transitionDry.gain, now, curveValue(mix.dry, progress));
++      holdGain(this.transitionWet.gain, now, curveValue(mix.wet, progress));
++      this.transitionDry.gain.linearRampToValueAtTime(1, now + 0.015);
++      this.transitionWet.gain.linearRampToValueAtTime(0, now + 0.015);
++      this.transitionReleaseTimer = setTimeout(() => this.clearTransitionGraph(), 20);
++    } catch {
++      this.clearTransitionGraph();
++    }
++  }
++
++  private scheduleTransitionEffects(state: WebCrossfade, deck: 'out' | 'in',
++                                    progress: number, seconds: number, now: number): void {
++    const options = state.options;
++    const eq = options.eqSettings?.enabled ? options.eqSettings[deck] : null;
++    const filter = options.filterSettings?.enabled ? options.filterSettings[deck] : null;
++    if (!this.transitionDry || !this.transitionWet || !this.transitionPreamp) return;
++    const mix = effectWetCurves(state.fadeDuration);
++    scheduleEffectParam(this.transitionDry.gain, now, seconds, progress, mix.dry);
++    scheduleEffectParam(this.transitionWet.gain, now, seconds, progress, mix.wet);
++    scheduleEffectParam(this.transitionPreamp.gain, now, seconds, progress,
++      transitionHeadroomCurve(options.eqSettings, deck));
++    if (eq) this.transitionEqNodes.forEach((node, index) => {
++      const band = (['low', 'mid', 'high'] as const)[index];
++      scheduleEffectParam(node.gain, now, seconds, progress, eq[band]);
++    });
++    if (filter && this.transitionFilterNode)
++      scheduleEffectParam(this.transitionFilterNode.frequency, now, seconds, progress, filter.cutoff);
++  }
++
++  private holdTransitionEffects(state: WebCrossfade, deck: 'out' | 'in',
++                                progress: number, now: number): void {
++    const options = state.options;
++    const eq = options.eqSettings?.enabled ? options.eqSettings[deck] : null;
++    const filter = options.filterSettings?.enabled ? options.filterSettings[deck] : null;
++    if (!this.transitionDry || !this.transitionWet || !this.transitionPreamp) return;
++    const mix = effectWetCurves(state.fadeDuration);
++    holdGain(this.transitionDry.gain, now, curveValue(mix.dry, progress));
++    holdGain(this.transitionWet.gain, now, curveValue(mix.wet, progress));
++    holdGain(this.transitionPreamp.gain, now,
++      curveValue(transitionHeadroomCurve(options.eqSettings, deck), progress));
++    if (eq) this.transitionEqNodes.forEach((node, index) => {
++      const band = (['low', 'mid', 'high'] as const)[index];
++      holdGain(node.gain, now, curveValue(eq[band], progress));
++    });
++    if (filter && this.transitionFilterNode)
++      holdGain(this.transitionFilterNode.frequency, now, curveValue(filter.cutoff, progress));
++  }
++
++  private setCrossfadeGain(value: number): void {
++    if (!this.crossfadeGain) return;
++    const param = this.crossfadeGain.gain;
++    const now = getAudioContext().currentTime;
++    holdGain(param, now, value);
++    param.setValueAtTime(value, now);
++  }
++
++  private restoreCrossfadeGain(fallback: number): void {
++    if (!this.crossfadeGain) return;
++    const param = this.crossfadeGain.gain;
++    const now = getAudioContext().currentTime;
++    holdGain(param, now, fallback);
++    param.linearRampToValueAtTime(1, now + 0.015);
++  }
++
++  private clearCrossfadeTimers(state: WebCrossfade): void {
++    if (state.cueTimer) clearTimeout(state.cueTimer);
++    if (state.startTimer) clearTimeout(state.startTimer);
++    if (state.endTimer) clearTimeout(state.endTimer);
++    state.cueTimer = null;
++    state.startTimer = null;
++    state.endTimer = null;
++  }
++
++  private armCrossfadeCue(state: WebCrossfade): void {
++    if (state.done || state.paused || state.started) return;
++    if (state.cueTimer) clearTimeout(state.cueTimer);
++    const rate = Math.max(0.1, state.from.media.playbackRate);
++    const delay = Math.max(0, (state.fromStart - state.from.currentTime) / rate * 1000);
++    state.cueTimer = setTimeout(() => {
++      state.cueTimer = null;
++      state.from.checkCrossfade(state);
++    }, Math.max(10, delay));
++  }
++
++  private checkCrossfade(state: WebCrossfade): void {
++    if (state.done || state.paused || state.from.media.paused) return;
++    if (!state.started && state.from.currentTime + 0.015 >= state.fromStart) {
++      void state.from.startCrossfadeIncoming(state);
++    } else if (!state.started && !state.cueTimer) {
++      state.from.armCrossfadeCue(state);
++    }
++    if (state.fading && state.from.currentTime + 0.002 >= state.fadeEnd) {
++      state.from.completeCrossfade(state);
++    }
++  }
++
++  private async startCrossfadeIncoming(state: WebCrossfade): Promise<void> {
++    if (state.done || state.started || state.paused) return;
++    if (state.from.duration - state.from.currentTime < 0.14) {
++      this.cancelCrossfade();
++      return;
++    }
++    state.started = true;
++    const attempt = ++state.startGeneration;
++    if (state.cueTimer) clearTimeout(state.cueTimer);
++    state.cueTimer = null;
++    state.startTimer = setTimeout(() => {
++      state.startTimer = null;
++      if (!state.fading && !state.done && attempt === state.startGeneration) this.cancelCrossfade();
++    }, 1500);
++    try {
++      // The incoming deck may be the same element that faded out one song
++      // earlier. This direct media.play() bypasses AudioPlayerWeb.play().
++      state.to.crossfadedMedia = null;
++      await state.to.media.play();
++      if (state.done || attempt !== state.startGeneration) {
++        // play() may resolve after an external pause/cancel. A stale start must
++        // never leave the next deck audible while the outgoing deck is paused.
++        if (state.paused) state.to.media.pause();
++        return;
++      }
++      if (state.startTimer) clearTimeout(state.startTimer);
++      state.startTimer = null;
++      if (state.paused) { state.to.media.pause(); return; }
++      state.to.isPlaying = true;
++      state.to.startSampling();
++      const remaining = state.from.duration - state.from.currentTime;
++      const fadeDuration = Math.min(state.options.durationSeconds, remaining - 0.04);
++      if (fadeDuration < 0.10 || state.to.media.paused) {
++        this.cancelCrossfade();
++        return;
++      }
++      state.fading = true;
++      state.fadeStart = state.from.currentTime;
++      state.fadeDuration = fadeDuration;
++      state.fadeEnd = state.fadeStart + fadeDuration;
++      if (!state.from.installTransitionGraph(state.context, state.options, 'out') ||
++          !state.to.installTransitionGraph(state.context, state.options, 'in')) {
++        this.cancelCrossfade();
++        return;
++      }
++      this.rescheduleCrossfade(state);
++    } catch {
++      if (state.startTimer) clearTimeout(state.startTimer);
++      state.startTimer = null;
++      if (!state.done && attempt === state.startGeneration) this.cancelCrossfade();
++    }
++  }
++
++  private rescheduleCrossfade(state: WebCrossfade): void {
++    if (state.done || !state.fading || state.paused ||
++        !state.from.crossfadeGain || !state.to.crossfadeGain) return;
++    const progress = Math.max(0, Math.min(1,
++      (state.from.currentTime - state.fadeStart) / state.fadeDuration));
++    if (progress >= 1) { this.completeCrossfade(state); return; }
++    const seconds = state.fadeDuration * (1 - progress) /
++      Math.max(0.1, state.from.media.playbackRate);
++    const now = state.context.currentTime;
++    try {
++      scheduleCrossfadeGain(state.from.crossfadeGain.gain, now, seconds, progress,
++        state.options.volumeOut, false, state.options.volumeLaw);
++      scheduleCrossfadeGain(state.to.crossfadeGain.gain, now, seconds, progress,
++        state.options.volumeIn, true, state.options.volumeLaw);
++      state.from.scheduleTransitionEffects(state, 'out', progress, seconds, now);
++      state.to.scheduleTransitionEffects(state, 'in', progress, seconds, now);
++    } catch {
++      this.cancelCrossfade();
++      return;
++    }
++    if (state.endTimer) clearTimeout(state.endTimer);
++    state.endTimer = setTimeout(() => {
++      state.endTimer = null;
++      this.checkCrossfade(state);
++    }, seconds * 1000 + 20);
++  }
++
++  private pauseCrossfade(state: WebCrossfade): void {
++    if (state.done || state.paused) return;
++    state.paused = true;
++    const incomingStartPending = state.started;
++    if (state.started && !state.fading) {
++      state.started = false;
++      state.startGeneration++;
++    }
++    this.clearCrossfadeTimers(state);
++    if (state.fading) {
++      const progress = Math.max(0, Math.min(1,
++        (state.from.currentTime - state.fadeStart) / state.fadeDuration));
++      const now = state.context.currentTime;
++      if (state.from.crossfadeGain) holdGain(state.from.crossfadeGain.gain, now,
++        crossfadeValue(state.options.volumeOut, false, state.options.volumeLaw, progress));
++      if (state.to.crossfadeGain) holdGain(state.to.crossfadeGain.gain, now,
++        crossfadeValue(state.options.volumeIn, true, state.options.volumeLaw, progress));
++      state.from.holdTransitionEffects(state, 'out', progress, now);
++      state.to.holdTransitionEffects(state, 'in', progress, now);
++    }
++    state.from.media.pause();
++    if (incomingStartPending) state.to.media.pause();
++    state.from.isPlaying = false;
++    state.to.isPlaying = false;
++    state.from.stopSampling();
++    state.to.stopSampling();
++  }
++
++  private resumeCrossfade(state: WebCrossfade): void {
++    if (state.done || !state.paused) return;
++    state.paused = false;
++    if (!state.started) {
++      this.armCrossfadeCue(state);
++      return;
++    }
++    void state.to.media.play().then(() => {
++      if (!state.done && !state.paused) {
++        state.to.isPlaying = true;
++        state.to.startSampling();
++        this.rescheduleCrossfade(state);
++      }
++    }).catch(() => this.cancelCrossfade());
++  }
++
++  private completeCrossfade(state: WebCrossfade): void {
++    if (state.done || !state.fading || state.to.media.paused) {
++      this.cancelCrossfade();
++      return;
++    }
++    state.done = true;
++    this.clearCrossfadeTimers(state);
++    state.from.crossfade = null;
++    state.to.crossfade = null;
++    state.from.crossfadedMedia = state.from.media;
++    state.from.media.pause();
++    state.from.isPlaying = false;
++    state.from.stopSampling();
++    state.from.setCrossfadeGain(1);
++    state.to.setCrossfadeGain(1);
++    state.from.clearTransitionGraph();
++    state.to.clearTransitionGraph();
++    state.from.emit(PLAYBACK_STATUS_UPDATE, {
++      ...getStatusFromMedia(state.from.media, state.from.id),
++      playing: false,
++      didJustFinish: false,
++      didJustCrossfade: true,
++    });
++  }
++
 +  private reconnectAudioGraph(): void {
 +    if (!this.sourceNode) return;
 +    const ctx = getAudioContext();
 +    this.sourceNode.disconnect();
 +    this.equalizerPreamp?.disconnect();
 +    this.equalizerNodes.forEach((node) => node.disconnect());
++    this.transitionPreamp?.disconnect();
++    this.transitionDry?.disconnect();
++    this.transitionWet?.disconnect();
++    this.transitionEqNodes.forEach((node) => node.disconnect());
++    this.transitionFilterNode?.disconnect();
++    this.crossfadeGain?.disconnect();
 +    this.analyser?.disconnect();
 +
 +    let tail: AudioNode = this.sourceNode;
@@ -1066,6 +4992,26 @@ index 61db2df..8164dce 100644
 +        tail = node;
 +      }
 +    }
++    if (this.transitionPreamp && this.transitionDry && this.transitionWet && this.crossfadeGain) {
++      tail.connect(this.transitionDry);
++      this.transitionDry.connect(this.crossfadeGain);
++      tail.connect(this.transitionPreamp);
++      let effectTail: AudioNode = this.transitionPreamp;
++      for (const node of this.transitionEqNodes) {
++        effectTail.connect(node);
++        effectTail = node;
++      }
++      if (this.transitionFilterNode) {
++        effectTail.connect(this.transitionFilterNode);
++        effectTail = this.transitionFilterNode;
++      }
++      effectTail.connect(this.transitionWet);
++      this.transitionWet.connect(this.crossfadeGain);
++      tail = this.crossfadeGain;
++    } else if (this.crossfadeGain) {
++      tail.connect(this.crossfadeGain);
++      tail = this.crossfadeGain;
++    }
 +    if (this.analyser) {
 +      tail.connect(this.analyser);
 +      this.analyser.connect(ctx.destination);
@@ -1077,7 +5023,24 @@ index 61db2df..8164dce 100644
    private startSampling(): void {
      if (!this.samplingEnabled || !this.analyser || !this.samplingBuffer) {
        return;
-@@ -273,6 +387,11 @@ export class AudioPlayerWeb
+@@ -254,12 +1073,16 @@ export class AudioPlayerWeb
+ 
+   setPlaybackRate(second: number, pitchCorrectionQuality?: PitchCorrectionQuality): void {
+     this.media.playbackRate = second;
++    if (this.crossfade?.from === this && this.crossfade.fading) this.rescheduleCrossfade(this.crossfade);
+     this.shouldCorrectPitch = pitchCorrectionQuality === 'high';
+     this.media.preservesPitch = this.shouldCorrectPitch;
+     mediaSessionController.updatePositionState(this);
+   }
+ 
+   remove(): void {
++    this.cancelCrossfade();
++    this.clearTransitionGraph();
++    this.crossfadedMedia = null;
+     mediaSessionController.clear(this);
+     this.stopSampling();
+ 
+@@ -273,6 +1096,13 @@ export class AudioPlayerWeb
        this.sourceNode = null;
      }
  
@@ -1085,14 +5048,48 @@ index 61db2df..8164dce 100644
 +    this.equalizerNodes = [];
 +    this.equalizerPreamp?.disconnect();
 +    this.equalizerPreamp = null;
++    this.crossfadeGain?.disconnect();
++    this.crossfadeGain = null;
 +
      this.samplingEnabled = false;
      this.media.pause();
      // Clear event handlers to prevent memory leaks
-@@ -375,7 +494,15 @@ export class AudioPlayerWeb
+@@ -283,6 +1113,8 @@ export class AudioPlayerWeb
+     this.media.onended = null;
+     this.media.onloadeddata = null;
+     this.media.onerror = null;
++    this.media.onwaiting = null;
++    this.media.onstalled = null;
+     this.media.removeAttribute('src');
+     this.media.load();
+     activePlayers.delete(this);
+@@ -335,6 +1167,7 @@ export class AudioPlayerWeb
+     // Throttled status updates based on interval
+     media.ontimeupdate = () => {
+       const now = media.currentTime;
++      if (this.crossfade?.from === this) this.checkCrossfade(this.crossfade);
+       // Handle backwards time (loop/seek)
+       if (now < lastEmitTime) {
+         lastEmitTime = now;
+@@ -366,16 +1199,30 @@ export class AudioPlayerWeb
+       });
+       mediaSessionController.updatePlaybackState(this);
+       mediaSessionController.updatePositionState(this);
++      if (this.crossfade && !this.crossfade.paused && !this.crossfade.done) {
++        this.pauseCrossfade(this.crossfade);
++      }
+     };
+ 
+     media.onseeked = () => {
++      if (this.crossfade) this.cancelCrossfade();
+       lastEmitTime = media.currentTime;
+       this.emit(PLAYBACK_STATUS_UPDATE, getStatusFromMedia(media, this.id));
+       mediaSessionController.updatePositionState(this);
      };
  
      media.onended = () => {
++      if (this.crossfadedMedia === media) return;
++      if (this.crossfade) this.cancelCrossfade();
 +      this.isPlaying = false;
        lastEmitTime = 0;
 +      // Deliver completion even when the final timeupdate was throttled or JS
@@ -1105,3 +5102,24 @@ index 61db2df..8164dce 100644
        mediaSessionController.updatePlaybackState(this);
      };
  
+@@ -390,6 +1237,7 @@ export class AudioPlayerWeb
+     };
+ 
+     media.onerror = () => {
++      if (this.crossfade) this.cancelCrossfade();
+       this.loaded = false;
+       this.isPlaying = false;
+       const errorMessage = media.error
+@@ -403,6 +1251,12 @@ export class AudioPlayerWeb
+       });
+     };
+ 
++    const cancelFadeOnStall = () => {
++      if (this.crossfade?.fading) this.cancelCrossfade();
++    };
++    media.onwaiting = cancelFadeOnStall;
++    media.onstalled = cancelFadeOnStall;
++
+     return media;
+   }
+ }

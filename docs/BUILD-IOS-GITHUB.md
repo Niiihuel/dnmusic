@@ -8,6 +8,8 @@ ocurre en GitHub y no consume el cupo de builds de EAS Cloud.
 Los runners macOS consumen minutos de GitHub Actions
 y pueden generar cargos según el plan y el presupuesto de la cuenta. Por eso el
 workflow se inicia manualmente y valida secretos en Linux antes de usar el Mac.
+También comprueba TypeScript y el parche nativo de audio en Linux para detectar
+errores antes de reservar el runner macOS.
 
 ## Ejecutar una compilación
 

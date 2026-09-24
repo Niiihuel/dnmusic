@@ -1,55 +1,146 @@
-name: Escritorio — publicar
+name: Escritorio — compilar y publicar
+run-name: Escritorio · ${{ inputs.version || github.ref_name }} · ${{ github.run_number }}
 
-# Compila dnmusic para Windows y Linux y sube los instaladores al repo público
-# de releases, que es de donde los baja electron-updater.
-#
-# Se dispara con un tag `escritorio-v1.2.0`. La versión sale de ahí y se escribe
-# en desktop/package.json antes de empaquetar: si viviera también en el archivo
-# habría dos fuentes para el mismo número, y olvidarse de subir una de las dos
-# es el error clásico de todo esto —el release queda publicado con la versión
-# vieja y ninguna app se entera de que hay algo nuevo.
-#
-#   git tag escritorio-v1.2.0 && git push origin escritorio-v1.2.0
-
+# EAS se usa para iOS/Android. Electron se empaqueta en runners nativos de
+# GitHub Actions; Linux y Windows deben terminar antes de publicar el release.
 on:
   push:
     tags: ['escritorio-v*']
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a publicar (ej. 1.2.0)'
+        description: 'Versión a compilar (ej. 1.2.0)'
         required: true
+        type: string
       publish:
-        description: 'Publicar en GitHub Releases (desactivado: guardar instaladores como artifacts)'
+        description: 'Publicar en GitHub Releases al terminar ambos sistemas'
+        required: true
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: read
 
+# Una reejecución de la misma versión no debe competir por los mismos assets.
+concurrency:
+  group: escritorio-${{ github.repository }}-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CI: '1'
+  EXPO_NO_DOTENV: '1'
+
 jobs:
-  publicar:
+  validar:
+    name: Validar versión y destino
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validar versión
+        id: version
+        shell: bash
+        env:
+          ENTRADA: ${{ inputs.version }}
+        run: |
+          version="${ENTRADA:-${GITHUB_REF_NAME#escritorio-v}}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "✗ '$version' no es una versión. Usá escritorio-v1.2.0 o indicá 1.2.0."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # La misma entrada alimenta las novedades dentro de la app y las notas
+      # de GitHub; detectarla ahora evita compilar dos sistemas en vano.
+      - name: Validar notas del release
+        working-directory: desktop
+        run: node scripts/notas-release.mjs "${{ steps.version.outputs.version }}"
+
+      # Las EXPO_PUBLIC_* se hornean en dist. Un bundle sin estos valores
+      # compilaría, pero dejaría un instalador inutilizable.
+      - name: Validar secrets y endpoints
+        shell: bash
+        env:
+          URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          ANON: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          MUSICA: ${{ secrets.EXPO_PUBLIC_MUSIC_API }}
+          TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          PUBLICAR: ${{ github.event_name == 'push' || inputs.publish }}
+        run: |
+          faltan=''
+          [ -n "$URL" ]    || faltan="$faltan EXPO_PUBLIC_SUPABASE_URL"
+          [ -n "$ANON" ]   || faltan="$faltan EXPO_PUBLIC_SUPABASE_ANON_KEY"
+          [ -n "$MUSICA" ] || faltan="$faltan EXPO_PUBLIC_MUSIC_API"
+          if [ "$PUBLICAR" = true ]; then
+            [ -n "$TOKEN" ] || faltan="$faltan RELEASES_TOKEN"
+          fi
+          if [ -n "$faltan" ]; then
+            echo "✗ Faltan valores en los secrets:$faltan"
+            exit 1
+          fi
+          if [ "$URL" != 'https://envoy-production-2fb6.up.railway.app' ]; then
+            echo '✗ EXPO_PUBLIC_SUPABASE_URL no apunta al Auth de producción.'
+            exit 1
+          fi
+          if [ "$MUSICA" != 'https://dnmusic-production-c3f4.up.railway.app' ]; then
+            echo '✗ EXPO_PUBLIC_MUSIC_API no apunta a la API de producción.'
+            exit 1
+          fi
+
+      - name: Verificar servicio de música para publicar
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        env:
+          EXPO_PUBLIC_MUSIC_API: ${{ secrets.EXPO_PUBLIC_MUSIC_API }}
+        run: node desktop/scripts/verificar-servicio.mjs
+
+      # Nunca volver a subir assets de una versión ya pública. Sí se permite
+      # reejecutar contra un borrador dejado por un build fallido.
+      - name: Verificar release existente
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          gh api repos/Niihuel/dnmusic-releases --jq .full_name > /dev/null
+          if gh release view "v$VERSION" --repo Niihuel/dnmusic-releases --json isDraft --jq .isDraft > release-existente.txt 2>/dev/null; then
+            if [ "$(cat release-existente.txt)" != true ]; then
+              echo "✗ v$VERSION ya es público; usá una versión nueva."
+              exit 1
+            fi
+            echo "Se completará el borrador v$VERSION."
+          else
+            echo "Se creará el borrador v$VERSION."
+          fi
+
+  compilar:
     name: ${{ matrix.nombre }}
+    needs: validar
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
-      # De a uno: los dos trabajos publican en el mismo release, y arrancando
-      # juntos los dos intentan crearlo y uno pierde.
+      # Ambos electron-builder escriben en el mismo release; serializarlos
+      # evita una carrera al crear el borrador.
       max-parallel: 1
       matrix:
         include:
           - nombre: Linux (AppImage)
-            os: ubuntu-latest
+            os: ubuntu-24.04
             plataforma: --linux
+            archivo: dnmusic-${{ needs.validar.outputs.version }}-x86_64.AppImage
           - nombre: Windows (NSIS)
-            os: windows-latest
+            os: windows-2022
             plataforma: --win
+            archivo: dnmusic-${{ needs.validar.outputs.version }}-instalador.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -57,70 +148,11 @@ jobs:
             package-lock.json
             desktop/package-lock.json
 
-      - name: Versión
-        id: version
-        shell: bash
-        env:
-          ENTRADA: ${{ inputs.version }}
-        run: |
-          version="${ENTRADA:-${GITHUB_REF_NAME#escritorio-v}}"
-          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "✗ '$version' no es una versión. El tag va como escritorio-v1.2.0."
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      # Las EXPO_PUBLIC_* quedan horneadas en el bundle: sin ellas la app
-      # compila igual y arranca mostrando «Supabase no está configurado», que
-      # es un release inútil que además pisa al anterior. Mejor no llegar ahí.
-      - name: Chequear los secrets
-        shell: bash
-        env:
-          URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
-          ANON: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
-          MUSICA: ${{ secrets.EXPO_PUBLIC_MUSIC_API }}
-          TOKEN: ${{ secrets.RELEASES_TOKEN }}
-          PUBLISH: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != false }}
-        run: |
-          faltan=''
-          [ -n "$URL" ]    || faltan="$faltan EXPO_PUBLIC_SUPABASE_URL"
-          [ -n "$ANON" ]   || faltan="$faltan EXPO_PUBLIC_SUPABASE_ANON_KEY"
-          [ -n "$MUSICA" ] || faltan="$faltan EXPO_PUBLIC_MUSIC_API"
-          if [ "$PUBLISH" = true ]; then
-            [ -n "$TOKEN" ] || faltan="$faltan RELEASES_TOKEN"
-          fi
-          if [ -n "$faltan" ]; then
-            echo "✗ Sin valor:$faltan"
-            echo
-            # Que un secret exista no quiere decir que tenga algo adentro:
-            # `gh secret set` sin una terminal de verdad —por ejemplo detrás de
-            # un `!` en un agente— no muestra el prompt, lee una entrada vacía y
-            # guarda el string vacío sin avisar. Aparece en `gh secret list`
-            # igual que los buenos. Se distingue mirando el bloque `env:` de
-            # arriba: los que tienen valor salen como ***, los vacíos salen en
-            # blanco.
-            echo "  Ojo: un secret vacío también aparece en 'gh secret list'."
-            echo "  En el bloque env: de arriba, los que tienen valor salen ***."
-            echo "  Cargalo de nuevo desde una terminal interactiva:"
-            echo "    gh secret set NOMBRE --repo ${{ github.repository }}"
-            exit 1
-          fi
-          if [ "$URL" != 'https://envoy-production-2fb6.up.railway.app' ]; then
-            echo "✗ EXPO_PUBLIC_SUPABASE_URL no apunta al Auth de Railway."
-            exit 1
-          fi
-          if [ "$MUSICA" != 'https://dnmusic-production-c3f4.up.railway.app' ]; then
-            echo "✗ EXPO_PUBLIC_MUSIC_API no apunta a la API de Railway."
-            exit 1
-          fi
-
-      - name: Validar el servicio de música
-        env:
-          EXPO_PUBLIC_MUSIC_API: ${{ secrets.EXPO_PUBLIC_MUSIC_API }}
-        run: node desktop/scripts/verificar-servicio.mjs
-
       - name: Dependencias de la app
         run: npm ci
+
+      - name: Tipos de la app
+        run: npm run typecheck
 
       - name: Export web
         env:
@@ -137,7 +169,7 @@ jobs:
 
       - name: Fijar la versión
         working-directory: desktop
-        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+        run: npm version "${{ needs.validar.outputs.version }}" --no-git-tag-version --allow-same-version
 
       - name: Compilar y probar el proceso principal
         working-directory: desktop
@@ -147,30 +179,86 @@ jobs:
         working-directory: desktop
         run: npm run traer-web
 
-      # Las notas del release salen de las mismas novedades que lee la app.
-      # Con la versión del tag: si no tiene entrada escrita, esto corta acá —
-      # publicar sin contar qué trae es el olvido que el script existe para
-      # atajar.
       - name: Notas del release
         working-directory: desktop
-        run: node scripts/notas-release.mjs "${{ steps.version.outputs.version }}"
+        run: node scripts/notas-release.mjs "${{ needs.validar.outputs.version }}"
 
-      - name: Empaquetar y publicar
+      # electron-builder genera latest.yml/latest-linux.yml solamente al
+      # publicar. EP_DRAFT deja ambos sistemas en un release invisible para
+      # electron-updater hasta que el trabajo finalizar lo haga público.
+      - name: Empaquetar y preparar borrador
         working-directory: desktop
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        run: npx electron-builder ${{ matrix.plataforma }} --publish ${{ github.event_name == 'workflow_dispatch' && inputs.publish == false && 'never' || 'always' }}
+          EP_DRAFT: ${{ github.event_name == 'push' || inputs.publish }}
+          PUBLICAR: ${{ github.event_name == 'push' || inputs.publish }}
+          PLATAFORMA: ${{ matrix.plataforma }}
+        shell: bash
+        run: |
+          if [ "$PUBLICAR" = true ]; then
+            npx electron-builder "$PLATAFORMA" --publish always
+          else
+            npx electron-builder "$PLATAFORMA" --publish never
+          fi
 
-      - name: Guardar instaladores y metadatos de actualización
-        if: ${{ success() || failure() }}
+      - name: Verificar instalador
+        env:
+          ARCHIVO: ${{ matrix.archivo }}
+        shell: bash
+        run: |
+          if [ ! -s "desktop/release/$ARCHIVO" ]; then
+            echo "✗ No se generó desktop/release/$ARCHIVO"
+            exit 1
+          fi
+
+      - name: Guardar instaladores y metadatos
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: dnmusic-desktop-${{ matrix.os }}-${{ steps.version.outputs.version }}
+          name: dnmusic-desktop-${{ matrix.os }}-${{ needs.validar.outputs.version }}
           path: |
             desktop/release/*.AppImage
             desktop/release/*.exe
             desktop/release/*.blockmap
             desktop/release/latest*.yml
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
           compression-level: 0
+
+  finalizar:
+    name: Publicar release completo
+    if: ${{ github.event_name == 'push' || inputs.publish }}
+    needs: [validar, compilar]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verificar assets y publicar
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.validar.outputs.version }}
+        shell: bash
+        run: |
+          gh release view "v$VERSION" --repo Niihuel/dnmusic-releases --json isDraft,assets > release.json
+          node <<'NODE'
+          const fs = require('node:fs')
+          const version = process.env.VERSION
+          const release = JSON.parse(fs.readFileSync('release.json', 'utf8'))
+          if (!release.isDraft) {
+            console.error(`✗ v${version} ya es público; no se modificarán sus assets.`)
+            process.exit(1)
+          }
+          const assets = new Map(release.assets.map((asset) => [asset.name, asset.size]))
+          const required = [
+            `dnmusic-${version}-x86_64.AppImage`,
+            `dnmusic-${version}-instalador.exe`,
+            'latest-linux.yml',
+            'latest.yml',
+          ]
+          const missing = required.filter((name) => !assets.has(name) || assets.get(name) <= 0)
+          if (missing.length) {
+            console.error(`✗ Faltan assets para publicar: ${missing.join(', ')}`)
+            process.exit(1)
+          }
+          console.log(`✓ v${version} tiene instaladores y metadatos de ambos sistemas.`)
+          NODE
+          gh release edit "v$VERSION" --repo Niihuel/dnmusic-releases --draft=false
+          echo "✓ v$VERSION publicado en Niihuel/dnmusic-releases" >> "$GITHUB_STEP_SUMMARY"

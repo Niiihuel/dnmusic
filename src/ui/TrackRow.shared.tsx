@@ -10,6 +10,7 @@ import { RowSurface } from './RowSurface'
 import { formatClock } from './SeekBar'
 import { estadoControlWeb, superficieInteractivaWeb } from './estadoControl'
 import { ICON_COLOR, IconDownload, IconMusic, IconPause, IconPlay } from './icons'
+import type { TempoDeLista } from '../lib/playlistBpm'
 
 /** Debajo de esto la tabla deja de ser una tabla. Igual que en `Panel`. */
 const SHELL_PX = 780
@@ -24,7 +25,7 @@ const SHELL_PX = 780
  * por `trailing`.
  *
  * **En el teléfono deja de ser una tabla.** Una tabla tiene sentido con ancho de
- * sobra: número, título, duración y encabezado de columnas, todo alineado. En
+ * sobra: número, título, duración y BPM en playlists, todo alineado. En
  * 390px esas tres columnas de servicio le comen el lugar justamente a lo único
  * que importa, que es de qué canción se trata — el resultado era la fila
  * apretada de la captura, con el título recortado y la duración pegada al menú.
@@ -40,6 +41,7 @@ export function TrackRow({
   title,
   artist,
   downloaded,
+  bpm,
   artwork,
   durationMs,
   sounding,
@@ -58,6 +60,8 @@ export function TrackRow({
   artist: string
   /** Descarga explícita lista para escuchar sin conexión, no caché temporal. */
   downloaded?: boolean
+  /** Tempo del PCM; ≈ señala una estimación sin rejilla de beats fiable. */
+  bpm?: TempoDeLista | null
   /**
    * La imagen ya resuelta, no la URL cruda.
    *
@@ -120,6 +124,10 @@ export function TrackRow({
   const [hoveredPropio, setHoveredPropio] = useState(false)
   const [focused, setFocused] = useState(false)
   const hovered = (hoveredExterno ?? hoveredPropio) || focused
+  const bpmText = bpm == null ? '—' : `${bpm.approximate ? '≈' : ''}${bpm.bpm}`
+  const bpmAccessibility = bpm === null ? 'BPM sin dato medible'
+    : bpm?.approximate ? `Aproximadamente ${bpm.bpm} BPM${bpm.varying ? `, varía entre ${bpm.minBpm} y ${bpm.maxBpm}` : ''}`
+      : bpm ? `${bpm.bpm} BPM` : undefined
 
   const marcarHover = (on: boolean) => {
     setHoveredPropio(on)
@@ -144,7 +152,7 @@ export function TrackRow({
       {...clic.gestos}
       className={`flex-row items-center rounded-lg px-2 ${suelto ? 'gap-3 py-2' : 'gap-4 py-2'} ${
         inset ? (suelto ? 'mx-3' : 'mx-6') : ''
-      } ${Platform.OS !== 'web' && hovered ? 'bg-muted' : sounding ? 'bg-card' : ''}`}
+      } ${Platform.OS !== 'web' && hovered ? 'bg-muted' : ''}`}
     >
       {/*
        * **Toda la fila** es lo tocable, no solo el número.
@@ -259,11 +267,22 @@ export function TrackRow({
             >
               {artist}
             </Text>
+            {suelto && bpm !== undefined ? <Text className="text-muted-foreground text-caption2 tabular-nums"
+              numberOfLines={1} accessibilityLabel={bpmAccessibility}>
+              {`${bpmText} bpm`}
+            </Text> : null}
           </View>
         </View>
 
 
       </Pressable>
+
+      {!suelto && bpm !== undefined ? <View style={{ width: ANCHO_BPM, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+        <Text numberOfLines={1} className="text-center text-muted-foreground text-caption1 tabular-nums"
+          accessibilityLabel={bpmAccessibility}>
+          {bpmText}
+        </Text>
+      </View> : null}
 
       {suelto ? null : (
         <View style={{ width: ANCHO_DURACION, height: 44, alignItems: 'center', justifyContent: 'center' }}>
@@ -341,9 +360,10 @@ export function TrackRow({
  * una columna que muestra «4:01» no le saca lugar a nada.
  */
 export const ANCHO_DURACION = 64
+export const ANCHO_BPM = 64
 
 /**
- * El encabezado de la tabla: número, título, duración.
+ * El encabezado de la tabla: número, título, BPM opcional y duración.
  *
  * `trailing` es el ancho que la tabla reserva al final de cada fila: 36 con un
  * solo control, 72 con dos. Sin esto, «Duración» se despegaría de su columna
@@ -353,7 +373,7 @@ export const ANCHO_DURACION = 64
  * ahí abajo ya no hay tabla: sin número ni duración no queda ninguna columna
  * que encabezar.
  */
-export function TrackColumnHeader({ trailing = 36 }: { trailing?: number }) {
+export function TrackColumnHeader({ trailing = 36, bpm = false }: { trailing?: number; bpm?: boolean }) {
   const suelto = useWindowDimensions().width < SHELL_PX
   if (suelto) return null
 
@@ -365,6 +385,8 @@ export function TrackColumnHeader({ trailing = 36 }: { trailing?: number }) {
           versalitas de 13 y los otros dos en 11: tres estilos para una fila de
           tres rótulos. */}
       <Text className="flex-1 text-muted-foreground text-caption1">Título</Text>
+      {bpm ? <Text numberOfLines={1} style={{ width: ANCHO_BPM }}
+        className="text-center text-muted-foreground text-caption1">BPM</Text> : null}
       <Text numberOfLines={1} style={{ width: ANCHO_DURACION }} className="text-center text-muted-foreground text-caption1">
         Duración
       </Text>

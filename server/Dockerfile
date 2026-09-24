@@ -12,9 +12,9 @@ RUN npm run build
 
 FROM node:22-bookworm-slim
 WORKDIR /app
-ENV NODE_ENV=production
 
-# ffmpeg para remuxar el audio que baja de YouTube.
+# Los binarios del sistema decodifican URLs firmadas de Storage en este runtime;
+# los estáticos de npm pueden abortar con SIGSEGV al abrirlas en el contenedor.
 #
 # Lo que sirve YouTube es MP4 **fragmentado** (moof/mdat en cadena, como para
 # DASH). Chrome lo reproduce sin chistar, pero AVFoundation suma la duración de
@@ -24,6 +24,10 @@ ENV NODE_ENV=production
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg \
  && rm -rf /var/lib/apt/lists/*
+
+ENV NODE_ENV=production \
+    FFMPEG_PATH=/usr/bin/ffmpeg \
+    FFPROBE_PATH=/usr/bin/ffprobe
 
 COPY package.json ./
 RUN npm install --omit=dev && npm cache clean --force

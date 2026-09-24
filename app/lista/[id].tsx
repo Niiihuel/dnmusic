@@ -1,7 +1,9 @@
 import { BordeScrollNativo } from '../../src/ui/CollectionScrollEdge'
 import { BotonSuperficie } from '../../src/ui/BotonSuperficie'
+import { BotonMixPlaylist } from '../../src/ui/BotonMixPlaylist'
+import { PlaylistTransitionRow } from '../../src/ui/PlaylistTransitionRow'
 import { IconButton } from '../../src/ui/IconButton'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Platform,
@@ -16,24 +18,36 @@ import { artworkSource } from '../../src/lib/artwork'
 import { compartirLista, linkDeLista } from '../../src/lib/compartirLista'
 import { mensajeError } from '../../src/lib/mensajeError'
 import { volver } from '../../src/lib/volver'
+import type { TrackResult } from '../../src/services/music'
 import {
   copyPlaylist,
   fetchPublicPlaylist,
   joinPlaylist,
   listTracks,
+  removeTrack,
   type ListaAjena,
   type PlaylistTrack,
 } from '../../src/services/playlists'
 import { avisar } from '../../src/state/aviso'
+import { dejarCancionACompartir } from '../../src/state/compartir'
+import { alternarMeGusta, useMeGusta } from '../../src/state/gustos'
+import { avisarListaCambiada, dejarCancionPendiente } from '../../src/state/listas'
 import { useUser } from '../../src/state/session'
 import { Aterrizaje } from '../../src/ui/Aterrizaje'
-import { playCollection, playQueue, togglePlayback, usePlaybackTrack, useWantPlay } from '../../src/state/playback'
-import { abrirLista, usePiso } from '../../src/state/shell'
+import { canEnqueueNext, enqueue, enqueueNext, playCollection, playQueue, togglePlayback, usePlaybackTrack, useWantPlay } from '../../src/state/playback'
+import { abrirArtista, abrirLista, usePiso } from '../../src/state/shell'
+import { loadActivePlaylistMix, useMixPlaylistRevision, type ActivePlaylistMix } from '../../src/state/mixPlayback'
+import { avisarContenidoPlaylistCambiado, usePlaylistContentRevision } from '../../src/state/playlistContent'
+import { usePlaylistBpms } from '../../src/state/playlistBpm'
+import { HAY_DESCARGAS, useDescargas } from '../../src/state/descargas'
 import { Avatar } from '../../src/ui/Avatar'
 import { BotonVolver } from '../../src/ui/BotonVolver'
 import { CollectionHeader, CollectionTitle, Insignia } from '../../src/ui/CollectionHeader'
+import { Confirmar } from '../../src/ui/Confirmar'
 import { Panel } from '../../src/ui/Panel'
 import { PlaylistCover } from '../../src/ui/PlaylistCover'
+import { entradaDeTrack, menuDescargaCancion } from '../../src/ui/descargasControl'
+import { Menu, type MenuItem } from '../../src/ui/Menu'
 import { formatLength } from '../../src/ui/SeekBar'
 import { SkeletonList } from '../../src/ui/Skeleton'
 import { TrackColumnHeader, TrackRow } from '../../src/ui/TrackRow'
@@ -41,17 +55,32 @@ import { Vacio } from '../../src/ui/Vacio'
 import {
   ICON_COLOR,
   IconGlobe,
+  IconHeart,
+  IconHeartFilled,
+  IconMinus,
   IconMusic,
   IconPause,
   IconPlay,
   IconPlus,
+  IconQueue,
   IconShare,
+  IconUser,
   IconUsers,
 } from '../../src/ui/icons'
 
 /** Desde acá la pantalla se comporta como el escritorio: panel y salida flotante. */
 const ANCHO_PX = 900
 const MAX_W = 900
+
+/** La hoja de elegir lista recibe la canción ya resuelta, igual que en Inicio. */
+function resultadoDeLista(track: PlaylistTrack): TrackResult {
+  return {
+    videoId: track.videoId, title: track.title, artist: track.artist,
+    artistId: track.artistId, album: '', albumId: null,
+    artworkUrl: track.artworkUrl, durationMs: track.durationMs,
+    audioPath: track.audioPath, artworkPath: track.artworkPath,
+  }
+}
 
 /**
  * La lista pública de otra persona, que es adonde lleva el link compartido.
@@ -66,8 +95,9 @@ const MAX_W = 900
  * guardársela es llevártela tal cual, y una lista que cambia de aspecto según
  * de quién sea no es la misma lista.
  *
- * Lo que **no** tiene es todo lo que sería editarla: no hay menú de la lista, ni
- * quitar canciones, ni renombrar. Se puede escuchar y se puede guardar.
+ * El visitante no edita la lista. Quien ya es dueño o colaborador sí puede
+ * quitar canciones desde el menú de cada fila; los demás pueden escuchar,
+ * guardar y usar acciones personales como Me gusta o Agregar a una lista.
  */
 export default function ListaPublica() {
   const { id, colaborar } = useLocalSearchParams<{ id?: string; colaborar?: string }>()
@@ -85,13 +115,19 @@ export default function ListaPublica() {
    */
   const [cargado, setCargado] = useState<{
     id: string
+    contentRevision: number
     lista: ListaAjena | null
     tracks: PlaylistTrack[]
   } | null>(null)
-  const fresco = !!id && cargado?.id === id
+  const contentRevision = usePlaylistContentRevision(id ?? null)
+  const fresco = !!id && cargado?.id === id && cargado.contentRevision === contentRevision
   const lista = fresco ? cargado.lista : undefined
   const tracks = fresco ? cargado.tracks : []
+  const bpms = usePlaylistBpms(tracks)
   const [guardando, setGuardando] = useState(false)
+  const [porQuitar, setPorQuitar] = useState<{ playlistId: string; trackId: string; title: string } | null>(null)
+  const { items: descargas } = useDescargas()
+  const gustos = useMeGusta()
   const sonando = usePlaybackTrack()
   const suena = useWantPlay()
   /*
@@ -105,6 +141,21 @@ export default function ListaPublica() {
    */
   const quien = useUser()
   const aprobado = !!quien
+  const mixRevision = useMixPlaylistRevision(id ?? null)
+  const [loadedMix, setLoadedMix] = useState<{ playlistId: string; revision: number; data: ActivePlaylistMix | null } | null>(null)
+  useEffect(() => {
+    if (!id || !aprobado) return
+    let alive = true
+    loadActivePlaylistMix(id)
+      .then(data => { if (alive) setLoadedMix({ playlistId: id, revision: mixRevision, data }) })
+      .catch(() => { if (alive) setLoadedMix({ playlistId: id, revision: mixRevision, data: null }) })
+    return () => { alive = false }
+  }, [id, aprobado, mixRevision])
+  const activeMix = loadedMix && loadedMix.playlistId === id && loadedMix.revision === mixRevision
+    ? loadedMix.data?.mix ? loadedMix.data : null : null
+  const transitionsByPair = useMemo(() => new Map(
+    (activeMix?.edges ?? []).map(edge => [`${edge.fromPlaylistTrackId}:${edge.toPlaylistTrackId}`, edge]),
+  ), [activeMix])
 
   useEffect(() => {
     if (!id || fresco || !aprobado) return
@@ -129,14 +180,14 @@ export default function ListaPublica() {
       /* Las canciones se piden solo si la lista existe y se puede ver: si no,
          sería un viaje que la base va a contestar vacío igual. */
       const t = l ? await listTracks(id).catch(() => []) : []
-      if (vivo) setCargado({ id, lista: l, tracks: t })
+      if (vivo) setCargado({ id, contentRevision, lista: l, tracks: t })
     }
 
-    cargar().catch(() => vivo && setCargado({ id, lista: null, tracks: [] }))
+    cargar().catch(() => vivo && setCargado({ id, contentRevision, lista: null, tracks: [] }))
     return () => {
       vivo = false
     }
-  }, [id, fresco, colaborar, aprobado])
+  }, [id, fresco, colaborar, aprobado, contentRevision])
 
   /*
    * De quién es la fila que suena.
@@ -154,7 +205,78 @@ export default function ListaPublica() {
     const track = tracks[at]
     if (!track) return
     if (suenaAca(track)) togglePlayback()
-    else playQueue(tracks, at, null)
+    else playQueue(tracks, at, { id: id!, name: lista?.playlist.name ?? 'Lista', kind: 'public' })
+  }
+
+  async function quitar(trackId: string) {
+    if (!lista?.puedoEditar) return
+    try {
+      await removeTrack(trackId)
+      avisarContenidoPlaylistCambiado(lista.playlist.id)
+      avisarListaCambiada(lista.playlist.id)
+    } catch (error) {
+      avisar(`No se pudo quitar la canción: ${mensajeError(error)}`, true)
+    }
+  }
+
+  /** Un mismo menú para tres puntos, toque largo y clic derecho. */
+  function opcionesDe(track: PlaylistTrack, download: ReturnType<typeof entradaDeTrack>): MenuItem[] {
+    const gustada = gustos.some(cancion => cancion.videoId === track.videoId)
+    return [
+      {
+        label: gustada ? 'Quitar de me gusta' : 'Me gusta',
+        rapida: true,
+        selected: gustada || undefined,
+        onPress: () => alternarMeGusta(track),
+        icon: gustada ? <IconHeartFilled size={15} color={ICON_COLOR.foreground} />
+          : <IconHeart size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: gustada ? 'heart.fill' : 'heart',
+      },
+      {
+        label: 'Poner a continuación',
+        onPress: () => enqueueNext(track),
+        disabled: !canEnqueueNext(),
+        subtitle: canEnqueueNext() ? undefined : 'El orden del Jam es compartido',
+        icon: <IconQueue size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'text.line.first.and.arrowtriangle.forward',
+      },
+      {
+        label: 'Agregar a la cola',
+        rapida: true,
+        onPress: () => enqueue(track),
+        icon: <IconQueue size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'text.badge.plus',
+      },
+      {
+        label: 'Compartir',
+        rapida: true,
+        onPress: () => { dejarCancionACompartir(track); router.push('/compartir') },
+        icon: <IconShare size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'square.and.arrow.up',
+      },
+      {
+        label: 'Agregar a una lista',
+        onPress: () => { dejarCancionPendiente(resultadoDeLista(track)); router.push('/lista/elegir') },
+        icon: <IconPlus size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'text.badge.plus',
+      },
+      ...(track.artistId ? [{
+        label: 'Ir al artista',
+        subtitle: track.artist,
+        separadorAntes: true,
+        onPress: () => { abrirArtista(track.artistId!, track.artist); volver(router, '/') },
+        icon: <IconUser size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'music.microphone' as const,
+      }] : []),
+      ...menuDescargaCancion(track, download),
+      ...(lista?.puedoEditar ? [{
+        label: 'Quitar de la lista',
+        onPress: () => setPorQuitar({ playlistId: lista.playlist.id, trackId: track.id, title: track.title }),
+        destructive: true,
+        icon: <IconMinus size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'minus.circle' as const,
+      }] : []),
+    ]
   }
 
   async function guardar() {
@@ -263,7 +385,7 @@ export default function ListaPublica() {
                     <>
                       <IconButton label={
                           algunaSuena && suena ? 'Pausar' : `Reproducir ${lista.playlist.name}`
-                        } symbol={algunaSuena && suena ? 'pause.fill' : 'play.fill'} onPress={() => (algunaSuena ? togglePlayback() : playCollection(tracks, null))} disabled={total === 0} lado={56} size={20} variant="primary" icon={algunaSuena && suena ? (
+                        } symbol={algunaSuena && suena ? 'pause.fill' : 'play.fill'} onPress={() => (algunaSuena ? togglePlayback() : playCollection(tracks, { id: id!, name: lista.playlist.name, kind: 'public' }))} disabled={total === 0} lado={56} size={20} variant="primary" icon={algunaSuena && suena ? (
                           <IconPause
                             size={20}
                             color={total === 0 ? ICON_COLOR.muted : ICON_COLOR.onPrimary}
@@ -328,6 +450,11 @@ export default function ListaPublica() {
                         </BotonSuperficie>
                       )}
 
+                      {total >= 2 ? <BotonMixPlaylist playlistId={lista.playlist.id} name={lista.playlist.name}
+                        onPress={() => router.push({ pathname: '/lista/mix', params: {
+                          id: lista.playlist.id, nombre: lista.playlist.name, owner: lista.mia ? '1' : '0',
+                        } })} /> : null}
+
                       <IconButton expandible copyText={linkDeLista(lista.playlist.id)} label="Compartir el link" symbol="square.and.arrow.up" onPress={() => void compartirLista(lista.playlist.id, lista.playlist.name)} lado={44} size={18} icon={<IconShare size={18} color={ICON_COLOR.muted} />} />
                     </>
                   }
@@ -370,21 +497,35 @@ export default function ListaPublica() {
                     />
                   </View>
                 ) : (
-                  <View className="gap-1">
-                    <TrackColumnHeader />
-                    {tracks.map((track, i) => (
-                      <TrackRow
-                        key={track.id}
-                        index={i}
-                        title={track.title}
-                        artist={track.artist}
-                        artwork={artworkSource(track.artworkPath, track.artworkUrl, 96)}
-                        durationMs={track.durationMs}
-                        sounding={suenaAca(track)}
-                        playing={suenaAca(track) && suena}
-                        onPlay={() => play(i)}
-                      />
-                    ))}
+                  <View className="gap-2">
+                    <TrackColumnHeader bpm />
+                    {tracks.map((track, i) => {
+                      const download = HAY_DESCARGAS ? entradaDeTrack(track, descargas) : null
+                      const options = opcionesDe(track, download)
+                      return <View key={track.id} style={activeMix?.mix && tracks[i + 1] ? { gap: 8 } : undefined}>
+                        <TrackRow
+                          index={i}
+                          title={track.title}
+                          artist={track.artist}
+                          bpm={bpms.get(track.audioPath) ?? null}
+                          downloaded={download?.descarga.estado === 'lista' && !download.descarga.temporal}
+                          artwork={artworkSource(track.artworkPath, track.artworkUrl, 96)}
+                          durationMs={track.durationMs}
+                          sounding={suenaAca(track)}
+                          playing={suenaAca(track) && suena}
+                          onPlay={() => play(i)}
+                          menu={options}
+                          trailing={options.length ? <Menu items={options} label={`Opciones de ${track.title}`} size={14} /> : null}
+                        />
+                        {activeMix?.mix && tracks[i + 1] ? <PlaylistTransitionRow
+                          from={track.title} to={tracks[i + 1].title}
+                          preset={transitionsByPair.get(`${track.id}:${tracks[i + 1].id}`)?.preset ?? activeMix.mix.defaultPreset}
+                          durationMs={transitionsByPair.get(`${track.id}:${tracks[i + 1].id}`)?.durationMs ?? activeMix.mix.defaultDurationMs}
+                          onPress={() => router.push({ pathname: '/lista/mix', params: {
+                            id: id!, nombre: lista.playlist.name, fromTrackId: track.id,
+                          } })} /> : null}
+                      </View>
+                    })}
                   </View>
                 )}
               </View>
@@ -392,6 +533,12 @@ export default function ListaPublica() {
           </ScrollView>
         </Panel>
       </View>
+      <Confirmar visible={!!porQuitar && porQuitar.playlistId === lista?.playlist.id}
+        titulo="¿Quitar de la lista?"
+        mensaje={porQuitar ? `«${porQuitar.title}» dejará de aparecer en «${lista?.playlist.name ?? 'esta lista'}».` : ''}
+        rotulo="Quitar"
+        onCancelar={() => setPorQuitar(null)}
+        onConfirmar={() => { const trackId = porQuitar?.trackId; setPorQuitar(null); if (trackId) void quitar(trackId) }} />
     </SafeAreaView>
   )
 }

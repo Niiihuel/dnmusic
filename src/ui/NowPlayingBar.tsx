@@ -8,7 +8,7 @@ import { useRouter } from 'expo-router'
 import { ActivityIndicator, Image, Platform, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { artworkSource } from '../lib/artwork'
-import { abrirCara, hayQuienAbraCaras, useTabsVisible } from '../state/shell'
+import { abrirArtista, abrirCara, hayQuienAbraCaras, useTabsVisible } from '../state/shell'
 import {
   canOpenPlaylist,
   posicionSV,
@@ -37,6 +37,7 @@ import { SeekBar, formatClock } from './SeekBar'
 import { BotonAleatorio, BotonRepetir, NOMBRE_MODO_REPRODUCCION } from './Transport'
 import { BotonMeGusta } from './BotonMeGusta'
 import { EnlaceArtista } from './EnlaceArtista'
+import { PlayerMarquee } from './PlayerMarquee'
 import { BotonLateral } from './CabeceraLateral'
 import {
   ICON_COLOR,
@@ -230,6 +231,13 @@ export function NowPlayingBar({
   if (!current || oculto) return null
 
   const progress = durationMs > 0 ? Math.max(0, Math.min(1, positionMs / durationMs)) : 0
+  const desktopStatus = error ? <PlayerMarquee text={error} kind="subtitle" />
+    : estadoRemoto ? <View className="min-w-0 flex-row items-center gap-1">
+      <IconDispositivo size={12} color={ICON_COLOR.foreground} />
+      <View className="min-w-0 flex-1"><PlayerMarquee text={estadoRemoto} kind="subtitle" /></View>
+    </View>
+      : <PlayerMarquee text={current.artist} kind="subtitle"
+        onPress={current.artistId ? () => { abrirArtista(current.artistId!, current.artist); router.dismissTo('/') } : undefined} />
 
   /*
    * Reemplaza a la cruz que había acá.
@@ -520,10 +528,9 @@ export function NowPlayingBar({
           </View>
         )}
         <View className="min-w-0 flex-1 gap-0.5">
-          <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>
-            {current.title}
-          </Text>
-          {lineaEstado({ estadoRemoto, error, artist: current.artist, artistId: current.artistId })}
+          {ES_WEB ? <PlayerMarquee text={current.title} kind="title" />
+            : <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>{current.title}</Text>}
+          {ES_WEB ? desktopStatus : lineaEstado({ estadoRemoto, error, artist: current.artist, artistId: current.artistId })}
         </View>
         {/* El corazón, pegado a lo que suena: es un juicio sobre la canción,
             no un control de transporte — por eso va acá y no con el play. */}
@@ -653,10 +660,9 @@ export function NowPlayingBar({
               </View>
             )}
             <View className="min-w-0 flex-1 gap-0.5">
-              <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>
-                {current.title}
-              </Text>
-              {lineaEstado({ estadoRemoto, error, artist: current.artist, artistId: current.artistId })}
+              {ES_WEB ? <PlayerMarquee text={current.title} kind="title" />
+                : <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>{current.title}</Text>}
+              {ES_WEB ? desktopStatus : lineaEstado({ estadoRemoto, error, artist: current.artist, artistId: current.artistId })}
             </View>
             {/* El corazón, junto a lo que suena — misma regla que en la
                 franja sin vidrio. Compacta no entra: lo que queda es saber qué

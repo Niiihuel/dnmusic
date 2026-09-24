@@ -23,6 +23,7 @@ function montar({ os = 'web', width = 1440, guardar = async () => {} } = {}) {
     './HojaNombreListaNativa': { HojaNombreListaNativa: 'HojaNombreListaNativa' },
     './Button': { FormError: 'FormError' }, './estadoControl': { estadoControlWeb: mode => ({ dataSet: { dnHover: mode } }) },
     './icons': { ICON_COLOR: {}, IconPencil: 'IconPencil' },
+    './Glass': { BotonVidrio: 'BotonVidrio' },
   }
   const exports = {}
   const source = ts.transpileModule(readFileSync('src/ui/RenombrarLista.tsx', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
@@ -126,7 +127,8 @@ for (const [os, width, inline] of [['web', 1440, true], ['web', 390, false], ['i
       assert.equal(nodes(sheet, 'Modal').length, 0)
       if (os === 'ios') assert.equal(sheet.type, 'HojaNombreListaNativa')
       const actions = h.exports.AccionesNombreLista({ editor: h.editor })
-      assert.deepEqual(nodes(actions, 'AccionSocial').map(n => n.props.label), ['Cancelar', 'Guardar'])
+      if (inline) assert.deepEqual(nodes(actions, 'BotonVidrio').map(n => n.props.label), ['Cancelar edición del nombre', 'Guardar nombre de la lista'])
+      else assert.deepEqual(nodes(actions, 'AccionSocial').map(n => n.props.label), ['Cancelar', 'Guardar'])
       assert.equal(h.llamadas.length, 0)
     }
   })

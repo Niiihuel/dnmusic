@@ -1,5 +1,6 @@
 import { trabajosCompartidos } from '../lib/trabajosCompartidos'
 import { getSupabase } from '../lib/supabase'
+import { validMixSpectrum, type MixSpectrumBands } from '../lib/mixSpectrum'
 import { parseLrc, type LyricLine } from './letra'
 import { hayResolutorABordo, resolverYAportar } from './motor/resolutorABordo'
 import { iniciarResolucion, progresoResolucion, terminarResolucion } from '../state/resolucion'
@@ -859,6 +860,8 @@ export async function signedUrl(path: string): Promise<string> {
 export type Waveform = {
   /** Amplitud por bucket, normalizada a 0..1. */
   peaks: number[]
+  /** Energía real en tres bandas por el mismo bucket; ausente en cachés antiguos. */
+  bands?: MixSpectrumBands | null
   /** Duración real del audio decodificado, en ms. */
   durationMs: number
 }
@@ -957,7 +960,63 @@ export async function fetchWaveform(
   )
   const data = (await res.json()) as Waveform & { error?: string }
   if (!res.ok || data.error) throw new Error(data.error ?? 'No se pudo leer la canción')
+  if (data.bands && (!Array.isArray(data.peaks) || !validMixSpectrum(data.bands, data.peaks.length))) data.bands = null
   return data
+}
+
+/**
+ * Onda de un tramo de audio ya guardado, incluida una canción propia sin
+ * `videoId` resoluble. El servidor comprueba la lectura exacta con el JWT.
+ */
+export async function fetchAudioWaveform(
+  audioPath: string,
+  buckets: number,
+  signal: AbortSignal | undefined,
+  tramo: { desdeMs: number; durMs: number },
+): Promise<Waveform> {
+  const desdeMs = Math.round(tramo.desdeMs)
+  const durMs = Math.round(tramo.durMs)
+  if (!audioPath || !Number.isSafeInteger(desdeMs) || desdeMs < 0 ||
+    !Number.isSafeInteger(durMs) || durMs < 250 || durMs > 30_000 ||
+    desdeMs + durMs > 4 * 60 * 60_000 ||
+    !Number.isSafeInteger(buckets) || buckets < 40 || buckets > 600) {
+    throw new Error('El tramo de onda debe durar entre 250 ms y 30 s, con 40 a 600 barras.')
+  }
+
+  const query = `audioPath=${encodeURIComponent(audioPath)}&buckets=${buckets}&desdeMs=${desdeMs}&durMs=${durMs}`
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await fetchMusica(`${MUSIC_API}/peaks?${query}`, { signal })
+    if (response.status === 429 && attempt === 0) {
+      const seconds = Number(response.headers.get('Retry-After'))
+      const delayMs = Number.isFinite(seconds) && seconds > 0 ? Math.min(5_000, seconds * 1_000) : 2_000
+      await new Promise<void>((resolve, reject) => {
+        if (signal?.aborted) { reject(new Error('Onda cancelada.')); return }
+        const onAbort = () => {
+          clearTimeout(timer)
+          reject(new Error('Onda cancelada.'))
+        }
+        const timer = setTimeout(() => {
+          signal?.removeEventListener('abort', onAbort)
+          resolve()
+        }, delayMs)
+        signal?.addEventListener('abort', onAbort, { once: true })
+      })
+      continue
+    }
+
+    let body: unknown
+    try { body = await response.json() } catch { body = null }
+    const data = body as Partial<Waveform> & { error?: string } | null
+    if (!response.ok || data?.error) throw new Error(data?.error ?? 'No se pudo leer la onda del audio.')
+    if (!data || !Number.isFinite(data.durationMs) || Number(data.durationMs) <= 0 ||
+      Number(data.durationMs) > durMs + 100 || !Array.isArray(data.peaks) ||
+      data.peaks.length !== buckets || data.peaks.some(value => !Number.isFinite(value) || value < 0 || value > 1)) {
+      throw new Error('El servidor devolvió una onda inválida.')
+    }
+    if (data.bands && !validMixSpectrum(data.bands, data.peaks.length)) data.bands = null
+    return data as Waveform
+  }
+  throw new Error('El servidor de ondas está ocupado. Reintentá en unos segundos.')
 }
 
 /**

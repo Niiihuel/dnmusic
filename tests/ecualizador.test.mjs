@@ -5,12 +5,13 @@ import ts from 'typescript'
 
 const compilerOptions = { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
 
-function cargarEstado(saved = null, read) {
+function cargarEstado(saved = null, read, savedPresets = null) {
   const writes = []
   const cache = new Map()
+  const disk = new Map([['ecualizador:v1', saved], ['ecualizador:presets:v1', savedPresets]])
   const storage = {
-    getItem: read ?? (async key => key === 'ecualizador:v1' ? saved : null),
-    setItem: async (key, value) => { writes.push([key, JSON.parse(value)]) },
+    getItem: read ?? (async key => disk.get(key) ?? null),
+    setItem: async (key, value) => { disk.set(key, value); writes.push([key, JSON.parse(value)]) },
   }
   function load(path) {
     if (cache.has(path)) return cache.get(path)
@@ -25,7 +26,7 @@ function cargarEstado(saved = null, read) {
     })
     return exports
   }
-  return { eq: load('src/state/ecualizador.ts'), writes }
+  return { eq: load('src/state/ecualizador.ts'), writes, disk }
 }
 
 const drenar = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
@@ -38,7 +39,10 @@ test('ecualizador carga, limita y persiste una curva de diez bandas', async () =
     cargado: true,
     activo: true,
     preset: 'Personalizado',
+    presetPersonalId: null,
     ganancias: [-12, -8, -4, 0, 2, 4, 8, 12, 0, 0],
+    presetsPersonales: [],
+    comparacion: null,
   })
 
   eq.elegirPresetEcualizador('Rock')
@@ -96,7 +100,7 @@ test('mover una banda muchas veces guarda sólo el último valor y evita índice
 
 test('la carga tardía nunca pisa una edición y el preset corresponde a la curva real', async () => {
   let resolve
-  const { eq } = cargarEstado(null, () => new Promise(r => { resolve = r }))
+  const { eq } = cargarEstado(null, key => key === 'ecualizador:v1' ? new Promise(r => { resolve = r }) : Promise.resolve(null))
   const load = eq.cargarEcualizador()
   eq.elegirPresetEcualizador('Rock')
   resolve(JSON.stringify({ activo: true, preset: 'Graves', ganancias: Array(10).fill(0) }))
@@ -110,6 +114,81 @@ test('la carga tardía nunca pisa una edición y el preset corresponde a la curv
   stale.setGananciaEcualizador(0, 0)
   assert.equal(stale.leerEcualizador().preset, 'Plano')
   await stale.guardarEcualizadorAhora()
+})
+
+test('preajustes personales conservan ecualizador:v1 y sobreviven una recarga', async () => {
+  const { eq, disk, writes } = cargarEstado(JSON.stringify({ activo: true, preset: 'Rock', ganancias: [4, 3, 1, -1, -2, 1, 3, 4, 4, 3] }))
+  await eq.cargarEcualizador()
+  assert.equal(eq.crearPresetPersonalEcualizador('  Mi sala  '), null)
+  await eq.guardarEcualizadorAhora()
+  const personal = eq.leerEcualizador().presetsPersonales[0]
+  assert.equal(personal.nombre, 'Mi sala')
+  assert.equal(eq.leerEcualizador().presetPersonalId, personal.id)
+  assert.equal(eq.nombrePresetEcualizador(eq.leerEcualizador()), 'Mi sala')
+  assert.equal(writes.at(-1)[0], 'ecualizador:presets:v1')
+  assert.deepEqual(JSON.parse(disk.get('ecualizador:v1')), { activo: true, preset: 'Rock', ganancias: personal.ganancias })
+
+  const recargado = cargarEstado(disk.get('ecualizador:v1'), undefined, disk.get('ecualizador:presets:v1')).eq
+  await recargado.cargarEcualizador()
+  assert.equal(recargado.leerEcualizador().presetPersonalId, personal.id)
+  assert.equal(recargado.nombrePresetEcualizador(recargado.leerEcualizador()), 'Mi sala')
+  assert.equal(recargado.leerEcualizador().comparacion, null)
+})
+
+test('editar un preajuste no altera su copia; permite renombrar y eliminar sin cambiar el sonido', async () => {
+  const { eq } = cargarEstado()
+  await eq.cargarEcualizador()
+  eq.elegirPresetEcualizador('Graves')
+  assert.equal(eq.crearPresetPersonalEcualizador('Personal 1'), null)
+  const personal = eq.leerEcualizador().presetsPersonales[0]
+  assert.equal(eq.crearPresetPersonalEcualizador('personal 1'), 'Ya existe un preajuste con ese nombre.')
+  assert.equal(eq.crearPresetPersonalEcualizador('Rock'), 'Ya existe un preajuste con ese nombre.')
+  assert.equal(eq.renombrarPresetPersonalEcualizador(personal.id, 'Bass'), null)
+  eq.setGananciaEcualizador(0, 7)
+  assert.equal(eq.leerEcualizador().presetPersonalId, null)
+  assert.equal(eq.leerEcualizador().presetsPersonales[0].ganancias[0], 6)
+  eq.elegirPresetPersonalEcualizador(personal.id)
+  assert.equal(eq.leerEcualizador().ganancias[0], 6)
+  assert.equal(eq.nombrePresetEcualizador(eq.leerEcualizador()), 'Bass')
+  const antes = [...eq.leerEcualizador().ganancias]
+  eq.eliminarPresetPersonalEcualizador(personal.id)
+  assert.deepEqual(eq.leerEcualizador().ganancias, antes)
+  assert.equal(eq.leerEcualizador().presetPersonalId, null)
+  assert.equal(eq.leerEcualizador().presetsPersonales.length, 0)
+  await eq.guardarEcualizadorAhora()
+})
+
+test('A/B cambia la curva audible sin persistir hasta usarla; descartar recupera el origen', async () => {
+  const { eq, writes } = cargarEstado()
+  await eq.cargarEcualizador()
+  eq.setEcualizadorActivo(true)
+  eq.elegirPresetEcualizador('Vocal')
+  await eq.guardarEcualizadorAhora()
+  const antes = writes.length
+  const original = [...eq.leerEcualizador().ganancias]
+  eq.iniciarComparacionEcualizador()
+  assert.equal(eq.leerEcualizador().comparacion.seleccion, 'B')
+  eq.setGananciaEcualizador(0, 9)
+  assert.equal(eq.leerEcualizador().ganancias[0], 9)
+  eq.seleccionarComparacionEcualizador('A')
+  assert.deepEqual(eq.leerEcualizador().ganancias, original)
+  eq.seleccionarComparacionEcualizador('B')
+  assert.equal(eq.leerEcualizador().ganancias[0], 9)
+  await eq.guardarEcualizadorAhora()
+  assert.equal(writes.length, antes)
+  eq.cancelarComparacionEcualizador()
+  assert.deepEqual(eq.leerEcualizador().ganancias, original)
+  assert.equal(eq.leerEcualizador().comparacion, null)
+  assert.equal(writes.length, antes)
+
+  eq.iniciarComparacionEcualizador()
+  eq.setGananciaEcualizador(0, 9)
+  eq.usarComparacionEcualizador()
+  await eq.guardarEcualizadorAhora()
+  assert.equal(eq.leerEcualizador().ganancias[0], 9)
+  assert.equal(writes.at(-1)[0], 'ecualizador:v1')
+  assert.equal(writes.at(-1)[1].ganancias[0], 9)
+  assert.equal(eq.leerEcualizador().comparacion, null)
 })
 
 test('iOS aloja la curva con RNHostView, usa dB accesibles y navegación sin safe area duplicada', () => {

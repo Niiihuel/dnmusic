@@ -51,9 +51,16 @@ import { useAppActiva } from '../lib/appActiva'
 import { avisar } from '../state/aviso'
 import { mensajeError } from '../lib/mensajeError'
 import { guardarEcualizadorAhora, informarSoporteEcualizador, useEcualizador } from '../state/ecualizador'
+import { useTransicionesGlobales } from '../state/transiciones'
+import { iniciarCrossfade, type CrossfadePlayer } from '../lib/crossfade'
+import { planForMixPair, type MusicTransitionPlan } from '../lib/mixPlan'
+import { loadActivePlaylistMix, useMixPlaylistRevision, type ActivePlaylistMix } from '../state/mixPlayback'
+import { usePlaylistSoundPreference } from '../state/playlistSoundPreference'
 
 /** Margen para dar por terminada una canción. */
 const END_EPSILON_S = 0.35
+/** Límite para preparar un cue al inicio sin demorar indefinidamente el play. */
+const CUE_ZERO_PREPARE_TIMEOUT_MS = 1500
 /**
  * Cuántas URLs firmadas se guardan **además** de las que están en uso.
  *
@@ -298,6 +305,25 @@ export function MotorAudio() {
    * guardada de una selección anterior no puede tapar un archivo descargado.
    */
   const url = mudo ? null : fuenteLocal ?? urlOf(current)
+  const transiciones = useTransicionesGlobales()
+  const mixRevision = useMixPlaylistRevision(origin?.id ?? null)
+  const [mixPlaylist, setMixPlaylist] = useState<{ playlistId: string; revision: number; data: ActivePlaylistMix | null } | null>(null)
+  useEffect(() => {
+    if (!origin?.id) return
+    let alive = true
+    const playlistId = origin.id
+    loadActivePlaylistMix(playlistId)
+      .then(next => { if (alive) setMixPlaylist({ playlistId, revision: mixRevision, data: next }) })
+      .catch(() => { if (alive) setMixPlaylist({ playlistId, revision: mixRevision, data: null }) })
+    return () => { alive = false }
+  }, [origin?.id, mixRevision])
+  const mixResolved = !origin?.id || (mixPlaylist?.playlistId === origin.id && mixPlaylist?.revision === mixRevision)
+  const activeMix = mixResolved && mixPlaylist?.data?.playlistId === origin?.id ? mixPlaylist?.data ?? null : null
+  const candidata = proximas[0] ?? null
+  const puedeMezclar = mixResolved && (transiciones.modo !== 'normal' || !!activeMix?.mix)
+  const urlCandidata = !mudo && puedeMezclar && repetir !== 'una' && !enJam && candidata
+    ? rutaLocal(candidata.audioPath, candidata.videoId) ?? urlOf(candidata)
+    : null
   useEffect(() => {
     if (!mudo && current && fuenteLocal) marcarAudioUsado(pathActual ?? '', current.videoId)
   }, [mudo, current, pathActual, fuenteLocal])
@@ -315,27 +341,44 @@ export function MotorAudio() {
    * teléfono bloqueado desaparecía. Apple Music y Spotify mantienen la ficha
    * incluso en pausa, y esto es lo que lo hace posible.
    */
-  const player = useAudioPlayer(url ? { uri: url } : null, {
+  /* Los dos hooks conservan el deck entrante al convertirlo en el activo. En
+   * un avance normal solo cambia la fuente del deck activo, como antes. */
+  const [deckActivo, setDeckActivo] = useState<0 | 1>(0)
+  const opcionesPlayer = {
     keepAudioSessionActive: true,
     preferredForwardBufferDuration: 30,
     updateInterval: 1000,
-    crossOrigin: 'anonymous',
-  })
+    crossOrigin: 'anonymous' as const,
+  }
+  const deckA = useAudioPlayer((deckActivo === 0 ? url : urlCandidata) ? { uri: (deckActivo === 0 ? url : urlCandidata)! } : null, opcionesPlayer)
+  const deckB = useAudioPlayer((deckActivo === 1 ? url : urlCandidata) ? { uri: (deckActivo === 1 ? url : urlCandidata)! } : null, opcionesPlayer)
+  const player = deckActivo === 0 ? deckA : deckB
+  const siguientePlayer = deckActivo === 0 ? deckB : deckA
   const ecualizador = useEcualizador()
+  const soundPreference = usePlaylistSoundPreference(origin?.id ?? null)
+  const profile = soundPreference.loaded && soundPreference.enabled ? activeMix?.soundProfile : null
+  const currentUsesProfile = !manual && !!current && tracks.some(track => track.id === current.id)
+  const nextUsesProfile = !upNext.length && !!candidata && tracks.some(track => track.id === candidata.id)
   useEffect(() => {
     if (!ecualizador.cargado) return
-    const aplicar = (player as typeof player & { setEqualizer?: (activo: boolean, ganancias: number[]) => void }).setEqualizer
-    if (typeof aplicar !== 'function') {
-      informarSoporteEcualizador('no-disponible')
-      return
-    }
     try {
-      aplicar.call(player, ecualizador.activo, ecualizador.ganancias)
+      for (const [deck, inPlaylist] of [[player, currentUsesProfile], [siguientePlayer, nextUsesProfile]] as const) {
+        const aplicar = (deck as typeof deck & { setEqualizer?: (activo: boolean, ganancias: number[]) => void }).setEqualizer
+        if (typeof aplicar !== 'function') {
+          informarSoporteEcualizador('no-disponible')
+          return
+        }
+        const applyProfile = inPlaylist && !!profile
+        const gains = ecualizador.ganancias.map((gain, index) => Math.max(-12, Math.min(12,
+          (ecualizador.activo ? gain : 0) + (applyProfile ? profile.bandsDb[index] ?? 0 : 0),
+        )))
+        aplicar.call(deck, ecualizador.activo || applyProfile, gains)
+      }
       informarSoporteEcualizador('disponible')
     } catch {
       informarSoporteEcualizador('error')
     }
-  }, [player, ecualizador.cargado, ecualizador.activo, ecualizador.ganancias])
+  }, [player, siguientePlayer, ecualizador.cargado, ecualizador.activo, ecualizador.ganancias, profile, currentUsesProfile, nextUsesProfile])
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => {
@@ -453,6 +496,16 @@ export function MotorAudio() {
    * cerca — o hasta un tope de tiempo, para no enmudecer si el salto se pierde.
    */
   const saltoEnVuelo = useRef<{ objetivoS: number; pedidoEn: number } | null>(null)
+  const crossfadeEnCurso = useRef<{ fromId: string; toId: string; startSeconds: number; cancel: () => void } | null>(null)
+  const crossfadeFallido = useRef<{ fromId: string; toId: string } | null>(null)
+  const cueZeroStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cueZeroExpired = useRef<string | null>(null)
+  const cueZeroWait = useRef<{ key: string; startedAt: number } | null>(null)
+  useEffect(() => { crossfadeFallido.current = null }, [current?.id])
+  useEffect(() => {
+    cueZeroExpired.current = null
+    cueZeroWait.current = null
+  }, [current?.id, index, seleccionRevision])
 
   // Un salto no se puede expresar como estado: pedir dos veces el mismo segundo
   // tiene que saltar dos veces. La cola deja el pedido acá.
@@ -460,6 +513,8 @@ export function MotorAudio() {
     registerEngine({
       seekTo: (ms) => {
         if (!lease.active) return
+        crossfadeEnCurso.current?.cancel()
+        crossfadeEnCurso.current = null
         saltoEnVuelo.current = { objetivoS: ms / 1000, pedidoEn: performance.now() }
         saltar(player, ms / 1000)
       },
@@ -484,8 +539,13 @@ export function MotorAudio() {
     // La perilla pasa por `perceptualGain`: el slider es lineal en pantalla pero
     // el oído no lo es, así que la posición se curva antes de volverse gain.
     // eslint-disable-next-line react-hooks/immutability
-    player.volume = headroomGain(current?.truePeak) * perceptualGain(volume)
-  }, [player, current, volume])
+    player.volume = Math.min(1, headroomGain(current?.truePeak) * (currentUsesProfile && profile ? Math.pow(10, profile.preampDb / 20) : 1)) * perceptualGain(volume)
+  }, [player, current, volume, currentUsesProfile, profile])
+  useEffect(() => {
+    // expo-audio expone volume como propiedad mutable también para el deck precargado.
+    // eslint-disable-next-line react-hooks/immutability
+    siguientePlayer.volume = Math.min(1, headroomGain(candidata?.truePeak) * (nextUsesProfile && profile ? Math.pow(10, profile.preampDb / 20) : 1)) * perceptualGain(volume)
+  }, [siguientePlayer, candidata, volume, nextUsesProfile, profile])
 
   /*
    * Resolver una candidata de la radio, con el audio en blanco.
@@ -561,9 +621,121 @@ export function MotorAudio() {
   const ended = useRef(false)
   const finish = useCallback(() => {
     if (ended.current) return
+    // El scheduler puede cancelar internamente por stall o fallo de la entrada
+    // sin un evento de rechazo posterior. Un didJustFinish del saliente sigue
+    // siendo un fin natural: liberar el plan y avanzar una sola vez.
+    crossfadeEnCurso.current?.cancel()
+    crossfadeEnCurso.current = null
     ended.current = true
     advance()
   }, [])
+
+  const arrancar = useCallback(() => {
+    if (cueZeroStartTimer.current) clearTimeout(cueZeroStartTimer.current)
+    cueZeroStartTimer.current = null
+    cueZeroWait.current = null
+    const estado = getPlaybackState()
+    if (!lease.active || !estado.wantPlay || (estado.manual ?? estado.tracks[estado.index])?.id !== current?.id) return
+    // Tras el handoff el deck entrante ya está sonando; aun así empieza una
+    // canción nueva y su final natural debe volver a habilitarse.
+    ended.current = false
+    if (player.playing) return
+    const total = Number.isFinite(player.duration) ? player.duration : 0
+    if (total > 0 && player.currentTime >= total - END_EPSILON_S) saltar(player, 0)
+    player.play()
+  }, [player, lease, current?.id])
+
+  const transitionPlan = useCallback((totalSeconds: number): MusicTransitionPlan | null => {
+    const pairInPlaylist = !!activeMix?.mix && !!current && !!candidata && !manual && !upNext.length
+      && tracks.some(track => track.id === current.id) && tracks.some(track => track.id === candidata.id)
+    if (pairInPlaylist) return planForMixPair(activeMix!.mix!, activeMix!.edges, current!.id, candidata!.id, totalSeconds * 1000, candidata!.durationMs)
+    if (transiciones.modo === 'normal' || !transiciones.cargado) return null
+    const requestedSeconds = transiciones.modo === 'sin-pausa' ? 0.25 : transiciones.segundos
+    const durationSeconds = Math.min(requestedSeconds, Math.max(0, totalSeconds - 0.25))
+    if (durationSeconds < 0.25) return null
+    return { durationSeconds, fromStartSeconds: totalSeconds - durationSeconds, toStartSeconds: 0, volumeLaw: 'equal_power' }
+  }, [activeMix, current, candidata, manual, upNext, tracks, transiciones.modo, transiciones.cargado, transiciones.segundos])
+
+  /* Solo mezclamos el par que la cola realmente va a reproducir. Si cambia
+   * por aleatorio, cola manual o una selección nueva, la limpieza cancela el
+   * plan y el avance normal sigue disponible. */
+  useEffect(() => {
+    if (!puedeMezclar || !wantPlay || mudo || enJam || !url || !urlCandidata || !current || !candidata || repetir === 'una') return
+    const attempt = (status: typeof player.currentStatus) => {
+      const pendiente = crossfadeEnCurso.current
+      if (pendiente) {
+        if (pendiente.fromId === current.id && status.currentTime < pendiente.startSeconds - 0.8) {
+          pendiente.cancel()
+          crossfadeEnCurso.current = null
+        }
+        return
+      }
+      if (!status.isLoaded || status.isBuffering || !siguientePlayer.isLoaded) return
+      const total = playerTotalS(player, current)
+      const plan = transitionPlan(total)
+      if (!plan) return
+      const start = plan.fromStartSeconds ?? total - plan.durationSeconds
+      const cueZero = start <= 0.001
+      // Un cue al inicio debe quedar armado antes de reproducir el saliente.
+      if (cueZero && (status.currentTime > 0.05 || getPlaybackState().positionMs > 0 ||
+        cueZeroExpired.current === `${current.id}:${seleccionRevision}`)) return
+      if (!status.playing && (!cueZero || saltoEnVuelo.current !== null)) return
+      const restante = total - status.currentTime
+      if (!Number.isFinite(restante) || restante < 0.3 || status.currentTime < start - 20 || status.currentTime > start + plan.durationSeconds / 2) return
+      const estado = getPlaybackState()
+      const actual = estado.manual ?? estado.tracks[estado.index]
+      const siguiente = proximasCola(estado, 1)[0]
+      if (actual?.id !== current.id || siguiente?.id !== candidata.id) return
+      if (crossfadeFallido.current?.fromId === current.id && crossfadeFallido.current.toId === candidata.id) return
+      try {
+        const late = Math.max(0, status.currentTime - start)
+        // Dejar un margen cuando el aviso de posición llegó después del cue.
+        const shift = cueZero ? 0 : late > 0 && plan.durationSeconds - late > 0.6 ? late + 0.35 : late
+        const scheduled = shift > 0 ? {
+          ...plan,
+          durationSeconds: Math.max(0.25, plan.durationSeconds - shift),
+          fromStartSeconds: status.currentTime + (shift - late),
+          toStartSeconds: (plan.toStartSeconds ?? 0) + shift,
+        } : plan
+        let unavailableNow = false
+        const cancel = iniciarCrossfade(player as CrossfadePlayer, siguientePlayer as CrossfadePlayer, scheduled, () => {
+          const vigente = crossfadeEnCurso.current
+          crossfadeEnCurso.current = null
+          const alTerminar = getPlaybackState()
+          const sigueSiendo = proximasCola(alTerminar, 1)[0]
+          if (!vigente || (alTerminar.manual ?? alTerminar.tracks[alTerminar.index])?.id !== vigente.fromId || sigueSiendo?.id !== vigente.toId) return
+          ended.current = true
+          setDeckActivo(deckActivo === 0 ? 1 : 0)
+          advance()
+        }, () => {
+          unavailableNow = true
+          crossfadeFallido.current = { fromId: current.id, toId: candidata.id }
+          crossfadeEnCurso.current = null
+          if (scheduled.eqSettings?.enabled || scheduled.filterSettings?.enabled) {
+            avisar('No se pudieron aplicar los efectos de esta transición. La música continúa sin el cruce.', true)
+          }
+          if (player.currentTime >= playerTotalS(player, current) - END_EPSILON_S) finish()
+        }, () => {
+          if (cueZero && !status.playing) arrancar()
+        })
+        if (!unavailableNow) crossfadeEnCurso.current = { fromId: current.id, toId: candidata.id, startSeconds: status.currentTime, cancel }
+      } catch {
+        // El fin natural conserva la reproducción si el segundo deck falla.
+      }
+    }
+    const sub = player.addListener('playbackStatusUpdate', attempt)
+    const nextSub = siguientePlayer.addListener('playbackStatusUpdate', () => attempt(player.currentStatus))
+    attempt(player.currentStatus)
+    return () => {
+      sub.remove()
+      nextSub.remove()
+      const pendiente = crossfadeEnCurso.current
+      if (pendiente?.fromId === current.id) {
+        pendiente.cancel()
+        crossfadeEnCurso.current = null
+      }
+    }
+  }, [player, siguientePlayer, current, candidata, url, urlCandidata, puedeMezclar, transitionPlan, wantPlay, mudo, enJam, repetir, deckActivo, seleccionRevision, mixRevision, finish, arrancar])
 
   /*
    * Cuánto se escuchó de la canción que está puesta.
@@ -662,26 +834,6 @@ export function MotorAudio() {
   // siguiente sin que nadie toque nada.
   useEffect(() => {
     if (!url || !wantPlay) return
-    const arrancar = () => {
-      /*
-       * Darle play a algo que ya terminó es empezarlo de nuevo, no quedarse
-       * clavado en el final. Pero «terminó» se decide **solo con lo que sabe el
-       * reproductor**, nunca con el largo que quedó guardado en la canción.
-       *
-       * Ese largo sale de lo que dijo YouTube al agregarla, y a veces viene
-       * corto o en cero. Con él, retomar una canción pausada pasada la marca del
-       * largo equivocado se leía como «ya terminó» y saltaba a cero: pausabas por
-       * la mitad y volvía a empezar. `player.duration` es lo que el reproductor
-       * midió del archivo que tiene abierto; mientras no lo sepa, no se toca la
-       * posición, que es lo correcto — ante la duda, seguir donde estaba.
-       */
-      const estado = getPlaybackState()
-      if (!lease.active || !estado.wantPlay || (estado.manual ?? estado.tracks[estado.index])?.id !== current?.id) return
-      const total = Number.isFinite(player.duration) ? player.duration : 0
-      if (total > 0 && player.currentTime >= total - END_EPSILON_S) saltar(player, 0)
-      ended.current = false
-      player.play()
-    }
     /*
      * En un Jam, los cambios de tema traen un instante de arranque un pelo en
      * el futuro (ver `jam_tocar`): todos reciben el evento, cargan, y arrancan
@@ -692,12 +844,41 @@ export function MotorAudio() {
      */
     const espera = jamEsperaArranqueMs()
     if (espera <= 0) {
+      const cueKey = `${current?.id}:${seleccionRevision}`
+      const fromPlaylist = !!origin?.id && !manual && !upNext.length && !!current && !!candidata &&
+        tracks.some(track => track.id === current.id) && tracks.some(track => track.id === candidata.id)
+      const atBeginning = !enJam && !player.playing && player.currentTime <= 0.05 &&
+        getPlaybackState().positionMs === 0 && cueZeroExpired.current !== cueKey
+      const plan = puedeMezclar && candidata && current && atBeginning
+        ? transitionPlan(playerTotalS(player, current)) : null
+      if (atBeginning && ((fromPlaylist && !mixResolved) ||
+        (plan && (plan.fromStartSeconds ?? Infinity) <= 0.001))) {
+        if (cueZeroWait.current?.key !== cueKey) cueZeroWait.current = { key: cueKey, startedAt: performance.now() }
+        const remaining = Math.max(0, CUE_ZERO_PREPARE_TIMEOUT_MS - (performance.now() - cueZeroWait.current.startedAt))
+        const startNormally = () => {
+          cueZeroExpired.current = cueKey
+          const pendiente = crossfadeEnCurso.current
+          if (pendiente && current && pendiente.fromId === current.id) {
+            pendiente.cancel()
+            crossfadeEnCurso.current = null
+            crossfadeFallido.current = { fromId: pendiente.fromId, toId: pendiente.toId }
+          }
+          arrancar()
+        }
+        if (remaining <= 0) { startNormally(); return }
+        cueZeroStartTimer.current = setTimeout(startNormally, remaining)
+        return () => {
+          if (cueZeroStartTimer.current) clearTimeout(cueZeroStartTimer.current)
+          cueZeroStartTimer.current = null
+        }
+      }
       arrancar()
       return
     }
     const espero = setTimeout(arrancar, espera)
     return () => clearTimeout(espero)
-  }, [url, wantPlay, player, lease, current?.id, jamRev])
+  }, [url, wantPlay, player, current, jamRev, origin?.id, mixResolved, puedeMezclar,
+    candidata, manual, upNext, tracks, transitionPlan, seleccionRevision, enJam, arrancar])
 
   /*
    * Lo que pasa por fuera de la app: el final de la canción y quién la pausó.
@@ -759,6 +940,8 @@ export function MotorAudio() {
         retomarMs.current = objetivoJam ?? posicion
         soundingBefore.current = false
         if (nueva === url) {
+          crossfadeEnCurso.current?.cancel()
+          crossfadeEnCurso.current = null
           player.replace({ uri: nueva })
           player.play()
         } else {

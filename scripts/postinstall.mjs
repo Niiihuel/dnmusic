@@ -1,10 +1,9 @@
 import { spawnSync } from 'node:child_process'
 
 /*
- * expo-audio contiene cambios nativos de Android/iOS. El build web de Vercel
- * no compila ninguno de esos archivos y una diferencia del paquete publicado
- * no debe tirar abajo toda la web durante npm install. En los builds nativos
- * se siguen aplicando y verificando todos los parches.
+ * expo-audio contiene cambios nativos de Android/iOS. Vercel aplica solo el
+ * runtime web compilado de expo-audio: Metro importa `build/`, no `src/`.
+ * En builds nativos se aplican también los parches Swift/Kotlin y el source.
  */
 const args = process.env.VERCEL
   ? ['--patch-dir', 'patches-vercel', '--error-on-fail']

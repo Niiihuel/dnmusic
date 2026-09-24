@@ -2,7 +2,7 @@ import { superficieInteractivaWeb, artworkInteractivoWeb } from './estadoControl
 import { BotonSuperficie } from './BotonSuperficie'
 import { IconButton } from './IconButton'
 import { useEffect, useState } from 'react'
-import { Image, Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { Image, Platform, StyleSheet, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { artworkSource, artworkUrlAtSize } from '../lib/artwork'
 import {
@@ -278,8 +278,8 @@ export function ArtistPage({
         </View>
       ) : null}
 
-      <Releases title="Álbumes" items={artist.albums} onOpen={onOpenAlbum} />
-      <Releases title="Simples" items={artist.singles} onOpen={onOpenAlbum} />
+      <Releases title="Álbumes" items={artist.albums} width={width} onOpen={onOpenAlbum} />
+      <Releases title="Simples" items={artist.singles} width={width} onOpen={onOpenAlbum} />
     </View>
   )
 }
@@ -328,7 +328,7 @@ function Banner({
     <View>
       <View
         onLayout={(e) => setAncho(e.nativeEvent.layout.width)}
-        style={{ height: alto + (Platform.OS === 'ios' ? bleedTop : 0), marginTop: Platform.OS === 'ios' ? -bleedTop : 0 }}
+        style={{ height: alto + bleedTop, marginTop: -bleedTop }}
         className="justify-end overflow-hidden bg-card"
       >
         <Image
@@ -376,24 +376,29 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function Releases({
   title,
   items,
+  width,
   onOpen,
 }: {
   title: string
   items: HomeItem[]
+  width: number
   onOpen: (item: HomeItem) => void
 }) {
   /*
-   * El lado de la tapa sale del ancho, no de un número fijo.
-   *
-   * Con 170px fijos, en un teléfono entraban dos por fila con las sobras
-   * repartidas de cualquier manera; en una ventana ancha quedaban chiquitas al
-   * lado de todo lo demás. Se elige cuántas entran y se reparte lo que hay.
+   * El panel central cambia de ancho independientemente de la ventana. Con el
+   * ancho de la ventana, las tapas terminaban demasiado grandes y solo cabían
+   * dos en un panel donde entran tres. Cuando hay uno o dos lanzamientos en
+   * escritorio, se usan tarjetas horizontales para ocupar la fila sin agrandar
+   * las portadas hasta media pantalla.
    */
-  const { width } = useWindowDimensions()
   const PAD = 24
   const GAP = 16
-  const columnas = width < 640 ? 2 : width < 1100 ? 3 : 4
-  const lado = Math.floor((Math.min(width, 1200) - PAD * 2 - GAP * (columnas - 1)) / columnas)
+  // Hasta el primer onLayout se usa el ancho de un teléfono para evitar
+  // tamaños negativos y un primer cuadro vacío.
+  const disponible = Math.max(0, (width || 390) - PAD * 2)
+  const horizontal = disponible >= 640 && items.length <= 2
+  const columnas = horizontal ? items.length : disponible < 640 ? 2 : disponible < 1000 ? 3 : 4
+  const lado = columnas > 0 ? Math.max(1, Math.floor((disponible - GAP * (columnas - 1)) / columnas)) : 0
 
   if (!items.length) return null
   return (
@@ -401,15 +406,16 @@ function Releases({
       <SectionTitle>{title}</SectionTitle>
       <View className="flex-row flex-wrap gap-4 px-6">
         {items.map((item) => (
-          <Tile key={item.id} item={item} lado={lado} onPress={() => onOpen(item)} />
+          <Tile key={item.id} item={item} lado={lado} horizontal={horizontal} onPress={() => onOpen(item)} />
         ))}
       </View>
     </View>
   )
 }
 
-function Tile({ item, lado, onPress }: { item: HomeItem; lado: number; onPress: () => void }) {
+function Tile({ item, lado, horizontal, onPress }: { item: HomeItem; lado: number; horizontal: boolean; onPress: () => void }) {
   const [over, setOver] = useState(false)
+  const tapa = horizontal ? Math.min(152, Math.floor(lado * 0.43)) : lado
   return (
     <MantenerApretado items={[{ label: 'Ir al álbum', sfSymbol: 'square.stack', onPress }]}
       preview={{ title: item.title, subtitle: item.subtitle ?? 'Álbum', detail: item.year ? String(item.year) : undefined,
@@ -422,13 +428,13 @@ function Tile({ item, lado, onPress }: { item: HomeItem; lado: number; onPress: 
       onPointerEnter={() => setOver(true)}
       onPointerLeave={() => setOver(false)}
       style={{ width: lado }}
-      className="gap-2"
+      className={horizontal ? 'flex-row items-center gap-4 rounded-lg bg-card p-3' : 'gap-2'}
     >
-      <View className="overflow-hidden rounded-lg bg-card" style={{ width: lado, height: lado }}>
+      <View className="overflow-hidden rounded-lg bg-card" style={{ width: tapa, height: tapa }}>
         {item.artworkUrl ? (
           <Image {...artworkInteractivoWeb()}
             source={{ uri: proxiedImage(artworkUrlAtSize(item.artworkUrl, 400)) }}
-            style={{ width: lado, height: lado, opacity: Platform.OS === 'web' ? 1 : over ? 0.75 : 1 }}
+            style={{ width: tapa, height: tapa, opacity: Platform.OS === 'web' ? 1 : over ? 0.75 : 1 }}
           />
         ) : (
           <View className="flex-1 items-center justify-center">
@@ -436,7 +442,7 @@ function Tile({ item, lado, onPress }: { item: HomeItem; lado: number; onPress: 
           </View>
         )}
       </View>
-      <View className="gap-0.5">
+      <View className={horizontal ? 'min-w-0 flex-1 gap-0.5' : 'gap-0.5'}>
         <Text className="text-foreground text-footnote font-semibold" numberOfLines={2}>
           {item.title}
         </Text>

@@ -44,17 +44,36 @@ test('las tapas de sugerencias, búsquedas y listas muestran play al pausar, no 
   }
 })
 
-test('la descarga terminada no ocupa el extremo de la fila; sólo se muestra progreso explícito', () => {
-  const source = ts.createSourceFile('PlaylistView.tsx', readFileSync('src/ui/PlaylistView.tsx', 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
-  const fn = source.statements.find(n => ts.isFunctionDeclaration(n) && n.name.text === 'MarcaDescarga')
-  assert.ok(fn)
-  const { MarcaDescarga } = load(`const HAY_DESCARGAS = true, View = 'View', Text = 'Text', IconDownload = 'Download', ICON_COLOR = {}; export ${fn.getText(source)}`)
-  for (const estado of ['espera', 'bajando', 'lista', 'error', 'pausada']) {
-    assert.equal(MarcaDescarga({ descarga: { temporal: true, estado } }), null)
-  }
-  assert.equal(MarcaDescarga({}), null)
-  assert.equal(MarcaDescarga({ descarga: { temporal: false, estado: 'lista' } }), null)
-  assert.ok(nodes(MarcaDescarga({ descarga: { temporal: false, estado: 'bajando', progreso: 0.5 } })).some(n => n.type === 'Text'))
+test('el popover de la canción concentra descarga y quitar, también desde menú contextual', () => {
+  let removed = 0
+  let downloaded = 0
+  const { menuDescargaCancion } = load(readFileSync('src/ui/descargasControl.ts', 'utf8'), {
+    react: { createElement: jsx },
+    '../state/descargas': {
+      HAY_DESCARGAS: true,
+      descargar: () => { downloaded++ },
+      descargarLista: () => {}, pausarDescarga: () => {}, reanudarDescarga: () => {},
+      reintentarDescarga: () => {}, quitarDescarga: () => { removed++ }, cancelarDescarga: () => {},
+    },
+    './icons': { ICON_COLOR: { muted: '#888' }, IconDownload: 'Download' },
+  })
+  const track = { title: 'Canción' }
+  let options = menuDescargaCancion(track, null)
+  assert.equal(options.length, 1)
+  assert.equal(options[0].label, 'Descargar para escuchar sin conexión')
+  options[0].onPress()
+  assert.equal(downloaded, 1)
+  options = menuDescargaCancion(track, { clave: 'id', descarga: { temporal: false, estado: 'lista' } })
+  assert.equal(options[0].label, 'Quitar descarga')
+  options[0].onPress()
+  assert.equal(removed, 1)
+
+  const playlist = readFileSync('src/ui/PlaylistView.tsx', 'utf8')
+  assert.match(playlist, /menu=\{opciones\}/)
+  assert.match(playlist, /trailing=\{<Menu items=\{opciones\}/)
+  assert.match(playlist, /label: 'Quitar de la lista'/)
+  assert.match(playlist, /<Confirmar visible=\{!!quitarActual\}/)
+  assert.doesNotMatch(playlist, /Editar canciones|PlaylistTrackActions/)
 })
 
 test('una playlist abierta no puede ocultar Chats cuando cambia la sección', () => {

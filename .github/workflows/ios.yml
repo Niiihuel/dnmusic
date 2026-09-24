@@ -45,6 +45,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
+          cache: npm
       - name: Probar validación de credenciales
         run: node --test tests/ios-ci.test.mjs
       - name: Validar secretos antes de gastar minutos de macOS
@@ -57,6 +58,12 @@ jobs:
           ASC_API_KEY_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
           ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
         run: node scripts/ci/ios.mjs check
+      - name: Instalar dependencias y parches nativos
+        run: npm ci
+      - name: Verificar app y parche de audio antes de usar macOS
+        run: |
+          npm run typecheck
+          node --test tests/expo-audio-patch.test.mjs
 
   compilar:
     name: Compilar IPA en macOS
@@ -85,6 +92,7 @@ jobs:
       - uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
         with:
           eas-version: '24.3.0'
+          packager: npm
           token: ${{ secrets.EXPO_TOKEN }}
       - name: Verificar herramientas nativas
         run: |
@@ -169,6 +177,7 @@ jobs:
       - uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
         with:
           eas-version: '24.3.0'
+          packager: npm
           token: ${{ secrets.EXPO_TOKEN }}
       - name: Instalar dependencias
         run: npm ci

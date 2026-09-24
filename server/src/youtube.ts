@@ -9,6 +9,7 @@ import { mintSessionToken, mintVideoToken, tokensSinRespaldo } from './potoken.j
 import { UA_NAVEGADOR, fetchYt } from './salida.js'
 import { FFMPEG, FFPROBE } from './binarios.js'
 import { cacheConsultas } from './cache-consultas.js'
+import { medirOndaFrecuencias, type FrequencyWaveform } from './frequency-bands.js'
 
 const run = promisify(execFile)
 
@@ -427,7 +428,8 @@ export async function peaks(
   audioUrl: string,
   buckets: number,
   tramo?: { desdeMs: number; durMs: number },
-): Promise<{ peaks: number[]; durationMs: number }> {
+  limits?: { timeoutMs: number; maxBufferBytes: number },
+): Promise<FrequencyWaveform> {
   /*
    * El tramo, cuando se pide uno.
    *
@@ -443,36 +445,20 @@ export async function peaks(
   const { stdout } = await run(
     FFMPEG,
     [
-      '-loglevel', 'error',
+      '-nostdin', '-loglevel', 'error',
       ...recorte,
       '-i', audioUrl,
       '-ac', '1', '-ar', '8000', '-f', 's16le', '-',
     ],
-    { encoding: 'buffer', maxBuffer: 256 * 1024 * 1024 },
+    { encoding: 'buffer', maxBuffer: limits?.maxBufferBytes ?? 256 * 1024 * 1024,
+      timeout: limits?.timeoutMs ?? 0 },
   )
   const muestras = new Int16Array(
     stdout.buffer.slice(stdout.byteOffset, stdout.byteOffset + stdout.byteLength - (stdout.byteLength % 2)),
   )
   if (!muestras.length) throw new Error('No se pudo leer el audio')
 
-  const porTramo = Math.floor(muestras.length / buckets)
-  const salida: number[] = []
-  for (let b = 0; b < buckets; b++) {
-    let suma = 0
-    const desde = b * porTramo
-    for (let i = 0; i < porTramo; i++) {
-      const v = muestras[desde + i] / 32768
-      suma += v * v
-    }
-    salida.push(Math.sqrt(suma / Math.max(porTramo, 1)))
-  }
-
-  // Normalizado: lo que importa es la forma, no el volumen absoluto.
-  const max = Math.max(...salida, 1e-6)
-  return {
-    peaks: salida.map((p) => p / max),
-    durationMs: Math.round((muestras.length / 8000) * 1000),
-  }
+  return medirOndaFrecuencias(muestras, buckets)
 }
 
 export type YtArtistHit = {

@@ -1,34 +1,57 @@
-name: Android — desarrollo
-run-name: Android · development · ${{ github.run_number }}
+name: Android — compilar
+run-name: Android · ${{ inputs.profile || 'development-check' }} · ${{ github.run_number }}
+
+# Los cambios nativos se verifican en cada push de codex/**. Los binarios
+# firmados se compilan manualmente con EAS local, sin consumir EAS Cloud.
+# Instrucciones y credenciales: docs/BUILD-ANDROID-GITHUB.md
 on:
   push:
     branches: ['codex/**']
     paths:
-      - 'modules/android-controls/**'
+      - 'modules/**'
+      - 'patches/**'
+      - 'scripts/postinstall.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'app.json'
+      - 'eas.json'
       - 'src/ui/*.android.tsx'
       - 'src/ui/AndroidHost.tsx'
       - 'src/ui/AndroidIcon.tsx'
+      - 'src/ui/MotorAudio.tsx'
       - '.github/workflows/android.yml'
   workflow_dispatch:
+    inputs:
+      profile:
+        description: 'development: APK con Metro; preview: APK autónomo; production: AAB para Google Play'
+        type: choice
+        options: [development, preview, production]
+        default: preview
+        required: true
+
 permissions:
   contents: read
+
 concurrency:
-  group: android-development-${{ github.repository }}
+  group: android-build-${{ github.repository }}
   cancel-in-progress: false
+
+env:
+  CI: '1'
+  EXPO_NO_DOTENV: '1'
+  GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2'
+
 jobs:
-  compilar:
-    name: Compilar APK de desarrollo
+  verificar_nativo:
+    name: Verificar Android nativo
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    env:
-      CI: '1'
-      EXPO_NO_DOTENV: '1'
-      GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -51,11 +74,111 @@ jobs:
         run: ./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a,x86_64 --max-workers=2
       - name: Guardar APK de desarrollo
         continue-on-error: true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: dnmusic-android-development
+          name: dnmusic-android-debug-${{ github.run_number }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
       - name: Resumen
         run: |
           echo 'APK de desarrollo con Compose y Kotlin compilados. Instalar con adb install -r app-debug.apk y ejecutar npm run android:dev.' >> "$GITHUB_STEP_SUMMARY"
+
+  eas_local:
+    name: Compilar Android con EAS local
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: write # Sólo para el borrador de Release si falla Artifacts.
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      ANDROID_PROFILE: ${{ inputs.profile }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validar secreto y herramientas antes de compilar
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo '::error::Falta EXPO_TOKEN con acceso al proyecto EAS y sus credenciales Android.'
+            exit 1
+          fi
+          test -d "$ANDROID_HOME"
+          test -d "$ANDROID_NDK_HOME"
+          test -x "$JAVA_HOME_17_X64/bin/java"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+      - uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
+        with:
+          eas-version: '24.3.0'
+          packager: npm
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Instalar dependencias y parches nativos
+        run: npm ci
+      - name: Verificar código y módulos Android
+        run: |
+          npm run typecheck
+          node --test tests/android-*.test.mjs tests/expo-audio-patch.test.mjs
+      - name: Compilar APK o AAB firmado
+        id: archive
+        run: |
+          if [ "$ANDROID_PROFILE" = production ]; then
+            EXT=aab
+          else
+            EXT=apk
+          fi
+          OUTPUT_PATH="$RUNNER_TEMP/dnmusic.$EXT"
+          eas build --platform android --profile "$ANDROID_PROFILE" --local \
+            --non-interactive --freeze-credentials --output "$OUTPUT_PATH"
+          test -s "$OUTPUT_PATH"
+          echo "path=$OUTPUT_PATH" >> "$GITHUB_OUTPUT"
+          echo "extension=$EXT" >> "$GITHUB_OUTPUT"
+      - name: Guardar binario descargable
+        id: artifact
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dnmusic-android-${{ inputs.profile }}-${{ github.run_number }}
+          path: ${{ steps.archive.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Guardar borrador de Release si Artifacts falla
+        if: ${{ steps.artifact.outcome == 'failure' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANDROID_RELEASE_TAG: android-build-${{ github.run_id }}-${{ github.run_attempt }}
+          OUTPUT_PATH: ${{ steps.archive.outputs.path }}
+          EXT: ${{ steps.archive.outputs.extension }}
+        run: |
+          gh release create "$ANDROID_RELEASE_TAG" "$OUTPUT_PATH#dnmusic.$EXT" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
+            --title "Android · $ANDROID_PROFILE · $GITHUB_RUN_NUMBER" \
+            --notes "Binario $EXT de Android ($ANDROID_PROFILE), commit $GITHUB_SHA. Borrador generado porque GitHub Actions no pudo guardar el artifact."
+      - name: Resumen del binario
+        env:
+          ARTIFACT_OUTCOME: ${{ steps.artifact.outcome }}
+          ANDROID_RELEASE_TAG: android-build-${{ github.run_id }}-${{ github.run_attempt }}
+          EXT: ${{ steps.archive.outputs.extension }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo '### Android compilado con EAS local' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ARTIFACT_OUTCOME" = success ]; then
+            echo "Descargá el $EXT desde Artifacts de esta ejecución." >> "$GITHUB_STEP_SUMMARY"
+          else
+            RELEASE_URL=$(gh release view "$ANDROID_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)
+            echo "Artifacts no disponible. Descargá el $EXT desde el [borrador de Release]($RELEASE_URL)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "$ANDROID_PROFILE" = production ]; then
+            echo 'El AAB de production se distribuye mediante Google Play; este workflow no lo publica.' >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$ANDROID_PROFILE" = development ]; then
+            echo 'El APK de development necesita Metro para abrir la app.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'El APK de preview se puede instalar directamente en Android.' >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -1,6 +1,6 @@
 {
   "name": "dnmusic",
-  "version": "1.16.5",
+  "version": "1.17.0",
   "main": "expo-router/entry",
   "private": true,
   "scripts": {
@@ -94,7 +94,10 @@
   },
   "expo": {
     "autolinking": {
-      "nativeModulesDir": "./modules"
+      "nativeModulesDir": "./modules",
+      "buildFromSource": [
+        "expo-audio"
+      ]
     },
     "install": {
       "exclude": [
