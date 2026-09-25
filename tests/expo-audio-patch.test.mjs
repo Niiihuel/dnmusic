@@ -9,6 +9,7 @@ const patchPath = resolve('patches/expo-audio+57.0.3.patch')
 const patch = readFileSync(patchPath, 'utf8')
 const base = 'node_modules/expo-audio/ios/'
 const player = readFileSync(`${base}AudioPlayer.swift`, 'utf8')
+const records = readFileSync(`${base}AudioRecords.swift`, 'utf8')
 const registry = readFileSync(`${base}AudioComponentRegistry.swift`, 'utf8')
 const module = readFileSync(`${base}AudioModule.swift`, 'utf8')
 const section = (source, start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)))
@@ -56,6 +57,12 @@ test('el parche de Vercel contiene el runtime web que importa Metro', () => {
   assert.match(builtPlayer, /async scheduleCrossfade\(/)
   assert.match(builtPlayer, /setEqualizer\(/)
   assert.match(builtPlayer, /cancelCrossfade\(/)
+})
+
+test('el Record de filtro iOS inicializa su enum para el property wrapper de Expo', () => {
+  // Expo Field sólo puede sintetizar un init sin valor para tipos opcionales.
+  // Sin default, Swift falla al compilar el IPA antes de entrar a la app.
+  assert.match(records, /struct CrossfadeTransitionFilterDeck: Record\s*\{\s*@Field var kind: CrossfadeTransitionFilterKind = \.lowpass/)
 })
 
 test('los fallos terminales conservan el error y no se confunden con fin normal o buffering', () => {

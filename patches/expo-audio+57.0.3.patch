@@ -3331,7 +3331,7 @@ index 33db27c..21de73d 100644
 +}
 +
 +struct CrossfadeTransitionFilterDeck: Record {
-+  @Field var kind: CrossfadeTransitionFilterKind
++  @Field var kind: CrossfadeTransitionFilterKind = .lowpass
 +  @Field var cutoff: [CrossfadeVolumePoint]
 +}
 +
