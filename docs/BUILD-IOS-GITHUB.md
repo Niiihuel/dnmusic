@@ -68,6 +68,18 @@ Para nuevos iPhones de `preview`, registralos con `eas device:create` y actualiz
 el provisioning profile desde `eas credentials`. Cambiar capacidades de iOS
 (por ejemplo, Associated Domains) también puede requerir actualizar la firma.
 
+Si Xcode informa que el perfil Ad Hoc no admite **Push Notifications** o no
+incluye `aps-environment`, el perfil guardado en EAS quedó desactualizado frente
+a los entitlements de la app. Iniciá `eas credentials --platform ios` desde una
+terminal autenticada con la cuenta Apple autorizada, elegí el perfil `preview`
+y actualizá o regenerá su provisioning profile después de habilitar Push
+Notifications para `com.nihuel.dnmusic` en Apple Developer. Luego ejecutá de
+nuevo el workflow. La acción congela las credenciales durante el build para no
+modificar la firma sin supervisión; repetirla sin actualizar el perfil dará el
+mismo error. Si usás una Team ASC API Key para automatizar la actualización,
+Expo documenta `--refresh-ad-hoc-provisioning-profile` y las variables
+`EXPO_ASC_API_KEY_PATH`, `EXPO_ASC_KEY_ID` y `EXPO_ASC_ISSUER_ID`.
+
 ## Envío opcional a TestFlight
 
 Por defecto, EAS Submit reutiliza la API Key para envíos que ya esté guardada
@@ -98,6 +110,8 @@ corregilos y ejecutá nuevamente.
 - [EAS Build local](https://docs.expo.dev/build-reference/local-builds/)
 - [Tokens de Expo](https://docs.expo.dev/accounts/programmatic-access/)
 - [Credenciales de firma](https://docs.expo.dev/app-signing/syncing-credentials/)
+- [Capacidades iOS y regeneración de perfiles](https://docs.expo.dev/build-reference/ios-capabilities/)
+- [Actualización Ad Hoc en CI](https://docs.expo.dev/build/internal-distribution/)
 - [Facturación de GitHub Actions](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
 
 ## Reenviar un IPA guardado sin compilar otra vez
