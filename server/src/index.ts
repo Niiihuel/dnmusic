@@ -17,6 +17,7 @@ import {
   getHomeGeneros,
   type SemillaEntrada,
   getPlaylistInfo,
+  AudioUnavailableError,
   resolveAudio,
   peaks,
   search,
@@ -157,10 +158,10 @@ async function archivoDeCancion(
   videoId: string,
 ): Promise<string | null> {
   const { data } = await storage.storage.from(BUCKET).list('', { search: videoId })
-  const encontrados = (data ?? []).filter((f) => f.name.startsWith(`${videoId}.`))
-  if (!encontrados.length) return null
-  const canonico = encontrados.find((f) => f.name === `${videoId}.m4a`)
-  return (canonico ?? encontrados[0]).name
+  const encontrados = data ?? []
+  if (encontrados.some((f) => f.name === `${videoId}.m4a`)) return `${videoId}.m4a`
+  if (encontrados.some((f) => f.name === `${videoId}.webm`)) return `${videoId}.webm`
+  return null
 }
 
 async function picosGuardados(
@@ -281,16 +282,15 @@ async function autorizado(req: import('node:http').IncomingMessage): Promise<boo
  * sin copiarlo. `onProgreso` (0..1) es el avance de la descarga; sin él, todo
  * funciona igual que antes.
  */
-async function resolverCancion(
+export async function resolverCancion(
   db: NonNullable<typeof supabase>,
   body: { videoId: string; artworkUrl?: string; durationMs?: number },
   onProgreso?: (pct: number) => void,
 ) {
   const { videoId } = body
-  const path = `${videoId}.m4a`
   const artworkP = cacheImage(db, body.artworkUrl, videoId)
-  const { data: existing } = await db.storage.from(BUCKET).list('', { search: path })
-  if (existing?.some((f) => f.name === path)) {
+  const path = await archivoDeCancion(db, videoId)
+  if (path) {
     const durationMs =
       body.durationMs && body.durationMs > 0 ? body.durationMs : await medirDuracionMs(db, path)
     return { path, artworkPath: await artworkP, cached: true, durationMs }
@@ -808,7 +808,7 @@ export const manejador = async (
           }),
         )
       } catch (e) {
-        return json(500, { error: (e as Error).message })
+        return json(e instanceof AudioUnavailableError ? e.status : 500, { error: (e as Error).message })
       }
     }
 

@@ -524,6 +524,14 @@ export type ResolvedAudio = {
   bytes: Buffer
 }
 
+/** YouTube rechazó la reproducción; el servicio sigue sano, pero el origen no entrega audio. */
+export class AudioUnavailableError extends Error {
+  constructor(message: string, readonly status: 502 | 503) {
+    super(message)
+    this.name = 'AudioUnavailableError'
+  }
+}
+
 /** googlevideo rechaza el GET completo; hay que pedir por rangos. */
 const CHUNK_BYTES = 1 << 20
 
@@ -704,7 +712,8 @@ export async function resolveAudio(
       ? 'BotGuard rechazó este runtime (PO tokens sin respaldo)'
       : 'BotGuard acuñó sin quejarse — puede ser la IP, o un token de jsdom que igual no honran'
     console.error(`[resolve] ${videoId} sin formatos [${reja}] — ${encontrado.razones.join('; ')}`)
-    throw new Error(motivoParaLaApp(encontrado.razones))
+    const rechazoTemporal = /LOGIN_REQUIRED|not a bot/i.test(encontrado.razones.join(' '))
+    throw new AudioUnavailableError(motivoParaLaApp(encontrado.razones), rechazoTemporal ? 503 : 502)
   }
 
   const { info, cliente } = encontrado

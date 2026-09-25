@@ -610,6 +610,8 @@ async function pedirResolve(
  * cada chunk. El server manda una línea JSON por evento (NDJSON): `{pct}`
  * mientras baja y `{resultado}` (o `{error}`) al final.
  */
+class ErrorResolveDeclarado extends Error {}
+
 function pedirResolveConProgreso(
   body: { videoId: string; artworkUrl?: string; durationMs?: number },
   onProgreso: (pct: number) => void,
@@ -664,7 +666,8 @@ function pedirResolveConProgreso(
         xhr.onload = () => {
           procesar()
           if (resultado) resolver(resultado)
-          else rechazar(new Error(error ?? `No se pudo preparar la canción (${xhr.status})`))
+          else if (error) rechazar(new ErrorResolveDeclarado(error))
+          else rechazar(new Error(`No se pudo preparar la canción (${xhr.status})`))
         }
         xhr.onerror = () => rechazar(new Error('No se pudo preparar la canción.'))
         xhr.onabort = () => {
@@ -694,13 +697,15 @@ async function pedirResolveAlServidor(
    * Con quien quiere ver el avance, primero el camino que lo cuenta
    * (`/resolve/progreso`). Si ese server es viejo y no lo tiene, o el stream se
    * corta, cae al `/resolve` de siempre —sin número, pero funciona igual—. Un
-   * corte a propósito (abort) no se disimula: se propaga.
+   * error explícito del servidor no se repite: YouTube ya rechazó la canción
+   * y otro pedido inmediato solo retrasa el intento desde el dispositivo.
+   * Un corte a propósito (abort) tampoco se disimula: se propaga.
    */
   if (onProgreso) {
     try {
       return await pedirResolveConProgreso(body, onProgreso, signal)
     } catch (e) {
-      if (signal?.aborted) throw e
+      if (signal?.aborted || e instanceof ErrorResolveDeclarado) throw e
     }
   }
   const res = await fetchMusica(`${MUSIC_API}/resolve`, {
