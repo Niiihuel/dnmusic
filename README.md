@@ -122,12 +122,11 @@ Supabase is self-hosted in the same Railway project; its public gateway is
 in Railway variables, not in the repository.
 
 The release branch for this service is `production` in `Niiihuel/dnmusic`.
-Railway deploys Git commits only after the `dnmusic` service is connected to
-that repository and branch. Confirm its **Settings → Source**, autodeploy and
-**Wait for CI** settings before relying on a push; the last verified deployment
-used a source upload. `railway.toml` selects `Dockerfile` and `/live`
-as the deployment healthcheck. Protect `production` in GitHub and require the
-`Types & lint` check from `.github/workflows/ci-checks.yml` before merging.
+Railway's `dnmusic` service is connected to that branch and deploys its commits
+after **Wait for CI**. Its build uses `Dockerfile` and the `/live` healthcheck;
+the same values are recorded in `railway.toml`. Verify the deployed Git SHA and
+public endpoints after each release. Protect `production` in GitHub and require
+the `Types & lint` check from `.github/workflows/ci-checks.yml` before merging.
 
 The playlist mix migrations `20261001000000`, `20261002000000` and
 `20261003000000` are already applied to production PostgreSQL. For later

@@ -26,13 +26,11 @@ servicio Railway `dnmusic` sirve web y API en un mismo contenedor. El
 repositorio fija `Dockerfile` y el healthcheck `/live` en
 `railway.toml`; `/health` comprueba además las dependencias de la API.
 
-En **Railway → dnmusic → Settings → Source**, comprobar que la fuente sea el
-repositorio `Niiihuel/dnmusic` y que la rama de despliegue sea `production`.
-Activar autodeploy y **Wait for CI** solamente después de verificar la conexión
-y los permisos de la GitHub App. La última publicación verificada se hizo con
-un upload de código; una rama existente y un push, por sí solos, no prueban
-que el servicio ya esté conectado a GitHub. Si la fuente sigue siendo un upload,
-publicar explícitamente y comprobar el SHA del código publicado.
+En **Railway → dnmusic → Settings → Source**, la fuente es el repositorio
+`Niiihuel/dnmusic` y la rama de despliegue es `production`. Autodeploy y
+**Wait for CI** están activos. Un despliegue desde Git ya compiló y pasó
+el healthcheck `/live`; verificar el SHA y el estado en Railway tras cada push.
+Si se desconecta la fuente Git en el futuro, los pushes dejarán de publicar.
 
 En GitHub, proteger `production`: exigir PR y el check **Types & lint** del
 workflow `.github/workflows/ci-checks.yml`, sin saltar el requisito para las
@@ -55,8 +53,8 @@ Para cambios futuros:
    versión en el ledger y verificar tablas, políticas RLS, permisos y RPC
    afectados. Evitar volver a ejecutar las tres migraciones ya registradas.
 3. Dejar pasar CI, integrar a `production` y desplegar ese commit. Con Git
-   conectado y Wait for CI activo, Railway puede hacerlo al recibir el push;
-   en caso contrario hay que iniciar y supervisar el despliegue manualmente.
+   conectado y Wait for CI activo, Railway lo hace al recibir el push;
+   si se desactiva, hay que iniciar y supervisar el despliegue manualmente.
 4. Comparar el SHA desplegado con `production` y comprobar que `/live` responda
    `200` JSON, `/health` responda `200` JSON con dependencias sanas, la web
    abra, y `/analysis` y `/peaks` respondan JSON de autorización a solicitudes
