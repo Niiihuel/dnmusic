@@ -1,13 +1,15 @@
 name: CI Checks
 
-# Tipos y lint de la app y del servicio de música, al abrir un PR.
+# Gate de producción en cada push, y revisión de cambios antes de integrar un PR.
 #
 # Antes esto compilaba el scaffold Swift en un runner macOS: costaba 10× en
 # minutos y verificaba una app que ya no es la que usamos. Los chequeos que
 # sirven hoy corren en Linux y en menos de un minuto.
 on:
+  push:
+    branches: [production]
   pull_request:
-    branches: [main]
+    branches: [main, production]
 
 permissions:
   contents: read

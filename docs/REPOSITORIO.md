@@ -19,6 +19,55 @@ deployments en GitHub no elimina los sitios alojados en Vercel.
 
 Referencia: https://vercel.com/docs/project-configuration/git-configuration
 
+### Flujo de Railway
+
+La rama destinada a producción es `production` de `Niiihuel/dnmusic`. El
+servicio Railway `dnmusic` sirve web y API en un mismo contenedor. El
+repositorio fija `Dockerfile` y el healthcheck `/live` en
+`railway.toml`; `/health` comprueba además las dependencias de la API.
+
+En **Railway → dnmusic → Settings → Source**, comprobar que la fuente sea el
+repositorio `Niiihuel/dnmusic` y que la rama de despliegue sea `production`.
+Activar autodeploy y **Wait for CI** solamente después de verificar la conexión
+y los permisos de la GitHub App. La última publicación verificada se hizo con
+un upload de código; una rama existente y un push, por sí solos, no prueban
+que el servicio ya esté conectado a GitHub. Si la fuente sigue siendo un upload,
+publicar explícitamente y comprobar el SHA del código publicado.
+
+En GitHub, proteger `production`: exigir PR y el check **Types & lint** del
+workflow `.github/workflows/ci-checks.yml`, sin saltar el requisito para las
+publicaciones normales. El workflow corre para PR dirigidos a `production` y
+para cada push a esa rama. Railway **Wait for CI** espera los workflows del
+commit antes de iniciar el despliegue; la protección de rama evita integrar
+un PR con CI fallida. El PR #4 sigue en borrador y apunta a otra base: no es
+un mecanismo de publicación a `production`.
+
+Las migraciones `20261001000000_playlist_mixes.sql`,
+`20261002000000_playlist_rhythm_reorder.sql` y
+`20261003000000_music_health_service_role.sql` ya se aplicaron al PostgreSQL
+de producción y figuran en su ledger. Supabase es autogestionado en Railway;
+no asumir que enlazar el repositorio o desplegar `dnmusic` aplica migraciones.
+Para cambios futuros:
+
+1. Revisar la migración y su compatibilidad con la versión que aún está en
+   producción. Probarla y respaldar los datos cuando el cambio lo requiera.
+2. Aplicarla al PostgreSQL correcto en orden de nombre/versión, registrar su
+   versión en el ledger y verificar tablas, políticas RLS, permisos y RPC
+   afectados. Evitar volver a ejecutar las tres migraciones ya registradas.
+3. Dejar pasar CI, integrar a `production` y desplegar ese commit. Con Git
+   conectado y Wait for CI activo, Railway puede hacerlo al recibir el push;
+   en caso contrario hay que iniciar y supervisar el despliegue manualmente.
+4. Comparar el SHA desplegado con `production` y comprobar que `/live` responda
+   `200` JSON, `/health` responda `200` JSON con dependencias sanas, la web
+   abra, y `/analysis` y `/peaks` respondan JSON de autorización a solicitudes
+   sin sesión (no HTML de la SPA). Confirmar también logs y errores del servicio.
+
+Si una migración rompe la versión anterior, dividir el cambio en fases
+compatibles antes de integrarlo. Un rollback de código no revierte el esquema.
+
+Referencias: [Railway GitHub autodeploys](https://docs.railway.com/deployments/github-autodeploys)
+y [GitHub protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches).
+
 ## Identificadores de compatibilidad
 
 El slug de Expo `flora` identifica el proyecto EAS existente, no el nombre

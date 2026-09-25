@@ -121,14 +121,25 @@ Supabase is self-hosted in the same Railway project; its public gateway is
 `https://envoy-production-2fb6.up.railway.app`. Keep production credentials
 in Railway variables, not in the repository.
 
-The running web service was deployed from a source upload, not a Git-connected
-`main` branch. Do not assume that pushing this repository deploys Railway.
-Confirm the source snapshot and service configuration before publishing.
+The release branch for this service is `production` in `Niiihuel/dnmusic`.
+Railway deploys Git commits only after the `dnmusic` service is connected to
+that repository and branch. Confirm its **Settings → Source**, autodeploy and
+**Wait for CI** settings before relying on a push; the last verified deployment
+used a source upload. `railway.toml` selects `Dockerfile` and `/live`
+as the deployment healthcheck. Protect `production` in GitHub and require the
+`Types & lint` check from `.github/workflows/ci-checks.yml` before merging.
+
+The playlist mix migrations `20261001000000`, `20261002000000` and
+`20261003000000` are already applied to production PostgreSQL. For later
+schema changes, apply and verify compatible migrations **before** releasing
+code that uses them, then merge after CI and smoke-test the deployed site/API.
+The exact source setup, migration order and smoke checks are in
+[repository maintenance](docs/REPOSITORIO.md).
 
 Vercel is no longer the production destination. Both legacy `vercel.json`
 files disable automatic Git deployments. Removing GitHub deployment records
 does not delete the old hosted sites; retiring those requires access to Vercel.
-See [repository maintenance](docs/REPOSITORIO.md).
+See [repository maintenance](docs/REPOSITORIO.md) for the Vercel cleanup steps.
 
 **Audio cache.** Datacenter requests may be blocked by the upstream provider.
 Devices can resolve audio on their own connection and contribute it to the
