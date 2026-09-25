@@ -18,6 +18,7 @@ process.env.WEB_DIST_DIR ??= DIST
 
 const RUTAS_MUSICA = new Set([
   '/album',
+  '/analysis',
   '/aportar',
   '/aportar/confirmar',
   '/aportar/url',
