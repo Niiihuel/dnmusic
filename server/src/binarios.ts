@@ -14,16 +14,10 @@ import { createRequire } from 'node:module'
  * `node_modules` — probado contra el despliegue: corren, y conservan el bit de
  * ejecución.
  *
- * Se prefiere el estático al del sistema en los dos lados a propósito. Tener
- * un ffmpeg distinto en desarrollo que en producción es exactamente la clase
- * de diferencia que aparece como «esta canción se escucha mal solo en el
- * servidor»: la versión del binario decide cómo queda el contenedor remuxado.
- * Con el estático, la misma build en todas partes.
- *
- * `FFMPEG_PATH` y `FFPROBE_PATH` quedan como escape para un entorno donde el
- * estático no sirva (otra arquitectura, un ffmpeg con codecs propios), y el
- * `PATH` pelado es el último recurso: si nada de esto está, se pide por nombre
- * y que lo resuelva el sistema, que es lo que se hacía antes.
+ * Los contenedores Docker fijan `FFMPEG_PATH` y `FFPROBE_PATH` a los ejecutables
+ * de apt: los estáticos de npm arrancan allí, pero pueden abortar con SIGSEGV
+ * cuando ffprobe/ffmpeg abre una URL firmada de Storage. Vercel conserva los
+ * estáticos porque no trae apt. Si ninguno está disponible, se usa el PATH.
  */
 const require_ = createRequire(import.meta.url)
 

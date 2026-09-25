@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { cargarEcualizador, elegirPresetEcualizador, FRECUENCIAS_EQ, GANANCIA_EQ_MAX, GANANCIA_EQ_MIN, guardarEcualizadorAhora, PRESETS_EQ, reintentarEcualizador, restablecerEcualizador, setEcualizadorActivo, setGananciaEcualizador, useEcualizador, useSoporteEcualizador } from '../state/ecualizador'
+import { cancelarComparacionEcualizador, cargarEcualizador, crearPresetPersonalEcualizador, elegirPresetEcualizador, elegirPresetPersonalEcualizador, eliminarPresetPersonalEcualizador, FRECUENCIAS_EQ, GANANCIA_EQ_MAX, GANANCIA_EQ_MIN, guardarEcualizadorAhora, iniciarComparacionEcualizador, nombrePresetEcualizador, PRESETS_EQ, reintentarEcualizador, renombrarPresetPersonalEcualizador, restablecerEcualizador, seleccionarComparacionEcualizador, setEcualizadorActivo, setGananciaEcualizador, usarComparacionEcualizador, useEcualizador, useSoporteEcualizador } from '../state/ecualizador'
 import { useEscuchaEspejoNombre } from '../state/escucha'
 import { useJamSilencioso } from '../state/jam'
 import { usePiso } from '../state/shell'
@@ -24,6 +24,12 @@ const ESTILOS = `
 .dn-eq-presets button, .dn-eq-action { min-height: 38px; padding: 8px 14px; border: 0; border-radius: 999px; background: #242424; box-shadow: inset 0 0 0 1px #ffffff12; }
 .dn-eq-presets button[aria-pressed=true] { background: #fff; color: #121212; box-shadow: 0 2px 10px #0003; }
 .dn-eq-presets button:not(:disabled):hover, .dn-eq-action:not(:disabled):hover { box-shadow: inset 0 0 0 1px #ffffff45; }
+.dn-eq-personal { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dn-eq-personal input[type=text] { flex: 1 1 230px; min-height: 42px; padding: 8px 12px; border: 1px solid #595959; border-radius: 8px; background: #202020; color: #fff; font: inherit; }
+.dn-eq-personal input[type=text]:disabled { opacity: .4; }
+.dn-eq-error { color: #ff6961; font-size: 13px; }
+.dn-eq-comparison { display: flex; flex-wrap: wrap; gap: 8px; }
+.dn-eq-comparison button[aria-pressed=true] { background: #fff; color: #121212; }
 .dn-eq-bands { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 8px; border: 0; margin: 0; padding: 0; }
 .dn-eq-band { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0; border-radius: 10px; min-width: 0; }
 .dn-eq-band:focus-within { background: #ffffff08; }
@@ -48,9 +54,12 @@ export default function Ecualizador() {
   const piso = usePiso(24)
   const [ancho, setAncho] = useState(0)
   const [banda, setBanda] = useState(5)
+  const [nombre, setNombre] = useState('')
+  const [error, setError] = useState<string | null>(null)
   const remoto = !!otroDispositivo || jamSilencioso
   const bloqueado = !estado.cargado || remoto || soporte === 'no-disponible' || soporte === 'error'
   const edicionBloqueada = bloqueado || !estado.activo
+  const seleccionado = estado.presetsPersonales.find(item => item.id === estado.presetPersonalId)
   const aviso = !estado.cargado ? 'Cargando tus ajustes…'
     : remoto ? `El audio está sonando en ${otroDispositivo ?? 'otro dispositivo'}. Ajustá el ecualizador allí.`
       : soporte === 'no-disponible' ? 'El ecualizador no está disponible en este navegador o versión de la app.'
@@ -60,10 +69,24 @@ export default function Ecualizador() {
 
   useEffect(() => {
     void cargarEcualizador()
-    const guardar = () => { void guardarEcualizadorAhora() }
+    const guardar = () => { cancelarComparacionEcualizador(); void guardarEcualizadorAhora() }
+    const ocultar = () => { if (document.visibilityState === 'hidden') guardar() }
     window.addEventListener('pagehide', guardar)
-    return () => { window.removeEventListener('pagehide', guardar); guardar() }
+    document.addEventListener('visibilitychange', ocultar)
+    return () => { window.removeEventListener('pagehide', guardar); document.removeEventListener('visibilitychange', ocultar); guardar() }
   }, [])
+
+  const guardarPersonal = () => {
+    const resultado = crearPresetPersonalEcualizador(nombre)
+    setError(resultado)
+    if (!resultado) setNombre('')
+  }
+  const renombrarPersonal = () => {
+    if (!seleccionado) return
+    const resultado = renombrarPresetPersonalEcualizador(seleccionado.id, nombre)
+    setError(resultado)
+    if (!resultado) setNombre('')
+  }
 
   return <View style={{ flex: 1, backgroundColor: '#121212' }}>
     <style>{ESTILOS}</style>
@@ -83,7 +106,7 @@ export default function Ecualizador() {
 
         <View style={{ backgroundColor: '#181818', borderRadius: 18, padding: 16, gap: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <Text accessibilityRole="header" style={{ color: '#FFFFFF', fontSize: 19, fontWeight: '600' }}>{estado.preset}</Text>
+            <Text accessibilityRole="header" style={{ color: '#FFFFFF', fontSize: 19, fontWeight: '600' }}>{nombrePresetEcualizador(estado)}</Text>
             <Text style={{ color: '#B3B3B3', fontSize: 13 }}>10 bandas · ±12 dB</Text>
           </View>
           <View onLayout={event => setAncho(event.nativeEvent.layout.width)}>
@@ -113,13 +136,45 @@ export default function Ecualizador() {
         <View style={{ gap: 12 }}>
           <Text accessibilityRole="header" style={{ color: '#FFFFFF', fontSize: 19, fontWeight: '600' }}>Preajustes</Text>
           <div className="dn-eq dn-eq-presets" role="group" aria-label="Preajustes de sonido">
-            {PRESETS.map(preset => <button key={preset} aria-pressed={estado.preset === preset}
-              disabled={edicionBloqueada} onClick={() => elegirPresetEcualizador(preset)}>{preset}</button>)}
+            {PRESETS.map(preset => <button key={preset} aria-pressed={estado.preset === preset && !estado.presetPersonalId}
+              disabled={edicionBloqueada} onClick={() => { elegirPresetEcualizador(preset); setNombre(''); setError(null) }}>{preset}</button>)}
           </div>
           <Text style={{ color: '#B3B3B3', fontSize: 13, lineHeight: 18 }}>El nivel se compensa para reducir la saturación al subir bandas.</Text>
         </View>
+
+        <View style={{ gap: 12 }}>
+          <Text accessibilityRole="header" style={{ color: '#FFFFFF', fontSize: 19, fontWeight: '600' }}>Tus preajustes</Text>
+          <div className="dn-eq dn-eq-presets" role="group" aria-label="Tus preajustes de sonido">
+            {estado.presetsPersonales.map(personal => <button key={personal.id} aria-pressed={estado.presetPersonalId === personal.id}
+              disabled={edicionBloqueada} onClick={() => { elegirPresetPersonalEcualizador(personal.id); setNombre(personal.nombre); setError(null) }}>{personal.nombre}</button>)}
+          </div>
+          <div className="dn-eq dn-eq-personal">
+            <input type="text" value={nombre} maxLength={40} placeholder="Nombre del preajuste" aria-label="Nombre del preajuste"
+              disabled={edicionBloqueada || !!estado.comparacion} onChange={event => { setNombre(event.currentTarget.value); setError(null) }} />
+            <button className="dn-eq-action" disabled={edicionBloqueada || !!estado.comparacion || !nombre.trim()} onClick={guardarPersonal}>Guardar como nuevo</button>
+            {seleccionado ? <button className="dn-eq-action" disabled={edicionBloqueada || !!estado.comparacion || !nombre.trim()} onClick={renombrarPersonal}>Renombrar</button> : null}
+            {seleccionado ? <button className="dn-eq-action" disabled={edicionBloqueada || !!estado.comparacion} onClick={() => {
+              if (window.confirm(`¿Eliminar «${seleccionado.nombre}»?`)) eliminarPresetPersonalEcualizador(seleccionado.id)
+            }}>Eliminar</button> : null}
+          </div>
+          {error ? <Text accessibilityLiveRegion="polite" style={{ color: '#FF6961', fontSize: 13 }}>{error}</Text> : null}
+          <Text style={{ color: '#B3B3B3', fontSize: 13 }}>Editar una banda no cambia el preajuste guardado.</Text>
+        </View>
+
+        <View style={{ gap: 12 }}>
+          <Text accessibilityRole="header" style={{ color: '#FFFFFF', fontSize: 19, fontWeight: '600' }}>Comparar A/B</Text>
+          <Text style={{ color: '#B3B3B3', fontSize: 13 }}>A y B son temporales. Escuchá y editá cada curva; al salir sin usar una, vuelve la anterior.</Text>
+          <div className="dn-eq dn-eq-comparison" role="group" aria-label="Comparación de curvas">
+            {estado.comparacion ? <>
+              <button className="dn-eq-action" aria-pressed={estado.comparacion.seleccion === 'A'} disabled={bloqueado} onClick={() => seleccionarComparacionEcualizador('A')}>Escuchar A</button>
+              <button className="dn-eq-action" aria-pressed={estado.comparacion.seleccion === 'B'} disabled={bloqueado} onClick={() => seleccionarComparacionEcualizador('B')}>Escuchar B</button>
+              <button className="dn-eq-action" disabled={bloqueado} onClick={usarComparacionEcualizador}>Usar curva {estado.comparacion.seleccion}</button>
+              <button className="dn-eq-action" onClick={cancelarComparacionEcualizador}>Descartar</button>
+            </> : <button className="dn-eq-action" disabled={edicionBloqueada} onClick={iniciarComparacionEcualizador}>Iniciar comparación</button>}
+          </div>
+        </View>
         <div className="dn-eq">
-          <button className="dn-eq-action" disabled={bloqueado || estado.preset === 'Plano'} onClick={restablecerEcualizador}>Restablecer curva</button>
+          <button className="dn-eq-action" disabled={edicionBloqueada || (estado.preset === 'Plano' && !estado.presetPersonalId)} onClick={restablecerEcualizador}>Restablecer curva</button>
         </div>
       </View>
     </ScrollArea>

@@ -12,9 +12,10 @@ export function TrackRow(props: ComponentProps<typeof Respaldo>) {
   const { fontScale } = useWindowDimensions()
   const cargada = usePlaybackCargada()
   if (!NativeMediaRow) return <Respaldo {...props} />
-  const { title, artist, downloaded, artwork, sounding, playing, busy, inset = true, onPlay, trailing, menu } = props
+  const { title, artist, downloaded, bpm, artwork, sounding, playing, busy, inset = true, onPlay, trailing, menu } = props
+  const subtitle = `${downloaded ? '↓  ' : ''}${artist}${bpm === undefined ? '' : ` · ${bpm === null ? '—' : `${bpm.approximate ? '≈' : ''}${bpm.bpm}`} BPM`}`
   const fila = <RowSurface style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: inset ? 12 : 0 }}>
-    <NativeMediaRow title={title} subtitle={downloaded ? `↓  ${artist}` : artist} artwork={artwork}
+    <NativeMediaRow title={title} subtitle={subtitle} artwork={artwork}
       sounding={sounding} playing={playing} busy={filaCargando(sounding, playing, cargada, busy)}
       {...(NativeRowHighlight ? { drawsHighlight: false } : {})}
       label={`${playing ? 'Pausar' : 'Reproducir'} ${title}, de ${artist}${downloaded ? ', disponible sin conexión' : ''}`}
@@ -25,4 +26,4 @@ export function TrackRow(props: ComponentProps<typeof Respaldo>) {
 }
 
 // En iOS las filas son contenido, no columnas de escritorio.
-export function TrackColumnHeader(_props: { trailing?: number }) { return null }
+export function TrackColumnHeader(_props: { trailing?: number; bpm?: boolean }) { return null }

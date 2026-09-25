@@ -207,16 +207,21 @@ function permitirNotificaciones(): void {
  * Sin esto, la próxima vez la conversación vuelve a ser «a mí me anda bien».
  * Con esto, la respuesta está en la consola del que la sufre.
  */
-function registrarGPU(): void {
+async function registrarGPU(): Promise<void> {
   try {
-    const estado = app.getGPUFeatureStatus()
-    const dibujo = estado.gpu_compositing ?? 'desconocido'
-    registrar('gpu_compositing:', dibujo)
+    await app.getGPUInfo('basic')
+    // gpu-info-update también puede preceder al estado final del compositor.
+    // Esperar unos cuadros evita diagnosticar software en una GPU activa.
+    let dibujo = app.getGPUFeatureStatus().gpu_compositing ?? 'desconocido'
+    for (let intento = 0; intento < 8 && dibujo === 'disabled_software'; intento++) {
+      await new Promise(resolve => setTimeout(resolve, 500))
+      dibujo = app.getGPUFeatureStatus().gpu_compositing ?? 'desconocido'
+    }
+    registrar('gpu_compositing (estado final):', dibujo)
     if (typeof dibujo === 'string' && dibujo.includes('software')) {
       registrar(
-        'OJO: Chromium está dibujando por software en esta máquina. Todo va a ir a tirones',
-        'y no es la app: es el driver o la lista negra de GPU. Probá arrancar con',
-        '--ignore-gpu-blocklist.',
+        'Chromium está dibujando por software en esta máquina. Revisá el driver de video',
+        'y la configuración de Wayland/XWayland antes de evaluar la fluidez.',
       )
     }
   } catch (error) {
@@ -390,7 +395,8 @@ if (!app.requestSingleInstanceLock()) {
     app.on('will-quit', () => discord.limpiar())
     servirWeb(raiz, pedido => disco.servir(pedido))
     permitirNotificaciones()
-    registrarGPU()
+    // El estado inmediato de whenReady() puede ser transitoriamente software.
+    void registrarGPU()
 
     ipcMain.handle('app:version', () => app.getVersion())
     ipcMain.on('ventana:enfocar', () => traerAlFrente())

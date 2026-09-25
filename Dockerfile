@@ -29,13 +29,17 @@ RUN npm run build:web \
 
 FROM node:22-bookworm-slim
 WORKDIR /app
-ENV NODE_ENV=production \
-    WEB_DIST_DIR=/app/dist
 
-# Respaldo para formatos que no cubran los binarios estáticos del paquete.
+# En este runtime los binarios estáticos pueden abortar al abrir URLs firmadas.
+# Vercel sigue usando los de npm, porque su función no tiene apt.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg \
  && rm -rf /var/lib/apt/lists/*
+
+ENV NODE_ENV=production \
+    WEB_DIST_DIR=/app/dist \
+    FFMPEG_PATH=/usr/bin/ffmpeg \
+    FFPROBE_PATH=/usr/bin/ffprobe
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts \

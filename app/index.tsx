@@ -1481,8 +1481,8 @@ export default function Home() {
      * acciones rápidas —el corazón, encolar, compartir—, después dónde
      * guardarla, después a dónde te lleva (con el nombre del disco y del
      * artista debajo, para no tener que abrir para saber), y al final lo que
-     * la deja en tu perfil. Quien la muestre en una lista le suma abajo lo que
-     * solo se puede hacer desde adentro: bajarla, quitarla.
+     * la deja en tu perfil. En una playlist, Descargar y Quitar se agregan
+     * al final de este mismo menú para los tres puntos y el menú contextual.
      */
     return [
       /*

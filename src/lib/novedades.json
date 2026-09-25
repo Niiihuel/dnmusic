@@ -1,5 +1,31 @@
 [
   {
+    "version": "1.17.0",
+    "fecha": "24 de septiembre de 2026",
+    "titulo": "Tus playlists, a tu ritmo.",
+    "pasos": [
+      {
+        "titulo": "Mixear cada transición",
+        "detalle": "Abrí Mixear en una playlist para elegir el cruce entre canciones. Las ondas muestran el audio disponible, el tempo estimado y el punto de entrada y salida; podés arrastrar las curvas de volumen, ecualización y filtro o ajustar sus valores con precisión."
+      },
+      {
+        "titulo": "Guardar versiones del mix",
+        "detalle": "Creá variantes de una playlist, escuchá la transición antes de guardarla y elegí tu favorita. El dueño de la lista puede publicar una versión para quienes la escuchan."
+      },
+      {
+        "titulo": "Dar forma al sonido",
+        "detalle": "El ecualizador musical permite guardar preajustes personales. Cada playlist también puede tener un perfil tonal propio, sin modificar tu ecualización personal."
+      }
+    ],
+    "cambios": [
+      "Nuevo editor de mixes a pantalla completa en PC y móvil, con barra lateral plegable, curvas editables, vistas de onda y preescucha.",
+      "BPM y rangos de confianza visibles para orientar la elección de canciones; los compases se ofrecen cuando el análisis es fiable.",
+      "Preajustes y ajustes manuales de volumen, ecualización y filtro para cada transición, con deshacer y rehacer.",
+      "Controles de transición global y perfil tonal de playlist separados del ecualizador musical personal.",
+      "Mejoras de diseño en artistas, discos, botones, importación de Spotify y barra de reproducción."
+    ]
+  },
+  {
     "version": "1.16.5",
     "fecha": "22 de septiembre de 2026",
     "titulo": "Cada mejora tiene su lugar.",

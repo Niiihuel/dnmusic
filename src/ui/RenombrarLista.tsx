@@ -10,6 +10,7 @@ import { AccionSocial, CabeceraSocial } from './Social'
 import { FormError } from './Button'
 import { estadoControlWeb } from './estadoControl'
 import { ICON_COLOR, IconPencil } from './icons'
+import { BotonVidrio } from './Glass'
 
 type BorradorNombre = { id: string; inicial: string; valor: string; ocupado: boolean; error: string | null }
 
@@ -97,13 +98,28 @@ export function CampoNombreLista({ editor, inline = false }: { editor: EdicionNo
   />
 }
 
-export function AccionesNombreLista({ editor }: { editor: EdicionNombreLista }) {
+export function AccionesNombreLista({ editor, inline = false }: { editor: EdicionNombreLista; inline?: boolean }) {
   const draft = editor.borrador
   if (!draft) return null
-  return <View className="flex-1 flex-row flex-wrap items-center gap-3" style={{ minHeight: 56 }}>
-    <AccionSocial label="Cancelar" secundaria expandida={false} disabled={draft.ocupado} onPress={editor.cancelar} />
-    <AccionSocial label="Guardar" expandida={false} busy={draft.ocupado} disabled={!draft.valor.trim()} onPress={() => { void editor.guardar() }} />
-    {draft.error ? <View className="min-w-0 shrink"><FormError message={draft.error} /></View> : null}
+  return <View className="min-w-0 flex-1 gap-2" style={{ minHeight: 44 }}>
+    <View className={`flex-row flex-wrap items-center gap-2 ${inline ? 'justify-end' : 'justify-center'}`}>
+      {inline && Platform.OS === 'web' ? <>
+        <BotonVidrio label="Cancelar edición del nombre" disabled={draft.ocupado}
+          onPress={editor.cancelar} style={{ minWidth: 90, height: 36 }}>
+          <Text className="text-foreground text-subheadline font-semibold">Cancelar</Text>
+        </BotonVidrio>
+        <BotonVidrio label="Guardar nombre de la lista" disabled={!draft.valor.trim() || draft.ocupado}
+          onPress={() => { void editor.guardar() }} tint="#FFFFFF" style={{ minWidth: 90, height: 36 }}>
+          <Text className="text-primary-foreground text-subheadline font-semibold">{draft.ocupado ? 'Guardando…' : 'Guardar'}</Text>
+        </BotonVidrio>
+      </> : <>
+        <AccionSocial label="Cancelar" secundaria expandida={false} compacta={inline}
+          disabled={draft.ocupado} onPress={editor.cancelar} />
+        <AccionSocial label="Guardar" expandida={false} compacta={inline}
+          busy={draft.ocupado} disabled={!draft.valor.trim()} onPress={() => { void editor.guardar() }} />
+      </>}
+    </View>
+    {draft.error ? <View className="min-w-0"><FormError message={draft.error} /></View> : null}
   </View>
 }
 

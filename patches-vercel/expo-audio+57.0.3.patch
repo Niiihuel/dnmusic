@@ -1,0 +1,1079 @@
+diff --git a/node_modules/expo-audio/build/Audio.types.d.ts b/node_modules/expo-audio/build/Audio.types.d.ts
+index 2560478..1001d81 100644
+--- a/node_modules/expo-audio/build/Audio.types.d.ts
++++ b/node_modules/expo-audio/build/Audio.types.d.ts
+@@ -207,6 +207,8 @@ export type AudioStatus = {
+     loop: boolean;
+     /** Whether the audio just finished playing. */
+     didJustFinish: boolean;
++    /** Transient two-deck handoff; distinct from natural item completion. */
++    didJustCrossfade?: boolean;
+     /** Whether the player is currently buffering data. */
+     isBuffering: boolean;
+     /** Whether the audio has finished loading and is ready to play. */
+diff --git a/node_modules/expo-audio/build/AudioModule.types.d.ts b/node_modules/expo-audio/build/AudioModule.types.d.ts
+index f3ae4ee..6deb412 100644
+--- a/node_modules/expo-audio/build/AudioModule.types.d.ts
++++ b/node_modules/expo-audio/build/AudioModule.types.d.ts
+@@ -160,6 +160,31 @@ export declare class AudioPlayer extends SharedObject<AudioEvents> {
+      * @hidden
+      */
+     setAudioSamplingEnabled(enabled: boolean): void;
++    /** Applies a ten-band graphic equalizer to this player. */
++    setEqualizer(enabled: boolean, gains: number[]): void;
++    /** Arms a two-deck crossfade; false means the source or audio graph is unavailable. */
++    scheduleCrossfade(toPlayer: AudioPlayer, options: {
++        durationSeconds: number;
++        fromStartSeconds?: number;
++        toStartSeconds?: number;
++        volumeLaw?: 'linear' | 'equal_power';
++        volumeOut?: { t: number; value: number }[];
++        volumeIn?: { t: number; value: number }[];
++        eqSettings?: {
++            version: 1;
++            enabled: boolean;
++            out: Record<'low' | 'mid' | 'high', { t: number; value: number }[]>;
++            in: Record<'low' | 'mid' | 'high', { t: number; value: number }[]>;
++        };
++        filterSettings?: {
++            version: 1;
++            enabled: boolean;
++            out: { kind: 'lowpass' | 'highpass'; cutoff: { t: number; value: number }[] } | null;
++            in: { kind: 'lowpass' | 'highpass'; cutoff: { t: number; value: number }[] } | null;
++        };
++    }): Promise<boolean>;
++    /** Cancels a pending or active crossfade. */
++    cancelCrossfade(): void;
+     /**
+      * Sets or removes this audio player as the active player for lock screen controls.
+      * Only one player can control the lock screen at a time.
+diff --git a/node_modules/expo-audio/build/AudioPlayer.web.d.ts b/node_modules/expo-audio/build/AudioPlayer.web.d.ts
+index 1a78841..4794915 100644
+--- a/node_modules/expo-audio/build/AudioPlayer.web.d.ts
++++ b/node_modules/expo-audio/build/AudioPlayer.web.d.ts
+@@ -16,6 +16,20 @@ export declare class AudioPlayerWeb extends globalThis.expo.SharedObject<AudioEv
+     private crossOrigin?;
+     private analyser;
+     private sourceNode;
++    private equalizerNodes;
++    private equalizerPreamp;
++    private equalizerEnabled;
++    private equalizerGains;
++    private crossfadeGain;
++    private transitionPreamp;
++    private transitionDry;
++    private transitionWet;
++    private transitionEqNodes;
++    private transitionFilterNode;
++    private transitionReleaseTimer;
++    private crossfade;
++    private crossfadeGeneration;
++    private crossfadedMedia;
+     private samplingFrameId;
+     private samplingEnabled;
+     private samplingBuffer;
+@@ -38,6 +52,9 @@ export declare class AudioPlayerWeb extends globalThis.expo.SharedObject<AudioEv
+     replace(source: AudioSource): void;
+     seekTo(seconds: number, toleranceMillisBefore?: number, toleranceMillisAfter?: number): Promise<void>;
+     setAudioSamplingEnabled(enabled: boolean): void;
++    setEqualizer(enabled: boolean, gains: number[]): void;
++    scheduleCrossfade(toPlayer: AudioPlayer, options: Parameters<AudioPlayer['scheduleCrossfade']>[1]): Promise<boolean>;
++    cancelCrossfade(): void;
+     private startSampling;
+     private stopSampling;
+     setPlaybackRate(second: number, pitchCorrectionQuality?: PitchCorrectionQuality): void;
+diff --git a/node_modules/expo-audio/build/AudioPlayer.web.js b/node_modules/expo-audio/build/AudioPlayer.web.js
+index 89bc872..9efb006 100644
+--- a/node_modules/expo-audio/build/AudioPlayer.web.js
++++ b/node_modules/expo-audio/build/AudioPlayer.web.js
+@@ -4,6 +4,204 @@ import { getAudioContext, getSourceUri, getStatusFromMedia, nextId, preloadCache
+ import { mediaSessionController } from './MediaSessionController.web';
+ export const activePlayers = new Set();
+ let hasWarnedIOSVolume = false;
++const EQUALIZER_FREQUENCIES = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
++const equalizerFrequency = (frequency, sampleRate) => Math.min(frequency, sampleRate * 0.49);
++function validCrossfadeCurve(points, incoming) {
++    if (!points)
++        return true;
++    if (points.length < 2 || points.length > 16)
++        return false;
++    const first = points[0], last = points[points.length - 1];
++    if (!first || !last)
++        return false;
++    if (Math.abs(first.t) > 1e-6 || Math.abs(last.t - 1) > 1e-6 ||
++        Math.abs(first.value - (incoming ? 0 : 1)) > 1e-6 ||
++        Math.abs(last.value - (incoming ? 1 : 0)) > 1e-6)
++        return false;
++    let previous = -1;
++    for (const point of points) {
++        if (!point || !Number.isFinite(point.t) || !Number.isFinite(point.value) ||
++            point.t <= previous || point.t < 0 || point.t > 1 ||
++            point.value < 0 || point.value > 1)
++            return false;
++        previous = point.t;
++    }
++    return true;
++}
++function canArmCrossfadeCue(currentTime, start) {
++    // An immediate cue may be scheduled from a play gesture, but must not
++    // restart a zero-cue transition after playback has already moved on.
++    return currentTime + 0.03 < start ||
++        (start <= 0.03 && currentTime >= 0 && currentTime <= 0.05);
++}
++function crossfadeValue(points, incoming, law, position) {
++    const t = Math.max(0, Math.min(1, position));
++    if (points) {
++        for (let index = 1; index < points.length; index++) {
++            if (t <= points[index].t) {
++                const previous = points[index - 1], next = points[index];
++                return previous.value + (next.value - previous.value) *
++                    (t - previous.t) / (next.t - previous.t);
++            }
++        }
++        return points[points.length - 1].value;
++    }
++    if (law === 'equal_power')
++        return incoming ? Math.sin(t * Math.PI / 2) : Math.cos(t * Math.PI / 2);
++    return incoming ? t : 1 - t;
++}
++function validEffectCurve(points, min, max) {
++    if (!Array.isArray(points) || points.length < 2 || points.length > 16 ||
++        Math.abs(points[0]?.t ?? Infinity) > 1e-6 ||
++        Math.abs((points[points.length - 1]?.t ?? -Infinity) - 1) > 1e-6)
++        return false;
++    let previous = -1;
++    for (const point of points) {
++        if (!point || !Number.isFinite(point.t) || !Number.isFinite(point.value) ||
++            point.t <= previous || point.t < 0 || point.t > 1 ||
++            point.value < min || point.value > max)
++            return false;
++        previous = point.t;
++    }
++    return true;
++}
++function validTransitionEq(eq) {
++    if (eq == null)
++        return true;
++    if (eq.version !== 1 || typeof eq.enabled !== 'boolean' || !eq.out || !eq.in)
++        return false;
++    return ['out', 'in'].every(deck => ['low', 'mid', 'high'].every(band => validEffectCurve(eq[deck][band], -24, 24)));
++}
++function validTransitionFilter(filter) {
++    if (filter == null)
++        return true;
++    if (filter.version !== 1 || typeof filter.enabled !== 'boolean')
++        return false;
++    return ['out', 'in'].every(deck => {
++        const setting = filter[deck];
++        return setting == null || ((setting.kind === 'lowpass' || setting.kind === 'highpass') &&
++            validEffectCurve(setting.cutoff, 20, 20000));
++    });
++}
++function curveValue(points, position) {
++    if (position <= points[0].t)
++        return points[0].value;
++    for (let index = 1; index < points.length; index++) {
++        if (position <= points[index].t) {
++            const previous = points[index - 1], next = points[index];
++            return previous.value + (next.value - previous.value) *
++                (position - previous.t) / (next.t - previous.t);
++        }
++    }
++    return points[points.length - 1].value;
++}
++function scheduleEffectParam(param, now, seconds, progress, points) {
++    const value = curveValue(points, progress);
++    holdGain(param, now, value);
++    param.setValueAtTime(value, now);
++    for (const point of points) {
++        if (point.t > progress)
++            param.linearRampToValueAtTime(point.value, now + seconds * (point.t - progress) / (1 - progress));
++    }
++}
++function cloneCurve(points) {
++    return points.map(point => ({ t: point.t, value: point.value }));
++}
++function transitionHeadroomCurve(eq, deck) {
++    if (!eq?.enabled)
++        return [{ t: 0, value: 1 }, { t: 1, value: 1 }];
++    const bands = eq[deck];
++    const times = new Set(Array.from({ length: 65 }, (_, index) => index / 64));
++    for (const band of ['low', 'mid', 'high']) {
++        for (const point of bands[band])
++            times.add(point.t);
++    }
++    return [...times].sort((a, b) => a - b).map(t => {
++        // Each shelf/bell has no larger positive response than its requested dB.
++        // Product with the independent global EQ headroom therefore stays bounded.
++        const positiveDb = ['low', 'mid', 'high'].reduce((sum, band) => sum + Math.max(0, curveValue(bands[band], t)), 0);
++        return { t, value: positiveDb > 0 ? 10 ** (-(positiveDb + 0.5) / 20) : 1 };
++    });
++}
++function effectWetCurves(duration) {
++    const edge = Math.min(0.2, 0.015 / duration);
++    return {
++        wet: [{ t: 0, value: 0 }, { t: edge, value: 1 },
++            { t: 1 - edge, value: 1 }, { t: 1, value: 0 }],
++        dry: [{ t: 0, value: 1 }, { t: edge, value: 0 },
++            { t: 1 - edge, value: 0 }, { t: 1, value: 1 }],
++    };
++}
++function holdGain(param, now, fallback) {
++    if (typeof param.cancelAndHoldAtTime === 'function')
++        param.cancelAndHoldAtTime(now);
++    else {
++        param.cancelScheduledValues(now);
++        param.setValueAtTime(fallback, now);
++    }
++}
++function scheduleCrossfadeGain(param, now, seconds, progress, points, incoming, law) {
++    const value = (t) => crossfadeValue(points, incoming, law, t);
++    holdGain(param, now, value(progress));
++    param.setValueAtTime(value(progress), now);
++    if (points) {
++        for (const point of points) {
++            if (point.t > progress)
++                param.linearRampToValueAtTime(point.value, now + seconds * (point.t - progress) / (1 - progress));
++        }
++    }
++    else if (law === 'equal_power') {
++        for (let step = 1; step <= 64; step++) {
++            const t = progress + (1 - progress) * step / 64;
++            param.linearRampToValueAtTime(value(t), now + seconds * step / 64);
++        }
++    }
++    else {
++        param.linearRampToValueAtTime(incoming ? 1 : 0, now + seconds);
++    }
++}
++/** Combined peaking response, not just the largest slider: adjacent boosts overlap.
++ * RBJ coefficients match Web Audio's peaking filter (Q = sqrt(2)). Sample the
++ * log spectrum plus every centre; keep 1 dB extra margin for inter-bin peaks.
++ * This is headroom, not a brick-wall limiter or a promise of no true-peak overs.
++ */
++function equalizerHeadroom(gains, sampleRate) {
++    if (!gains.some(gain => gain > 0))
++        return 1;
++    const centres = EQUALIZER_FREQUENCIES.map(frequency => equalizerFrequency(frequency, sampleRate));
++    const coefficients = gains.map((gain, index) => {
++        const angle = 2 * Math.PI * centres[index] / sampleRate;
++        const amplitude = 10 ** (gain / 40);
++        const alpha = Math.sin(angle) / (2 * Math.SQRT2);
++        return [1 + alpha * amplitude, -2 * Math.cos(angle), 1 - alpha * amplitude,
++            1 + alpha / amplitude, -2 * Math.cos(angle), 1 - alpha / amplitude];
++    });
++    const probes = [...centres, ...Array.from({ length: 256 }, (_, index) => 3 * (sampleRate * 0.499 / 3) ** (index / 255))];
++    let peakDb = 0;
++    for (const frequency of probes) {
++        const angle = 2 * Math.PI * frequency / sampleRate;
++        const cos = Math.cos(angle), sin = Math.sin(angle);
++        const cos2 = Math.cos(2 * angle), sin2 = Math.sin(2 * angle);
++        let db = 0;
++        for (const [b0, b1, b2, a0, a1, a2] of coefficients) {
++            const numerator = (b0 + b1 * cos + b2 * cos2) ** 2 + (b1 * sin + b2 * sin2) ** 2;
++            const denominator = (a0 + a1 * cos + a2 * cos2) ** 2 + (a1 * sin + a2 * sin2) ** 2;
++            db += 10 * Math.log10(Math.max(1e-24, numerator) / Math.max(1e-24, denominator));
++        }
++        peakDb = Math.max(peakDb, db);
++    }
++    return 10 ** (-(peakDb + 1) / 20);
++}
++function smoothEqualizerParam(param, target, now, timeConstant) {
++    if (typeof param.cancelAndHoldAtTime === 'function')
++        param.cancelAndHoldAtTime(now);
++    else {
++        const current = param.value;
++        param.cancelScheduledValues(now);
++        param.setValueAtTime(current, now);
++    }
++    param.setTargetAtTime(target, now, timeConstant);
++}
+ function isIOSSafari() {
+     return /iPad|iPhone|iPod/.test(navigator.userAgent);
+ }
+@@ -29,6 +227,20 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+     crossOrigin;
+     analyser = null;
+     sourceNode = null;
++    equalizerNodes = [];
++    equalizerPreamp = null;
++    equalizerEnabled = false;
++    equalizerGains = Array(10).fill(0);
++    crossfadeGain = null;
++    transitionPreamp = null;
++    transitionDry = null;
++    transitionWet = null;
++    transitionEqNodes = [];
++    transitionFilterNode = null;
++    transitionReleaseTimer = null;
++    crossfade = null;
++    crossfadeGeneration = 0;
++    crossfadedMedia = null;
+     samplingFrameId = null;
+     samplingEnabled = false;
+     samplingBuffer = null;
+@@ -64,6 +276,8 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+     }
+     set playbackRate(value) {
+         this.media.playbackRate = value;
++        if (this.crossfade?.from === this && this.crossfade.fading)
++            this.rescheduleCrossfade(this.crossfade);
+     }
+     get volume() {
+         return this.media.volume;
+@@ -83,16 +297,31 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+         if (!isAudioActive) {
+             return;
+         }
+-        this.media.play();
++        if (this.crossfadedMedia === this.media)
++            this.crossfadedMedia = null;
++        const crossfade = this.crossfade;
++        if (crossfade?.to === this && !crossfade.started)
++            this.cancelCrossfade();
++        const playResult = this.media.play();
+         this.isPlaying = true;
+         this.startSampling();
++        if (crossfade?.from === this && crossfade.paused) {
++            void playResult.then(() => this.resumeCrossfade(crossfade))
++                .catch(() => this.cancelCrossfade());
++        }
+     }
+     pause() {
++        if (this.crossfade) {
++            this.pauseCrossfade(this.crossfade);
++            return;
++        }
+         this.media.pause();
+         this.isPlaying = false;
+         this.stopSampling();
+     }
+     replace(source) {
++        this.cancelCrossfade();
++        this.crossfadedMedia = null;
+         const wasPlaying = this.isPlaying;
+         const wasSampling = this.samplingEnabled;
+         const mediaSessionState = mediaSessionController.getActiveState(this);
+@@ -102,6 +331,11 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+         this.isPlaying = false;
+         this.loaded = false;
+         this.media = this._createMediaElement();
++        // createMediaElementSource belongs to the element it was created for.
++        // Reconnect the persisted EQ curve to the replacement element as well.
++        if (this.equalizerEnabled) {
++            this.setEqualizer(true, this.equalizerGains);
++        }
+         if (wasSampling) {
+             this.setAudioSamplingEnabled(true);
+         }
+@@ -114,6 +348,8 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+         }
+     }
+     async seekTo(seconds, toleranceMillisBefore, toleranceMillisAfter) {
++        this.cancelCrossfade();
++        this.crossfadedMedia = null;
+         this.media.currentTime = seconds;
+     }
+     setAudioSamplingEnabled(enabled) {
+@@ -134,9 +370,7 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+             }
+             this.analyser = ctx.createAnalyser();
+             this.analyser.fftSize = 2048;
+-            this.sourceNode.disconnect();
+-            this.sourceNode.connect(this.analyser);
+-            this.analyser.connect(ctx.destination);
++            this.reconnectAudioGraph();
+             this.samplingBuffer = new Float32Array(this.analyser.frequencyBinCount);
+             this.samplingEnabled = true;
+             if (this.isPlaying) {
+@@ -150,15 +384,581 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+                 this.analyser.disconnect();
+                 this.analyser = null;
+             }
+-            if (this.sourceNode) {
+-                const ctx = getAudioContext();
+-                this.sourceNode.disconnect();
+-                this.sourceNode.connect(ctx.destination);
+-            }
++            if (this.sourceNode)
++                this.reconnectAudioGraph();
+             this.samplingBuffer = null;
+             this.samplingEnabled = false;
+         }
+     }
++    setEqualizer(enabled, gains) {
++        this.equalizerEnabled = enabled;
++        this.equalizerGains = Array.from({ length: 10 }, (_, index) => Math.max(-12, Math.min(12, Number.isFinite(gains[index]) ? gains[index] : 0)));
++        if (!enabled && !this.sourceNode)
++            return;
++        if (!this.media.crossOrigin && this._isCrossOrigin())
++            return;
++        const ctx = getAudioContext();
++        if (ctx.state === 'suspended')
++            void ctx.resume();
++        if (!this.sourceNode)
++            this.sourceNode = ctx.createMediaElementSource(this.media);
++        let graphChanged = false;
++        if (!this.equalizerNodes.length) {
++            this.equalizerPreamp = ctx.createGain();
++            this.equalizerNodes = EQUALIZER_FREQUENCIES.map((frequency) => {
++                const node = ctx.createBiquadFilter();
++                node.type = 'peaking';
++                node.frequency.value = equalizerFrequency(frequency, ctx.sampleRate);
++                node.Q.value = Math.SQRT2;
++                return node;
++            });
++            graphChanged = true;
++        }
++        const headroom = enabled ? equalizerHeadroom(this.equalizerGains, ctx.sampleRate) : 1;
++        if (this.equalizerPreamp) {
++            // Attenuate before the boosted filters settle; recover more slowly when
++            // disabling/cutting. All updates start from the current rendered value.
++            const gain = this.equalizerPreamp.gain;
++            smoothEqualizerParam(gain, headroom, ctx.currentTime, headroom < gain.value ? 0.008 : 0.12);
++        }
++        this.equalizerNodes.forEach((node, index) => {
++            smoothEqualizerParam(node.gain, enabled ? this.equalizerGains[index] : 0, ctx.currentTime, 0.03);
++        });
++        if (graphChanged)
++            this.reconnectAudioGraph();
++    }
++    async scheduleCrossfade(toPlayer, options) {
++        this.cancelCrossfade();
++        const generation = this.crossfadeGeneration;
++        if (!(toPlayer instanceof AudioPlayerWeb))
++            return false;
++        const incoming = toPlayer;
++        const duration = options.durationSeconds;
++        const fromStart = options.fromStartSeconds ?? this.duration - duration;
++        const toStart = options.toStartSeconds ?? 0;
++        if (incoming === this || !this.loaded || !incoming.loaded || incoming.playing ||
++            this.loop || incoming.loop || incoming.crossfade ||
++            !Number.isFinite(duration) || duration < 0.25 || duration > 30 ||
++            !Number.isFinite(fromStart) || !Number.isFinite(toStart) ||
++            !Number.isFinite(this.duration) || !Number.isFinite(incoming.duration) ||
++            fromStart < 0 || toStart < 0 ||
++            fromStart + duration > this.duration + 0.02 ||
++            toStart + duration > incoming.duration + 0.02 ||
++            !canArmCrossfadeCue(this.currentTime, fromStart) ||
++            (options.volumeLaw != null && options.volumeLaw !== 'linear' && options.volumeLaw !== 'equal_power') ||
++            !validCrossfadeCurve(options.volumeOut, false) || !validCrossfadeCurve(options.volumeIn, true) ||
++            !validTransitionEq(options.eqSettings) || !validTransitionFilter(options.filterSettings) ||
++            !this.canUseCrossfadeGraph() || !incoming.canUseCrossfadeGraph())
++            return false;
++        let context;
++        try {
++            context = getAudioContext();
++            if (context.state === 'suspended') {
++                let timeout;
++                await Promise.race([
++                    context.resume(),
++                    new Promise((_, reject) => {
++                        timeout = setTimeout(() => reject(new Error('AudioContext did not resume')), 1500);
++                    }),
++                ]).finally(() => { if (timeout)
++                    clearTimeout(timeout); });
++            }
++            if (context.state !== 'running')
++                return false;
++            if (Math.abs(incoming.currentTime - toStart) > 0.02) {
++                const sought = await incoming.seekForCrossfade(toStart);
++                if (!sought)
++                    return false;
++            }
++            if (generation !== this.crossfadeGeneration || incoming.crossfade ||
++                !this.loaded || !incoming.loaded || !canArmCrossfadeCue(this.currentTime, fromStart))
++                return false;
++            if (!this.ensureCrossfadeGraph(context) || !incoming.ensureCrossfadeGraph(context))
++                return false;
++        }
++        catch {
++            return false;
++        }
++        const state = {
++            from: this, to: incoming, context,
++            options: {
++                ...options,
++                volumeOut: options.volumeOut?.map(point => ({ t: point.t, value: point.value })),
++                volumeIn: options.volumeIn?.map(point => ({ t: point.t, value: point.value })),
++                eqSettings: options.eqSettings && {
++                    ...options.eqSettings,
++                    out: Object.fromEntries(['low', 'mid', 'high'].map(band => [band, cloneCurve(options.eqSettings.out[band])])),
++                    in: Object.fromEntries(['low', 'mid', 'high'].map(band => [band, cloneCurve(options.eqSettings.in[band])])),
++                },
++                filterSettings: options.filterSettings && {
++                    ...options.filterSettings,
++                    out: options.filterSettings.out && { ...options.filterSettings.out,
++                        cutoff: cloneCurve(options.filterSettings.out.cutoff) },
++                    in: options.filterSettings.in && { ...options.filterSettings.in,
++                        cutoff: cloneCurve(options.filterSettings.in.cutoff) },
++                },
++            },
++            fromStart, toStart,
++            started: false, startGeneration: 0, fading: false, paused: this.media.paused, done: false,
++            fadeStart: 0, fadeDuration: 0, fadeEnd: 0,
++            cueTimer: null, startTimer: null, endTimer: null,
++        };
++        this.crossfade = state;
++        incoming.crossfade = state;
++        this.setCrossfadeGain(1);
++        incoming.setCrossfadeGain(0);
++        this.armCrossfadeCue(state);
++        this.checkCrossfade(state);
++        return true;
++    }
++    cancelCrossfade() {
++        this.crossfadeGeneration++;
++        const state = this.crossfade;
++        if (!state || state.done)
++            return;
++        state.done = true;
++        state.startGeneration++;
++        this.clearCrossfadeTimers(state);
++        state.from.crossfade = null;
++        state.to.crossfade = null;
++        // A cancellation must not pause the outgoing song or emit didJustPause.
++        if (state.started) {
++            state.to.media.pause();
++            state.to.isPlaying = false;
++            state.to.stopSampling();
++        }
++        state.to.setCrossfadeGain(1);
++        const progress = state.fading ? Math.max(0, Math.min(1, (state.from.currentTime - state.fadeStart) / state.fadeDuration)) : 0;
++        state.from.restoreCrossfadeGain(crossfadeValue(state.options.volumeOut, false, state.options.volumeLaw, progress));
++        state.from.releaseTransitionGraph(progress, state.fadeDuration);
++        state.to.clearTransitionGraph();
++    }
++    canUseCrossfadeGraph() {
++        // A MediaElementAudioSourceNode is silent for a CORS-cross-origin source.
++        return !this._isCrossOrigin() || this.media.crossOrigin === 'anonymous' ||
++            this.media.crossOrigin === 'use-credentials';
++    }
++    async seekForCrossfade(seconds) {
++        return new Promise(resolve => {
++            let settled = false;
++            const finish = (ok) => {
++                if (settled)
++                    return;
++                settled = true;
++                clearTimeout(timeout);
++                this.media.removeEventListener('seeked', onSeeked);
++                this.media.removeEventListener('error', onError);
++                resolve(ok);
++            };
++            const onSeeked = () => finish(Math.abs(this.currentTime - seconds) <= 0.25);
++            const onError = () => finish(false);
++            const timeout = setTimeout(() => finish(false), 3000);
++            this.media.addEventListener('seeked', onSeeked);
++            this.media.addEventListener('error', onError);
++            try {
++                this.media.currentTime = seconds;
++            }
++            catch {
++                finish(false);
++            }
++        });
++    }
++    ensureCrossfadeGraph(context) {
++        try {
++            if (!this.sourceNode)
++                this.sourceNode = context.createMediaElementSource(this.media);
++            if (!this.crossfadeGain)
++                this.crossfadeGain = context.createGain();
++            this.reconnectAudioGraph();
++            return true;
++        }
++        catch {
++            // Once created, a MediaElementAudioSourceNode owns this media element.
++            // Reconnect any partial graph so an unsupported fade cannot mute it.
++            try {
++                if (this.sourceNode)
++                    this.reconnectAudioGraph();
++            }
++            catch { /* unsupported graph */ }
++            return false;
++        }
++    }
++    installTransitionGraph(context, options, deck) {
++        this.clearTransitionGraph();
++        const eq = options.eqSettings?.enabled ? options.eqSettings[deck] : null;
++        const filter = options.filterSettings?.enabled ? options.filterSettings[deck] : null;
++        if (!eq && !filter)
++            return true;
++        try {
++            this.transitionPreamp = context.createGain();
++            this.transitionDry = context.createGain();
++            this.transitionWet = context.createGain();
++            this.transitionDry.gain.value = 1;
++            this.transitionWet.gain.value = 0;
++            this.transitionPreamp.gain.value = transitionHeadroomCurve(options.eqSettings, deck)[0].value;
++            if (eq) {
++                this.transitionEqNodes = ['low', 'mid', 'high'].map((band, index) => {
++                    const node = context.createBiquadFilter();
++                    node.type = index === 0 ? 'lowshelf' : index === 1 ? 'peaking' : 'highshelf';
++                    node.frequency.value = [200, 1000, 5000][index];
++                    if (index === 1)
++                        node.Q.value = Math.SQRT2;
++                    node.gain.value = eq[band][0].value;
++                    return node;
++                });
++            }
++            if (filter) {
++                this.transitionFilterNode = context.createBiquadFilter();
++                this.transitionFilterNode.type = filter.kind;
++                this.transitionFilterNode.Q.value = Math.SQRT1_2;
++                this.transitionFilterNode.frequency.value = filter.cutoff[0].value;
++            }
++            this.reconnectAudioGraph();
++            return true;
++        }
++        catch {
++            this.clearTransitionGraph();
++            return false;
++        }
++    }
++    clearTransitionGraph() {
++        if (this.transitionReleaseTimer)
++            clearTimeout(this.transitionReleaseTimer);
++        this.transitionReleaseTimer = null;
++        if (!this.transitionPreamp && !this.transitionDry && !this.transitionWet &&
++            !this.transitionEqNodes.length && !this.transitionFilterNode)
++            return;
++        this.transitionPreamp?.disconnect();
++        this.transitionDry?.disconnect();
++        this.transitionWet?.disconnect();
++        this.transitionEqNodes.forEach(node => node.disconnect());
++        this.transitionFilterNode?.disconnect();
++        this.transitionPreamp = null;
++        this.transitionDry = null;
++        this.transitionWet = null;
++        this.transitionEqNodes = [];
++        this.transitionFilterNode = null;
++        if (this.sourceNode)
++            this.reconnectAudioGraph();
++    }
++    releaseTransitionGraph(progress, duration) {
++        if (!this.transitionDry || !this.transitionWet)
++            return;
++        try {
++            const now = getAudioContext().currentTime;
++            const mix = effectWetCurves(duration);
++            holdGain(this.transitionDry.gain, now, curveValue(mix.dry, progress));
++            holdGain(this.transitionWet.gain, now, curveValue(mix.wet, progress));
++            this.transitionDry.gain.linearRampToValueAtTime(1, now + 0.015);
++            this.transitionWet.gain.linearRampToValueAtTime(0, now + 0.015);
++            this.transitionReleaseTimer = setTimeout(() => this.clearTransitionGraph(), 20);
++        }
++        catch {
++            this.clearTransitionGraph();
++        }
++    }
++    scheduleTransitionEffects(state, deck, progress, seconds, now) {
++        const options = state.options;
++        const eq = options.eqSettings?.enabled ? options.eqSettings[deck] : null;
++        const filter = options.filterSettings?.enabled ? options.filterSettings[deck] : null;
++        if (!this.transitionDry || !this.transitionWet || !this.transitionPreamp)
++            return;
++        const mix = effectWetCurves(state.fadeDuration);
++        scheduleEffectParam(this.transitionDry.gain, now, seconds, progress, mix.dry);
++        scheduleEffectParam(this.transitionWet.gain, now, seconds, progress, mix.wet);
++        scheduleEffectParam(this.transitionPreamp.gain, now, seconds, progress, transitionHeadroomCurve(options.eqSettings, deck));
++        if (eq)
++            this.transitionEqNodes.forEach((node, index) => {
++                const band = ['low', 'mid', 'high'][index];
++                scheduleEffectParam(node.gain, now, seconds, progress, eq[band]);
++            });
++        if (filter && this.transitionFilterNode)
++            scheduleEffectParam(this.transitionFilterNode.frequency, now, seconds, progress, filter.cutoff);
++    }
++    holdTransitionEffects(state, deck, progress, now) {
++        const options = state.options;
++        const eq = options.eqSettings?.enabled ? options.eqSettings[deck] : null;
++        const filter = options.filterSettings?.enabled ? options.filterSettings[deck] : null;
++        if (!this.transitionDry || !this.transitionWet || !this.transitionPreamp)
++            return;
++        const mix = effectWetCurves(state.fadeDuration);
++        holdGain(this.transitionDry.gain, now, curveValue(mix.dry, progress));
++        holdGain(this.transitionWet.gain, now, curveValue(mix.wet, progress));
++        holdGain(this.transitionPreamp.gain, now, curveValue(transitionHeadroomCurve(options.eqSettings, deck), progress));
++        if (eq)
++            this.transitionEqNodes.forEach((node, index) => {
++                const band = ['low', 'mid', 'high'][index];
++                holdGain(node.gain, now, curveValue(eq[band], progress));
++            });
++        if (filter && this.transitionFilterNode)
++            holdGain(this.transitionFilterNode.frequency, now, curveValue(filter.cutoff, progress));
++    }
++    setCrossfadeGain(value) {
++        if (!this.crossfadeGain)
++            return;
++        const param = this.crossfadeGain.gain;
++        const now = getAudioContext().currentTime;
++        holdGain(param, now, value);
++        param.setValueAtTime(value, now);
++    }
++    restoreCrossfadeGain(fallback) {
++        if (!this.crossfadeGain)
++            return;
++        const param = this.crossfadeGain.gain;
++        const now = getAudioContext().currentTime;
++        holdGain(param, now, fallback);
++        param.linearRampToValueAtTime(1, now + 0.015);
++    }
++    clearCrossfadeTimers(state) {
++        if (state.cueTimer)
++            clearTimeout(state.cueTimer);
++        if (state.startTimer)
++            clearTimeout(state.startTimer);
++        if (state.endTimer)
++            clearTimeout(state.endTimer);
++        state.cueTimer = null;
++        state.startTimer = null;
++        state.endTimer = null;
++    }
++    armCrossfadeCue(state) {
++        if (state.done || state.paused || state.started)
++            return;
++        if (state.cueTimer)
++            clearTimeout(state.cueTimer);
++        const rate = Math.max(0.1, state.from.media.playbackRate);
++        const delay = Math.max(0, (state.fromStart - state.from.currentTime) / rate * 1000);
++        state.cueTimer = setTimeout(() => {
++            state.cueTimer = null;
++            state.from.checkCrossfade(state);
++        }, Math.max(10, delay));
++    }
++    checkCrossfade(state) {
++        if (state.done || state.paused || state.from.media.paused)
++            return;
++        if (!state.started && state.from.currentTime + 0.015 >= state.fromStart) {
++            void state.from.startCrossfadeIncoming(state);
++        }
++        else if (!state.started && !state.cueTimer) {
++            state.from.armCrossfadeCue(state);
++        }
++        if (state.fading && state.from.currentTime + 0.002 >= state.fadeEnd) {
++            state.from.completeCrossfade(state);
++        }
++    }
++    async startCrossfadeIncoming(state) {
++        if (state.done || state.started || state.paused)
++            return;
++        if (state.from.duration - state.from.currentTime < 0.14) {
++            this.cancelCrossfade();
++            return;
++        }
++        state.started = true;
++        const attempt = ++state.startGeneration;
++        if (state.cueTimer)
++            clearTimeout(state.cueTimer);
++        state.cueTimer = null;
++        state.startTimer = setTimeout(() => {
++            state.startTimer = null;
++            if (!state.fading && !state.done && attempt === state.startGeneration)
++                this.cancelCrossfade();
++        }, 1500);
++        try {
++            // The incoming deck may be the same element that faded out one song
++            // earlier. This direct media.play() bypasses AudioPlayerWeb.play().
++            state.to.crossfadedMedia = null;
++            await state.to.media.play();
++            if (state.done || attempt !== state.startGeneration) {
++                // play() may resolve after an external pause/cancel. A stale start must
++                // never leave the next deck audible while the outgoing deck is paused.
++                if (state.paused)
++                    state.to.media.pause();
++                return;
++            }
++            if (state.startTimer)
++                clearTimeout(state.startTimer);
++            state.startTimer = null;
++            if (state.paused) {
++                state.to.media.pause();
++                return;
++            }
++            state.to.isPlaying = true;
++            state.to.startSampling();
++            const remaining = state.from.duration - state.from.currentTime;
++            const fadeDuration = Math.min(state.options.durationSeconds, remaining - 0.04);
++            if (fadeDuration < 0.10 || state.to.media.paused) {
++                this.cancelCrossfade();
++                return;
++            }
++            state.fading = true;
++            state.fadeStart = state.from.currentTime;
++            state.fadeDuration = fadeDuration;
++            state.fadeEnd = state.fadeStart + fadeDuration;
++            if (!state.from.installTransitionGraph(state.context, state.options, 'out') ||
++                !state.to.installTransitionGraph(state.context, state.options, 'in')) {
++                this.cancelCrossfade();
++                return;
++            }
++            this.rescheduleCrossfade(state);
++        }
++        catch {
++            if (state.startTimer)
++                clearTimeout(state.startTimer);
++            state.startTimer = null;
++            if (!state.done && attempt === state.startGeneration)
++                this.cancelCrossfade();
++        }
++    }
++    rescheduleCrossfade(state) {
++        if (state.done || !state.fading || state.paused ||
++            !state.from.crossfadeGain || !state.to.crossfadeGain)
++            return;
++        const progress = Math.max(0, Math.min(1, (state.from.currentTime - state.fadeStart) / state.fadeDuration));
++        if (progress >= 1) {
++            this.completeCrossfade(state);
++            return;
++        }
++        const seconds = state.fadeDuration * (1 - progress) /
++            Math.max(0.1, state.from.media.playbackRate);
++        const now = state.context.currentTime;
++        try {
++            scheduleCrossfadeGain(state.from.crossfadeGain.gain, now, seconds, progress, state.options.volumeOut, false, state.options.volumeLaw);
++            scheduleCrossfadeGain(state.to.crossfadeGain.gain, now, seconds, progress, state.options.volumeIn, true, state.options.volumeLaw);
++            state.from.scheduleTransitionEffects(state, 'out', progress, seconds, now);
++            state.to.scheduleTransitionEffects(state, 'in', progress, seconds, now);
++        }
++        catch {
++            this.cancelCrossfade();
++            return;
++        }
++        if (state.endTimer)
++            clearTimeout(state.endTimer);
++        state.endTimer = setTimeout(() => {
++            state.endTimer = null;
++            this.checkCrossfade(state);
++        }, seconds * 1000 + 20);
++    }
++    pauseCrossfade(state) {
++        if (state.done || state.paused)
++            return;
++        state.paused = true;
++        const incomingStartPending = state.started;
++        if (state.started && !state.fading) {
++            state.started = false;
++            state.startGeneration++;
++        }
++        this.clearCrossfadeTimers(state);
++        if (state.fading) {
++            const progress = Math.max(0, Math.min(1, (state.from.currentTime - state.fadeStart) / state.fadeDuration));
++            const now = state.context.currentTime;
++            if (state.from.crossfadeGain)
++                holdGain(state.from.crossfadeGain.gain, now, crossfadeValue(state.options.volumeOut, false, state.options.volumeLaw, progress));
++            if (state.to.crossfadeGain)
++                holdGain(state.to.crossfadeGain.gain, now, crossfadeValue(state.options.volumeIn, true, state.options.volumeLaw, progress));
++            state.from.holdTransitionEffects(state, 'out', progress, now);
++            state.to.holdTransitionEffects(state, 'in', progress, now);
++        }
++        state.from.media.pause();
++        if (incomingStartPending)
++            state.to.media.pause();
++        state.from.isPlaying = false;
++        state.to.isPlaying = false;
++        state.from.stopSampling();
++        state.to.stopSampling();
++    }
++    resumeCrossfade(state) {
++        if (state.done || !state.paused)
++            return;
++        state.paused = false;
++        if (!state.started) {
++            this.armCrossfadeCue(state);
++            return;
++        }
++        void state.to.media.play().then(() => {
++            if (!state.done && !state.paused) {
++                state.to.isPlaying = true;
++                state.to.startSampling();
++                this.rescheduleCrossfade(state);
++            }
++        }).catch(() => this.cancelCrossfade());
++    }
++    completeCrossfade(state) {
++        if (state.done || !state.fading || state.to.media.paused) {
++            this.cancelCrossfade();
++            return;
++        }
++        state.done = true;
++        this.clearCrossfadeTimers(state);
++        state.from.crossfade = null;
++        state.to.crossfade = null;
++        state.from.crossfadedMedia = state.from.media;
++        state.from.media.pause();
++        state.from.isPlaying = false;
++        state.from.stopSampling();
++        state.from.setCrossfadeGain(1);
++        state.to.setCrossfadeGain(1);
++        state.from.clearTransitionGraph();
++        state.to.clearTransitionGraph();
++        state.from.emit(PLAYBACK_STATUS_UPDATE, {
++            ...getStatusFromMedia(state.from.media, state.from.id),
++            playing: false,
++            didJustFinish: false,
++            didJustCrossfade: true,
++        });
++    }
++    reconnectAudioGraph() {
++        if (!this.sourceNode)
++            return;
++        const ctx = getAudioContext();
++        this.sourceNode.disconnect();
++        this.equalizerPreamp?.disconnect();
++        this.equalizerNodes.forEach((node) => node.disconnect());
++        this.transitionPreamp?.disconnect();
++        this.transitionDry?.disconnect();
++        this.transitionWet?.disconnect();
++        this.transitionEqNodes.forEach((node) => node.disconnect());
++        this.transitionFilterNode?.disconnect();
++        this.crossfadeGain?.disconnect();
++        this.analyser?.disconnect();
++        let tail = this.sourceNode;
++        // Once installed, bypass by smoothly returning to flat/unity. Disconnecting
++        // filters while their parameters are settling causes clicks and gain jumps.
++        if (this.equalizerPreamp && this.equalizerNodes.length) {
++            tail.connect(this.equalizerPreamp);
++            tail = this.equalizerPreamp;
++            for (const node of this.equalizerNodes) {
++                tail.connect(node);
++                tail = node;
++            }
++        }
++        if (this.transitionPreamp && this.transitionDry && this.transitionWet && this.crossfadeGain) {
++            tail.connect(this.transitionDry);
++            this.transitionDry.connect(this.crossfadeGain);
++            tail.connect(this.transitionPreamp);
++            let effectTail = this.transitionPreamp;
++            for (const node of this.transitionEqNodes) {
++                effectTail.connect(node);
++                effectTail = node;
++            }
++            if (this.transitionFilterNode) {
++                effectTail.connect(this.transitionFilterNode);
++                effectTail = this.transitionFilterNode;
++            }
++            effectTail.connect(this.transitionWet);
++            this.transitionWet.connect(this.crossfadeGain);
++            tail = this.crossfadeGain;
++        }
++        else if (this.crossfadeGain) {
++            tail.connect(this.crossfadeGain);
++            tail = this.crossfadeGain;
++        }
++        if (this.analyser) {
++            tail.connect(this.analyser);
++            this.analyser.connect(ctx.destination);
++        }
++        else {
++            tail.connect(ctx.destination);
++        }
++    }
+     startSampling() {
+         if (!this.samplingEnabled || !this.analyser || !this.samplingBuffer) {
+             return;
+@@ -184,11 +984,16 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+     }
+     setPlaybackRate(second, pitchCorrectionQuality) {
+         this.media.playbackRate = second;
++        if (this.crossfade?.from === this && this.crossfade.fading)
++            this.rescheduleCrossfade(this.crossfade);
+         this.shouldCorrectPitch = pitchCorrectionQuality === 'high';
+         this.media.preservesPitch = this.shouldCorrectPitch;
+         mediaSessionController.updatePositionState(this);
+     }
+     remove() {
++        this.cancelCrossfade();
++        this.clearTransitionGraph();
++        this.crossfadedMedia = null;
+         mediaSessionController.clear(this);
+         this.stopSampling();
+         if (this.analyser) {
+@@ -199,6 +1004,12 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+             this.sourceNode.disconnect();
+             this.sourceNode = null;
+         }
++        this.equalizerNodes.forEach(node => node.disconnect());
++        this.equalizerNodes = [];
++        this.equalizerPreamp?.disconnect();
++        this.equalizerPreamp = null;
++        this.crossfadeGain?.disconnect();
++        this.crossfadeGain = null;
+         this.samplingEnabled = false;
+         this.media.pause();
+         // Clear event handlers to prevent memory leaks
+@@ -209,6 +1020,8 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+         this.media.onended = null;
+         this.media.onloadeddata = null;
+         this.media.onerror = null;
++        this.media.onwaiting = null;
++        this.media.onstalled = null;
+         this.media.removeAttribute('src');
+         this.media.load();
+         activePlayers.delete(this);
+@@ -250,6 +1063,8 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+         // Throttled status updates based on interval
+         media.ontimeupdate = () => {
+             const now = media.currentTime;
++            if (this.crossfade?.from === this)
++                this.checkCrossfade(this.crossfade);
+             // Handle backwards time (loop/seek)
+             if (now < lastEmitTime) {
+                 lastEmitTime = now;
+@@ -279,14 +1094,31 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+             });
+             mediaSessionController.updatePlaybackState(this);
+             mediaSessionController.updatePositionState(this);
++            if (this.crossfade && !this.crossfade.paused && !this.crossfade.done) {
++                this.pauseCrossfade(this.crossfade);
++            }
+         };
+         media.onseeked = () => {
++            if (this.crossfade)
++                this.cancelCrossfade();
+             lastEmitTime = media.currentTime;
+             this.emit(PLAYBACK_STATUS_UPDATE, getStatusFromMedia(media, this.id));
+             mediaSessionController.updatePositionState(this);
+         };
+         media.onended = () => {
++            if (this.crossfadedMedia === media)
++                return;
++            if (this.crossfade)
++                this.cancelCrossfade();
++            this.isPlaying = false;
+             lastEmitTime = 0;
++            // Deliver completion even when the final timeupdate was throttled or JS
++            // animation frames are suspended in a hidden browser tab.
++            this.emit(PLAYBACK_STATUS_UPDATE, {
++                ...getStatusFromMedia(media, this.id),
++                playing: false,
++                didJustFinish: true,
++            });
+             mediaSessionController.updatePlaybackState(this);
+         };
+         media.onloadeddata = () => {
+@@ -299,6 +1131,8 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+             mediaSessionController.updatePositionState(this);
+         };
+         media.onerror = () => {
++            if (this.crossfade)
++                this.cancelCrossfade();
+             this.loaded = false;
+             this.isPlaying = false;
+             const errorMessage = media.error
+@@ -311,7 +1145,12 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+                 error: errorMessage,
+             });
+         };
++        const cancelFadeOnStall = () => {
++            if (this.crossfade?.fading)
++                this.cancelCrossfade();
++        };
++        media.onwaiting = cancelFadeOnStall;
++        media.onstalled = cancelFadeOnStall;
+         return media;
+     }
+ }
+-//# sourceMappingURL=AudioPlayer.web.js.map
+\ No newline at end of file

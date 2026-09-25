@@ -22,7 +22,7 @@ import { avisar } from './aviso'
  */
 
 /** De dónde salió la cola. Sirve para marcar la lista que está sonando. */
-export type PlaybackOrigin = { id: string; name: string }
+export type PlaybackOrigin = { id: string; name: string; kind?: 'library' | 'public' | 'favorites' }
 
 /**
  * Cómo recorre la cola local. Coincide con los tres estados de Smart Shuffle:
@@ -616,12 +616,12 @@ export function registerPlaylistOpener(open: ((playlistId: string) => void) | nu
 }
 
 export function canOpenPlaylist() {
-  return opener !== null && store.get().origin !== null
+  return opener !== null && store.get().origin !== null && store.get().origin?.kind !== 'public'
 }
 
 export function openSoundingPlaylist() {
   const { origin } = store.get()
-  if (origin) opener?.(origin.id)
+  if (origin && origin.kind !== 'public') opener?.(origin.id)
 }
 
 /**

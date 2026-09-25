@@ -13,11 +13,12 @@ import listening from '../api/v1/listening'
 import { manejador as musica } from '../server/dist/index.js'
 
 const PORT = Number(process.env.PORT ?? 8080)
-const DIST = fileURLToPath(new URL('../dist', import.meta.url))
+const DIST = process.env.WEB_DIST_DIR ?? fileURLToPath(new URL('../dist', import.meta.url))
 process.env.WEB_DIST_DIR ??= DIST
 
 const RUTAS_MUSICA = new Set([
   '/album',
+  '/analysis',
   '/aportar',
   '/aportar/confirmar',
   '/aportar/url',
@@ -168,5 +169,7 @@ const server = createServer((req, res) => {
 })
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[dnmusic-railway] web + api escuchando en :${PORT}`)
+  const direccion = server.address()
+  const puerto = typeof direccion === 'string' ? direccion : (direccion?.port ?? PORT)
+  console.log(`[dnmusic-railway] web + api escuchando en :${puerto}`)
 })

@@ -67,6 +67,7 @@ import { DiscordIcon } from '../../src/ui/DiscordIcon'
 import { AjustesDiscord } from '../../src/ui/AjustesDiscord'
 import { AjustesActualizaciones } from '../../src/ui/AjustesActualizaciones'
 import { useResumenEcualizador } from '../../src/state/ecualizador'
+import { setModoTransicionGlobal, setSegundosCrossfade, useTransicionesGlobales } from '../../src/state/transiciones'
 
 /** Desde acá la pantalla es la de macOS: barra lateral con las categorías y el detalle al lado. */
 const ESCRITORIO_PX = 780
@@ -122,6 +123,7 @@ export default function Configuracion() {
   const dormirMin = useDormirMin()
   const modoReproduccion = useModoReproduccion()
   const resumenEcualizador = useResumenEcualizador()
+  const transiciones = useTransicionesGlobales()
   const perfil = useMyProfile()
   const nombre = perfil?.displayName?.trim() || perfil?.username || 'Tu cuenta'
   const { items } = useDescargas()
@@ -148,11 +150,11 @@ export default function Configuracion() {
     {
       id: 'reproduccion',
       titulo: 'Reproducción',
-      resumen: 'Modo, temporizador y audio',
+      resumen: 'Modo, ecualizador y transiciones',
       simbolo: 'waveform',
       icono: IconDisc,
       palabras:
-        'reproducción modo orden aleatorio descubrimiento recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música ecualizador graves agudos bandas presets sonido diagnóstico audio errores fallos recuperación',
+        'reproducción modo orden aleatorio descubrimiento recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música ecualizador graves agudos bandas presets sonido diagnóstico audio errores fallos recuperación mixes mixear playlist transiciones crossfade fusión crescendo',
       visible: true,
       bloques: (
         <>
@@ -189,9 +191,17 @@ export default function Configuracion() {
               ultima
             />
           </GrupoAjustes>
-          <GrupoAjustes>
-            <FilaAjuste rotulo="Ecualizador" valor={resumenEcualizador} icono={<IconSliders size={17} color={ICON_COLOR.muted} />}
-              onPress={() => router.push('/ajustes/ecualizador' as never)} ultima />
+          <GrupoAjustes pie="Estos ajustes afectan solo la música de DMusic. En cada playlist, «Mixear» permite crear variantes y elegir transiciones y sonido propios.">
+            <FilaAjuste rotulo="Ecualizador" detalle="10 bandas · presets personales · comparación A/B" valor={resumenEcualizador} icono={<IconSliders size={17} color={ICON_COLOR.muted} />}
+              onPress={() => router.push('/ajustes/ecualizador')} />
+            <FilaOpciones rotulo="Transición global" valor={transiciones.modo} opciones={[
+              { value: 'normal', label: 'Normal' },
+              { value: 'sin-pausa', label: 'Sin pausa' },
+              { value: 'crossfade', label: 'Crossfade' },
+            ]} onElegir={setModoTransicionGlobal} ultima={transiciones.modo !== 'crossfade'} />
+            {transiciones.modo === 'crossfade' ? <FilaOpciones rotulo="Duración" valor={transiciones.segundos}
+              opciones={[1, 2, 3, 4, 5, 6, 8, 10, 12].map(value => ({ value, label: `${value} s` }))}
+              onElegir={setSegundosCrossfade} ultima /> : null}
           </GrupoAjustes>
           <GrupoAjustes pie="Consultá los fallos y recuperaciones recientes del audio en este dispositivo.">
             <FilaAjuste rotulo="Diagnóstico de audio" vacio="" icono={<IconDisc size={17} color={ICON_COLOR.muted} />}

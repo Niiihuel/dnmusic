@@ -67,6 +67,18 @@ test('respeta la gracia de archivos nuevos para no borrar una resolución en cur
   assert.deepEqual(plan.deletions, [])
 })
 
+test('la caché de análisis puede desalojarse antes que el audio de una canción', () => {
+  const files = [
+    { bucket: 'songs', name: 'analysis/v1/abc.json', bytes: 30 * mib, createdAt: old },
+    { bucket: 'songs', name: 'song.m4a', bytes: 790 * mib, createdAt: old },
+  ]
+  const plan = planStorageBudget(files, refs(['song.m4a']), 20 * mib, {
+    hardLimitBytes: 850 * mib, targetBytes: 800 * mib, now,
+  })
+  assert.deepEqual(plan.deletions.map(file => file.name), ['analysis/v1/abc.json'])
+  assert.equal(plan.allowed, true)
+})
+
 test('limpia cuarentenas de archivos propios, no su copia durable', () => {
   const files = [
     { bucket: 'songs', name: 'propias/user/song.mp3', bytes: 100 * mib, createdAt: old },

@@ -51,7 +51,7 @@ function montar({ width = 1440, resultados = [resultado(0), resultado(1, 'dudosa
     '../src/ui/SharedLayoutBg': { SharedLayoutBg: 'SharedLayoutBg' },
     '../src/ui/EntradaTexto': { EntradaTexto: 'TextInput' },
     '../src/ui/IconSpotify': { IconSpotify: 'IconSpotify' },
-    '../src/ui/Field': { PLACEHOLDER_COLOR: '#777' }, '../src/ui/Button': { FormError: 'FormError' },
+    '../src/ui/Field': { PLACEHOLDER_COLOR: '#777' }, '../src/ui/Button': { FormError: 'FormError', PrimaryButton: 'PrimaryButton' },
     '../src/ui/Social': { CabeceraSocial: 'CabeceraSocial', AccionSocial: 'AccionSocial' },
     '../src/ui/Hoja': { Hoja: 'Hoja', useHojaModal: () => width >= 780 },
     '../src/ui/ScrollArea': { ScrollArea: 'ScrollArea' }, '../src/ui/Menu': { Menu: 'Menu' }, '../src/ui/Confirmar': { Confirmar: 'Confirmar' },
@@ -72,28 +72,31 @@ function montar({ width = 1440, resultados = [resultado(0), resultado(1, 'dudosa
   const all = type => nodos(vista, n => n.type === type)
   const input = label => all('TextInput').find(n => n.props.accessibilityLabel === label)
   const accion = label => all('AccionSocial').find(n => n.props.label === label)
+  const primary = label => all('PrimaryButton').find(n => n.props.label === label)
   const opcion = label => { const items = all('Menu')[0].props.items; return items.flatMap(i => [i, ...(i.items ?? [])]).find(i => i.label === label) }
-  async function revisarEnlace() { input('Enlace de la lista').props.onChangeText('https://open.spotify.com/playlist/local'); render(); accion('Revisar canciones').props.onPress(); await tick(); render() }
+  async function revisarEnlace() { input('Enlace de una playlist pública').props.onChangeText('https://open.spotify.com/playlist/local'); render(); primary('Revisar canciones').props.onPress(); await tick(); render() }
   render()
-  return { render, all, input, accion, opcion, revisarEnlace, expand, lecturas, emparejamientos, guardados, rutas, get guardia() { return guardia } }
+  return { render, all, input, accion, primary, opcion, revisarEnlace, expand, lecturas, emparejamientos, guardados, rutas, get guardia() { return guardia } }
 }
 
 for (const width of [390, 1440]) {
   test(`entrada ${width}: sólo enlace, sin importación manual, lee al revisar`, async () => {
     const h = montar({ width })
-    assert.equal(h.accion('Revisar canciones').props.disabled, true)
+    assert.equal(h.primary('Revisar canciones').props.disabled, true)
     assert.equal(h.all('TextInput').length, 1)
     assert.equal(h.all('Pressable').filter(n => n.props.accessibilityRole === 'tab').length, 0)
     assert.equal(h.lecturas.length, 0)
     assert.equal(h.all('CabeceraSocial')[0].props.detalle, undefined)
     assert.equal(h.all('IconSpotify').length, 1)
     assert.equal(h.all('Text').some(n => String(n.props.children).includes('playlist pública')), true)
+    assert.equal(h.all('Hoja')[0].props.anchoMaximo, 520)
     await h.revisarEnlace()
+    assert.equal(h.all('Hoja')[0].props.anchoMaximo, 640)
     assert.equal(h.lecturas.length, 1)
     assert.equal(h.all('FlatList')[0].props.data.length, 3)
     assert.equal(h.guardados.length, 0)
     h.opcion('Cambiar enlace').onPress(); h.render()
-    assert.equal(h.input('Enlace de la lista').props.value, 'https://open.spotify.com/playlist/local')
+    assert.equal(h.input('Enlace de una playlist pública').props.value, 'https://open.spotify.com/playlist/local')
   })
 }
 
@@ -135,18 +138,18 @@ test('sin coincidencia no inventa selección; opciones permiten limpiar/restaura
   h.opcion('Seleccionar encontradas').onPress(); h.render()
   assert.ok(h.accion('Traer 2 canciones'))
   h.opcion('Cambiar enlace').onPress(); h.render()
-  assert.ok(h.input('Enlace de la lista'))
+  assert.ok(h.input('Enlace de una playlist pública'))
   assert.equal(h.guardados.length, 0)
 })
 
 test('cancelar lectura ignora la respuesta tardía; guardar bloquea salida y doble confirmación', async () => {
   let resolverLectura
   const h = montar({ leer: () => new Promise(resolve => { resolverLectura = resolve }) })
-  h.input('Enlace de la lista').props.onChangeText('enlace'); h.render()
-  h.accion('Revisar canciones').props.onPress(); h.render()
+  h.input('Enlace de una playlist pública').props.onChangeText('enlace'); h.render()
+  h.primary('Revisar canciones').props.onPress(); h.render()
   h.all('Pressable').find(n => n.props.children?.props?.children === 'Cancelar').props.onPress(); h.render()
   resolverLectura({ pistas: [resultado(0).pista], nombre: 'Cancelada' }); await tick(); h.render()
-  assert.ok(h.input('Enlace de la lista'))
+  assert.ok(h.input('Enlace de una playlist pública'))
   assert.equal(h.emparejamientos.length, 0)
 
   let resolverGuardado

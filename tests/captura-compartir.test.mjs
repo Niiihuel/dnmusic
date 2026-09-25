@@ -92,7 +92,7 @@ function sharingCard() {
     '../state/store': { createStore(initial) { let value = initial; return { get: () => value, set: v => { value = { ...value, ...v } } } }, useStore: (store, select) => select(store.get()) },
     '../lib/codigoQR': {}, '../lib/compartir': { linkDe: (_, id) => `https://example.test/${id}` },
     '../services/compartidos': { publicarCancion: async () => {} }, './Glass': { ES_WEB: false },
-    './TarjetaHistoria': { TarjetaHistoria: 'TarjetaHistoria' }, './tarjetaHistoria': { ANCHO: 1080 },
+    './TarjetaHistoria': { TarjetaHistoria: 'TarjetaHistoria' }, './geometriaTarjetaHistoria': { ANCHO: 1080 },
   })
   return { ...h, app, calls, capture, sharing, alerts, session, render: () => h.render('CompartirHistoria') }
 }

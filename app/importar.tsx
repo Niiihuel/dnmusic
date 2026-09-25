@@ -19,7 +19,7 @@ import { IconSpotify } from '../src/ui/IconSpotify'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useAudioPlayer } from 'expo-audio'
 import { PLACEHOLDER_COLOR } from '../src/ui/Field'
-import { FormError } from '../src/ui/Button'
+import { FormError, PrimaryButton } from '../src/ui/Button'
 import { CabeceraSocial, AccionSocial } from '../src/ui/Social'
 import { Hoja, useHojaModal } from '../src/ui/Hoja'
 import { ScrollArea } from '../src/ui/ScrollArea'
@@ -65,6 +65,8 @@ type Fase = 'entrada' | 'leyendo' | 'emparejando' | 'revision' | 'guardando'
 const SHELL_PX = 780
 /** Tope del contenido en escritorio, como en el resto de las pantallas. */
 const CAP = 640
+/** El primer paso sólo pide un enlace; la revisión necesita más ancho. */
+const CAP_ENTRADA = 520
 
 /**
  * Traer una lista de Spotify.
@@ -246,9 +248,9 @@ export default function Importar() {
     .filter(({ resultado }) => filtro === 'todas' || resultado.confianza !== 'segura')
 
   return (
-    <Hoja vista={fase} medida={modal ? 'contenido' : 'llena'} anchoMaximo={CAP} titulo="Traer de Spotify">
+    <Hoja vista={fase} medida={modal ? 'contenido' : 'llena'} anchoMaximo={fase === 'entrada' ? CAP_ENTRADA : CAP} titulo="Traer de Spotify">
       <SafeAreaView className="min-h-0 bg-background" edges={Platform.OS === 'web' ? [] : ['bottom']}
-        style={modal ? { height: Math.min(fase === 'revision' ? 720 : 320, height - 96) } : { flex: 1 }}>
+        style={modal ? { height: Math.min(fase === 'revision' ? 720 : fase === 'entrada' ? 300 : 320, height - 96) } : { flex: 1 }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="min-h-0 flex-1">
           <CabeceraSocial titulo="Traer de Spotify" detalle={fase === 'revision' ? 'Revisar canciones' : undefined}
             ocupado={fase === 'guardando'} onCerrar={() => volver(router, '/')} />
@@ -307,13 +309,16 @@ export default function Importar() {
 }
 
 /** Etiquetas legibles y controles de 44 px, sin el campo antiguo de versalitas. */
-function CampoImportar({ label, ...input }: TextInputProps & { label: string }) {
+function CampoImportar({ label, spotify = false, ...input }: TextInputProps & { label: string; spotify?: boolean }) {
   const escritorio = useWindowDimensions().width >= SHELL_PX
   return <View className="gap-2">
-    <Text style={{ fontSize: escritorio ? 13 : 15 }} className="text-foreground font-medium">{label}</Text>
+    <View className="flex-row items-center gap-2">
+      {spotify ? <IconSpotify size={24} /> : null}
+      <Text style={{ fontSize: escritorio ? 13 : 15 }} className="text-foreground font-medium">{label}</Text>
+    </View>
     <EntradaTexto {...input} accessibilityLabel={label} placeholderTextColor={PLACEHOLDER_COLOR}
       className="bg-muted px-3 text-foreground"
-      style={[{ minHeight: escritorio ? 40 : 44, borderRadius: escritorio ? 10 : 16, fontSize: escritorio ? 15 : 16, paddingVertical: escritorio ? 8 : 10 }, input.style]} />
+      style={[{ minHeight: escritorio ? (spotify ? 48 : 40) : 44, borderRadius: escritorio ? 12 : 16, fontSize: escritorio ? 15 : 16, paddingVertical: escritorio ? 8 : 10 }, input.style]} />
   </View>
 }
 
@@ -326,21 +331,14 @@ function Entrada({ enlace, onEnlace, error, onTraer }: {
   const escritorio = useWindowDimensions().width >= SHELL_PX
   const listo = enlace.trim().length > 0
   return <View className="min-h-0 flex-1">
-    <ScrollArea className="flex-1" showsVerticalScrollIndicator={!escritorio} contentContainerStyle={{ flexGrow: 1, justifyContent: escritorio ? 'center' : 'flex-start', alignItems: 'center', paddingHorizontal: 20, paddingVertical: escritorio ? 28 : 12 }} keyboardShouldPersistTaps="handled">
-      <View style={{ width: '100%', maxWidth: 520, gap: escritorio ? 14 : 16 }}>
-        <View className="flex-row items-center gap-3 pb-2">
-          <IconSpotify size={44} />
-          <View className="min-w-0 flex-1 gap-1">
-            <Text accessibilityRole="header" style={{ fontSize: escritorio ? 19 : 21 }} className="text-foreground font-semibold">Tus playlists, acá</Text>
-            <Text className="text-muted-foreground text-footnote">Pegá el enlace de una playlist pública.</Text>
-          </View>
-        </View>
-        <CampoImportar label="Enlace de la lista" value={enlace} onChangeText={onEnlace} autoCapitalize="none" autoCorrect={false}
-          inputMode="url" placeholder="Pegá el enlace de Spotify" returnKeyType="go" onSubmitEditing={() => { if (listo) onTraer() }} />
-        <Text className="text-muted-foreground text-caption1">Spotify → Compartir → Copiar enlace</Text>
+    <ScrollArea className="flex-1" showsVerticalScrollIndicator={!escritorio} contentContainerStyle={{ flexGrow: 1, justifyContent: escritorio ? 'center' : 'flex-start', alignItems: 'center', paddingHorizontal: escritorio ? 28 : 20, paddingVertical: escritorio ? 18 : 16 }} keyboardShouldPersistTaps="handled">
+      <View style={{ width: '100%', maxWidth: 464, gap: 16 }}>
+        <CampoImportar label="Enlace de una playlist pública" spotify value={enlace} onChangeText={onEnlace} autoCapitalize="none" autoCorrect={false}
+          inputMode="url" placeholder="https://open.spotify.com/playlist/…" returnKeyType="go" onSubmitEditing={() => { if (listo) onTraer() }} />
+        <Text className="text-muted-foreground text-footnote">Spotify → Compartir → Copiar enlace</Text>
         <FormError message={error} />
-        <View className="items-end pt-1">
-          <AccionSocial label="Revisar canciones" onPress={onTraer} disabled={!listo} compacta expandida={!escritorio} />
+        <View style={{ alignSelf: escritorio ? 'flex-end' : 'stretch', width: escritorio ? 212 : '100%' }}>
+          <PrimaryButton label="Revisar canciones" onPress={onTraer} disabled={!listo} />
         </View>
       </View>
     </ScrollArea>

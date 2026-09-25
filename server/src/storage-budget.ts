@@ -87,7 +87,7 @@ function evictionPriority(file: StorageFile, refs: StorageReferences, graceMs: n
   if (!Number.isFinite(file.createdAt) || now - file.createdAt < graceMs) return null
 
   if (file.bucket === 'songs') {
-    if (file.name.startsWith('picos/') || file.name.startsWith('aportes/')) return 0
+    if (file.name.startsWith('picos/') || file.name.startsWith('analysis/') || file.name.startsWith('aportes/')) return 0
     // La primera forma es una cuarentena de subida. `propias/<uuid>.<ext>` es
     // el archivo durable de una persona y nunca se elimina automáticamente.
     if (/^propias\/[^/]+\/.+/.test(file.name)) return 0
