@@ -13,7 +13,7 @@ import { Vacio } from '../src/ui/Vacio'
 import { ICON_COLOR, IconCopiar, IconImage, IconMessage, IconMusic, IconShare } from '../src/ui/icons'
 import { TarjetaHistoria } from '../src/ui/TarjetaHistoria'
 import { compartirHistoria, datosDeTarjeta } from '../src/ui/CompartirHistoria'
-import { ALTO, ANCHO } from '../src/ui/tarjetaHistoria'
+import { ALTO, ANCHO } from '../src/ui/geometriaTarjetaHistoria'
 import { ES_WEB } from '../src/ui/Glass'
 
 /**

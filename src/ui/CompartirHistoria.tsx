@@ -45,7 +45,7 @@ import {
   TITULO_TAM,
   TITULO_Y,
   VELO,
-} from './tarjetaHistoria'
+} from './geometriaTarjetaHistoria'
 
 /**
  * La canción que suena, hecha imagen para una historia.
@@ -59,7 +59,7 @@ import {
  * se descarga como PNG.
  *
  * La tarjeta en sí vive en `TarjetaHistoria.tsx` y sus medidas en
- * `tarjetaHistoria.ts`, porque la hoja de compartir la muestra como vista
+ * `geometriaTarjetaHistoria.ts`, porque la hoja de compartir la muestra como vista
  * previa antes de mandarla: la previa y lo que sale tienen que ser lo mismo.
  */
 

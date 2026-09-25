@@ -29,7 +29,7 @@ const nodos = (n) =>
       ? n.flatMap(nodos)
       : [n, ...nodos(n.props?.children)]
 
-const geometria = moduleAt('src/ui/tarjetaHistoria.ts')
+const geometria = moduleAt('src/ui/geometriaTarjetaHistoria.ts')
 
 test('la tarjeta es una historia de 9:16 con todo apoyado en el mismo margen', () => {
   assert.equal(geometria.ANCHO / geometria.ALTO, 1080 / 1920)
@@ -45,7 +45,7 @@ test('la tarjeta es una historia de 9:16 con todo apoyado en el mismo margen', (
 
 test('no queda nada de la tarjeta vieja: ni versalitas gritadas ni barra falsa', () => {
   const fuentes = [
-    readFileSync('src/ui/tarjetaHistoria.ts', 'utf8'),
+    readFileSync('src/ui/geometriaTarjetaHistoria.ts', 'utf8'),
     readFileSync('src/ui/TarjetaHistoria.tsx', 'utf8'),
     readFileSync('src/ui/CompartirHistoria.tsx', 'utf8'),
   ]
@@ -111,7 +111,7 @@ function hoja(track) {
       compartirHistoria: (t) => compartidos.push(['historia', t.videoId]),
       datosDeTarjeta: (t, tinte) => ({ titulo: t.title, artista: t.artist, arte: null, enlace: 'x', tinte }),
     },
-    '../src/ui/tarjetaHistoria': geometria,
+    '../src/ui/geometriaTarjetaHistoria': geometria,
     '../src/ui/Glass': { ES_WEB: false },
     ...componentes,
   })

@@ -35,7 +35,7 @@ import {
   TITULO_Y,
   VELO_COLORES,
   VELO_PARADAS,
-} from './tarjetaHistoria'
+} from './geometriaTarjetaHistoria'
 
 export type DatosTarjeta = {
   titulo: string
@@ -56,7 +56,7 @@ export type DatosTarjeta = {
  * de compartir la muestra **a escala** como vista previa. Que las dos sean el
  * mismo componente es lo que hace que la previa no mienta.
  *
- * La anatomía y el porqué de cada medida están en `tarjetaHistoria.ts`.
+ * La anatomía y el porqué de cada medida están en `geometriaTarjetaHistoria.ts`.
  */
 export function TarjetaHistoria({
   datos,
