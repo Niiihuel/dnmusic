@@ -26,7 +26,7 @@ export function NovedadesAlAbrir() {
     && !actualizacionLista && !(avisos && tipo !== 'ninguna')
   return <DialogoVersion visible={visible} titulo="Novedades de dnmusic" onCerrar={marcarNovedadesVistas}>
     {visible && primera ? <TarjetaVersion key={primera.version} version={primera.version} etiqueta="Ya está en tu app" titulo={primera.titulo}
-      cambios={primera.cambios} pasos={primera.pasos} onCerrar={marcarNovedadesVistas}>
+      cambios={primera.pasos?.length ? undefined : primera.cambios} pasos={primera.pasos} onCerrar={marcarNovedadesVistas}>
       <PrimaryButton label="Seguir escuchando" onPress={marcarNovedadesVistas} />
       <GhostButton label="Ver historial de versiones" onPress={() => { marcarNovedadesVistas(); router.push('/ajustes/novedades') }} />
     </TarjetaVersion> : null}
