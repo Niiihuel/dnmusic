@@ -10,7 +10,7 @@ const entrada={track,sonando:true,autorizada:true,actualizadoEn:ahora-20000,posi
 
 test('payload compartido excluye secretos, normaliza texto y distingue posición de fecha del latido',()=>{
  const result=api.actividadParaCompartir(entrada)
- assert.deepEqual(result,{title:'Tema bonito',artist:'Artista',durationMs:180000,positionMs:24000,updatedAt:ahora-20000,expiresAt:ahora+45000,trackUrl:'https://music.youtube.com/watch?v=abcdefghijk',artworkUrl:track.artworkUrl})
+ assert.deepEqual(result,{title:'Tema bonito',artist:'Artista',durationMs:180000,positionMs:24000,updatedAt:ahora-20000,sampledAt:ahora,expiresAt:ahora+45000,trackUrl:'https://music.youtube.com/watch?v=abcdefghijk',artworkUrl:track.artworkUrl})
  assert.doesNotMatch(JSON.stringify(result),/private|secret|audioPath|artworkPath/)
 })
 test('sin permiso explícito, audio real, fecha válida o con canción terminada devuelve null',()=>{
@@ -22,6 +22,9 @@ test('carátulas privadas/firmadas/locales y URLs con credenciales nunca cruzan 
   assert.equal(result.artworkUrl,undefined);assert.equal(result.trackUrl,undefined)
  }
  assert.ok(api.actividadParaCompartir({...entrada,track:{...track,artworkUrl:'https://project.supabase.co/storage/v1/object/public/artwork/a.jpg'}}).artworkUrl)
+ const railway='https://envoy-production-2fb6.up.railway.app/storage/v1/object/public/artwork/a.jpg'
+ assert.equal(api.actividadParaCompartir({...entrada,track:{...track,artworkUrl:railway}}).artworkUrl,railway)
+ for(const artworkUrl of [railway.replace('envoy-production-2fb6','another'),railway.replace('/public/','/sign/'),railway+'?token=private']) assert.equal(api.actividadParaCompartir({...entrada,track:{...track,artworkUrl}}).artworkUrl,undefined)
 })
 
 

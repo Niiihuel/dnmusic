@@ -30,16 +30,16 @@ test('el catálogo completo está empaquetado y la base acepta los mismos IDs', 
   assert.equal(fonts.fuenteDe('desconocida'), null)
 })
 
-test('iOS muestra lista independiente con cabecera nativa y permite elegir sin guardar todavía', () => {
+function selector(estadoFuentes = [true, null]) {
   const jsx = (type, props) => ({ type, props })
   const perfil = { username: 'ana', displayName: 'Ana', fuente: 'revista' }
   const cambios = [], salidas = [], exports = {}
   const imports = {
     react: { useState: initial => [initial, () => {}] },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
-    'react-native': { Platform: { OS: 'ios' }, FlatList: 'FlatList', View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView' },
+    'react-native': { Platform: { OS: 'ios' }, ActivityIndicator: 'ActivityIndicator', FlatList: 'FlatList', View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView' },
     'expo-router': { Stack: { Screen: 'StackScreen' }, useRouter: () => ({ dismissTo: path => salidas.push(path) }) },
-    '../../src/lib/fuentes': fonts,
+    '../../src/lib/fuentes': { ...fonts, useEstadoFuentesDelPerfil: () => estadoFuentes },
     '../../src/ui/FilaSocial': { FilaSocial: 'FilaSocial' },
     '../../src/ui/Hoja': { Hoja: 'Hoja', useHojaModal: () => false, usePisoHoja: () => 34 },
     '../../src/ui/icons': { ICON_COLOR: { foreground: '#fff' }, IconCheck: 'IconCheck' },
@@ -54,6 +54,11 @@ test('iOS muestra lista independiente con cabecera nativa y permite elegir sin g
   })
   const tree = exports.default()
   const [header, list] = tree.props.children
+  return { header, list, cambios, salidas }
+}
+
+test('iOS muestra lista independiente con cabecera nativa y permite elegir sin guardar todavía', () => {
+  const { header, list, cambios, salidas } = selector()
   assert.equal(header.type, 'StackScreen')
   assert.equal(header.props.options.headerShown, true)
   assert.equal(list.type, 'FlatList')
@@ -63,7 +68,8 @@ test('iOS muestra lista independiente con cabecera nativa y permite elegir sin g
   const item = list.props.renderItem({ item: fonts.fuenteDe('editorial') })
   const option = item.type(item.props)
   assert.equal(option.type, 'FilaSocial')
-  assert.equal(option.props.fontFamily, fonts.estiloDeFuente('editorial').fontFamily)
+  assert.equal(option.props.fontFamily, 'Lora-SemiBold')
+  assert.equal(option.props.fontSize, 20)
   assert.equal(option.props.selected, false)
   assert.equal(option.props.disabled, false)
   option.props.onPress()
@@ -71,4 +77,63 @@ test('iOS muestra lista independiente con cabecera nativa y permite elegir sin g
   assert.deepEqual(salidas, [])
   header.props.options.headerLeft().props.onPress()
   assert.deepEqual(salidas, ['/profile/editar'])
+})
+
+test('las 12 muestras SwiftUI usan el nombre PostScript real dentro de su TTF', () => {
+  fonts.useFuentesDelPerfil()
+  const { list } = selector()
+  for (const fuente of fonts.FUENTES) {
+    const buffer = readFileSync(bundled[fuente.familia])
+    const names = new Set()
+    for (let i = 0; i < buffer.readUInt16BE(4); i++) {
+      const table = 12 + i * 16
+      if (buffer.toString('ascii', table, table + 4) !== 'name') continue
+      const offset = buffer.readUInt32BE(table + 8)
+      const start = offset + buffer.readUInt16BE(offset + 4)
+      for (let n = 0; n < buffer.readUInt16BE(offset + 2); n++) {
+        const record = offset + 6 + n * 12
+        if (buffer.readUInt16BE(record + 6) !== 6) continue
+        const pos = start + buffer.readUInt16BE(record + 10)
+        const bytes = Buffer.from(buffer.subarray(pos, pos + buffer.readUInt16BE(record + 8)))
+        const unicode = [0, 3].includes(buffer.readUInt16BE(record))
+        names.add(unicode ? bytes.swap16().toString('utf16le') : bytes.toString())
+      }
+    }
+    const item = list.props.renderItem({ item: fuente })
+    const option = item.type(item.props)
+    assert.ok(names.has(option.props.fontFamily), `${fuente.nombre}: ${option.props.fontFamily} no existe en el TTF`)
+    assert.equal(option.props.fontSize, fonts.estiloDeFuente(fuente.id, 20).fontSize)
+  }
+  assert.equal(fonts.familiaSwiftUI(undefined), undefined)
+  assert.equal(fonts.familiaSwiftUI('Helvetica'), 'Helvetica')
+})
+
+test('no monta muestras nativas antes de cargar; informa errores sin bloquear el cierre', () => {
+  const loading = selector([false, null])
+  assert.equal(loading.list.props.data.length, 0)
+  assert.equal(loading.list.props.ListHeaderComponent, null)
+  assert.equal(loading.list.props.ListEmptyComponent.props.children[0].type, 'ActivityIndicator')
+  const failed = selector([false, new Error('Fuente no disponible')])
+  assert.equal(failed.list.props.data.length, 0)
+  assert.equal(failed.list.props.ListEmptyComponent.props.children[0], null)
+  assert.equal(failed.list.props.ListEmptyComponent.props.children[1].props.accessibilityRole, 'alert')
+  failed.header.props.options.headerLeft().props.onPress()
+  assert.deepEqual(failed.salidas, ['/profile/editar'])
+})
+
+test('la fila conserva la fuente nativa, su tamaño y Dynamic Type sin forzar otro peso', () => {
+  const jsx = (type, props) => ({ type, props })
+  const exports = {}
+  const imports = {
+    'react/jsx-runtime': { jsx, jsxs: jsx },
+    '@expo/ui/swift-ui': new Proxy({}, { get: (_, name) => name }),
+    '@expo/ui/swift-ui/modifiers': new Proxy({}, { get: (_, name) => value => ({ name, value }) }),
+  }
+  new Function('exports', 'require', compile('src/ui/FilaSocial.ios.tsx'))(exports, name => {
+    assert.ok(name in imports, name); return imports[name]
+  })
+  const tree = exports.FilaSocial({ titulo: 'Una muestra', fontFamily: 'Caveat-Bold', fontSize: 25, onPress() {} })
+  const text = tree.props.children.props.children.props.children[0].props.children[0]
+  assert.equal(text.type, 'Text')
+  assert.deepEqual(text.props.modifiers[0].value, { textStyle: 'subheadline', family: 'Caveat-Bold', size: 25 })
 })

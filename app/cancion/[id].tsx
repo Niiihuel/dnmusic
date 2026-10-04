@@ -1,77 +1,52 @@
 import { IconButton } from '../../src/ui/IconButton'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Image, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Text, useWindowDimensions, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ScrollArea as ScrollView } from '../../src/ui/ScrollArea'
 import { volver } from '../../src/lib/volver'
-import { mensajeError } from '../../src/lib/mensajeError'
 import { pistaDeResultado } from '../../src/lib/pistas'
-import { compartirCancion } from '../../src/lib/compartir'
-import { useColorPortada } from '../../src/lib/colorPortada'
-import { resolveSong, type TrackResult } from '../../src/services/music'
+import { compartirCancion, linkDe } from '../../src/lib/compartir'
+import type { TrackResult } from '../../src/services/music'
 import { tarjetaDe, type Tarjeta } from '../../src/services/compartidos'
-import { avisar } from '../../src/state/aviso'
 import { dejarCancionPendiente } from '../../src/state/listas'
-import { playQueue, togglePlayback, usePlaybackTrack, useWantPlay } from '../../src/state/playback'
+import { playQueue, togglePlayback, usePlaybackCargada, usePlaybackTrack, useWantPlay } from '../../src/state/playback'
 import { usePiso } from '../../src/state/shell'
 import { useUser } from '../../src/state/session'
 import { Aterrizaje } from '../../src/ui/Aterrizaje'
 import { BotonVolver } from '../../src/ui/BotonVolver'
-import { CollectionHeader, CollectionTitle, Insignia } from '../../src/ui/CollectionHeader'
+import { TarjetaMusica } from '../../src/ui/TarjetaMusica'
+import { useDestinoEscucha } from '../../src/ui/Dispositivos.shared'
 import { Panel } from '../../src/ui/Panel'
 import { formatLength } from '../../src/ui/SeekBar'
 import { Vacio } from '../../src/ui/Vacio'
 import {
   ICON_COLOR,
   IconMusic,
-  IconPause,
-  IconPlay,
   IconPlus,
   IconShare,
 } from '../../src/ui/icons'
 
-/** Desde acá la pantalla se comporta como el escritorio, igual que la lista. */
 const ANCHO_PX = 900
 const MAX_W = 900
-/** El lado de la tapa en la cabecera; el mismo de la lista pública. */
-const TAPA = 152
 
-/**
- * Una canción por link: adonde lleva `dnmusic-app.vercel.app/cancion/<id>`.
- *
- * Es la hermana de `app/lista/[id]` y se llega igual —un mensaje de WhatsApp,
- * el menú de alguien— así que es una **pantalla** y no una parada del panel del
- * medio: desde afuera no hay panel al que volver.
- *
- * A diferencia de la lista, la canción no es una fila de ninguna tabla: vive
- * adentro de las listas que la tienen. Lo que se lee acá es la tarjeta que
- * publicó quien compartió —`tarjeta_enlace`, ver `services/compartidos`— y el
- * audio se resuelve recién al tocar Reproducir, como cualquier resultado de
- * búsqueda. Por eso el botón tarda la primera vez: hay que traer el tema a
- * Storage.
- *
- * Sin cuenta aprobada no se dibuja nada de esto: la ruta cae en `Aterrizaje`,
- * que muestra la tapa y la puerta. Que la tarjeta se vea sin sesión no abre la
- * reproducción — resolver y firmar el audio siguen pidiendo cuenta.
- */
+/* La tarjeta pública sólo aporta metadatos; resolver el audio requiere una cuenta aprobada. */
 export default function CancionCompartida() {
   const { id } = useLocalSearchParams<{ id?: string }>()
   const router = useRouter()
-  /* `useUser` da `undefined` mientras la sesión se resuelve y `null` tanto sin
-     sesión como con la cuenta sin aprobar: para esta pantalla es lo mismo. */
+  /* `useUser` distingue sesión pendiente (undefined) de acceso no aprobado (null). */
   const quien = useUser()
   const aprobado = !!quien
   const piso = usePiso(24)
   const ancho = useWindowDimensions().width >= ANCHO_PX
   const sonando = usePlaybackTrack()
   const suena = useWantPlay()
+  const cargada = usePlaybackCargada()
+  const destino = useDestinoEscucha()
 
   const [cargado, setCargado] = useState<{ id: string; tarjeta: Tarjeta | null } | null>(null)
   const fresco = !!id && cargado?.id === id
   const tarjeta = fresco ? cargado.tarjeta : undefined
-  const [resolviendo, setResolviendo] = useState(false)
-  const tinte = useColorPortada(tarjeta?.tapa ?? null)
 
   useEffect(() => {
     if (!id || !aprobado) return
@@ -84,12 +59,9 @@ export default function CancionCompartida() {
     }
   }, [id, aprobado])
 
-  /* Sin cuenta aprobada, la tarjeta y la puerta. Va después de los hooks —y no
-     en un `return` temprano— para no romper su orden entre renders. */
   if (quien === undefined) return <SafeAreaView className="flex-1 bg-background" />
   if (!aprobado) return <Aterrizaje que="cancion" id={id ?? ''} />
 
-  /** El resultado que entiende el resto de la app, armado con lo de la tarjeta. */
   const resultado = (t: Tarjeta): TrackResult => ({
     videoId: t.id,
     title: t.titulo,
@@ -103,21 +75,9 @@ export default function CancionCompartida() {
 
   const suenaAca = !!tarjeta && sonando?.videoId === tarjeta.id
 
-  async function reproducir(t: Tarjeta) {
-    if (suenaAca) {
-      togglePlayback()
-      return
-    }
-    setResolviendo(true)
-    try {
-      const pista = resultado(t)
-      const song = await resolveSong(pista)
-      playQueue([pistaDeResultado(pista, 'enlace', song)], 0, null)
-    } catch (e) {
-      avisar(`No se pudo reproducir: ${mensajeError(e)}`, true)
-    } finally {
-      setResolviendo(false)
-    }
+  function reproducir(t: Tarjeta) {
+    if (suenaAca) togglePlayback()
+    else playQueue([pistaDeResultado(resultado(t), 'enlace')], 0, null)
   }
 
   return (
@@ -148,9 +108,7 @@ export default function CancionCompartida() {
                 <ActivityIndicator color="#FFFFFF" />
               </View>
             ) : tarjeta === null ? (
-              /* Un solo cartel para «no existe» y para «nadie la publicó»: la
-                 misma respuesta a propósito, así nadie recorre el catálogo
-                 probando ids. Mismo criterio que la lista y que el perfil. */
+              /* No distinguir ids inexistentes de tarjetas no publicadas evita revelar el catálogo. */
               <View className="px-6 py-16">
                 <Vacio
                   icono={<IconMusic size={24} color={ICON_COLOR.muted} />}
@@ -160,60 +118,32 @@ export default function CancionCompartida() {
                 />
               </View>
             ) : (
-              <View className="w-full" style={{ maxWidth: MAX_W }}>
-                <CollectionHeader
-                  kind="Canción"
-                  tint={tinte}
-                  bleedTop={ancho ? 64 : 8}
-                  insignia={
-                    <Insignia icono={<IconShare size={10} color={ICON_COLOR.muted} />}>
-                      Compartida
-                    </Insignia>
-                  }
-                  title={<CollectionTitle>{tarjeta.titulo}</CollectionTitle>}
-                  meta={[tarjeta.subtitulo, tarjeta.durationMs ? formatLength(tarjeta.durationMs) : '']
-                    .filter(Boolean)
-                    .join(' · ')}
-                  image={
-                    <View className="overflow-hidden rounded-lg bg-muted" style={{ width: TAPA, height: TAPA }}>
-                      {tarjeta.tapa ? (
-                        <Image source={{ uri: tarjeta.tapa }} style={{ width: TAPA, height: TAPA }} />
-                      ) : (
-                        <View className="flex-1 items-center justify-center">
-                          <IconMusic size={32} color={ICON_COLOR.muted} />
-                        </View>
-                      )}
-                    </View>
-                  }
-                  actions={
-                    <>
-                      <IconButton label={
-                          suenaAca && suena ? 'Pausar' : `Reproducir ${tarjeta.titulo}`
-                        } symbol={suenaAca && suena ? 'pause.fill' : 'play.fill'} onPress={() => void reproducir(tarjeta)} disabled={resolviendo} lado={56} size={20} variant="primary" busy={resolviendo} icon={resolviendo ? (
-                          <ActivityIndicator size="small" color={ICON_COLOR.onPrimary} />
-                        ) : suenaAca && suena ? (
-                          <IconPause size={20} color={ICON_COLOR.onPrimary} />
-                        ) : (
-                          <IconPlay size={20} color={ICON_COLOR.onPrimary} />
-                        )} />
-
-                      <IconButton label="Agregar a una lista" symbol="plus" onPress={() => {
-                          dejarCancionPendiente(resultado(tarjeta))
-                          router.push('/lista/elegir')
-                        }} lado={44} size={18} icon={<IconPlus size={18} color={ICON_COLOR.muted} />} />
-
-                      <IconButton label="Compartir el link" symbol="square.and.arrow.up" onPress={() =>
-                          void compartirCancion({
-                            videoId: tarjeta.id,
-                            title: tarjeta.titulo,
-                            artist: tarjeta.subtitulo,
-                            artworkUrl: tarjeta.tapa ?? '',
-                            durationMs: tarjeta.durationMs ?? 0,
-                          })
-                        } lado={44} size={18} icon={<IconShare size={18} color={ICON_COLOR.muted} />} />
-                    </>
-                  }
+              <View className="w-full items-center gap-5 px-6 py-8" style={{ maxWidth: MAX_W }}>
+                <Text className="text-muted-foreground text-footnote">Canción compartida</Text>
+                <TarjetaMusica
+                  datos={{ titulo: tarjeta.titulo, artista: tarjeta.subtitulo, imagen: tarjeta.tapa }}
+                  reproduciendo={suenaAca && suena && !destino.remoto}
+                  cargando={suenaAca && suena && !cargada && !destino.remoto}
+                  etiquetaReproduccion={suenaAca && destino.remoto ? 'Traer música a este dispositivo' : undefined}
+                  onReproducir={() => reproducir(tarjeta)}
+                  onAbrir={suenaAca ? () => router.push('/playing') : undefined}
                 />
+                {tarjeta.durationMs ? <Text className="text-muted-foreground text-caption1 tabular-nums">{formatLength(tarjeta.durationMs)}</Text> : null}
+                <View className="flex-row items-center gap-3">
+                  <IconButton label="Agregar a una lista" symbol="plus" onPress={() => {
+                    dejarCancionPendiente(resultado(tarjeta))
+                    router.push('/lista/elegir')
+                  }} lado={44} size={18} icon={<IconPlus size={18} color={ICON_COLOR.muted} />} />
+                  <IconButton expandible copyText={linkDe('cancion', tarjeta.id)} label="Compartir el link" symbol="square.and.arrow.up" onPress={() =>
+                    void compartirCancion({
+                      videoId: tarjeta.id,
+                      title: tarjeta.titulo,
+                      artist: tarjeta.subtitulo,
+                      artworkUrl: tarjeta.tapa ?? '',
+                      durationMs: tarjeta.durationMs ?? 0,
+                    })
+                  } lado={44} size={18} icon={<IconShare size={18} color={ICON_COLOR.muted} />} />
+                </View>
               </View>
             )}
           </ScrollView>

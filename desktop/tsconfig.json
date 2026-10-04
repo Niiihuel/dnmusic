@@ -1,22 +1,16 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    // CommonJS y no ESM como el servicio de música: en Electron el preload
-    // solo carga como CommonJS cuando el sandbox está prendido, y el sandbox
-    // es lo que evita que el bundle web —que trae código de terceros— vea Node.
-    // Mezclar los dos sistemas en un paquete tan chico no compra nada.
-    //
-    // `nodenext` y no `node`: bgutils-js y youtubei.js solo se publican vía
-    // `exports` de package.json, que la resolución vieja no sabe leer. Como
-    // este paquete no declara `type: module`, la emisión sigue siendo CommonJS
-    // — y cargar esas dependencias ESM con `require` funciona porque el Node
-    // de Electron 43 ya trae require(esm).
+    // El preload con sandbox requiere CommonJS. NodeNext resuelve los exports
+    // de bgutils-js/youtubei.js; Electron permite cargar esos módulos ESM.
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2023", "DOM"],
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true

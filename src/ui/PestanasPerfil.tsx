@@ -87,7 +87,7 @@ export function Reciente({
       {escucha}
       <ParedDeReacciones ownerId={ownerId} recarga={recarga} propio={propio} nombre={nombre} />
       {sinResumen ? null : <ResumenCorto ownerId={ownerId} />}
-      <ListasPerfil ownerId={ownerId} nombre={nombre} propio={propio} recarga={recarga} onAbrir={onAbrirLista} />
+      <ListasPerfil ownerId={ownerId} propio={propio} recarga={recarga} onAbrir={onAbrirLista} />
     </View>
   )
 }

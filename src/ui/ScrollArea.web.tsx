@@ -1,9 +1,12 @@
+import { SharedLayoutBg } from './SharedLayoutBg'
+import { attachSmoothScroll } from './smoothScroll.web'
 import { forwardRef, useContext, useCallback, useEffect, useId, useRef, type KeyboardEvent, type PointerEvent } from 'react'
 import { ScrollView, View, type ScrollViewProps } from 'react-native'
 import { ScrollAreaTecho } from './ScrollAreaContext'
 
 type ScrollAreaProps = ScrollViewProps & {
   /** Mantiene estable el tamaño visual del pulgar cuando una lista virtual monta filas por tandas. */
+  smooth?: boolean
   stableIndicator?: boolean
   /** Reinicia la medida estable al cambiar de colección. */
   contentKey?: string | number
@@ -19,14 +22,15 @@ export function geometriaScrollbar(viewport: number, contenido: number, offset: 
 }
 
 /**
- * Mismo contrato/ref que ScrollView. El scroll sigue siendo nativo; sólo el
- * indicador es nuestro, sobre el contenido y sin carril que reserve ancho.
+ * Mismo contrato/ref que ScrollView. Lenis suaviza el scroll de escritorio
+ * dentro de este viewport; touch y movimiento reducido siguen siendo nativos.
+ * El indicador se superpone al contenido sin reservar un carril.
  * No introduce fondos, degradados ni límites de altura propios.
  */
 export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function ScrollArea({
   children, style, scrollIndicatorInsets, className = '', onScroll, onContentSizeChange, horizontal,
   scrollEventThrottle = 16, showsVerticalScrollIndicator = true, scrollEnabled = true,
-  stableIndicator = false, contentKey = 'default', ...props
+  stableIndicator = false, contentKey = 'default', smooth = true, ...props
 }, forwardedRef) {
   const techoPanel = useContext(ScrollAreaTecho)
   const insetTop = scrollIndicatorInsets?.top ?? techoPanel
@@ -36,6 +40,7 @@ export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function Scrol
   const viewport = useRef<HTMLElement | null>(null)
   const track = useRef<HTMLDivElement>(null)
   const thumb = useRef<HTMLDivElement>(null)
+  const smoothing = useRef<ReturnType<typeof attachSmoothScroll> | null>(null)
   const drag = useRef<{ y: number; offset: number; pointer: number } | null>(null)
   const frame = useRef<number | null>(null)
   const id = useId()
@@ -84,8 +89,12 @@ export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function Scrol
     // Escuchar el nodo mantiene la barra sincronizada también con scrollTo y
     // con el teclado, sin redibujar React por cada evento de desplazamiento.
     node.addEventListener('scroll', solicitarMedida, { passive: true })
+    const engine = smooth && scrollEnabled ? attachSmoothScroll(node) : null
+    smoothing.current = engine
     medir()
     return () => {
+      engine?.destroy()
+      smoothing.current = null
       observer.disconnect()
       node.removeEventListener('scroll', solicitarMedida)
       node.classList.remove('dn-scroll-viewport')
@@ -99,11 +108,12 @@ export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function Scrol
         if (pointer !== undefined && rail.hasPointerCapture(pointer)) rail.releasePointerCapture(pointer)
       }
     }
-  }, [horizontal, id, medir, solicitarMedida])
+  }, [horizontal, id, medir, solicitarMedida, smooth, scrollEnabled])
 
   function presionar(event: PointerEvent<HTMLDivElement>) {
     if (!indicadorActivo || event.button !== 0 || !viewport.current) return
     event.preventDefault()
+    smoothing.current?.stop()
     event.currentTarget.focus()
     event.currentTarget.setPointerCapture(event.pointerId)
     medir()
@@ -137,12 +147,14 @@ export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function Scrol
     }
     if (!(event.key in destinos)) return
     event.preventDefault()
-    node.scrollTop = destinos[event.key]
+    if (smoothing.current) smoothing.current.scrollTo(destinos[event.key])
+    else node.scrollTop = destinos[event.key]
     solicitarMedida()
   }
   // Las filas horizontales conservan su presentación/indicador nativos.
   if (horizontal) return <ScrollView {...props} scrollIndicatorInsets={scrollIndicatorInsets} horizontal scrollEnabled={scrollEnabled} showsVerticalScrollIndicator={showsVerticalScrollIndicator} style={style} className={className} ref={ref} onScroll={onScroll} onContentSizeChange={onContentSizeChange} scrollEventThrottle={scrollEventThrottle}>{children}</ScrollView>
   return <View className={`dn-scroll-area ${className}`} style={[{ flexGrow: 1, flexShrink: 1, minWidth: 0, minHeight: 0, position: 'relative' }, style]}>
+    <SharedLayoutBg targets="surfaces" className="dn-shared-scroll">
     <ScrollAreaTecho.Provider value={0}>
     <ScrollView {...props} ref={ref} scrollEnabled={scrollEnabled} style={{ flexGrow: 1, flexShrink: 1, minWidth: 0, minHeight: 0 }} showsVerticalScrollIndicator={false}
       onScroll={onScroll} scrollEventThrottle={scrollEventThrottle}
@@ -150,6 +162,7 @@ export const ScrollArea = forwardRef<ScrollView, ScrollAreaProps>(function Scrol
       {children}
     </ScrollView>
     </ScrollAreaTecho.Provider>
+    </SharedLayoutBg>
     <div ref={track} className="dn-scrollbar" role="scrollbar" aria-label="Desplazar contenido" aria-orientation="vertical"
       aria-valuemin={0} aria-valuemax={0} aria-valuenow={0} aria-hidden={!indicadorActivo} hidden={!indicadorActivo}
       tabIndex={indicadorActivo ? 0 : -1} style={{ display: 'none' }}

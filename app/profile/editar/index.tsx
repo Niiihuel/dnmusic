@@ -1,4 +1,6 @@
-import { FilaSocial } from '../../../src/ui/FilaSocial'
+import { ScrollArea } from '../../../src/ui/ScrollArea'
+import { superficieInteractivaWeb } from '../../../src/ui/estadoControl'
+import { EditorPerfilNativo } from '../../../src/ui/EditorPerfilNativo'
 import { AccionSocial } from '../../../src/ui/Social'
 import { IconButton } from '../../../src/ui/IconButton'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -28,7 +30,7 @@ import { nombreDePlaca } from '../../../src/ui/Placas'
 import { esDecoracionPropia } from '../../../src/services/decoraciones'
 import { Marco, MARCOS } from '../../../src/ui/Marco'
 import { pickImage } from '../../../src/lib/pickImage'
-import { esVideo, uploadIlustracionConProgreso } from '../../../src/services/showcases'
+import { uploadIlustracionConProgreso } from '../../../src/services/showcases'
 import { setMyProfile, useMyProfile, useUser } from '../../../src/state/session'
 import { useKeyboardH, usePiso } from '../../../src/state/shell'
 import { avisar } from '../../../src/state/aviso'
@@ -182,7 +184,7 @@ export default function EditarPerfil() {
   }
 
   const avatarPath = profile?.avatarPath ?? null
-  const puedeEncuadrarFondo = !!profile?.bannerPath && !esVideo(profile.bannerPath)
+  const puedeEncuadrarFondo = !!profile?.bannerPath
   const nombre = profile?.displayName?.trim() || profile?.username || '?'
 
   async function elegirFoto() {
@@ -213,6 +215,37 @@ export default function EditarPerfil() {
         <ActivityIndicator color="#FFFFFF" />
       </SafeAreaView>
     )
+  }
+
+  const confirmarQuitar = <Confirmar visible={quitar !== null} titulo={quitar === 'foto' ? '¿Quitar tu foto?' : '¿Quitar el fondo?'}
+    mensaje="El cambio quedará en la vista previa hasta que elijas Guardar cambios."
+    rotulo="Quitar del borrador" onCancelar={() => setQuitar(null)} onConfirmar={() => {
+      if (enVuelo.current) return
+      setBorrador(b => quitar === 'foto' ? { ...b, avatarPath: null, avatarEncuadre: null } : { ...b, bannerPath: null, bannerEncuadre: null })
+      setQuitar(null)
+    }} />
+
+  if (Platform.OS === 'ios') {
+    return <View style={{ flex: 1, backgroundColor: '#111111' }}>
+      <EditorPerfilNativo perfil={profile} nombre={nombreEditor} usuario={usuarioEditor} linea={lineaEditor}
+        ocupado={ocupado} guardando={guardando} cambiado={cambiado} puedeGuardar={valido}
+        error={error ?? errorMosaico} piso={pisoVisible} subiendoFoto={uploading} subiendoFondo={subiendoFondo}
+        progresoFondo={progresoFondo}
+        estilo={{
+          fuente: fuenteDe(profile.fuente)?.nombre ?? 'La del sistema',
+          marco: profile.marco ? esDecoracionPropia(profile.marco) ? 'Tu decoración' : nombreCosmetico(profile.marco) ?? MARCOS.find(m => m.id === profile.marco)?.nombre ?? 'Decoración guardada' : 'Ninguno',
+          efecto: profile.efecto ? esDecoracionPropia(profile.efecto) ? 'Tu decoración' : nombreCosmetico(profile.efecto) ?? nombreDeEfecto(profile.efecto) ?? 'Decoración guardada' : 'Ninguno',
+          placa: profile.placa ? nombreCosmetico(profile.placa) ?? nombreDePlaca(profile.placa) ?? 'Decoración guardada' : 'Ninguna',
+          marcoPerfil: nombreCosmetico(profile.marcoPerfil) ?? (profile.marcoPerfil ? 'Decoración guardada' : 'Ninguno'),
+        }}
+        onVolver={() => volver(router, '/profile')} onAbrir={abrir}
+        onGuardar={() => void guardarCambios()} onRestablecer={restablecer}
+        onElegirFoto={() => void elegirFoto()} onElegirFondo={() => void subirFondo()}
+        onQuitar={medio => { if (!enVuelo.current) setQuitar(medio) }}
+        onCambiar={cambios => { if (!enVuelo.current) actualizarPerfilEdicion(cambios) }} />
+      {confirmarQuitar}
+      {dialogo}
+    </View>
   }
 
   /*
@@ -366,7 +399,7 @@ export default function EditarPerfil() {
       pie={
         profile.visibility === 'publico'
           ? 'Cualquiera con cuenta puede ver tu perfil y tus vitrinas. Si activás la escucha, solo tus contactos ven la canción mientras suena; pueden dejar reacciones que quedan en tu perfil.'
-          : 'Solo vos podés ver tu perfil. Nadie más, ni con el enlace.'
+          : 'Solo vos y tus contactos pueden ver tu perfil y tus vitrinas. Quienes te encuentren por búsqueda no podrán abrirlo.'
       }
     >
       <FilaInterruptor iconoPlano
@@ -416,7 +449,7 @@ export default function EditarPerfil() {
 
 
   const vistaPrevia = <View className="w-full gap-4" style={{ maxWidth: 390, alignSelf: 'center' }}>
-    <Text className="text-muted-foreground text-caption2 px-3">{profile.visibility === 'publico' ? 'Público' : 'Solo vos'}</Text>
+    <Text className="text-muted-foreground text-caption2 px-3">{profile.visibility === 'publico' ? 'Público' : 'Contactos'}</Text>
     <View style={{ padding: 24 }}><TarjetaPerfil perfil={profile} /></View>
   </View>
   const abrirProbador = <Pressable accessibilityRole="button" accessibilityLabel="Abrir el probador de personalización" onPress={() => abrir('/profile/marco')}
@@ -425,13 +458,6 @@ export default function EditarPerfil() {
     <Text className="text-muted-foreground text-footnote leading-5">Decoraciones de Discord, diseños de DMusic y tus propias piezas. Combiná y probá. Guardá todo junto al volver al editor.</Text>
     <View className="self-start rounded-full bg-primary px-4 py-3"><Text className="text-primary-foreground text-footnote font-bold">Personalizar perfil</Text></View>
   </Pressable>
-  const confirmarQuitar = <Confirmar visible={quitar !== null} titulo={quitar === 'foto' ? '¿Quitar tu foto?' : '¿Quitar el fondo?'}
-    mensaje="El cambio quedará en la vista previa hasta que elijas Guardar cambios."
-    rotulo="Quitar del borrador" onCancelar={() => setQuitar(null)} onConfirmar={() => {
-      if (enVuelo.current) return
-      setBorrador(b => quitar === 'foto' ? { ...b, avatarPath: null, avatarEncuadre: null } : { ...b, bannerPath: null, bannerEncuadre: null })
-      setQuitar(null)
-    }} />
   const barra = <BarraCambiosPerfil visible={cambiado} ocupado={ocupado} error={error ?? errorMosaico}
     puedeGuardar={valido} onRestablecer={restablecer} onGuardar={() => void guardarCambios()}
     abajo={escritorio ? 16 : Math.max(12, pisoVisible)} onAltura={setAltoBarra} />
@@ -523,7 +549,7 @@ function Movil({ secciones, previa, espacioBarra, pisoVisible, onVolver, childre
             <View className="gap-1">
               {secciones.map(s => {
                 const Icono = s.icono
-                return Platform.OS === 'ios' ? <View key={s.id} className="flex-row items-center gap-2"><Icono size={16} color={ICON_COLOR.muted} /><View style={{ flex: 1 }}><FilaSocial titulo={s.titulo} onPress={() => setElegida(s.id)} /></View></View> : <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo} onPress={() => setElegida(s.id)}
+                return <Pressable key={s.id} {...superficieInteractivaWeb('row')} accessibilityRole="button" accessibilityLabel={s.titulo} onPress={() => setElegida(s.id)}
                   className="min-h-[44px] flex-row items-center gap-2.5 rounded-md px-2 active:bg-muted">
                   <Icono size={16} color={ICON_COLOR.muted} /><Text className="min-w-0 flex-1 text-foreground text-subheadline">{s.titulo}</Text><IconChevronRight size={16} color={ICON_COLOR.muted} />
                 </Pressable>
@@ -578,18 +604,18 @@ function Escritorio({ secciones, cuenta, onVolver, previa, espacioBarra }: {
                 icono={<IconCollapseLeft size={16} color={ICON_COLOR.muted} />} />
             </CabeceraLateral>
             {cuenta}
-            <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-0.5 px-2 pt-3"
+            <ScrollArea className="min-h-0 flex-1" contentContainerClassName="gap-0.5 px-2 pt-3"
               contentContainerStyle={{ paddingBottom: 24 + espacioBarra }}>
               {secciones.map(s => {
                 const activa = s.id === actual?.id
                 const Icono = s.icono
-                return Platform.OS === 'ios' ? <View key={s.id} className="flex-row items-center gap-2"><Icono size={16} color={ICON_COLOR.muted} /><View style={{ flex: 1 }}><FilaSocial titulo={s.titulo} selected={activa} onPress={() => setElegida(s.id)} /></View></View> : <Pressable key={s.id} accessibilityRole="button" accessibilityLabel={s.titulo} accessibilityState={{ selected: activa }} onPress={() => setElegida(s.id)}
-                  className={`h-[30px] flex-row items-center gap-2.5 rounded-md px-2 ${activa ? 'bg-muted' : 'hover:bg-white/5 active:bg-muted'}`}>
+                return <Pressable key={s.id} {...superficieInteractivaWeb('row')} accessibilityRole="button" accessibilityLabel={s.titulo} accessibilityState={{ selected: activa }} onPress={() => setElegida(s.id)}
+                  className={`h-[30px] flex-row items-center gap-2.5 rounded-md px-2 ${activa ? 'bg-muted' : 'active:bg-muted'}`}>
                   <Icono size={16} color={activa ? ICON_COLOR.foreground : ICON_COLOR.muted} />
                   <Text className={`min-w-0 flex-1 text-footnote ${activa ? 'text-foreground font-medium' : 'text-foreground'}`} numberOfLines={1}>{s.titulo}</Text>
                 </Pressable>
               })}
-            </ScrollView>
+            </ScrollArea>
           </Panel>}
       </View>
       <Panel className="min-w-0 flex-1">
@@ -597,13 +623,13 @@ function Escritorio({ secciones, cuenta, onVolver, previa, espacioBarra }: {
           <BotonVolver label="Volver al perfil" onPress={onVolver} />
           <Text className="min-w-0 flex-1 text-foreground text-subheadline font-semibold" numberOfLines={1}>{actual?.titulo}</Text>
         </View>
-        <ScrollView className="min-h-0 flex-1" keyboardShouldPersistTaps="handled"
+        <ScrollArea className="min-h-0 flex-1" keyboardShouldPersistTaps="handled"
           contentContainerClassName="items-center px-6 pt-5" contentContainerStyle={{ paddingBottom: 40 + espacioBarra }}>
           <View className="w-full min-w-0 gap-6" style={{ maxWidth: MAX_W }}>
             {!lateralPrevia ? <PreviaPlegable abierta={!previaPlegada} onCambiar={() => setPreviaPlegada(v => !v)}>{previa}</PreviaPlegable> : null}
             <AjustesCompactos>{actual?.bloques}</AjustesCompactos>
           </View>
-        </ScrollView>
+        </ScrollArea>
       </Panel>
       {lateralPrevia ? <View testID="editor-previa-lateral" style={{ width: previaPlegada ? 64 : 350, flexShrink: 0 }}
         onPointerEnter={() => setHoverDerecho(true)} onPointerLeave={() => setHoverDerecho(false)}>
@@ -615,7 +641,7 @@ function Escritorio({ secciones, cuenta, onVolver, previa, espacioBarra }: {
               <BotonLateral label="Ocultar vista previa" onPress={() => setPreviaPlegada(true)}
                 icono={<IconCollapseRight size={16} color={ICON_COLOR.muted} />} />
             </CabeceraLateral>
-            <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 24 + espacioBarra }}>{previa}</ScrollView>
+            <ScrollArea contentContainerStyle={{ padding: 12, paddingBottom: 24 + espacioBarra }}>{previa}</ScrollArea>
           </Panel>}
       </View> : null}
     </SafeAreaView>

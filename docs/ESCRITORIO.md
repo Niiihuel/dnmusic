@@ -1,6 +1,6 @@
 # dnmusic para escritorio
 
-La misma app que sirve Vercel, adentro de una ventana, con actualizaciones que
+La misma app que sirve Railway, adentro de una ventana, con actualizaciones que
 se aplican solas. No hay una versión de escritorio del código: `desktop/` es una
 cáscara que carga el export de `npm run build:web` sin tocarle una línea.
 
@@ -28,8 +28,9 @@ app— y eso es un trámite aparte, no una casilla más en el YAML.
 
 ```bash
 npm run build:web          # en la raíz: genera dist/
-cd desktop && npm install
-npm run dev
+npm --prefix desktop ci
+npm --prefix desktop run traer-web
+npm --prefix desktop run dev
 ```
 
 En desarrollo el actualizador se apaga solo y lo dice en la consola —
@@ -39,7 +40,7 @@ comparar, porque la versión sale del paquete instalado.
 Para ver el instalador de verdad sin publicar nada:
 
 ```bash
-cd desktop && npm run empaquetar   # queda en desktop/release/
+npm --prefix desktop run empaquetar   # queda en desktop/release/
 ```
 
 ## El resolutor de a bordo
@@ -66,9 +67,9 @@ El circuito completo, con quién confía en quién:
 3. Los bytes **no pasan por el servicio**: `POST /aportar/url` devuelve una URL
    firmada de un solo uso, el archivo sube derecho a Supabase Storage con un
    `PUT`, y después `POST /aportar/confirmar` avisa que está. Va así porque el
-   servicio vive en una función y el cuerpo de un pedido tiene techo —4.5 MB en
-   el plan gratis, menos que una canción de cinco minutos—; de paso es más
-   rápido y no gasta ancho de banda de la función.
+   servicio valida y confirma sin retransmitir el cuerpo de cada canción.
+   El camino nació para evitar el límite de las funciones de Vercel y conserva
+   la misma separación en Railway: reduce el tráfico que atraviesa la API.
 4. **El servidor decide qué se guarda**, igual que antes: lo subido cae en una
    ruta de cuarentena que la app no reproduce nunca, y solo si ffprobe confirma
    que es AAC en mp4 con la duración que el catálogo esperaba (±7s) y ffmpeg lo
@@ -79,8 +80,37 @@ El circuito completo, con quién confía en quién:
    propio. El uid del aportante queda en el log.
 
 El navegador no puede hacer lo mismo (hablar con YouTube desde una página lo
-frena CORS); por eso el puente existe solo acá. El teléfono podría, y es la
-fase que sigue si hace falta.
+frena CORS). El teléfono tiene su propio [resolver nativo](MOTOR-TELEFONO.md).
+
+### Reiniciar después de actualizar en Linux
+
+`ActualizadorAppImage` conserva la descarga, verificación y reemplazo de
+`electron-updater`, pero cambia el relanzamiento. En un AppImage normal usa
+`app.relaunch`: la nueva instancia espera la salida de la anterior y no pelea
+con su bloqueo de instancia única.
+
+En NixOS o una ejecución reconocida de `appimage-run`, no se ejecuta el archivo
+directamente: eso puede fallar con `error loading libfuse.so.2`. Tampoco alcanza
+con un hijo detached ni con el relauncher dentro de bubblewrap: al salir el
+entorno puede terminar sus procesos auxiliares. Se programa un servicio
+**transitorio del usuario** (`systemd-run --user`, sin root), fuera de ese
+entorno. Espera hasta 30 segundos la salida del PID anterior y ejecuta
+`appimage-run` con la ruta del AppImage actualizado. La unidad se recolecta al
+terminar; no instala un servicio permanente ni cambia el acceso directo.
+
+El lanzador se resuelve antes de reemplazar el archivo. Las rutas viajan como
+argumentos, nunca como código de shell; no se copian secretos ni bibliotecas
+del proceso antiguo al nuevo. Si falta el lanzador o no se puede programar el
+supervisor, el error vuelve al updater sin ordenar el cierre. Windows sigue
+usando NSIS sin cambios.
+
+Validación local (22/09/2026): AppImage de prueba y perfil de Electron aislados,
+usando el runtime publicado y el `appimage-run` real de NixOS. El instalador
+reemplazó el archivo temporal; se registraron `first → quit → reopened` con
+PID distinto y el bloqueo de instancia única adquirido por ambos procesos.
+No se modificó la instalación ni el perfil real. Las pruebas automatizadas
+en `desktop/tests/reinicio-linux.test.cjs` cubren selección, argumentos,
+fallos y la integración con `doInstall` de la dependencia instalada.
 
 ### En NixOS, `npm run dev` no arranca
 
@@ -113,7 +143,7 @@ programs.nix-ld.enable = true;
 
 Una sola vez, para dejarlo andando:
 
-1. **Crear el repo público de releases** `Niiihuel/dnmusic-releases`. Vacío,
+1. **Crear el repo público de releases** `Niihuel/dnmusic-releases`. Vacío,
    sin código: solo cuelgan los binarios.
 2. **Un token** con permiso de escritura ahí (fine-grained PAT, repo
    `dnmusic-releases`, *Contents: read and write*).
@@ -127,7 +157,8 @@ Dos trampas de esa lista, las dos vistas al publicar la 1.0.0:
 `.env.local`.** En el `.env.local` viven el Supabase de Docker y una IP de la
 red de casa. Un instalador construido con eso **compila igual** y sale a la
 calle sin buscador, sin portada y sin poder iniciar sesión, sin un solo error
-que lo explique. Los buenos son los del bundle que sirve Vercel.
+que lo explique. El workflow comprueba los orígenes de Auth y API de Railway
+antes de construir el bundle.
 
 **`gh secret set` puede guardar vacío sin avisar.** Sin una terminal
 interactiva no muestra el prompt, lee una entrada vacía y la guarda igual; el
@@ -136,7 +167,7 @@ el bloque `env:` del paso de chequeo: los que tienen valor salen `***`, los
 vacíos salen en blanco. La forma que no falla es desde un archivo:
 
 ```bash
-gh secret set RELEASES_TOKEN --repo Niiihuel/dnmusic < /tmp/tok && shred -u /tmp/tok
+gh secret set RELEASES_TOKEN --repo Niiihuel/dnmusic < /ruta/segura/token
 ```
 
 Después, cada versión son **las novedades y un tag**:
@@ -150,7 +181,7 @@ git push origin escritorio-v1.1.0
 
 Las novedades son una sola fuente con dos lectores: la pantalla «Ajustes →
 Novedades» de la app —la misma en la web, la compu y el teléfono— y el cuerpo
-del release de GitHub, que escribe `scripts/notas-release.mjs`. Si el tag no
+del release de GitHub, que escribe `desktop/scripts/notas-release.mjs`. Si el tag no
 tiene entrada en el JSON, **el workflow corta ahí**: publicar una versión sin
 contar qué trae es justo el olvido que ese paso existe para atajar. En esa
 misma pantalla, el escritorio muestra además el actualizador —en qué anda, qué
@@ -201,8 +232,14 @@ la sesión borrada a los segundos de entrar—, y el reemplazo se reintenta ante
 de resignarse. Cuando algo de esto falla queda dicho en el log del proceso
 principal, que en Windows se ve con `dnmusic.exe --enable-logging`.
 
+**Cerrar sesión sólo afecta a esa instalación.** Desde la 1.15.1 se pasa
+`scope: local` a Supabase: omitirlo revocaba también las sesiones del resto de
+los dispositivos y se notaba cuando intentaban renovar su acceso. Esto corrige
+un motivo posible de cierres inesperados, pero no confirma por sí solo la causa
+en una computadora específica.
+
 **Un chunk que falta devuelve 404, no index.html.** El fallback de SPA es el
-mismo que hace `vercel.json` en la web, con el mismo corte: una ruta cae en
+mismo que hace `scripts/serve-railway.ts` en la web: una ruta cae en
 index.html, un archivo con extensión que no está devuelve 404. Si le
 contestáramos HTML con 200 a un `.js` faltante, el navegador intentaría
 ejecutarlo y el error sería `Unexpected token '<'`, que no dice nada de lo que
@@ -239,40 +276,27 @@ no es un detalle.
 
 ## La ventana dibuja su propio cromo
 
-La barra de título del sistema está apagada (`titleBarStyle: 'hidden'`). Es el
-mismo argumento con el que se fueron los `dialog.showMessageBox`: una franja
-gris del sistema apoyada encima de una interfaz que se separa por luminancia y
-no por bordes se lee como otra app pegada arriba. Música de Mac no la tiene —los
-controles flotan sobre la barra lateral— y eso es lo que se busca.
+En Windows se conserva `titleBarStyle: 'hidden'` con los controles nativos de
+`titleBarOverlay` y los menús de acoplamiento del sistema. `BandaVentana` reserva
+la altura informada por `navigator.windowControlsOverlay` para que los botones
+no tapen la navegación ni los encabezados.
 
-Los botones de minimizar, maximizar y cerrar **siguen siendo los del sistema**:
-`titleBarOverlay` los conserva, teñidos con la paleta (`#121212` de fondo,
-`#B3B3B3` los símbolos, 38px de alto). Rehacerlos a mano hubiera significado
-reimplementar el comportamiento de ventana de cada escritorio, que es donde una
-barra casera se equivoca: doble click para maximizar, arrastrar contra el borde
-para acoplar, el menú del sistema con click derecho.
+En Linux la ventana usa `frame: false`: los controles propios quedan siempre a
+la derecha, en el orden minimizar, maximizar/restaurar y cerrar. Una fila de 32px
+reserva su espacio en todas las rutas, incluido el inicio de sesión. Los tres
+botones ocupan 138px y siguen accesibles sobre los modales. En pantalla completa
+se oculta la fila; al maximizar cambia el icono y la etiqueta a «Restaurar».
 
-**El cromo va encima del layout, no adentro.** El navegador dibuja esos botones
-sobre la página, así que la app llega hasta el borde de arriba y ellos flotan.
-El primer intento reservaba una fila de 38px como primer hijo del árbol y se veía
-exactamente como lo que era: una banda negra muerta cruzando toda la ventana,
-con la app empezando debajo. Ninguna fila reserva alto.
+El resto de la fila permite arrastrar con `dn-arrastrar`; los botones usan
+`dn-no-arrastrar` para recibir los clicks. Las acciones pasan por el puente
+`ventana` del preload y `desktop/src/ventana-ipc.ts`, que acepta únicamente el
+frame principal del origen de la app. Cerrar llama a `BrowserWindow.close()` y
+conserva el proceso normal de cierre y actualización. No se modifican las
+preferencias de posición de botones del escritorio Linux.
 
-Lo que sí hay que declarar es **desde dónde se arrastra**, porque sin barra de
-título nadie lo hace y la ventana queda clavada. Eso lo pone `CabeceraLateral`
-—la franja de arriba de la barra lateral, con el título de la sección, el mismo
-lugar del que se arrastra Música para Mac— con la clase `dn-arrastrar`, y sus
-controles se salen con `dn-no-arrastrar`: una zona de arrastre se come el click
-de todo lo que tenga adentro. Las clases viven en `global.css` porque
-`app-region` no existe en React Native, y `src/ui/BandaVentana.tsx` decide si
-corresponden.
-
-**No se da por sentado que el overlay exista.** `navigator.windowControlsOverlay`
-sólo existe cuando está activo, que es exactamente cuando hay botones flotando y
-una ventana sin marco; en el navegador, en la PWA y en el teléfono las dos clases
-quedan vacías. Se probó con Electron sobre Wayland en la app real: overlay
-visible, 96px reservados a la derecha para los botones y `env(titlebar-area-*)`
-publicado.
+En pestañas normales y en móvil no se dibuja ninguna banda. La presencia de la
+API de overlay por sí sola no basta: debe estar visible. Una PWA con overlay
+activo utiliza su geometría nativa.
 
 Con el cromo propio, la barra de menú dejó de estar a la vista. Los atajos de
 sus roles (`Ctrl+R`, `Ctrl+Shift+I`) siguen funcionando porque el menú se
@@ -404,15 +428,19 @@ ver [YOUTUBE-DIAGNOSTICO.md](YOUTUBE-DIAGNOSTICO.md).
 ### Verificar el servicio antes de publicar
 
 `EXPO_PUBLIC_MUSIC_API` de GitHub Actions debe apuntar a
-`https://dnmusic-api.vercel.app`, igual que el despliegue web. Las variables
-locales y las de Vercel no actualizan ese secret: son configuraciones distintas.
-La 1.9.1 conservó el dominio retirado de Railway, que devolvía 404 incluso después
-de que la computadora descargara el audio. La 1.9.2 corrige la configuración.
+`https://dnmusic-production-c3f4.up.railway.app`, igual que el despliegue web.
+Las variables locales y las de Railway no actualizan ese secret de GitHub:
+son configuraciones distintas. El bundle de escritorio usa el origen
+`app://dnmusic`; la API debe aceptarlo en CORS para que Chromium permita
+búsqueda, importación de Spotify y emparejado. La comprobación del workflow
+detecta si un despliegue vuelve a bloquear ese origen.
 
 El workflow ahora ejecuta `desktop/scripts/verificar-servicio.mjs` antes de
 compilar. Exige salud 200 y respuesta de autenticación 401 JSON en búsqueda y
-las dos rutas de aporte, sin iniciar sesión ni subir archivos. Si una ruta
-apunta a un despliegue inexistente o un rewrite falta, la publicación se corta.
+las rutas de Spotify, emparejado y aporte, además del preflight CORS desde
+Electron, sin iniciar sesión ni subir archivos. Si una ruta apunta a un
+despliegue inexistente, falta un rewrite o el origen queda bloqueado, la
+publicación se corta.
 
 ### Ícono de Windows y Linux
 

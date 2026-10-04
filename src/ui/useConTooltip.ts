@@ -1,15 +1,16 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useId } from 'react'
 import { leerAjustes } from '../state/ajustes'
 import { TECLADO_FISICO } from '../lib/teclado'
 import { cerrarTooltip, mostrarTooltipYa, pedirTooltip, soltarTooltip } from '../state/tooltip'
 
 export function useConTooltip(texto?: string) {
+  const owner = useId()
   useEffect(
     () => () => {
       // Si el botón se va mientras su rótulo está puesto, el rótulo se va con él.
-      cerrarTooltip()
+      cerrarTooltip(owner)
     },
-    [],
+    [owner],
   )
 
   /*
@@ -30,23 +31,26 @@ export function useConTooltip(texto?: string) {
         ?.currentTarget
       const r = nodo?.getBoundingClientRect?.()
       if (!r) return
-      const tip = { texto, x: r.left, y: r.top, w: r.width, h: r.height }
+      const tip = { owner, anchor: nodo as HTMLElement, texto, x: r.left, y: r.top, w: r.width, h: r.height }
       if (ya) mostrarTooltipYa(tip)
       else pedirTooltip(tip)
     },
-    [texto],
+    [texto, owner],
   )
 
   const gestos =
     texto && TECLADO_FISICO
       ? {
-          onPointerEnter: (e: unknown) => medir(e, false),
-          onPointerLeave: () => soltarTooltip(),
+          onPointerEnter: (e: unknown) => { if ((e as { pointerType?: string }).pointerType !== 'touch') medir(e, false) },
+          onPointerLeave: () => soltarTooltip(owner),
           // El foco del teclado lo muestra al toque, como pide la APG.
-          onFocus: (e: unknown) => medir(e, true),
-          onBlur: () => cerrarTooltip(),
+          onFocus: (e: unknown) => {
+            const node = (e as { currentTarget: HTMLElement }).currentTarget
+            if (node.matches?.(':focus-visible')) medir(e, true)
+          },
+          onBlur: () => cerrarTooltip(owner),
           /* Apretar lo cierra: la persona ya decidió, el rótulo sobra. */
-          onPointerDown: () => cerrarTooltip(),
+          onPointerDown: () => cerrarTooltip(owner),
         }
       : {}
 

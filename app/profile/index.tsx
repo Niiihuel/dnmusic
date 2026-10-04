@@ -29,7 +29,7 @@ import {
 import { listPlaylists, type Playlist } from '../../src/services/playlists'
 import { iniciarPerfilEdicion, useIniciarPerfilEdicion } from '../../src/state/perfilEdicion'
 import { useChromeH, usePiso } from '../../src/state/shell'
-import { editarBorrador, tomarArmado } from '../../src/state/vitrinaBorrador'
+import { editarBorrador } from '../../src/state/vitrinaBorrador'
 import { useColapso } from '../../src/ui/useColapso'
 import { volver } from '../../src/lib/volver'
 
@@ -164,14 +164,12 @@ export default function ProfileScreen() {
   const primerFoco = useRef(true)
   useFocusEffect(
     useCallback(() => {
-      /* «Armar el mosaico», desde el editor: se entra armando al volver. */
-      if (tomarArmado()) entrarEdicion()
       if (primerFoco.current) {
         primerFoco.current = false
         return
       }
       setRecarga((n) => n + 1)
-    }, [entrarEdicion]),
+    }, []),
   )
 
   const canciones = listas?.reduce((suma, l) => suma + l.tracks, 0) ?? null
@@ -272,7 +270,6 @@ export default function ProfileScreen() {
       ownerId={profile.userId}
       borrador={mosaico}
       recarga={recarga}
-      onCambio={() => setRecarga((n) => n + 1)}
       editando={armando}
       temaGlobal={profile.tema}
       onEditar={abrirEditor}

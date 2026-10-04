@@ -1,12 +1,8 @@
 # Links compartidos: la canción, la lista, el Jam y el perfil
 
-Pasar algo por WhatsApp y que del otro lado se pueda escuchar.
-
-Antes de esto había dos links —el del Jam y el de una lista— y los dos llegaban
-igual de mal: quien los abría sin la sesión puesta caía en el login sin ver
-**qué** le habían mandado, y el preview del mensaje mostraba el ícono de la app
-y la palabra «dnmusic» para cualquier URL. Una canción directamente no tenía
-link: mandarla terminaba en una captura de pantalla.
+Los links presentan metadatos públicos antes de pedir acceso. Una cuenta
+aprobada puede abrir el contenido; ver la tarjeta no autoriza audio ni acceso
+a una colección privada.
 
 ## Enviar una canción dentro de dnmusic
 
@@ -41,8 +37,7 @@ lo entiendan el navegador, el universal link de iOS, el `dnmusic://` del
 escritorio y la función que arma la tarjeta, sin tablas de traducción.
 
 La versión `/embed/` es una página aparte y no la misma con un parámetro porque
-lo que sirve cada una no se parece: la primera entrega la app entera —5,8 MB de
-bundle— y la segunda una tarjeta suelta de 1,8 KB. Es la división que hace
+la primera entrega la app y la segunda una tarjeta HTML sin bundle. Es la división que hace
 Spotify entre `open.spotify.com/track/…` y `…/embed/track/…`.
 
 ## Dónde está cada cosa
@@ -116,10 +111,10 @@ JavaScript. `api/tarjeta.ts` lo resuelve sirviendo **la misma** `index.html` con
 el bloque entre `<!-- dany:tarjeta -->` y su cierre reemplazado por los datos de
 lo que se compartió. La app arranca igual; el crawler se lleva la tapa.
 
-El shell se pide por HTTP (`/index.html`) en vez de leerse del disco: ese archivo
-lo escribe el build, y hacer que el empaquetado de la función dependa de algo que
-otro paso del mismo build genera es una carrera que se pierde en silencio. Se
-cachea por instancia.
+En Railway, el shell se lee de `WEB_DIST_DIR/index.html`, generado durante el
+build del contenedor. El adaptador conserva una lectura por HTTP de
+`/index.html` para entornos sin `WEB_DIST_DIR`, evitando depender de un artefacto
+ausente al empaquetar una función. Se cachea por instancia.
 
 El `<title>` va **adentro** de los marcadores, y `inject-pwa.mjs` borra el que
 exporta Expo: si quedaran dos, el crawler lee el primero —el genérico— y toda la
@@ -138,7 +133,7 @@ esquema propio y mirar si la pestaña se va a segundo plano.
 | | Cómo |
 | --- | --- |
 | iOS | Universal link. El `apple-app-site-association` declara los cuatro tramos; el sistema abre la app sin pasar por Safari. `/embed/*` está excluido a propósito |
-| Android | `intentFilters` en `app.json`, con `autoVerify`. **Todavía inerte**: no hay perfil de Android en `eas.json` ni `assetlinks.json`, que necesita el SHA-256 del certificado de firma de EAS |
+| Android | `intentFilters` en `app.json`, con `autoVerify`, y perfiles APK/AAB en `eas.json`. Falta publicar `assetlinks.json` con el SHA-256 del certificado de firma para completar la asociación verificada |
 | Escritorio | `dnmusic://`, que registra el instalador (`protocols` en `electron-builder.yml`) y, para la AppImage que no instala nada, `setAsDefaultProtocolClient` en el arranque |
 
 En el escritorio el link **no se abre con `loadURL`**: eso recarga el bundle
@@ -147,20 +142,16 @@ expo-router, igual que un toque adentro de la app. En Windows y Linux el primer
 link llega en `process.argv`, antes de que exista la ventana, así que
 `EntregaDeEnlaces` lo guarda hasta que haya a quién dárselo.
 
-## Compartir una canción: una hoja, no dos filas de menú
+## Compartir una canción
 
-El menú tenía **dos** filas de compartir: «Compartir», que abría la hoja del
-sistema con el link, y «Compartir historia», que se quedaba unos segundos
-pensando y de golpe abría **otra** hoja del sistema con una imagen que nadie
-había visto. Que la imagen saliera linda o rota se descubría recién en
-Instagram, con la historia ya a medio publicar.
-
-Ahora hay **una** fila —«Compartir»— y abre `app/compartir.tsx`: una hoja que
+La fila «Compartir» abre `app/compartir.tsx`: una hoja que
 mide su contenido (`fitToContents` en iOS, modal centrado en la compu) con la
-tarjeta a la vista y las tres salidas debajo, como filas de una lista agrupada:
+card musical a la vista, la previa de historia y las cuatro salidas debajo.
+El contenido se desplaza cuando la ventana es baja o el texto grande:
 
 | Fila | Qué hace |
 | --- | --- |
+| Enviar por chat | La canción completa a un contacto, con reproducción global |
 | Compartir la historia | La imagen de 1080×1920 a la hoja del sistema. En la web la descarga |
 | Compartir el link | `compartirCancion`: publica la tarjeta y ofrece el link |
 | Copiar el link | Al portapapeles, sin pasar por ninguna hoja |
@@ -169,6 +160,48 @@ La previa **es el mismo componente** que se fotografía (`ui/TarjetaHistoria`),
 encogido con `transform`: lo que se ve es exactamente lo que sale. La canción
 viaja por `state/compartir` y no por la URL, como en «Agregar a una lista»:
 tiene diez campos y pasarla en la ruta la vuelve ilegible.
+
+## Card musical en chat, compartir y enlace
+
+`ui/TarjetaMusica` adapta la [card de Spell UI](https://spell.sh/docs/spotify-card)
+a React Native y web (atribución MIT en `docs/licenses/spell-ui.txt`). La card
+tiene un ancho máximo de 325 y un alto base de 100, ampliable con texto grande
+nativo: portada, fondo desenfocado, vinilo al pasar el cursor,
+foco o reproducir y título/artista a la derecha. Los textos largos se recortan;
+una portada que falla tiene respaldo. Respeta Reducir movimiento y detiene
+sus animaciones cuando la app pasa a segundo plano.
+
+`ui/CancionCompartida` conecta la portada al motor global de DMusic. Pulsarla
+reproduce, pausa o cancela la carga de esa canción; salir del chat conserva el
+audio. El título abre el reproductor de la canción actual o su página de enlace.
+La página aprobada usa la misma card y deja que `MotorAudio` resuelva el audio,
+para que la carga tenga los mismos controles que el resto de la app. Sin cuenta
+aprobada, la card muestra los metadatos públicos y la puerta de acceso.
+
+La previa social de 1200 × 630 y el iframe de 152 px adaptan esa composición.
+El iframe sólo abre DMusic; no crea otra sesión de reproducción. La imagen de
+historia de 1080 × 1920 mantiene su diseño y su propia previa.
+
+## Portapapeles
+
+`src/lib/portapapeles.ts` confirma si la escritura se realizó:
+
+- Electron usa `dnmusicEscritorio.portapapeles.copiar` por IPC y escribe desde
+  el proceso principal con la API nativa. Funciona tanto en Windows como Linux;
+  los permisos de Chromium para `app://` no sustituyen ese puente.
+- Web intenta `navigator.clipboard.writeText` y conserva un textarea como
+  respaldo, restaurando el foco al terminar.
+- iOS/Android usan `expo-clipboard`. Si falta el módulo o falla, el helper
+  devuelve `false` y el llamador puede ofrecer la hoja de compartir.
+
+Copiar y compartir una canción inician la escritura dentro del gesto, antes
+de esperar la publicación de metadatos. Una red lenta o un RPC fallido no
+impide copiar; compartir espera ese intento antes de abrir la hoja del sistema.
+No se anuncia «copiado» cuando la escritura falló.
+
+Pruebas: `tests/portapapeles.test.mjs`,
+`desktop/tests/portapapeles-ipc.test.cjs`, `tests/compartir-enlaces.test.mjs`,
+`tests/tarjeta-musica.test.mjs` y `tests/tarjeta-musica-integracion.test.mjs`.
 
 ## La tarjeta de la historia
 
@@ -204,4 +237,29 @@ El fondo es la portada desenfocada, con el color de la tapa por encima cuando
 se lo puede leer (`lib/colorPortada`) y un velo más oscuro arriba y abajo, como
 la viñeta de la portada de un disco. Sin carátula, la tapa muestra el sello de
 la app apagado en vez de un cuadrado negro.
+## Orígenes y compatibilidad de enlaces
 
+Los enlaces nuevos de canciones, listas, Jams y perfiles se generan con
+`https://dnmusic-production-c3f4.up.railway.app`. El host retirado de Vercel
+sólo se reconoce como entrada histórica en mensajes/deep links; no se publica
+en las asociaciones nativas ni se usa para crear invitaciones nuevas.
+Reconocer un enlace histórico dentro de la app no mantiene vivo el sitio viejo
+si alguien lo abre directamente en un navegador.
+Retirar o redirigir el hosting antiguo es una tarea de infraestructura separada
+del reconocimiento de enlaces en el código. Ver [repositorio](REPOSITORIO.md).
+
+En escritorio, `recibirArgumentos` entrega la ruta ya validada sin intentar
+interpretarla como otra URL. El proceso principal espera el aviso `enlace:listo`
+del main frame propio, enviado después de registrar el oyente del router; así
+no se pierde el enlace que inició la aplicación. Las recargas vuelven a esperar
+ese aviso. Esto tiene pruebas de arranque, segunda instancia y handshake.
+
+Auth, descargas y carátulas públicas admiten el gateway de producción
+`envoy-production-2fb6.up.railway.app`, no cualquier dominio Railway. El
+empaquetado verifica que el export contenga un origen de Auth/Storage reconocido
+antes de crear los instaladores. No basta con tener la variable en el runner.
+
+Al desplegar, verificar las cuatro rutas compartibles, sus URLs canónicas y
+el JSON AASA de iOS sin redirección. Eso no equivale a probar una Jam activa
+entre dispositivos. Android sigue pendiente de publicar `assetlinks.json`;
+recibir el shell HTML no constituye una asociación Android válida.

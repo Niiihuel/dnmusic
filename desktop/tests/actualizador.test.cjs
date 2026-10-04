@@ -4,20 +4,20 @@ const { readFileSync } = require('node:fs')
 const { runInNewContext } = require('node:vm')
 const { EventEmitter } = require('node:events')
 
-function entorno() {
+function entorno(platform = 'linux') {
   const updater = new EventEmitter()
   const llamadas = { buscar: 0, descargar: 0, instalar: 0 }
   updater.checkForUpdates = async () => { llamadas.buscar++ }
   updater.downloadUpdate = async () => { llamadas.descargar++ }
-  updater.quitAndInstall = () => { llamadas.instalar++ }
+  updater.quitAndInstall = (...args) => { llamadas.instalar++; llamadas.argumentos = args }
   const timers = new Set()
   const modulo = { exports: {} }
   runInNewContext(readFileSync(require.resolve('../dist/actualizador.js'), 'utf8'), {
     exports: modulo.exports,
-    require: (nombre) => nombre === 'electron'
+    require: (nombre) => nombre === './actualizador-appimage' ? { ActualizadorAppImage: function () { llamadas.linux = true; return updater } } : nombre === 'electron'
       ? { app: { isPackaged: true, getVersion: () => '1.9.0' }, BrowserWindow: { getAllWindows: () => [] } }
       : { autoUpdater: updater },
-    process: { platform: 'linux', env: { APPIMAGE: '/tmp/app.AppImage' } },
+    process: { platform, env: { APPIMAGE: '/tmp/app.AppImage' } },
     console: { log() {} },
     setTimeout: (fn) => { timers.add(fn); return fn },
     clearTimeout: (fn) => timers.delete(fn),
@@ -29,6 +29,25 @@ function entorno() {
   return { api, updater, llamadas, timers }
 }
 const info = { version: '1.9.1', releaseNotes: '## Más a tu manera\n- Ajustes renovados\n_4 de septiembre de 2026_' }
+
+test('el feed de versiones conserva pasos y lista completa para la tarjeta', () => {
+  const notas = entorno().api.leerNotas('## Más cómodo\n\n### Lo destacado\n\n#### 01 · Tu música\n\nAbrir una lista no reinicia la canción.\n\n#### 02 · Tus contactos\n\nPueden ver tu perfil privado.\n\n### Todos los cambios\n\n- Mejoras de reproducción\n- Ajustes de privacidad\n\n_22 de septiembre de 2026_')
+  assert.equal(notas.titulo, 'Más cómodo')
+  assert.equal(notas.pasos.length, 2)
+  assert.equal(notas.pasos[0].detalle, 'Abrir una lista no reinicia la canción.')
+  assert.equal(notas.cambios.length, 2)
+  assert.equal(notas.fecha, '22 de septiembre de 2026')
+})
+
+test('Windows conserva NSIS; sólo Linux elige el relanzamiento AppImage', () => {
+  for (const platform of ['win32', 'linux']) {
+    const { api, updater, llamadas } = entorno(platform)
+    updater.emit('update-downloaded', info)
+    assert.equal(api.instalarYReabrir(), true)
+    assert.deepEqual(Array.from(llamadas.argumentos), [true, true])
+    assert.equal(!!llamadas.linux, platform === 'linux')
+  }
+})
 
 test('no pierde la actualización lista al buscar de nuevo o volver a sonar audio', async () => {
   const { api, updater, llamadas } = entorno()

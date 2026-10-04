@@ -17,10 +17,10 @@ function montar({ datos = new Map(), archivos = new Map(), red = { conectada: tr
     listarAudio: async () => listar ? listar() : [...archivos.values()], espacioLibreAudio: () => free,
     estadoRedAudio: async () => leerRed ? leerRed() : red, escucharRedAudio: cb => { networkChange = cb },
     quitarAudio: async k => { borrados.push(k); if (quitar) await quitar(k); archivos.delete(k) },
-    transferirAudio: (key, url, progreso, pausa) => {
+    transferirAudio: (key, url, progreso, pausa, uso) => {
       let resolve, reject
       const resultado = new Promise((a, b) => { resolve = a; reject = b })
-      const j = { key, url, pausa, progreso, cancelada: false, pausada: false,
+      const j = { key, url, pausa, progreso, uso, cancelada: false, pausada: false,
         completar(bytes = MB) { const f = { key, uri: `local:${key}`, bytes }; archivos.set(key, f); resolve(f) },
         fallar(e = new Error('falló conexión')) { reject(e) } }
       jobs.push(j)
@@ -231,6 +231,21 @@ test('rutaLocal es lookup puro; marcarAudioUsado registra LRU desde el efecto', 
   assert.equal(h.items['uno.m4a'].ultimoUso, 100000); assert.equal(h.escritos.length, writes + 1)
 })
 
+test('una descarga lista se recupera por videoId si el bucket cambió de path', async () => {
+  const pendiente = { ...done('otro'), audioPath: '', estado: 'espera', uri: undefined, bytes: 0 }
+  const h = montar({
+    datos: persistido({ 'video:otro': pendiente, 'uno.m4a': done('uno') }),
+    archivos: new Map([['uno.m4a', { key: 'uno.m4a', uri: 'local:uno', bytes: MB }]]),
+    red: { conectada: false, segura: false },
+  })
+  await h.iniciar()
+  assert.equal(h.api.rutaLocal('', 'uno'), 'local:uno')
+  assert.equal(h.api.rutaLocal('nuevo-path.m4a', 'uno'), 'local:uno')
+  assert.equal(h.api.rutaLocal('', 'otro'), null, 'un path vacío no toma otra descarga')
+  assert.equal(await h.api.prepararCache(track('uno', 'nuevo-path.m4a')), 'local:uno')
+  assert.equal(h.jobs.length, 0, 'no descarga otra vez por el path nuevo')
+})
+
 test('precarga abortada todavía protegida no arranca después; liberar protección cancela huérfana', async () => {
   const h = montar(); await h.iniciar(); const c = new AbortController()
   h.api.protegerDescargas(['uno.m4a']); h.api.priorizarReproduccion(true)
@@ -319,4 +334,30 @@ test('portadas nunca bloquean precarga temporal ni audio pendiente del lote',asy
  h.jobs[1].completar();await tick();assert.equal(h.jobs[2].key,'c.m4a');assert.deepEqual(portadas,[])
  h.jobs[2].completar();await tick();assert.deepEqual(portadas,['arte-c'])
  assert.equal(h.items['c.m4a'].estado,'lista')
+})
+
+
+test('la cola de precarga usa transferencias de reproducción y las descargas offline conservan su sesión', async () => {
+ const h = montar(); await h.iniciar()
+ const b = h.api.prepararCache(track('b')); await tick()
+ assert.equal(h.jobs[0].uso, 'reproduccion')
+ h.jobs[0].completar(); assert.equal(await b, 'local:b.m4a'); await tick()
+ const c = h.api.prepararCache(track('c')); await tick()
+ assert.equal(h.jobs[1].uso, 'reproduccion')
+ h.jobs[1].completar(); await c; await tick()
+ h.api.descargar(track('offline')); await tick()
+ assert.equal(h.jobs[2].uso, 'descarga')
+ h.jobs[2].completar(); await tick()
+})
+test('una descarga offline adoptada como próxima canción se reanuda con sesión de reproducción', async () => {
+ const h = montar(); await h.iniciar()
+ h.api.descargar(track('b')); await tick()
+ assert.equal(h.jobs[0].uso, 'descarga')
+ const b = h.api.prepararCache(track('b')); await tick()
+ assert.equal(h.jobs[0].pausada, true)
+ assert.equal(h.jobs.length, 2)
+ assert.equal(h.jobs[1].uso, 'reproduccion')
+ assert.equal(h.jobs[1].pausa.resumeData, 'snapshot')
+ h.jobs[1].completar(); assert.equal(await b, 'local:b.m4a')
+ assert.equal(h.items['b.m4a'].temporal, false)
 })

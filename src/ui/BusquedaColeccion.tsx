@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { Keyboard, Platform, Pressable, Text, TextInput, View } from 'react-native'
+import { Keyboard, Platform, Pressable, Text, View } from 'react-native'
 import Animated, { Easing, useAnimatedStyle, useDerivedValue, withTiming } from 'react-native-reanimated'
-import { CollectionSearch } from '../../modules/collection-controls'
 import { SearchField } from './SearchField'
 import { ICON_COLOR, IconSearch } from './icons'
 
@@ -57,26 +56,26 @@ function BuscadorExpandible(props: Props & { vacia: boolean; gestos?: object; on
   </Animated.View>
 }
 
-export function CampoBusquedaColeccion({ contexto, abierto, filtro, onFiltro, onCerrar }: Props & { onCerrar: () => void }) {
-  if (Platform.OS !== 'ios' || !abierto) return null
+export function CampoBusquedaColeccion({ contexto, abierto, filtro, onFiltro, onCerrar, siempreVisible = false }: Props & { onCerrar: () => void; siempreVisible?: boolean }) {
+  if (Platform.OS !== 'ios' || (!abierto && !siempreVisible)) return null
+  const cancelar = () => {
+    if (siempreVisible) {
+      onFiltro('')
+      Keyboard.dismiss()
+    } else onCerrar()
+  }
   const placeholder = `Buscar en ${contexto === 'lista' ? 'esta lista' : 'este álbum'}`
-  return <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
-    {CollectionSearch ? <CollectionSearch text={filtro} placeholder={placeholder}
-      onChangeText={event => onFiltro(event.nativeEvent.text)} onCancel={onCerrar}
-      style={{ height: 56, width: '100%' }} /> : (
+  return <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <TextInput value={filtro} onChangeText={onFiltro} placeholder={placeholder}
-          accessibilityLabel={placeholder} autoFocus autoCorrect={false} autoCapitalize="none"
-          clearButtonMode="while-editing" returnKeyType="search"
-          selectionColor={ICON_COLOR.foreground}
-          placeholderTextColor={ICON_COLOR.muted}
-          style={{ flex: 1, minWidth: 0, height: 44, borderRadius: 10, paddingHorizontal: 12,
-            backgroundColor: '#262626', color: ICON_COLOR.foreground, fontSize: 17 }} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Cancelar búsqueda" onPress={onCerrar}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <SearchField value={filtro} onChangeText={onFiltro} placeholder={placeholder}
+            accessibilityLabel={placeholder} autoFocus={!siempreVisible} onSubmit={Keyboard.dismiss} />
+        </View>
+        {abierto || filtro ?
+        <Pressable accessibilityRole="button" accessibilityLabel="Cancelar búsqueda" onPress={cancelar}
           style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}>
           <Text style={{ color: ICON_COLOR.foreground, fontSize: 17 }}>Cancelar</Text>
-        </Pressable>
+        </Pressable> : null}
       </View>
-    )}
   </View>
 }

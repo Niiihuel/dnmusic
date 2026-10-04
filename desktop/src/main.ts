@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, Menu, safeStorage, session, shell } from 'electron'
+import { registrarVentana } from './ventana-ipc'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, safeStorage, session, shell } from 'electron'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
@@ -11,6 +12,7 @@ import {
 } from './actualizador'
 import { ORIGEN, raizWeb, registrarEsquema, servirWeb } from './protocolo'
 import { ESQUEMA_ENLACE, EntregaDeEnlaces } from './enlaces'
+import { registrarEnlaces } from './enlaces-ipc'
 import { type Aporte } from './resolutor'
 import { cerrarResolutor, resolverEnHijo } from './resolutor-remoto'
 import { descargarArchivos } from './descargas'
@@ -23,11 +25,12 @@ import { AlmacenAuth } from './auth-storage'
 import { registrarAlmacenAuth } from './auth-storage-ipc'
 import { DiscordPresence } from './discord-presence'
 import { registrarDiscord } from './discord-ipc'
+import { registrarPortapapeles } from './portapapeles-ipc'
 
 /**
  * dnmusic para escritorio.
  *
- * Adentro corre el mismo export web que sirve Vercel, sin una línea de
+ * Adentro corre el mismo export web que sirve Railway, sin una línea de
  * diferencia: el proceso principal solo le da una ventana, un origen propio
  * (ver protocolo.ts) y las actualizaciones.
  */
@@ -76,14 +79,7 @@ function esNuestra(url: string): boolean {
   return url === ORIGEN || url === `${ORIGEN}/` || url.startsWith(`${ORIGEN}/`)
 }
 
-/**
- * El alto de la franja de arriba, en píxeles.
- *
- * Es el alto de la barra de título de Música de Mac: alcanza para los botones
- * del sistema sin robarle una fila a la barra lateral. Va también en el CSS de
- * la app como respaldo, para cuando el navegador no publica
- * `env(titlebar-area-height)`.
- */
+/** Alto compacto del overlay nativo; el renderer reserva su geometría real. */
 const BANDA_VENTANA = 38
 
 function crearVentana(): BrowserWindow {
@@ -116,31 +112,12 @@ function crearVentana(): BrowserWindow {
      * único que hay ahí es «buscar actualizaciones» y las herramientas.
      */
     autoHideMenuBar: true,
-    /*
-     * La barra de título del sistema, apagada.
-     *
-     * Es el mismo argumento con el que se fueron los `dialog.showMessageBox`:
-     * una franja gris del sistema encima de una interfaz que se separa por
-     * luminancia y no por bordes se lee como otra app pegada arriba. Música de
-     * Mac no tiene esa franja —los controles flotan sobre la barra lateral— y
-     * eso es lo que se busca acá.
-     *
-     * `titleBarOverlay` conserva los botones **nativos** de minimizar,
-     * maximizar y cerrar, teñidos con la paleta: ahorra reimplementar el
-     * comportamiento de ventana de cada escritorio, que es donde una barra
-     * hecha a mano se equivoca (doble click para maximizar, arrastrar al borde
-     * para acoplar, el menú del sistema con click derecho).
-     *
-     * Los botones los dibuja Chromium, no el gestor de ventanas, así que esto
-     * vale también en Linux: se probó con Electron sobre Wayland y el overlay
-     * quedó activo, con 96px reservados a la derecha y
-     * `env(titlebar-area-height)` en 38. Aun así la app no da por sentado que
-     * esté: se entera por `navigator.windowControlsOverlay` —que sólo existe
-     * cuando el overlay está activo— y reserva la franja únicamente en ese
-     * caso; ver `src/ui/BandaVentana.tsx`.
-     */
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#121212', symbolColor: '#B3B3B3', height: BANDA_VENTANA },
+    // Windows conserva sus controles nativos y Snap Layouts. En Linux los
+    // dibuja DMusic a la derecha, sin depender del tema/distribución del sistema.
+    ...(process.platform === 'linux' ? { frame: false } : {
+      titleBarStyle: 'hidden' as const,
+      titleBarOverlay: { color: '#121212', symbolColor: '#B3B3B3', height: BANDA_VENTANA },
+    }),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -177,6 +154,7 @@ function crearVentana(): BrowserWindow {
     },
   })
 
+  registrarVentana(ipcMain, ventana)
   ventana.once('ready-to-show', () => ventana.show())
   seguirAudioDe(ventana)
 
@@ -230,16 +208,21 @@ function permitirNotificaciones(): void {
  * Sin esto, la próxima vez la conversación vuelve a ser «a mí me anda bien».
  * Con esto, la respuesta está en la consola del que la sufre.
  */
-function registrarGPU(): void {
+async function registrarGPU(): Promise<void> {
   try {
-    const estado = app.getGPUFeatureStatus()
-    const dibujo = estado.gpu_compositing ?? 'desconocido'
-    registrar('gpu_compositing:', dibujo)
+    await app.getGPUInfo('basic')
+    // gpu-info-update también puede preceder al estado final del compositor.
+    // Esperar unos cuadros evita diagnosticar software en una GPU activa.
+    let dibujo = app.getGPUFeatureStatus().gpu_compositing ?? 'desconocido'
+    for (let intento = 0; intento < 8 && dibujo === 'disabled_software'; intento++) {
+      await new Promise(resolve => setTimeout(resolve, 500))
+      dibujo = app.getGPUFeatureStatus().gpu_compositing ?? 'desconocido'
+    }
+    registrar('gpu_compositing (estado final):', dibujo)
     if (typeof dibujo === 'string' && dibujo.includes('software')) {
       registrar(
-        'OJO: Chromium está dibujando por software en esta máquina. Todo va a ir a tirones',
-        'y no es la app: es el driver o la lista negra de GPU. Probá arrancar con',
-        '--ignore-gpu-blocklist.',
+        'Chromium está dibujando por software en esta máquina. Revisá el driver de video',
+        'y la configuración de Wayland/XWayland antes de evaluar la fluidez.',
       )
     }
   } catch (error) {
@@ -403,6 +386,7 @@ if (!app.requestSingleInstanceLock()) {
       (motivo, error) => registrar(`sesión: ${motivo} —`, error),
     )
     registrarAlmacenAuth(ipcMain, auth, () => ventanaPrincipal?.webContents ?? null)
+    registrarPortapapeles(ipcMain, clipboard, () => ventanaPrincipal?.webContents ?? null)
     app.on('will-quit', () => google.cancelar())
     registrarAudioOffline(ipcMain, disco, () => ventanaPrincipal?.webContents ?? null)
     const discord = new DiscordPresence(state => {
@@ -413,7 +397,8 @@ if (!app.requestSingleInstanceLock()) {
     app.on('will-quit', () => discord.limpiar())
     servirWeb(raiz, pedido => disco.servir(pedido))
     permitirNotificaciones()
-    registrarGPU()
+    // El estado inmediato de whenReady() puede ser transitoriamente software.
+    void registrarGPU()
 
     ipcMain.handle('app:version', () => app.getVersion())
     ipcMain.on('ventana:enfocar', () => traerAlFrente())
@@ -429,11 +414,12 @@ if (!app.requestSingleInstanceLock()) {
     )
 
     armarMenu()
+    registrarEnlaces(ipcMain, enlaces, () => ventanaPrincipal?.webContents ?? null)
     ventanaPrincipal = crearVentana()
-    /* Recién con la ventana hay a quién darle los links: se le manda la ruta y
-       navega expo-router, sin recargar el bundle ni cortar lo que suena. */
-    enlaces.conectar((ruta) => ventanaPrincipal?.webContents.send('enlace:abrir', ruta))
+    // El preload avisa cuando el router escucha; crear la ventana no basta.
     ventanaPrincipal.on('closed', () => enlaces.desconectar())
+    ventanaPrincipal.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => { if (isMainFrame && !isInPlace) enlaces.desconectar() })
+    ventanaPrincipal.webContents.on('render-process-gone', () => enlaces.desconectar())
     ventanaPrincipal.webContents.on('destroyed', () => google.cancelar())
     ventanaPrincipal.webContents.on('destroyed', () => discord.limpiar())
     ventanaPrincipal.webContents.on('render-process-gone', () => discord.limpiar())

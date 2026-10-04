@@ -1,13 +1,10 @@
 name: CI Checks
 
-# Tipos y lint de la app y del servicio de música, al abrir un PR.
-#
-# Antes esto compilaba el scaffold Swift en un runner macOS: costaba 10× en
-# minutos y verificaba una app que ya no es la que usamos. Los chequeos que
-# sirven hoy corren en Linux y en menos de un minuto.
 on:
+  push:
+    branches: [production]
   pull_request:
-    branches: [main]
+    branches: [main, production]
 
 permissions:
   contents: read
@@ -17,6 +14,8 @@ jobs:
     name: Types & lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      REQUIRE_EQ_DSP_TEST: '1'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -29,25 +28,13 @@ jobs:
         run: |
           npm ci
           npm --prefix server ci
+          # Los tests de escritorio no necesitan descargar el binario Electron.
           npm --prefix desktop ci --ignore-scripts
 
-      - name: Types
-        run: npx tsc --noEmit
+      - name: Types, tests & lint
+        run: npm run check
 
-      - name: Music service — types
-        working-directory: server
-        run: npm test
-
-      # `--ignore-scripts` saltea el postinstall de Electron, que baja ~100 MB
-      # de binario. Los tipos vienen en el paquete de npm, así que para chequear
-      # no hace falta: el binario recién importa al empaquetar.
-      - name: Escritorio — types
-        working-directory: desktop
-        run: npm test
-
-      # Las pruebas del servicio importan su salida dist: compilar antes del lint.
-      - name: Lint
-        run: npx eslint .
-
-      - name: App tests
-        run: node --test tests/*.test.mjs
+      - name: Message permissions — PostgreSQL
+        run: |
+          docker pull postgres:17
+          RUN_MESSAGE_DB_TESTS=1 node --test tests/message-actions-db.test.mjs

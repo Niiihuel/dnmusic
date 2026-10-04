@@ -6,6 +6,11 @@ test('las invitaciones históricas se reconocen sin modificar el mensaje', () =>
   const texto = 'Escuchemos juntos en dnmusic 🎧 https://dnmusic-app.vercel.app/jam/abc123'
   assert.deepEqual(invitacionEnTexto(texto), { codigo: 'ABC123', texto: '' })
 })
+test('las invitaciones nuevas usan Railway y conservan el comentario', () => {
+  assert.deepEqual(invitacionEnTexto('Escuchemos juntos en dnmusic: https://dnmusic-production-c3f4.up.railway.app/jam/abc123'), { codigo: 'ABC123', texto: '' })
+  assert.deepEqual(invitacionEnTexto('Venite https://dnmusic-production-c3f4.up.railway.app/jam/ABC123'), { codigo: 'ABC123', texto: 'Venite' })
+  for (const url of ['https://dnmusic-production-c3f4.up.railway.app.evil.test/jam/ABC123', 'https://another.up.railway.app/jam/ABC123']) assert.equal(invitacionEnTexto(url), null)
+})
 test('conserva el comentario personal junto a la invitación', () => {
   assert.deepEqual(invitacionEnTexto('Venite https://dnmusic-app.vercel.app/jam/ABC123'), {
     codigo: 'ABC123',

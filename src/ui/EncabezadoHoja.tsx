@@ -1,5 +1,6 @@
 import { estadoControlWeb } from './estadoControl'
-import type { ReactNode } from 'react'
+import { isValidElement, type ReactNode } from 'react'
+import { useDentroModalPC } from './ModalContext'
 import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { BotonVolver } from './BotonVolver'
@@ -42,6 +43,17 @@ export function EncabezadoHoja({
   /** Sólo para cabeceras pegadas dentro del scroll; fuera taparía el primer control. */
   velo?: boolean
 }) {
+  const desktop = useDentroModalPC()
+  const vuelve = isValidElement<{ tipo?: string }>(izquierda) && izquierda.props.tipo === 'volver'
+  if (desktop) return <View {...{ dataSet: { dnModalHeader: '' } }} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 20 }}>
+    {vuelve ? izquierda : null}
+    <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+      <Text accessibilityRole="header" className="text-foreground font-semibold" style={{ fontSize: 20, lineHeight: 26 }} numberOfLines={2}>{titulo}</Text>
+      {sobre ? <Text className="text-muted-foreground text-footnote" numberOfLines={2}>{sobre}</Text> : null}
+    </View>
+    {derecha}
+    {!vuelve ? izquierda : null}
+  </View>
   return (
     /*
      * La cabecera es opaca y **de ella cuelga un velo**: un degradado del
@@ -91,6 +103,7 @@ export function BotonHoja({
   children?: ReactNode
   disabled?: boolean
 }) {
+  const desktop = useDentroModalPC()
   if (tipo === 'volver' && !children) {
     return <BotonVolver onPress={onPress} label={label} disabled={disabled} />
   }
@@ -102,7 +115,7 @@ export function BotonHoja({
   }
   return (
     <Pressable
-      {...estadoControlWeb('none')}
+      {...estadoControlWeb('normal')}
       accessibilityRole="button"
       accessibilityLabel={label ?? (tipo === 'volver' ? 'Volver' : 'Cerrar')}
       onPress={onPress}
@@ -110,7 +123,7 @@ export function BotonHoja({
       accessibilityState={{ disabled }}
       hitSlop={6}
       className="h-11 w-11 items-center justify-center rounded-full bg-muted active:opacity-70"
-      style={disabled ? { opacity: 0.4 } : undefined}
+      style={{ ...(desktop ? { width: 32, height: 32 } : {}), ...(disabled ? { opacity: 0.4 } : {}) }}
     >
       {children ??
         (tipo === 'volver' ? (
@@ -142,6 +155,16 @@ export function BotonConfirmar({
   onPress: () => void
 }) {
   const puede = activo && !ocupado
+  const desktop = useDentroModalPC()
+  if (desktop) return <Pressable accessibilityRole="button" accessibilityLabel={label}
+    {...estadoControlWeb('inverse')} accessibilityState={{ disabled: !puede, busy: ocupado }}
+    disabled={!puede} onPress={onPress}
+    className={`items-center justify-center rounded-full ${puede ? 'bg-primary' : 'bg-muted'}`}
+    style={{ minHeight: 36, paddingHorizontal: 14 }}>
+    <Text className={puede ? 'text-primary-foreground' : 'text-muted-foreground'}
+      style={{ fontSize: 13, fontWeight: '600', opacity: ocupado ? 0 : 1 }}>{label}</Text>
+    {ocupado ? <ActivityIndicator size="small" color={ICON_COLOR.muted} style={{ position: 'absolute' }} /> : null}
+  </Pressable>
   return (
     <Pressable
       accessibilityRole="button"

@@ -1,26 +1,27 @@
-import type { ReactNode } from 'react'
-import { View } from 'react-native'
-import { Host, Text, VStack } from '@expo/ui/swift-ui'
-import { accessibilityAddTraits, font, foregroundStyle, multilineTextAlignment } from '@expo/ui/swift-ui/modifiers'
-import { LinearGradient } from 'expo-linear-gradient'
+import { useState, type ReactNode } from 'react'
+import { Text, View } from 'react-native'
 import { IconButton } from './IconButton'
 
-export function EncabezadoHoja({ titulo, sobre, izquierda, derecha, velo = true }: {
+/** El encabezado reserva su altura en Yoga; sólo los botones hospedan SwiftUI. */
+export function EncabezadoHoja({ titulo, sobre, izquierda, derecha }: {
   titulo: string; sobre?: string; izquierda?: ReactNode; derecha?: ReactNode; velo?: boolean
 }) {
-  return <View style={{ backgroundColor: '#121212', zIndex: 10, minHeight: 68 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 68 }}>
-      <View style={{ minWidth: 44, alignItems: 'flex-start' }}>{izquierda}</View>
-      <Host matchContents={{ vertical: true }} style={{ flex: 1 }} colorScheme="dark">
-        <VStack spacing={2}>
-          <Text modifiers={[font({ textStyle: 'headline' }), foregroundStyle('#FFFFFF'), multilineTextAlignment('center'), accessibilityAddTraits(['isHeader'])]}>{titulo}</Text>
-          {sobre ? <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle('#B3B3B3'), multilineTextAlignment('center')]}>{sobre}</Text> : null}
-        </VStack>
-      </Host>
-      <View style={{ minWidth: 44, alignItems: 'flex-end' }}>{derecha}</View>
+  const [izq, setIzq] = useState(44)
+  const [der, setDer] = useState(44)
+  const lado = Math.max(44, izq, der)
+  return <View style={{ flexShrink: 0, backgroundColor: '#121212', paddingTop: 8 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, minHeight: 60 }}>
+      <View style={{ width: lado, alignItems: 'flex-start' }}>
+        <View onLayout={e => setIzq(e.nativeEvent.layout.width)}>{izquierda}</View>
+      </View>
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text accessibilityRole="header" style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '600', textAlign: 'center' }}>{titulo}</Text>
+        {sobre ? <Text style={{ color: '#B3B3B3', fontSize: 13, textAlign: 'center' }}>{sobre}</Text> : null}
+      </View>
+      <View style={{ width: lado, alignItems: 'flex-end' }}>
+        <View onLayout={e => setDer(e.nativeEvent.layout.width)}>{derecha}</View>
+      </View>
     </View>
-    {velo ? <LinearGradient pointerEvents="none" colors={['rgb(18,18,18)', 'rgba(18,18,18,0)']}
-      style={{ position: 'absolute', left: 0, right: 0, top: '100%', height: 28 }} /> : null}
   </View>
 }
 

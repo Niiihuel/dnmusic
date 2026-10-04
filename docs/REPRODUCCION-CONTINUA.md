@@ -1,14 +1,17 @@
 # Reproducción continua y precarga
 
-Cambios locales del 12 de septiembre de 2026, motivados por cortes al pasar a
-la siguiente canción con el iPhone bloqueado. El síntoma orienta la corrección;
-sin el error original ni una reproducción en dispositivo no confirma su causa.
+El motor global conserva la cola y prepara la siguiente fuente para continuar
+al terminar una pista. Las listas propias y colaborativas usan el mismo flujo;
+la propiedad de la lista no decide cómo avanza el audio.
 
 ## Transición y recuperación
 
-- iOS mantiene la sesión de audio y solicita una ventana breve al terminar una
-  pista en segundo plano, antes de notificar a JS. El parche y sus límites están
-  en [patches/README.md](../patches/README.md).
+- iOS mantiene la sesión de audio. Cuando la siguiente pista está cargada,
+  programa un handoff nativo de duración cero: AVPlayer espera el final real y
+  arranca la entrante antes de notificar a JS, sin solapamiento. Si no se pudo
+  armar, conserva el fin natural y su recuperación en JS, con una ventana breve
+  de trabajo en segundo plano. El parche y sus límites están en
+  [patches/README.md](../patches/README.md).
 - Web emite el final de la pista desde el evento del elemento de audio; la cola
   no depende de `requestAnimationFrame` ni adelanta el corte según metadatos.
 - Repetir una canción, o una lista de un solo tema sin cola manual, usa el loop
@@ -37,7 +40,8 @@ respeta el límite de caché, la preferencia de datos y los cambios de conexión
 y cede prioridad cuando la pista actual está cargando. En web se evita trabajo
 especulativo si el navegador informa ahorro de datos o conexión 2G.
 
-En iOS sólo se prepara además el AVPlayerItem local de la siguiente canción.
+En iOS se prepara además el AVPlayerItem de la siguiente canción, incluyendo
+su fuente de red cuando todavía no existe una copia local.
 `preferredForwardBufferDuration: 30` es un objetivo del SDK, no una garantía de
 30 segundos listos. El resto queda en disco. Android conserva la preparación
 en disco y evita el preload del SDK que copiaría el archivo completo a RAM.
@@ -60,17 +64,17 @@ datos que alimentan la personalización.
 Las pruebas automatizadas cubren cancelación, agotamiento y conservación de
 posición, eventos antiguos, escucha sin RAF, orden/prioridad de precarga,
 privacidad del diagnóstico y aplicación del parche sobre el SDK instalado.
-Resultado local: **534 pruebas pasan**, TypeScript y ESLint sin errores.
-Exports web e iOS completados. Los exports de Expo verifican los bundles;
-no compilan ni ejecutan Swift.
+Se ejecutan con `npm run check`; la exportación de Expo verifica el bundle,
+pero no compila ni ejecuta Swift.
 
 El SDK web no informa esperas de buffering periódicas: allí se recuperan
 los errores emitidos, pero el detector de 15 segundos no cubre un stall sin
 eventos. El navegador también puede suspender JS según su política de energía.
 
 Hace falta un nuevo binario iOS y probar la matriz de pantalla bloqueada del
-README del parche. La cola entre canciones distintas sigue coordinada por JS:
-una suspensión previa al evento o una ventana denegada por iOS puede impedir
-la transición. No equivale a una cola autónoma completa en AVQueuePlayer ni
-promete separación cero entre pistas. El siguiente paso depende de la prueba
-con el binario nuevo, especialmente sin red y con ahorro de batería.
+README del parche. El par ya preparado puede avanzar nativamente, pero JS
+todavía actualiza la cola, los metadatos y prepara el siguiente par. Una fuente
+no resuelta o una suspensión antes de prepararla puede impedir ese avance.
+No equivale a una cola autónoma completa en AVQueuePlayer ni promete separación
+cero entre pistas. Comprobar el binario nuevo con pantalla bloqueada, lista
+colaborativa, ausencia de red y ahorro de batería.

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Modal, Platform, Pressable, Text, TextInput, useWindowDimensions, View } from 'react-native'
 import { EntradaTexto } from './EntradaTexto'
+import { HojaNombreListaNativa } from './HojaNombreListaNativa'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { CollectionTitle, useAngosto } from './CollectionHeader'
 import { Hoja } from './Hoja'
@@ -9,6 +10,7 @@ import { AccionSocial, CabeceraSocial } from './Social'
 import { FormError } from './Button'
 import { estadoControlWeb } from './estadoControl'
 import { ICON_COLOR, IconPencil } from './icons'
+import { BotonVidrio } from './Glass'
 
 type BorradorNombre = { id: string; inicial: string; valor: string; ocupado: boolean; error: string | null }
 
@@ -96,19 +98,35 @@ export function CampoNombreLista({ editor, inline = false }: { editor: EdicionNo
   />
 }
 
-export function AccionesNombreLista({ editor }: { editor: EdicionNombreLista }) {
+export function AccionesNombreLista({ editor, inline = false }: { editor: EdicionNombreLista; inline?: boolean }) {
   const draft = editor.borrador
   if (!draft) return null
-  return <View className="flex-1 flex-row flex-wrap items-center gap-3" style={{ minHeight: 56 }}>
-    <AccionSocial label="Cancelar" secundaria expandida={false} disabled={draft.ocupado} onPress={editor.cancelar} />
-    <AccionSocial label="Guardar" expandida={false} busy={draft.ocupado} disabled={!draft.valor.trim()} onPress={() => { void editor.guardar() }} />
-    {draft.error ? <View className="min-w-0 shrink"><FormError message={draft.error} /></View> : null}
+  return <View className="min-w-0 flex-1 gap-2" style={{ minHeight: 44 }}>
+    <View className={`flex-row flex-wrap items-center gap-2 ${inline ? 'justify-end' : 'justify-center'}`}>
+      {inline && Platform.OS === 'web' ? <>
+        <BotonVidrio label="Cancelar edición del nombre" disabled={draft.ocupado}
+          onPress={editor.cancelar} style={{ minWidth: 90, height: 36 }}>
+          <Text className="text-foreground text-subheadline font-semibold">Cancelar</Text>
+        </BotonVidrio>
+        <BotonVidrio label="Guardar nombre de la lista" disabled={!draft.valor.trim() || draft.ocupado}
+          onPress={() => { void editor.guardar() }} tint="#FFFFFF" style={{ minWidth: 90, height: 36 }}>
+          <Text className="text-primary-foreground text-subheadline font-semibold">{draft.ocupado ? 'Guardando…' : 'Guardar'}</Text>
+        </BotonVidrio>
+      </> : <>
+        <AccionSocial label="Cancelar" secundaria expandida={false} compacta={inline}
+          disabled={draft.ocupado} onPress={editor.cancelar} />
+        <AccionSocial label="Guardar" expandida={false} compacta={inline}
+          busy={draft.ocupado} disabled={!draft.valor.trim()} onPress={() => { void editor.guardar() }} />
+      </>}
+    </View>
+    {draft.error ? <View className="min-w-0"><FormError message={draft.error} /></View> : null}
   </View>
 }
 
 /** En iOS el sistema presenta la hoja; en web angosta Hoja aporta su portal. */
 export function HojaNombreLista({ editor }: { editor: EdicionNombreLista }) {
   const inline = useNombreInline()
+  if (Platform.OS === 'ios') return <HojaNombreListaNativa editor={editor} />
   if (!editor.borrador || inline) return null
   const nativo = Platform.OS !== 'web'
   const campos = <View className="gap-4 px-5 pb-5">
@@ -118,7 +136,7 @@ export function HojaNombreLista({ editor }: { editor: EdicionNombreLista }) {
   </View>
   const contenido = <Hoja medida="contenido" titulo="Cambiar nombre" onCerrar={editor.cancelar}>
     <SafeAreaView edges={['bottom']} className="bg-background" style={nativo ? { flex: 1, backgroundColor: '#121212' } : undefined}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={nativo ? { flex: 1 } : undefined}>
+      <KeyboardAvoidingView style={nativo ? { flex: 1 } : undefined}>
         <CabeceraSocial titulo="Cambiar nombre" onCerrar={editor.cancelar} ocupado={editor.borrador.ocupado} />
         {nativo ? <ScrollArea style={{ flex: 1 }} keyboardShouldPersistTaps="handled">{campos}</ScrollArea> : campos}
         {nativo ? <View className="flex-row px-5 pb-5"><AccionesNombreLista editor={editor} /></View> : null}

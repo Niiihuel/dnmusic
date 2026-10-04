@@ -26,10 +26,10 @@ export function esDestinoActualizacion(platform: PlataformaActualizacion, value:
   try {
     const url = new URL(value)
     if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) return false
-    if (platform === 'web') return /^https:\/\/dnmusic-app\.vercel\.app\/(?:\?[A-Za-z0-9_=&.%~-]*)?$/.test(value)
+    if (platform === 'web') return /^https:\/\/(?:dnmusic-app\.vercel\.app|dnmusic-production-c3f4\.up\.railway\.app)\/(?:\?[A-Za-z0-9_=&.%~-]*)?$/.test(value)
     if (platform === 'ios') return /^https:\/\/(?:apps\.apple\.com\/(?:[a-z]{2}\/)?app\/(?:[a-zA-Z0-9-]+\/)?id[0-9]+|testflight\.apple\.com\/join\/[A-Za-z0-9]+)$/.test(value)
     if (platform === 'android' && value === 'https://play.google.com/store/apps/details?id=com.nihuel.dnmusic') return true
-    return /^https:\/\/github\.com\/Niiihuel\/dnmusic-releases\/releases\/(?:latest|tag\/v?[0-9]+\.[0-9]+\.[0-9]+|download\/v?[0-9]+\.[0-9]+\.[0-9]+\/[A-Za-z0-9_.-]+)$/.test(value)
+    return /^https:\/\/github\.com\/Niihuel\/dnmusic-releases\/releases\/(?:latest|tag\/v?[0-9]+\.[0-9]+\.[0-9]+|download\/v?[0-9]+\.[0-9]+\.[0-9]+\/[A-Za-z0-9_.-]+)$/.test(value)
   } catch { return false }
 }
 

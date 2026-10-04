@@ -153,14 +153,31 @@ textarea:focus {
   outline: none;
 }
 
-/* Controles habilitados: una señal de hover y foco común, sin seleccionar
-   SVG ni imágenes decorativas. Los botones vacíos son velos/hitboxes, no iconos.
-   El velo se compone sobre el color existente; no cambia medidas ni desplaza texto. */
+/* El componente decide qué superficie responde: nunca pintar todos los enlaces
+   o botones por su rol, porque muchos son hitboxes dentro de una fila/tarjeta. */
 [data-dn-hover='inverse'] { --dn-hover-color: var(--color-primary-foreground); }
 @media (hover: hover) and (pointer: fine) {
-  :is(button, a[href], [role='link'], [role='button'], [role='menuitem'], [role='tab'], [role='radio'], [role='switch'], [role='checkbox']):not(:empty):not(input):not(textarea):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([data-dn-hover='none']):not([data-dn-hover='glass']):not([data-dn-hover='row']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *):not(:has(:is(button, a[href], [role='link'], [role='button'], [role='menuitem']):hover)):hover {
-    background-image: linear-gradient(rgb(var(--dn-hover-color, var(--color-foreground)) / 0.08), rgb(var(--dn-hover-color, var(--color-foreground)) / 0.08));
+  :is([data-dn-hover='normal'], [data-dn-hover='inverse'], [data-dn-hover='surface']):not(:empty):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not([aria-hidden='true']):not([aria-disabled='true'] *):not([aria-busy='true'] *):not([aria-hidden='true'] *) {
+    --dn-hover-opacity: 0;
+    background-image: linear-gradient(rgb(var(--dn-hover-color, var(--color-foreground)) / var(--dn-hover-opacity)), rgb(var(--dn-hover-color, var(--color-foreground)) / var(--dn-hover-opacity)));
+    transition: --dn-hover-opacity 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1);
   }
+  :is([data-dn-hover='normal'], [data-dn-hover='inverse'], [data-dn-hover='surface']):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):hover { --dn-hover-opacity: 0.07; }
+}
+/* Una fila completa tiene una sola superficie; los botones internos conservan
+   su foco y sus acciones sin añadir otra franja rectangular. */
+[data-dn-surface='row'] { transition: background-color 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+[data-dn-surface='card'] { border-radius: 12px; }
+[data-dn-surface='card'] [data-dn-artwork] { opacity: 1 !important; transition: filter 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+@media (hover: hover) and (pointer: fine) {
+  [data-dn-surface='row']:not([aria-disabled='true']):hover,
+  [data-dn-surface='row']:has(:focus-visible) { background-color: rgb(var(--color-foreground) / 0.055); }
+  [data-dn-surface='card']:not([aria-disabled='true']):hover [data-dn-artwork],
+  [data-dn-surface='card']:focus-visible [data-dn-artwork] { filter: brightness(1.1); }
+}
+[data-dn-surface='card']:focus-visible { outline: 2px solid rgb(var(--color-ring) / 0.8) !important; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  [data-dn-surface], [data-dn-artwork], [data-dn-hover] { transition: none !important; }
 }
 /* El foco de teclado sigue visible en enlaces y controles; el mouse no deja
    un anillo. Los TextInput conservan su indicador dentro del campo. */
@@ -247,36 +264,15 @@ textarea:focus {
   overflow: clip !important;
 }
 
-/*
- * ── La ventana sin barra de título ────────────────────────────────────────
- *
- * Sin barra de título del sistema, la ventana se arrastra desde la app. Estas
- * clases son eso: la barra lateral declara su encabezado como zona de arrastre
- * y los controles que viven ahí adentro se salen a mano, porque una zona de
- * arrastre se come el click de todo lo que tenga adentro.
- *
- * No hay ninguna franja que reserve alto. Los botones de minimizar, maximizar
- * y cerrar los dibuja el navegador **encima** de la página, así que la app
- * llega hasta el borde de arriba y el cromo flota sobre ella; reservarle una
- * fila al layout dejaba una banda negra muerta cruzando toda la ventana.
- *
- * `app-region` no existe en React Native, así que va por CSS y sólo en web.
- */
-.dn-arrastrar {
-  -webkit-app-region: drag;
-  app-region: drag;
+/* El overlay nativo tiene una fila propia en RootLayout, del alto publicado
+   por windowControlsOverlay. El color continúa el fondo de sus botones. */
+.dn-banda-ventana {
+  background-color: #121212;
 }
 
-/*
- * La misma zona, para las pantallas que no tienen barra lateral: el acceso y
- * las de link compartido. Se apoya **encima**, absoluta, sobre la franja donde
- * flotan los botones del sistema —que ahí está vacía— y no ocupa alto: el
- * navegador dice cuánto mide en `env(titlebar-area-height)`.
- */
-.dn-arrastre-superior {
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: env(titlebar-area-height, 38px);
+/* Sólo el rectángulo libre del título y las cabeceras declaradas arrastran.
+   El sistema conserva los eventos de sus botones en ambos extremos. */
+.dn-arrastrar {
   -webkit-app-region: drag;
   app-region: drag;
 }
@@ -289,3 +285,335 @@ textarea:focus {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
+
+/* Liquid Glass de escritorio. El material y su movimiento viven en el mismo
+   nodo; fundir un padre impediría muestrear el contenido detrás del panel. */
+:root {
+  --dn-glass-fill: rgb(30 30 33 / 0.48);
+  --dn-tooltip-fill: rgb(36 36 40 / 0.78);
+  --dn-tooltip-edge: rgb(255 255 255 / 0.34);
+  --dn-glass-solid: #242426;
+  --dn-control-edge: rgb(255 255 255 / 0.22);
+  --dn-control-edge-hover: rgb(255 255 255 / 0.34);
+  --dn-glass-sheen: inset 0 0 0 1px var(--dn-control-edge), inset 0 1px 0 rgb(255 255 255 / 0.38), inset 0 -1px 0 rgb(255 255 255 / 0.08);
+  --dn-glass-spring: cubic-bezier(0.22, 1.12, 0.36, 1);
+}
+html[data-theme='light'] {
+  --dn-glass-fill: rgb(248 248 250 / 0.72);
+  --dn-tooltip-fill: rgb(248 248 250 / 0.85);
+  --dn-tooltip-edge: rgb(0 0 0 / 0.2);
+  --dn-glass-solid: #f4f4f6;
+  --dn-control-edge: rgb(0 0 0 / 0.16);
+  --dn-control-edge-hover: rgb(0 0 0 / 0.26);
+  --dn-glass-sheen: inset 0 0 0 1px var(--dn-control-edge), inset 0 1px 0 rgb(255 255 255 / 0.95), inset 0 -1px 0 rgb(0 0 0 / 0.08);
+}
+@media (min-width: 780px) {
+  [data-dn-glass] {
+    -webkit-backdrop-filter: blur(22px) saturate(155%) !important;
+    backdrop-filter: blur(22px) saturate(155%) !important;
+  }
+  [data-dn-glass='regular'] {
+    background-color: var(--dn-glass-fill) !important;
+    box-shadow: var(--dn-glass-sheen), 0 6px 20px rgb(0 0 0 / 0.20) !important;
+  }
+  /* El aro se dibuja hacia dentro: conserva medidas y no reaparece como
+     un segundo rectángulo sobre el hitbox del botón. */
+  [data-dn-glass='tinted'] {
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.6), 0 4px 14px rgb(0 0 0 / 0.18) !important;
+  }
+  :is([data-dn-hover='normal'], [data-dn-hover='inverse']) {
+    border-radius: 999px !important;
+  }
+  [data-dn-glass]:has(> [data-dn-hover='glass']),
+  [role='button'] > [data-dn-glass], .dn-expandable {
+    border-radius: 999px !important;
+  }
+  [data-dn-glass][data-anim], [data-dn-glass-dropdown] {
+    border-radius: 26px !important;
+  }
+  [data-dn-glass][data-dn-tooltip] { border-radius: 16px !important; }
+  [data-dn-shared-item]:not(.dn-segment) { border-radius: 16px; }
+  .dn-segmented { box-shadow: var(--dn-glass-sheen); }
+  .dn-segment-selected { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.4), 0 2px 6px rgb(0 0 0 / 0.12); }
+  [data-dn-glass]:has(> [data-dn-hover='glass']),
+  [role='button']:has(> [data-dn-glass]) {
+    transition: scale 240ms var(--dn-glass-spring), box-shadow 180ms ease;
+  }
+  [data-dn-glass]:has(> [data-dn-hover='glass']:not([aria-disabled='true']):active),
+  [role='button']:not([aria-disabled='true']):has(> [data-dn-glass]):active {
+    scale: 0.97;
+  }
+}
+[data-dn-glass-chevron] { transition: rotate 280ms var(--dn-glass-spring); }
+[aria-expanded='true'] [data-dn-glass-chevron] { rotate: 180deg; }
+
+@keyframes dn-glass-unfold {
+  from { clip-path: inset(0 0 80% 0 round 26px); transform: translateY(-5px) scale(0.88, 0.94); }
+  to { clip-path: inset(0 round 26px); transform: none; }
+}
+@keyframes dn-glass-unfold-up {
+  from { clip-path: inset(80% 0 0 0 round 26px); transform: translateY(5px) scale(0.88, 0.94); }
+  to { clip-path: inset(0 round 26px); transform: none; }
+}
+@keyframes dn-glass-close { to { opacity: 0; transform: scale(0.94); } }
+@keyframes dn-glass-content { from { opacity: 0; translate: 0 3px; } }
+[data-anim='menu-abre-arriba'] { animation: dn-glass-unfold-up 300ms var(--dn-glass-spring) backwards; }
+[data-anim='menu-abre-abajo'], [data-dn-glass-dropdown] {
+  transform-origin: top center;
+  animation: dn-glass-unfold 300ms var(--dn-glass-spring) backwards;
+}
+[data-anim='menu-cierra-arriba'], [data-anim='menu-cierra-abajo'] {
+  animation: dn-glass-close 150ms ease-in both;
+  pointer-events: none;
+}
+[data-anim='contenido-abre'] { animation: dn-glass-content 180ms ease-out both; }
+[data-anim='contenido-cierra'] { opacity: 0; transition: opacity 100ms ease; }
+
+.dn-expandable {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  flex-shrink: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  min-height: var(--dn-control-size, 44px);
+  background: var(--dn-glass-fill);
+  color: rgb(var(--color-foreground));
+  box-shadow: var(--dn-glass-sheen);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  font: inherit;
+  cursor: pointer;
+  transition: scale 240ms var(--dn-glass-spring), box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dn-expandable:disabled { opacity: 0.4; cursor: default; }
+.dn-expandable:not(:disabled):active { scale: 0.97; }
+.dn-expandable:focus-visible { outline: 2px solid rgb(var(--color-ring) / 0.8) !important; outline-offset: -2px; }
+.dn-expandable-icon {
+  display: grid;
+  place-items: center;
+  width: var(--dn-control-size, 44px);
+  height: var(--dn-control-size, 44px);
+  flex-shrink: 0;
+}
+.dn-expandable-label {
+  filter: blur(4px);
+  display: grid;
+  grid-template-columns: 0fr;
+  opacity: 0;
+  transition: grid-template-columns 380ms var(--dn-glass-spring), opacity 180ms ease, filter 240ms ease;
+}
+.dn-expandable-label > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.dn-expandable[data-expanded='true'] .dn-expandable-label,
+.dn-expandable[data-reveal-on-hover='true']:not(:disabled):focus-visible .dn-expandable-label {
+  grid-template-columns: 1fr;
+  opacity: 1;
+  filter: blur(0px);
+}
+.dn-expandable-label > span::after { content: ''; display: inline-block; width: 16px; }
+@media (hover: hover) and (pointer: fine) {
+  .dn-expandable[data-reveal-on-hover='true']:not(:disabled):hover .dn-expandable-label {
+    grid-template-columns: 1fr;
+    opacity: 1;
+    filter: blur(0px);
+  }
+}
+/* Con dedo, las acciones muestran su nombre sin exigir hover. */
+@media (hover: none) {
+  .dn-expandable[data-reveal-on-hover='true'] .dn-expandable-label { grid-template-columns: 1fr; opacity: 1; filter: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  [data-dn-glass='regular'] { background-color: var(--dn-glass-solid) !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  [data-dn-glass] { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  [data-dn-glass='regular'] { background-color: var(--dn-glass-solid) !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-dn-glass], [data-anim], [data-dn-glass-chevron], .dn-expandable,
+  .dn-expandable-label, [role='button']:has(> [data-dn-glass]) {
+    animation: none !important;
+    transition: none !important;
+    scale: none !important;
+  }
+}
+
+/* Fondos compartidos y estados de acción en PC. */
+.dn-shared-group { position: relative; min-width: 0; display: flex; flex-direction: column; align-items: stretch; }
+.dn-shared-bg { position: absolute; top: 0; left: 0; pointer-events: none; background: rgb(var(--color-foreground) / 0.06); }
+[data-dn-shared-group] [data-dn-shared-item] { background-image: none !important; transition: color 140ms ease; }
+[data-dn-shared-group] [data-dn-shared-item]:not([aria-selected='true']):hover { background-color: transparent !important; }
+.dn-segmented { border-radius: 999px; padding: 4px; background: rgb(var(--color-card)); }
+.dn-segmented-options { display: flex; position: relative; }
+.dn-segment { position: relative; flex: 1; min-width: 0; min-height: 36px; border: 0; border-radius: 999px; padding: 6px 12px; background: transparent; color: rgb(var(--color-muted-foreground)); cursor: pointer; font: inherit; }
+.dn-segment-selected { position: absolute; inset: 0; border-radius: inherit; background: rgb(var(--color-primary)); pointer-events: none; }
+.dn-segment-label { position: relative; font-size: 13px; line-height: 18px; font-weight: 600; }
+.dn-segment[aria-checked='true'] { color: rgb(var(--color-primary-foreground)); }
+.dn-segment:focus-visible { outline: 2px solid rgb(var(--color-ring)); outline-offset: 2px; }
+.dn-action-swap { position: relative; display: inline-grid; vertical-align: middle; align-items: center; }
+.dn-action-reserve, .dn-action-value { grid-area: 1 / 1; }
+.dn-action-reserve { visibility: hidden; pointer-events: none; }
+.dn-action-value { display: inline-flex; align-items: center; gap: 8px; justify-content: center; }
+.dn-tooltip {
+  position: absolute; pointer-events: auto; width: max-content; max-width: min(260px, calc(100vw - 16px));
+  padding: 9px 12px 15px; border-radius: 0; color: rgb(var(--color-foreground));
+  font: 500 12px/16px system-ui, sans-serif; text-align: center; overflow-wrap: anywhere;
+}
+[data-dn-glass][data-dn-tooltip] {
+  background-color: var(--dn-tooltip-fill) !important;
+  background-image: linear-gradient(145deg, rgb(255 255 255 / 0.10), transparent 60%);
+  border-radius: 0 !important;
+  -webkit-backdrop-filter: blur(22px) saturate(155%);
+  backdrop-filter: blur(22px) saturate(155%);
+  box-shadow: none !important;
+}
+[data-dn-tooltip][data-side="below"] { padding: 15px 12px 9px; }
+[data-dn-tooltip-outline] { position: absolute; inset: 0; pointer-events: none; }
+/* El hover no cambia medidas ni añade una segunda caja al vidrio. */
+@media (hover: hover) and (pointer: fine) {
+  :is([data-dn-hover='normal'], .dn-expandable):not(:disabled):not([aria-disabled='true']):hover { --dn-control-edge: var(--dn-control-edge-hover); }
+  [data-dn-glass]:has(> [data-dn-hover='glass']:not([aria-disabled='true']):hover) {
+    --dn-control-edge: var(--dn-control-edge-hover);
+    box-shadow: var(--dn-glass-sheen), inset 0 0 0 999px rgb(var(--color-foreground) / 0.035), 0 6px 20px rgb(0 0 0 / 0.20) !important;
+  }
+  [data-dn-hover='glass'] { transition: color 160ms ease; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dn-shared-bg, .dn-tooltip, .dn-segment-selected, .dn-action-value { animation: none !important; transition: none !important; }
+}
+
+@property --dn-hover-opacity { syntax: '<number>'; inherits: false; initial-value: 0; }
+.dn-sidebar-items { display: flex; flex-direction: column; gap: 4px; }
+.dn-scroll-viewport.lenis { scroll-behavior: auto !important; }
+@media (prefers-reduced-motion: reduce) {
+  :is(button, a[href], [role='button'], [role='radio'], [role='tab']) { transition-duration: 0s !important; }
+}
+
+/* Flecha interior del chat: aparece con mouse/foco y permanece al abrir el menú. */
+@media (hover: hover) and (pointer: fine) {
+  [data-chat-actions="true"] { opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+  [data-chat-bubble="true"]:hover [data-chat-actions="true"],
+  [data-chat-bubble="true"]:focus-within [data-chat-actions="true"],
+  [data-chat-bubble="true"]:has([aria-expanded="true"]) [data-chat-actions="true"] { opacity: 1; pointer-events: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-chat-actions="true"] { transition: none; }
+}
+
+/* La cápsula conserva su material mientras cambia de ancho. */
+[data-dn-player-frame] { transition: max-width 360ms cubic-bezier(0.22, 1, 0.36, 1); }
+.dn-player-marquee { display: block; min-width: 0; width: 100%; overflow: hidden; white-space: nowrap; }
+.dn-player-marquee[role='link'] { cursor: pointer; }
+.dn-player-marquee[role='link']:hover { color: rgb(var(--color-foreground)); }
+.dn-player-marquee:focus-visible { outline: 2px solid rgb(var(--color-ring)); outline-offset: -2px; border-radius: 3px; }
+.dn-player-marquee-track { display: inline-flex; width: max-content; gap: 28px; white-space: nowrap; }
+.dn-player-marquee-copy { display: inline-block; flex: none; }
+.dn-player-marquee-overflow .dn-player-marquee-track { animation: dn-player-marquee var(--dn-marquee-duration) linear infinite; }
+.dn-player-marquee-overflow:hover .dn-player-marquee-track,
+.dn-player-marquee-overflow:focus-within .dn-player-marquee-track { animation-play-state: paused; }
+@keyframes dn-player-marquee {
+  0%, 12% { transform: translate3d(0, 0, 0); }
+  88%, 100% { transform: translate3d(calc(-1 * var(--dn-marquee-distance)), 0, 0); }
+}
+.dn-player-marquee-overflow:focus-visible { overflow-x: auto; }
+.dn-player-marquee-overflow:focus-visible .dn-player-marquee-track { animation: none; }
+.dn-player-marquee-overflow:focus-visible .dn-player-marquee-repeat { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .dn-player-marquee-overflow { overflow-x: auto; scrollbar-width: thin; }
+  .dn-player-marquee-overflow .dn-player-marquee-track { animation: none; }
+  .dn-player-marquee-repeat { display: none; }
+}
+.dn-seek { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+.dn-seek-time { width: 32px; flex-shrink: 0; color: rgb(var(--color-muted-foreground)); font: 11px/16px system-ui; font-variant-numeric: tabular-nums; }
+.dn-seek-time:last-child { text-align: right; }
+.dn-seek-input {
+  --dn-seek-progress: 0%; appearance: none; -webkit-appearance: none;
+  flex: 1; min-width: 0; width: 100%; height: 24px; margin: 0; padding: 0;
+  border: 0; border-radius: 999px; background: transparent; cursor: pointer;
+  touch-action: pan-y; outline: none;
+}
+.dn-seek-input::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 999px;
+  background: linear-gradient(to right, rgb(var(--color-foreground)) var(--dn-seek-progress), rgb(var(--color-foreground) / 0.24) var(--dn-seek-progress));
+}
+.dn-seek-input::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none; width: 12px; height: 12px;
+  margin-top: -4px; border: 0; border-radius: 50%; background: rgb(var(--color-foreground));
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); transition: transform 140ms ease-out;
+}
+.dn-seek-input::-moz-range-track { height: 4px; border-radius: 999px; background: rgb(var(--color-foreground) / 0.24); }
+.dn-seek-input::-moz-range-progress { height: 4px; border-radius: 999px; background: rgb(var(--color-foreground)); }
+.dn-seek-input::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: rgb(var(--color-foreground)); box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); }
+.dn-seek-input:is(:hover, :active)::-webkit-slider-thumb { transform: scale(1.15); }
+.dn-seek-input:focus-visible { outline: 2px solid rgb(var(--color-ring)); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  [data-dn-player-frame], .dn-seek-input::-webkit-slider-thumb { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  [data-dn-glass][data-dn-tooltip] { background: var(--dn-glass-solid) !important; backdrop-filter: none !important; }
+}
+@supports not (backdrop-filter: blur(1px)) {
+  [data-dn-glass][data-dn-tooltip] { background: var(--dn-glass-solid) !important; }
+}
+
+/* El fondo se comparte dentro de cada lista/carrusel, sin cruzar paneles. */
+.dn-shared-scroll { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.dn-shared-carousel { display: flex; flex-direction: row; align-items: flex-start; }
+[data-dn-shared-targets] > .dn-shared-bg { background: rgb(var(--color-foreground) / 0.07); }
+[data-dn-shared-targets] :is([data-dn-surface='row'], [data-dn-hover='surface']) { background-image: none !important; }
+[data-dn-shared-targets] :is([data-dn-surface='row'], [data-dn-hover='surface']):not([aria-selected='true']):not([aria-checked='true']):hover { background-color: transparent !important; }
+/* Un hitbox dentro de una fila no dibuja otra franja sobre el fondo móvil. */
+[data-dn-surface='row'] [data-dn-hover='surface'] { background-image: none !important; }
+
+/* PC dialogs: beUI morphing-modal geometry, shared by routes and local dialogs. */
+.dn-modal-stage { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; isolation: isolate; }
+.dn-modal-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.24); -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%); }
+.dn-modal-panel { position: relative; max-width: calc(100vw - 48px); max-height: calc(100dvh - 48px); border: 1px solid rgba(255,255,255,.16); border-radius: 24px; background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 48%), #19191c; color: #f5f5f5; box-shadow: 0 24px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05); overflow: hidden; outline: none; }
+.dn-modal-size { position: relative; max-height: calc(100dvh - 50px); overflow: hidden; }
+.dn-modal-content { position: relative; display: flex; flex-direction: column; max-height: calc(100dvh - 50px); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent; }
+.dn-modal-view, .dn-modal-view-inner { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.dn-modal-view-inner > .bg-background, .dn-modal-view-inner > .bg-card { background-color: transparent; }
+.dn-modal-panel [data-dn-modal-header] { background: transparent; }
+.dn-modal-panel [inert] { pointer-events: none; }
+
+/* Las filas RN Web deben estirarse dentro del grupo HTML de hover. */
+.dn-settings-rows { display: flex; flex-direction: column; align-items: stretch; width: 100%; }
+.dn-settings-rows > [data-dn-surface] { width: 100%; align-self: stretch; }
+
+/* Controles Linux: orden Windows, sin bordes decorativos ni eventos de arrastre. */
+.dn-linux-titlebar { background: #101010; }
+.dn-window-button { width: 46px; height: 32px; align-items: center; justify-content: center; background: #101010; color: #b3b3b3; cursor: default; }
+.dn-window-button:hover { background: #292929; color: #fff; }
+.dn-window-button:active { background: #383838; }
+.dn-window-button.dn-window-close:hover { background: #c42b1c; color: #fff; }
+.dn-window-button.dn-window-close:active { background: #a82418; }
+.dn-window-icon { width: 10px; height: 10px; position: relative; }
+.dn-window-minimize::after { content: ''; position: absolute; top: 5px; width: 10px; height: 1px; background: currentColor; }
+.dn-window-maximize { border: 1px solid currentColor; }
+.dn-window-restore::before, .dn-window-restore::after { content: ''; position: absolute; width: 8px; height: 8px; border: 1px solid currentColor; }
+.dn-window-restore::before { top: -1px; right: -1px; }
+.dn-window-restore::after { bottom: -1px; left: -1px; background: #101010; }
+.dn-window-cross::before, .dn-window-cross::after { content: ''; position: absolute; top: 5px; left: -2px; width: 14px; height: 1px; background: currentColor; transform: rotate(45deg); }
+.dn-window-cross::after { transform: rotate(-45deg); }
+
+/* Controles de onda inspirados en AudioCN; pintura SVG y motor nativo existentes. */
+.dn-waveform-control { position: absolute; inset: 0; z-index: 2; }
+.dn-waveform-input { appearance: none; -webkit-appearance: none; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 8px; background: transparent; cursor: pointer; touch-action: pan-y; }
+.dn-waveform-input::-webkit-slider-runnable-track { height: 100%; background: transparent; }
+.dn-waveform-input::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 1px; height: 100%; opacity: 0; }
+.dn-waveform-input::-moz-range-track, .dn-waveform-input::-moz-range-progress { background: transparent; }
+.dn-waveform-input::-moz-range-thumb { opacity: 0; border: 0; }
+.dn-waveform-input:focus-visible { outline: 2px solid rgb(var(--color-ring)); outline-offset: 3px; }
+.dn-waveform-hover-line { position: absolute; top: 4px; bottom: 4px; width: 1px; background: rgb(var(--color-foreground) / 0.5); pointer-events: none; }
+.dn-waveform-hover-time { position: absolute; top: -26px; transform: translateX(-50%); color: rgb(var(--color-foreground)); background: rgb(var(--color-background)); padding: 3px 6px; border-radius: 6px; font: 12px/16px system-ui; font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap; }

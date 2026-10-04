@@ -153,6 +153,9 @@ export async function pickImage({
     allowsEditing: cuadrada,
     ...(cuadrada ? { aspect: [1, 1] as [number, number] } : {}),
     quality: 0.9,
+    ...(Platform.OS === 'ios' ? {
+      preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+    } : {}),
     ...(Platform.OS === 'ios' && conVideo ? {
       videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
       shouldDownloadFromNetwork: true,
@@ -164,6 +167,31 @@ export async function pickImage({
 
 /** Lo que devolvió el selector —o la cámara— en la forma que espera la app. */
 async function desdeAsset(asset: ImagePicker.ImagePickerAsset): Promise<PickedImage> {
+  const extension = asset.uri.split(/[?#]/)[0].split('.').pop()?.toLowerCase() ?? ''
+  const tipo = asset.mimeType?.toLowerCase() ?? ''
+  const fotoIncompatible = asset.type !== 'video' && (
+    ['heic', 'heif', 'tiff', 'tif', 'bmp', 'avif'].includes(extension) ||
+    (!POR_EXTENSION[extension] && tipo.startsWith('image/') && !TYPES.split(',').includes(tipo))
+  )
+  if (fotoIncompatible) {
+    // Compatible es una preferencia de PHPicker, no una garantía de JPEG.
+    // Expo conserva HEIC/TIFF en algunos assets. Convertimos los bytes reales;
+    // cambiar sólo el MIME no arregla la subida. GIF y videos nunca pasan acá.
+    const { ImageManipulator, SaveFormat } = await import('expo-image-manipulator')
+    const contexto = ImageManipulator.manipulate(asset.uri)
+    let imagen: Awaited<ReturnType<typeof contexto.renderAsync>> | undefined
+    try {
+      if (Math.max(asset.width, asset.height) > 4096) {
+        contexto.resize(asset.width >= asset.height ? { width: 4096 } : { height: 4096 })
+      }
+      imagen = await contexto.renderAsync()
+      const copia = await imagen.saveAsync({ format: SaveFormat.JPEG, compress: 0.9 })
+      return await desdeAsset({ ...asset, ...copia, fileName: 'foto.jpg', mimeType: 'image/jpeg' })
+    } finally {
+      imagen?.release()
+      contexto.release()
+    }
+  }
   // Leer el archivo que Expo copió/exportó, no el PHAsset de la fototeca.
   // File evita el recorrido fetch → Blob → base64 → ArrayBuffer de RN.
   const archivo = new File(asset.uri)

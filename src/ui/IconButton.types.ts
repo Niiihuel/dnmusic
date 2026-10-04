@@ -15,5 +15,8 @@ export type IconButtonProps = {
   size?: number
   lado?: number
   variant?: 'plain' | 'glass' | 'primary'
+  /** En PC revela el nombre al pasar el cursor o enfocar; el clic ejecuta. */
+  expandible?: boolean
+  copyText?: string
   muted?: boolean
 }

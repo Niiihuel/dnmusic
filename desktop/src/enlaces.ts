@@ -39,7 +39,7 @@ export function rutaDeEnlace(entrada: string): string | null {
   const texto = (entrada ?? '').trim()
   if (!texto) return null
   const m = new RegExp(
-    `^(?:${ESQUEMA_ENLACE}:/|https://dnmusic-app\\.vercel\\.app)` +
+    `^(?:${ESQUEMA_ENLACE}:/|https://(?:dnmusic-app\\.vercel\\.app|dnmusic-production-c3f4\\.up\\.railway\\.app))` +
       `/(${COMPARTIBLES.join('|')})/([^/?#\\s]+)`,
     'i',
   ).exec(texto)
@@ -80,15 +80,21 @@ export class EntregaDeEnlaces {
   recibir(entrada: string): boolean {
     const ruta = rutaDeEnlace(entrada)
     if (!ruta) return false
+    this.entregarRuta(ruta)
+    return true
+  }
+
+  private entregarRuta(ruta: string): void {
     if (this.entregar) this.entregar(ruta)
     else this.pendiente = ruta
-    return true
   }
 
   /** Lo mismo para el `argv` del sistema. */
   recibirArgumentos(argv: readonly string[]): boolean {
     const ruta = enlaceEnArgumentos(argv)
-    return ruta ? this.recibir(ruta) : false
+    if (!ruta) return false
+    this.entregarRuta(ruta)
+    return true
   }
 
   /** La ventana ya está: se le da lo guardado y lo que venga después. */

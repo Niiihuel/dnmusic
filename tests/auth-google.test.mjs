@@ -33,7 +33,7 @@ function montar({ linkUser = { id: 'legacy' }, linkedUser = { id: 'legacy', iden
     },
     async exchangeCodeForSession(c, options) { exchangeCount++; calls.push(['exchange', c, options]); return exchange ? exchange() : { data: { user: calls.some(c => c[0] === 'link') ? linkedUser : user, session: { user } }, error: null } },
     async signInWithPassword(credentials) { calls.push(['password', credentials]); return { data: { user: { id: 'legacy' } }, error: null } },
-    async signUp() { signups++; assert.fail('No crear cuentas por contraseña') }, async signOut() { calls.push(['logout']); return { error: null } },
+    async signUp() { signups++; assert.fail('No crear cuentas por contraseña') }, async signOut(options) { calls.push(['logout', options]); return { error: null } },
   } }
   const deps = {
     '@react-native-async-storage/async-storage': storage, 'react-native': { Platform: { OS: os } },
@@ -309,4 +309,11 @@ test('el cliente real de Supabase prepara un retorno que DMusic acepta en web y 
       if (!desktop) assert.equal(h.assigned.length, 1)
     }
   } finally { await client.auth.stopAutoRefresh() }
+})
+
+
+test('cerrar sesión afecta solo a esta instalación y conserva las sesiones de otros dispositivos', async () => {
+  const h = montar()
+  await h.api.logOut()
+  assert.deepEqual(h.calls.filter(c => c[0] === 'logout'), [['logout', { scope: 'local' }]])
 })

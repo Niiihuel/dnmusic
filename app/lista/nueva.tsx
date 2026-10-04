@@ -98,12 +98,12 @@ export default function NuevaLista() {
   }
 
   return (
-    <Hoja>
+    <Hoja titulo="Nueva lista" medida={modal ? 'contenido' : 'llena'}>
       {/* El fondo va entero y el contenido acotado: si el `bg-background` se
           achicara con el texto, en el formSheet de iOS quedaría el gris del
           sistema asomando a los costados. */}
-      <View className="flex-1 bg-background">
-        <View className="w-full flex-1 self-center" style={{ maxWidth: ANCHO_HOJA }}>
+      <View className={modal ? "min-h-0 bg-background" : "flex-1 bg-background"}>
+        <View className={`w-full self-center ${modal ? "min-h-0" : "flex-1"}`} style={{ maxWidth: ANCHO_HOJA }}>
           <EncabezadoHoja
             titulo="Nueva lista"
             izquierda={<BotonHoja tipo="cerrar" onPress={() => volver(router, '/')} />}
@@ -117,7 +117,7 @@ export default function NuevaLista() {
             }
           />
           <ScrollView
-            className="flex-1"
+            style={modal ? { flexGrow: 0, flexShrink: 1 } : { flex: 1 }}
             keyboardShouldPersistTaps="handled"
             contentContainerClassName="items-center gap-6 px-5 pt-2"
             contentContainerStyle={{ paddingBottom: (modal ? 24 : piso) + teclado }}

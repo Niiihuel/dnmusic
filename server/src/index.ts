@@ -1,4 +1,5 @@
 import { accesoAprobado } from './acceso.js'
+import { cors as cabecerasCors } from './cors.js'
 import { createServer } from 'node:http'
 import { pathToFileURL } from 'node:url'
 import { waitUntil } from '@vercel/functions'
@@ -16,6 +17,7 @@ import {
   getHomeGeneros,
   type SemillaEntrada,
   getPlaylistInfo,
+  AudioUnavailableError,
   resolveAudio,
   peaks,
   search,
@@ -28,6 +30,10 @@ import { RUTAS_LIVIANAS, manejarLiviana } from './livianas.js'
 import { comoRequest, volcar } from './puente.js'
 import { subirPropia } from './propia.js'
 import { FFPROBE } from './binarios.js'
+import { ensureStorageBudget, StorageBudgetError } from './storage-budget.js'
+import { AnalysisError, clienteLecturaAudio, obtenerAnalisisMusical } from './analysis.js'
+import { leerRangoOnda, obtenerOndaAudio } from './peaks-audio.js'
+import type { FrequencyWaveform } from './frequency-bands.js'
 
 /**
  * Servicio de resolución de música.
@@ -40,6 +46,8 @@ import { FFPROBE } from './binarios.js'
  *   GET  /album|/playlist?id= → una colección con sus canciones
  *   GET  /img?u=…             → proxy de carátulas (ver abajo)
  *   GET  /peaks?videoId=…     → la forma de onda, calculada con ffmpeg
+ *   GET  /peaks?audioPath=…   → onda detallada de una ruta autorizada
+ *   GET  /analysis?audioPath=…→ análisis versionado del audio ya guardado
  *   GET  /artist?id=…         → ficha del artista (foto, bio, suscriptores)
  *   POST /resolve {videoId}   → descarga audio y carátula UNA vez, a Storage
  *   POST /translate {texts,to}→ traduce la letra, línea por línea
@@ -132,7 +140,9 @@ async function medirDuracionMs(
  */
 function rutaPicos(videoId: string, buckets: number, desdeMs: number, durMs: number): string {
   const tramo = durMs > 0 ? `-${Math.round(desdeMs)}-${Math.round(durMs)}` : ''
-  return `picos/${videoId}-${buckets}${tramo}.json`
+  // Distinta de la caché mono antigua: una onda guardada sin bandas no debe
+  // impedir que el editor muestre su información espectral al actualizarse.
+  return `picos/${videoId}-${buckets}${tramo}-bands2.json`
 }
 
 /**
@@ -148,22 +158,29 @@ async function archivoDeCancion(
   videoId: string,
 ): Promise<string | null> {
   const { data } = await storage.storage.from(BUCKET).list('', { search: videoId })
-  const encontrados = (data ?? []).filter((f) => f.name.startsWith(`${videoId}.`))
-  if (!encontrados.length) return null
-  const canonico = encontrados.find((f) => f.name === `${videoId}.m4a`)
-  return (canonico ?? encontrados[0]).name
+  const encontrados = data ?? []
+  if (encontrados.some((f) => f.name === `${videoId}.m4a`)) return `${videoId}.m4a`
+  if (encontrados.some((f) => f.name === `${videoId}.webm`)) return `${videoId}.webm`
+  return null
 }
 
 async function picosGuardados(
   storage: NonNullable<typeof supabase>,
   ruta: string,
-): Promise<{ peaks: number[]; durationMs: number } | null> {
+  buckets: number,
+): Promise<FrequencyWaveform | null> {
   try {
     const { data, error } = await storage.storage.from(BUCKET).download(ruta)
     if (error || !data) return null
-    const leido = JSON.parse(await data.text()) as { peaks?: unknown; durationMs?: unknown }
-    if (!Array.isArray(leido.peaks) || typeof leido.durationMs !== 'number') return null
-    return { peaks: leido.peaks as number[], durationMs: leido.durationMs }
+    const leido = JSON.parse(await data.text()) as Partial<FrequencyWaveform>
+    const longitud = leido.peaks?.length ?? 0
+    if (!Number.isFinite(leido.durationMs) || Number(leido.durationMs) <= 0 ||
+      !Array.isArray(leido.peaks) || longitud !== buckets ||
+      leido.peaks.some(value => !Number.isFinite(value) || value < 0 || value > 1) ||
+      !leido.bands || !(['low', 'mid', 'high'] as const).every(band =>
+        Array.isArray(leido.bands?.[band]) && leido.bands[band].length === longitud &&
+        leido.bands[band].every(value => Number.isFinite(value) && value >= 0 && value <= 1))) return null
+    return leido as FrequencyWaveform
   } catch {
     // Un JSON corrupto no vale más que no tenerlo: se vuelve a calcular.
     return null
@@ -179,36 +196,8 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const supabase =
   SUPABASE_URL && SERVICE_KEY ? createClient(SUPABASE_URL, SERVICE_KEY) : null
 
-/**
- * Los orígenes que pueden leer nuestras respuestas, separados por coma.
- *
- * Era **uno solo**, y eso no daba: la app vive en más de un dominio a la vez
- * —el canónico y el que Vercel asigna al proyecto— y `Access-Control-Allow-Origin`
- * no acepta una lista. Con un valor fijo, el dominio que no estuviera ahí se
- * comía un error de CORS en cada búsqueda, que se ve como «no encuentra
- * canciones» sin ninguna pista de por qué.
- *
- * La forma correcta es la de siempre: se compara el `Origin` del pedido contra
- * la lista y **se devuelve ese mismo**, uno solo. Sin lista configurada se
- * responde `*`, que es lo que hacía antes y lo que sirve en desarrollo.
- */
-const ORIGENES = (process.env.ALLOWED_ORIGIN ?? '')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean)
-
 function cors(req: import('node:http').IncomingMessage) {
-  const origen = req.headers.origin
-  return {
-    'Access-Control-Allow-Origin':
-      ORIGENES.length === 0 ? '*' : origen && ORIGENES.includes(origen) ? origen : ORIGENES[0],
-    /* Le avisa a las cachés intermedias que la respuesta cambia según quién
-       pregunta. Sin esto, un proxy podría servirle a un dominio la cabecera
-       que se calculó para el otro. */
-    Vary: 'Origin',
-    'Access-Control-Allow-Headers': 'content-type, authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  }
+  return cabecerasCors(req.headers.origin)
 }
 
 function responder(
@@ -293,22 +282,22 @@ async function autorizado(req: import('node:http').IncomingMessage): Promise<boo
  * sin copiarlo. `onProgreso` (0..1) es el avance de la descarga; sin él, todo
  * funciona igual que antes.
  */
-async function resolverCancion(
+export async function resolverCancion(
   db: NonNullable<typeof supabase>,
   body: { videoId: string; artworkUrl?: string; durationMs?: number },
   onProgreso?: (pct: number) => void,
 ) {
   const { videoId } = body
-  const path = `${videoId}.m4a`
   const artworkP = cacheImage(db, body.artworkUrl, videoId)
-  const { data: existing } = await db.storage.from(BUCKET).list('', { search: path })
-  if (existing?.some((f) => f.name === path)) {
+  const path = await archivoDeCancion(db, videoId)
+  if (path) {
     const durationMs =
       body.durationMs && body.durationMs > 0 ? body.durationMs : await medirDuracionMs(db, path)
     return { path, artworkPath: await artworkP, cached: true, durationMs }
   }
   const audio = await resolveAudio(videoId, onProgreso)
   const destino = `${videoId}.${audio.ext}`
+  await ensureStorageBudget(db, audio.bytes.length)
   const { error } = await db.storage
     .from(BUCKET)
     .upload(destino, audio.bytes, { contentType: audio.mimeType, upsert: true })
@@ -442,6 +431,28 @@ export const manejador = async (
      * dibujar una onda distinta.
      */
     if (url.pathname === '/peaks' && req.method === 'GET') {
+      if (url.searchParams.has('audioPath')) {
+        if (url.searchParams.has('videoId')) return json(400, { error: 'Elegí audioPath o videoId.' })
+        if (!supabase || !SUPABASE_URL || !SERVICE_KEY) return json(503, { error: 'Storage no configurado' })
+        try {
+          const range = leerRangoOnda(url.searchParams)
+          const usuario = clienteLecturaAudio(SUPABASE_URL, SERVICE_KEY, req.headers.authorization ?? '')
+          const wave = await obtenerOndaAudio(url.searchParams.get('audioPath') ?? '', range, {
+            reader: usuario.storage.from(BUCKET),
+          })
+          return json(200, wave)
+        } catch (error) {
+          if (error instanceof AnalysisError) {
+            if (error.status === 429) {
+              res.setHeader('Retry-After', '5')
+              res.setHeader('Access-Control-Expose-Headers', 'Retry-After')
+            }
+            return json(error.status, { error: error.message })
+          }
+          console.error('[dnmusic] onda de audio: fallo inesperado')
+          return json(502, { error: 'No se pudo medir la onda del audio.' })
+        }
+      }
       const videoId = url.searchParams.get('videoId')?.trim()
       if (!videoId) return json(400, { error: 'Falta videoId' })
       if (!supabase) return json(500, { error: 'Storage no configurado' })
@@ -459,7 +470,7 @@ export const manejador = async (
       const durMs = Math.max(0, Number(url.searchParams.get('durMs')) || 0)
       const ruta = rutaPicos(videoId, buckets, desdeMs, durMs)
 
-      const archivada = await picosGuardados(supabase, ruta)
+      const archivada = await picosGuardados(supabase, ruta, buckets)
       if (archivada) return json(200, archivada)
 
       const nombre = await archivoDeCancion(supabase, videoId)
@@ -479,14 +490,47 @@ export const manejador = async (
        * calculada y quien la pidió no tiene por qué esperar a que se guarde. Si
        * no se pudo guardar, la próxima vez se calcula de nuevo y listo.
        */
-      enSegundoPlano(
-        supabase.storage.from(BUCKET).upload(ruta, JSON.stringify(onda), {
-          contentType: 'application/json',
-          upsert: true,
-        }),
-      )
+      const ondaJson = JSON.stringify(onda)
+      try {
+        await ensureStorageBudget(supabase, Buffer.byteLength(ondaJson))
+        enSegundoPlano(
+          supabase.storage.from(BUCKET).upload(ruta, ondaJson, {
+            contentType: 'application/json',
+            upsert: true,
+          }),
+        )
+      } catch {
+        // La onda ya se calculó: si no hay reserva, se entrega sin cachearla.
+      }
 
       return json(200, onda)
+    }
+
+    if (url.pathname === '/analysis' && req.method === 'GET') {
+      if (!supabase || !SUPABASE_URL || !SERVICE_KEY) return json(503, { error: 'Storage no configurado' })
+      const audioPath = url.searchParams.get('audioPath') ?? ''
+      try {
+        // La service_role solo escribe/lee el JSON calculado. `info` y la URL
+        // firmada se piden con el JWT de esta persona, por lo que Storage aplica
+        // su política de lectura a la ruta exacta antes de servir el caché.
+        const usuario = clienteLecturaAudio(SUPABASE_URL, SERVICE_KEY, req.headers.authorization ?? '')
+        const resultado = await obtenerAnalisisMusical(audioPath, {
+          reader: usuario.storage.from(BUCKET),
+          cache: supabase.storage.from(BUCKET),
+          reserveStorage: bytes => ensureStorageBudget(supabase, bytes),
+        })
+        return json(200, resultado)
+      } catch (error) {
+        if (error instanceof AnalysisError) {
+          if (error.status === 429) {
+            res.setHeader('Retry-After', '5')
+            res.setHeader('Access-Control-Expose-Headers', 'Retry-After')
+          }
+          return json(error.status, { error: error.message })
+        }
+        console.error('[dnmusic] análisis', error)
+        return json(502, { error: 'No se pudo analizar el audio.' })
+      }
     }
 
     if (url.pathname === '/home' && req.method === 'GET') {
@@ -613,6 +657,7 @@ export const manejador = async (
       }
 
       const ruta = rutaDeCuarentena(await quienEs(req), videoId)
+      await ensureStorageBudget(supabase, APORTE_MAX_BYTES)
       /* `upsert` para que un reintento no rebote contra su propio intento
          anterior: es la cuarentena de esta persona para esta canción, y lo que
          vale es el último. */
@@ -669,6 +714,7 @@ export const manejador = async (
 
       try {
         const listo = await prepararAporte(crudo, body.durationMs ?? null)
+        await ensureStorageBudget(supabase, listo.bytes.length)
         const { error } = await supabase.storage
           .from(BUCKET)
           .upload(destino, listo.bytes, { contentType: 'audio/mp4', upsert: false })
@@ -720,6 +766,7 @@ export const manejador = async (
 
       try {
         const listo = await prepararAporte(crudo, durationMs)
+        await ensureStorageBudget(supabase, listo.bytes.length)
         const { error } = await supabase.storage
           .from(BUCKET)
           .upload(path, listo.bytes, { contentType: 'audio/mp4', upsert: false })
@@ -761,7 +808,7 @@ export const manejador = async (
           }),
         )
       } catch (e) {
-        return json(500, { error: (e as Error).message })
+        return json(e instanceof AudioUnavailableError ? e.status : 500, { error: (e as Error).message })
       }
     }
 
@@ -840,6 +887,7 @@ export const manejador = async (
       if (!nombre) return json(400, { error: 'Falta el nombre del archivo' })
 
       const ruta = rutaDePropia(await quienEs(req), nombre)
+      await ensureStorageBudget(supabase, PROPIA_MAX_BYTES)
       const { data, error } = await supabase.storage
         .from(BUCKET)
         .createSignedUploadUrl(ruta, { upsert: true })
@@ -870,6 +918,8 @@ export const manejador = async (
         return json(400, { error: 'No llegó ningún archivo.' })
       }
       try {
+        // Reserva adicional para una posible tapa embebida.
+        await ensureStorageBudget(supabase, bytes.length + 5 * 1024 * 1024)
         return json(200, await subirPropia(supabase, BUCKET, bytes, nombre))
       } finally {
         limpiar()
@@ -886,6 +936,7 @@ export const manejador = async (
         return json(413, { error: 'El archivo es demasiado grande (80 MB como mucho).' })
       }
       if (!bytes.length) return json(400, { error: 'No llegó ningún archivo.' })
+      await ensureStorageBudget(supabase, bytes.length + 5 * 1024 * 1024)
       return json(200, await subirPropia(supabase, BUCKET, bytes, nombre))
     }
 
@@ -893,7 +944,7 @@ export const manejador = async (
   } catch (e) {
     // El detalle va al log del servidor; al cliente solo lo necesario.
     console.error('[dnmusic]', e)
-    return json(502, { error: (e as Error).message })
+    return json(e instanceof StorageBudgetError ? 507 : 502, { error: (e as Error).message })
   }
 }
 

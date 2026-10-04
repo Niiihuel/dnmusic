@@ -1,3 +1,5 @@
+import { superficieInteractivaWeb, estadoControlWeb } from '../src/ui/estadoControl'
+import { SharedLayoutBg } from '../src/ui/SharedLayoutBg'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -13,10 +15,11 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { EntradaTexto } from '../src/ui/EntradaTexto'
+import { IconSpotify } from '../src/ui/IconSpotify'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useAudioPlayer } from 'expo-audio'
 import { PLACEHOLDER_COLOR } from '../src/ui/Field'
-import { FormError } from '../src/ui/Button'
+import { FormError, PrimaryButton } from '../src/ui/Button'
 import { CabeceraSocial, AccionSocial } from '../src/ui/Social'
 import { Hoja, useHojaModal } from '../src/ui/Hoja'
 import { ScrollArea } from '../src/ui/ScrollArea'
@@ -62,6 +65,8 @@ type Fase = 'entrada' | 'leyendo' | 'emparejando' | 'revision' | 'guardando'
 const SHELL_PX = 780
 /** Tope del contenido en escritorio, como en el resto de las pantallas. */
 const CAP = 640
+/** El primer paso sólo pide un enlace; la revisión necesita más ancho. */
+const CAP_ENTRADA = 520
 
 /**
  * Traer una lista de Spotify.
@@ -88,6 +93,9 @@ export default function Importar() {
   const navigation = useNavigation()
 
   const [fase, setFase] = useState<Fase>('entrada')
+  useEffect(() => {
+    if (Platform.OS === 'ios') navigation.setOptions({ sheetAllowedDetents: fase === 'entrada' ? [0.6, 1] : [1] })
+  }, [fase, navigation])
   const [filtro, setFiltro] = useState<'todas' | 'revisar'>('todas')
   const [salida, setSalida] = useState<NavigationAction | null>(null)
   const [destino, setDestino] = useState<string | null>(null)
@@ -240,11 +248,11 @@ export default function Importar() {
     .filter(({ resultado }) => filtro === 'todas' || resultado.confianza !== 'segura')
 
   return (
-    <Hoja medida={modal ? 'contenido' : 'llena'} anchoMaximo={CAP} titulo="Traer de Spotify">
+    <Hoja vista={fase} medida={modal ? 'contenido' : 'llena'} anchoMaximo={fase === 'entrada' ? CAP_ENTRADA : CAP} titulo="Traer de Spotify">
       <SafeAreaView className="min-h-0 bg-background" edges={Platform.OS === 'web' ? [] : ['bottom']}
-        style={modal ? { height: Math.min(fase === 'revision' ? 720 : 320, height - 96) } : { flex: 1 }}>
+        style={modal ? { height: Math.min(fase === 'revision' ? 720 : fase === 'entrada' ? 300 : 320, height - 96) } : { flex: 1 }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="min-h-0 flex-1">
-          <CabeceraSocial titulo="Traer de Spotify" detalle={fase === 'revision' ? 'Revisar canciones' : 'Revisá antes de importar'}
+          <CabeceraSocial titulo="Traer de Spotify" detalle={fase === 'revision' ? 'Revisar canciones' : undefined}
             ocupado={fase === 'guardando'} onCerrar={() => volver(router, '/')} />
           {fase === 'entrada' ? (
             <Entrada enlace={enlace} onEnlace={setEnlace} error={error} onTraer={() => void traer()} />
@@ -301,13 +309,16 @@ export default function Importar() {
 }
 
 /** Etiquetas legibles y controles de 44 px, sin el campo antiguo de versalitas. */
-function CampoImportar({ label, ...input }: TextInputProps & { label: string }) {
+function CampoImportar({ label, spotify = false, ...input }: TextInputProps & { label: string; spotify?: boolean }) {
   const escritorio = useWindowDimensions().width >= SHELL_PX
   return <View className="gap-2">
-    <Text style={{ fontSize: escritorio ? 13 : 15 }} className="text-foreground font-medium">{label}</Text>
+    <View className="flex-row items-center gap-2">
+      {spotify ? <IconSpotify size={24} /> : null}
+      <Text style={{ fontSize: escritorio ? 13 : 15 }} className="text-foreground font-medium">{label}</Text>
+    </View>
     <EntradaTexto {...input} accessibilityLabel={label} placeholderTextColor={PLACEHOLDER_COLOR}
       className="bg-muted px-3 text-foreground"
-      style={[{ minHeight: escritorio ? 40 : 44, borderRadius: escritorio ? 10 : 16, fontSize: escritorio ? 15 : 16, paddingVertical: escritorio ? 8 : 10 }, input.style]} />
+      style={[{ minHeight: escritorio ? (spotify ? 48 : 40) : 44, borderRadius: escritorio ? 12 : 16, fontSize: escritorio ? 15 : 16, paddingVertical: escritorio ? 8 : 10 }, input.style]} />
   </View>
 }
 
@@ -320,18 +331,14 @@ function Entrada({ enlace, onEnlace, error, onTraer }: {
   const escritorio = useWindowDimensions().width >= SHELL_PX
   const listo = enlace.trim().length > 0
   return <View className="min-h-0 flex-1">
-    <ScrollArea className="flex-1" showsVerticalScrollIndicator={!escritorio} contentContainerStyle={{ flexGrow: 1, justifyContent: escritorio ? 'center' : 'flex-start', alignItems: 'center', paddingHorizontal: 20, paddingVertical: escritorio ? 28 : 12 }} keyboardShouldPersistTaps="handled">
-      <View style={{ width: '100%', maxWidth: 520, gap: escritorio ? 14 : 16 }}>
-        <View style={{ gap: escritorio ? 4 : 6 }}>
-          <Text accessibilityRole="header" style={{ fontSize: escritorio ? 19 : 21 }} className="text-foreground font-semibold">Importá una lista pública</Text>
-          <Text className="text-muted-foreground text-footnote leading-5">Pegá el enlace de Spotify. Antes de crearla vas a poder revisar todas las coincidencias.</Text>
-        </View>
-        <CampoImportar label="Enlace de la lista" value={enlace} onChangeText={onEnlace} autoCapitalize="none" autoCorrect={false}
+    <ScrollArea className="flex-1" showsVerticalScrollIndicator={!escritorio} contentContainerStyle={{ flexGrow: 1, justifyContent: escritorio ? 'center' : 'flex-start', alignItems: 'center', paddingHorizontal: escritorio ? 28 : 20, paddingVertical: escritorio ? 18 : 16 }} keyboardShouldPersistTaps="handled">
+      <View style={{ width: '100%', maxWidth: 464, gap: 16 }}>
+        <CampoImportar label="Enlace de una playlist pública" spotify value={enlace} onChangeText={onEnlace} autoCapitalize="none" autoCorrect={false}
           inputMode="url" placeholder="https://open.spotify.com/playlist/…" returnKeyType="go" onSubmitEditing={() => { if (listo) onTraer() }} />
-        <Text className="text-muted-foreground text-caption1">En Spotify: Compartir → Copiar enlace. La lista tiene que ser pública.</Text>
+        <Text className="text-muted-foreground text-footnote">Spotify → Compartir → Copiar enlace</Text>
         <FormError message={error} />
-        <View className="items-end pt-1">
-          <AccionSocial label="Revisar canciones" onPress={onTraer} disabled={!listo} compacta expandida={!escritorio} />
+        <View style={{ alignSelf: escritorio ? 'flex-end' : 'stretch', width: escritorio ? 212 : '100%' }}>
+          <PrimaryButton label="Revisar canciones" onPress={onTraer} disabled={!listo} />
         </View>
       </View>
     </ScrollArea>
@@ -389,6 +396,7 @@ function Trabajando({
 
       {fase !== 'guardando' ? (
         <Pressable
+          {...estadoControlWeb('surface')}
           accessibilityRole="button"
           onPress={onCancelar}
           className="h-11 items-center justify-center rounded-full px-5 active:bg-muted"
@@ -442,8 +450,10 @@ function FilaResultado({
     const track = candidatoPorId(resultado, elegido)
     return (
       <Pressable
+          {...estadoControlWeb('surface')}
         accessibilityRole="button"
         accessibilityLabel={`Revisar ${resultado.pista.titulo}`}
+        {...superficieInteractivaWeb('row')}
         accessibilityState={{ expanded: false }}
         onPress={() => setAbierta(true)}
         className="min-h-14 flex-row items-center gap-3 rounded-xl py-2 active:bg-card"
@@ -486,6 +496,7 @@ function FilaResultado({
          */}
         {resultado.pista.previewUrl ? (
           <Pressable
+          {...estadoControlWeb('surface')}
             accessibilityRole="button"
             accessibilityLabel={`Escuchar el original de ${resultado.pista.titulo}`}
             onPress={() => previo.alternar(resultado.pista.previewUrl!)}
@@ -505,11 +516,13 @@ function FilaResultado({
           No encontré nada parecido. Se puede buscar a mano después, desde la lista.
         </Text>
       ) : (
+        <SharedLayoutBg targets="surfaces">
         <View className="gap-1">
           {resultado.candidatos.map((candidato) => {
             const activo = candidato.track.videoId === elegido
             return (
               <Pressable
+          {...estadoControlWeb('surface')}
                 key={candidato.track.videoId}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: activo }}
@@ -534,9 +547,11 @@ function FilaResultado({
             )
           })}
         </View>
+        </SharedLayoutBg>
       )}
 
       <Pressable
+          {...estadoControlWeb('surface')}
         accessibilityRole="button"
         accessibilityState={{ selected: elegido === null }}
         onPress={() => onElegir(null)}

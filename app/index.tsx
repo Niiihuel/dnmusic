@@ -1,3 +1,5 @@
+import { colaBusqueda } from '../src/lib/colaBusqueda'
+import { BordeScrollNativo, HAY_BORDE_SCROLL_NATIVO } from '../src/ui/CollectionScrollEdge'
 import { CabeceraChats, CargaChats, FilaConversacion, FilaSolicitudChat, TituloSeccionChats } from '../src/ui/ContenidoChats'
 import { BotonSuperficie } from '../src/ui/BotonSuperficie'
 import { IconButton } from '../src/ui/IconButton'
@@ -11,6 +13,7 @@ import {
   AppState,
   FlatList,
   Image,
+  Keyboard,
   Platform,
   Text,
   useWindowDimensions,
@@ -33,6 +36,8 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { formatMessageDate } from '../src/ui/MessageCard'
 import { ChatBubble } from '../src/ui/ChatBubble'
+import { MessageActionDialog } from '../src/ui/MessageActionDialog'
+import { canModifyMessage, type MessageActionTarget } from '../src/ui/messageActions'
 import { SkeletonList } from '../src/ui/Skeleton'
 import { ResizableRegion } from '../src/ui/ResizableRegion'
 import { CollapsedSidebar } from '../src/ui/SidebarMotion'
@@ -114,11 +119,16 @@ import {
   cerrarBusqueda,
   setTermino,
   useConsulta,
+  useBuscando,
+  registerBusquedaHandler,
 } from '../src/state/busqueda'
 import {
   detachOrigin,
   enqueue,
+  enqueueNext,
+  canEnqueueNext,
   getPlaybackState,
+  playCollection,
   playQueue,
   registerPlaylistOpener,
   toggleView,
@@ -132,9 +142,10 @@ import { SearchDropdown } from '../src/ui/SearchDropdown'
 import { ScrollArea } from '../src/ui/ScrollArea'
 import { ScrollAreaTecho } from '../src/ui/ScrollAreaContext'
 import { SearchRecents } from '../src/ui/SearchRecents'
+import { SearchExplore } from '../src/ui/SearchExplore'
 import { useColapso } from '../src/ui/useColapso'
 import { BotonVidrio, Glass, HAY_VIDRIO } from '../src/ui/Glass'
-import { recordarBusqueda } from '../src/state/recientes'
+import { recordarArtista, recordarCancion } from '../src/state/recientes'
 import { addShowcase } from '../src/services/showcases'
 import { Menu, type MenuItem } from '../src/ui/Menu'
 import { BarraLateral, CampoBusquedaLateral } from '../src/ui/BarraLateral'
@@ -188,7 +199,7 @@ import {
 } from '../src/ui/icons'
 import { compartirLista } from '../src/lib/compartirLista'
 import { dejarCancionACompartir } from '../src/state/compartir'
-import { estadoControlWeb } from '../src/ui/estadoControl'
+import { superficieInteractivaWeb } from '../src/ui/estadoControl'
 
 const SIDEBAR_PX = 780
 const DETAIL_PX = 1120
@@ -265,6 +276,7 @@ export default function Home() {
   const searchRef = useRef<SearchFieldHandle>(null)
   const [searchResults, setSearchResults] = useState<ContactResult[]>([])
   const [searchingContacts, setSearchingContacts] = useState(false)
+  const [consultaRespondida, setConsultaRespondida] = useState('')
   /** Cuenta cuya solicitud está saliendo, para mostrar la espera en su fila. */
   const [solicitando, setSolicitando] = useState<string | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
@@ -275,8 +287,23 @@ export default function Home() {
   const [rightPlegado, setRightPlegado] = useState(false)
   const [sending, setSending] = useState(false)
   const [composerError, setComposerError] = useState<string | null>(null)
+  const [composerHeight, setComposerHeight] = useState(0)
+  const [messageAction, setMessageAction] = useState<MessageActionTarget | null>(null)
+  const editingInline = !TECLADO_FISICO && messageAction?.kind === 'edit'
   const draft = useDraft()
   const player = useSnippetPlayer()
+  // Clear a dialog when its account/chat changes, before committing another frame.
+  if (messageAction && (messageAction.pairId !== activePairId || messageAction.userId !== myUid)) {
+    setMessageAction(null)
+  }
+  useEffect(() => {
+    if (player.currentId && messages.some(message => message.id === player.currentId && message.deletedAt)) player.stop()
+  }, [messages, player])
+  const requestMessageAction = (kind: MessageActionTarget['kind'], message: Message) => {
+    if (activePairId && canModifyMessage(message, myUid)) {
+      setMessageAction({ kind, message, pairId: activePairId, userId: myUid })
+    }
+  }
 
   /*
    * El modo música, **prendido por defecto**.
@@ -408,39 +435,10 @@ export default function Home() {
    */
   const cascara = usePiso()
   const colapsoPantalla = useColapso()
-  /*
-   * Lo que hay que dejar libre abajo del hilo.
-   *
-   * **No depende del teclado.** Antes valía el alto del teclado cuando estaba
-   * abierto, así que al cerrarlo el hueco se desplomaba de golpe mientras todo
-   * lo demás bajaba suave: ese era el parpadeo. Ahora el teclado lo resuelve el
-   * traslado del bloque entero, y este número solo tiene que despejar la
-   * cáscara y el campo — que no cambian.
-   */
   const pisoChat = cascara
-
-  /*
-   * El campo de escribir va pegado al teclado real, no a una imitación.
-   *
-   * Mismo criterio que la cáscara: `useAnimatedKeyboard` da el alto en el hilo
-   * de la interfaz cuadro a cuadro, así que los dos copian el mismo número y no
-   * pueden desincronizarse — ni siquiera cuando arrastrás el teclado con el
-   * dedo, que es donde cualquier animación propia se queda atrás.
-   */
+  // El composer sigue al teclado en UI. El hilo iOS reduce su viewport,
+  // conservando la cabecera fija en vez de trasladar mensajes sobre ella.
   const tecladoVivo = useAnimatedKeyboard()
-  /*
-   * Lo que se levanta al abrir el teclado: **el hilo entero y el campo**, en
-   * bloque, como en WhatsApp.
-   *
-   * Se descuenta la cáscara porque el campo ya estaba apoyado sobre ella: sin
-   * ese descuento, con el teclado abierto quedaría flotando el alto del
-   * reproductor por encima del teclado en vez de apoyado sobre él. Y como la
-   * cáscara se corre hacia abajo con el mismo teclado (ver `app/_layout.tsx`),
-   * los dos movimientos se cancelan justo.
-   *
-   * El hilo y el campo comparten este estilo a propósito: es el mismo número,
-   * así que no hay forma de que uno llegue antes que el otro.
-   */
   const sobreTeclado = useAnimatedStyle(() => ({
     transform: [{ translateY: -Math.max(0, tecladoVivo.height.value - cascara) }],
   }))
@@ -458,17 +456,18 @@ export default function Home() {
    */
   const Movible = TECLADO_FISICO ? View : Animated.View
   const seguirTeclado = TECLADO_FISICO ? null : sobreTeclado
+  const espacioTeclado = useAnimatedStyle(() => ({
+    marginBottom: Math.max(0, tecladoVivo.height.value - cascara),
+  }))
+  const ajusteHilo = Platform.OS === 'ios' ? espacioTeclado : seguirTeclado
+  const espacioComposer = Platform.OS === 'ios' && composerHeight > 0
+    ? composerHeight + 12
+    : (draft.song ? 168 : 92)
 
-  /*
-   * Al abrir una conversación, el hilo arranca en el último mensaje.
-   *
-   * Ya no hace falta empujarlo al aparecer el teclado: el hilo **se traslada
-   * entero** junto al campo, así que lo que estabas leyendo sigue exactamente
-   * donde estaba, un teclado más arriba. Antes se reacomodaba el hueco de abajo
-   * y había que corregir el desplazamiento a mano, con un `setTimeout` que se
-   * veía llegar tarde.
-   */
+  // Cuando el teclado cambia el viewport, sólo seguimos el último mensaje
+  // si la persona ya estaba allí; leer mensajes anteriores conserva su lugar.
   const hilo = useRef<FlatList<Message>>(null)
+  const altoContenidoHilo = useRef(0)
   /**
    * El hilo que ya se llevó al final.
    *
@@ -502,6 +501,7 @@ export default function Home() {
    */
   const ubicarHiloAlFinal = useCallback(
     (_ancho: number, alto: number) => {
+      altoContenidoHilo.current = alto
       if (!pegadoAlFinal.current || messages.length === 0) return
       /*
        * `scrollToOffset` con el alto que trae el evento, y no `scrollToEnd`.
@@ -567,7 +567,7 @@ export default function Home() {
    * dos casos el techo vale 0.
    */
   const arriba = useSafeAreaInsets()
-  const sinHeader = !suelto || (!music && chatAbierto)
+  const sinHeader = !suelto || (!music && chatAbierto) || (Platform.OS === 'ios' && music && (view.kind === 'playlist' || view.kind === 'library'))
   const headerFlota = suelto && !sinHeader
   const techo = useTecho()
   useEffect(() => {
@@ -626,6 +626,26 @@ export default function Home() {
      tecla no la re-renderiza entera. El campo de arriba, que sí necesita lo
      inmediato, es su propia hoja (`CampoBusquedaArriba`). */
   const conversationQuery = useConsulta()
+  const campoBusquedaActivo = useBuscando()
+
+  // Un solo camino para la fila móvil y el campo lateral. También vuelve a
+  // resultados si se escribe desde un artista o una categoría abiertos.
+  useEffect(() => {
+    registerBusquedaHandler(value => {
+      if (value.trim()) {
+        setSearchingContacts(!music || consultaRespondida !== `musica:${value.trim()}`)
+        if (music && view.kind !== 'search') go({ kind: 'search' })
+      } else {
+        setTrackResults([])
+        setArtistResults([])
+        setSearchResults([])
+        setSearchError(null)
+        setSearchingContacts(false)
+        setConsultaRespondida('')
+      }
+    })
+    return () => registerBusquedaHandler(null)
+  }, [music, view.kind, go, consultaRespondida])
 
 
   /** Relee la biblioteca; la lista abierta se refresca con lo que llega. */
@@ -652,20 +672,18 @@ export default function Home() {
     registerTabHandler((tab) => {
       if (tab === 'perfil') return
       setMusic(tab !== 'chats')
+      dejarCara()
+      if (tab !== 'buscar') cerrarBusqueda()
       if (tab === 'chats') {
         setChatAbierto(false)
         return
       }
-      /* Tocar la lupa **abre el campo**, no solo la pestaña. El buscador al pie
-         solo se dibuja mientras buscás, así que sin esto entrar a «Buscar»
-         mostraba el historial y ningún lugar donde escribir. Volver a tocarla
-         con el teclado ya cerrado lo trae de nuevo. */
-      /* La lupa abre el buscador de abajo, que es donde vive el campo. Y
-         cualquier otra pestaña lo cierra y se lleva lo escrito: volver a entrar
-         con el término viejo mostraría resultados de algo que ya no estabas
-         buscando. */
-      if (tab === 'buscar') abrirBusqueda('Buscá una canción o un artista')
-      else cerrarBusqueda()
+      if (tab === 'buscar') {
+        Keyboard.dismiss()
+        searchRef.current?.blur()
+        cerrarBusqueda()
+        abrirBusqueda('Canciones y artistas', false)
+      }
       /* Entrar a «Listas» relee la biblioteca: pudiste haber creado una desde
          otro lado. Ver el efecto de `AppState` más abajo. */
       if (tab === 'listas') void loadPlaylists()
@@ -679,7 +697,7 @@ export default function Home() {
       setAt(0)
     })
     return () => registerTabHandler(null)
-  }, [loadPlaylists])
+  }, [loadPlaylists, dejarCara])
 
   /*
    * Poner una cara de la música, venga de donde venga.
@@ -820,6 +838,8 @@ export default function Home() {
     if (music) {
       searchMusic(term, controller.signal)
         .then(({ tracks, artists }) => {
+          if (controller.signal.aborted) return
+          setConsultaRespondida(`musica:${term}`)
           setTrackResults(tracks)
           setArtistResults(artists)
           setSearchError(
@@ -828,7 +848,8 @@ export default function Home() {
           setSearchingContacts(false)
         })
         .catch((cause: unknown) => {
-          if ((cause as Error).name === 'AbortError') return
+          if (controller.signal.aborted || (cause as Error).name === 'AbortError') return
+          setConsultaRespondida(`musica:${term}`)
           setSearchError('No se pudo buscar.')
           setSearchingContacts(false)
         })
@@ -1139,7 +1160,14 @@ export default function Home() {
    * cada cliente de YouTube y son seis renglones que empujaban «Tus listas»
    * fuera del panel. Y encima se decía dos veces, arriba y abajo.
    */
-  async function playSearchResult(track: TrackResult) {
+  async function playSearchResult(track: TrackResult, resultados?: TrackResult[]) {
+    // El motor resuelve la actual con prioridad y prepara las siguientes al sonar.
+    // Jam conserva su contrato: sólo se envía audio ya resuelto al grupo.
+    if (!hayJam()) {
+      const cola = colaBusqueda(track, resultados)
+      playQueue(cola.tracks, cola.index, null)
+      return
+    }
     setAddingTrack(track.videoId)
     try {
       playQueue([await resolveForPlayback(track)], 0, null)
@@ -1151,10 +1179,12 @@ export default function Home() {
   }
 
   /** Sumar a la cola: suena cuando termine lo de ahora, sin tocar ninguna lista. */
-  async function enqueueSearchResult(track: TrackResult) {
+  async function enqueueSearchResult(track: TrackResult, siguiente = false) {
     setAddingTrack(track.videoId)
     try {
-      enqueue(await resolveForPlayback(track))
+      const resolved = await resolveForPlayback(track)
+      if (siguiente) enqueueNext(resolved)
+      else enqueue(resolved)
     } catch (e) {
       // Solo por aviso, por lo mismo que `playSearchResult`.
       avisar(`No se pudo encolar: ${mensajeError(e)}`, true)
@@ -1221,9 +1251,9 @@ export default function Home() {
    * todos—: la cola compartida exige el audio resuelto y resolver un disco
    * entero antes de poder tocarlo sería esperar minutos.
    */
-  function playAlbum(tracks: AlbumTrack[], artwork: string, at: number) {
+  function playAlbum(tracks: AlbumTrack[], artwork: string, at: number | null) {
     if (!collection) return
-    const elegida = tracks[at]
+    const elegida = tracks[at ?? 0]
     if (!elegida) return
     if (hayJam()) {
       void playSearchResult(albumTrackAsResult(elegida, artwork))
@@ -1242,10 +1272,9 @@ export default function Home() {
       durationMs: t.durationMs,
       truePeak: undefined,
     }))
-    playQueue(cola, at, {
-      id: `coleccion:${collection.kind}:${collection.id}`,
-      name: collection.name,
-    })
+    const origen = { id: `coleccion:${collection.kind}:${collection.id}`, name: collection.name }
+    if (at === null) playCollection(cola, origen)
+    else playQueue(cola, at, origen)
   }
 
   /** Una canción de la portada, en la forma que entiende el resto de la app. */
@@ -1452,8 +1481,8 @@ export default function Home() {
      * acciones rápidas —el corazón, encolar, compartir—, después dónde
      * guardarla, después a dónde te lleva (con el nombre del disco y del
      * artista debajo, para no tener que abrir para saber), y al final lo que
-     * la deja en tu perfil. Quien la muestre en una lista le suma abajo lo que
-     * solo se puede hacer desde adentro: bajarla, quitarla.
+     * la deja en tu perfil. En una playlist, Descargar y Quitar se agregan
+     * al final de este mismo menú para los tres puntos y el menú contextual.
      */
     return [
       /*
@@ -1478,6 +1507,14 @@ export default function Home() {
           <IconHeart size={15} color={ICON_COLOR.muted} />
         ),
         sfSymbol: gustada ? 'heart.fill' : 'heart',
+      },
+      {
+        label: 'Poner a continuación',
+        onPress: () => void enqueueSearchResult(track, true),
+        disabled: !canEnqueueNext(),
+        subtitle: canEnqueueNext() ? undefined : 'El orden del Jam es compartido',
+        icon: <IconQueue size={15} color={ICON_COLOR.muted} />,
+        sfSymbol: 'text.line.first.and.arrowtriangle.forward',
       },
       {
         label: 'Agregar a la cola',
@@ -1900,25 +1937,6 @@ export default function Home() {
 
   function changeGlobalSearch(value: string) {
     setTermino(value)
-    /*
-     * Lo que pasa al escribir se decide **acá**, en el evento, y no en un
-     * efecto: es la respuesta a un gesto concreto.
-     *
-     * Con algo escrito, «buscando» se enciende ya —el campo muestra su rueda
-     * desde la primera tecla, aunque la consulta todavía no se haya asentado—.
-     * Al vaciar, los resultados se apagan en el acto: son de una búsqueda que
-     * ya no existe. Volver a poner el mismo valor no redibuja nada, así que
-     * esto no es un setState por tecla.
-     */
-    if (value.trim()) {
-      setSearchingContacts(true)
-      return
-    }
-    setTrackResults([])
-    setArtistResults([])
-    setSearchResults([])
-    setSearchError(null)
-    setSearchingContacts(false)
   }
 
   /**
@@ -1932,7 +1950,6 @@ export default function Home() {
    */
   function buscarDesdeLateral(value: string) {
     changeGlobalSearch(value)
-    if (music && value.trim() && view.kind !== 'search') go({ kind: 'search' })
   }
 
   function chooseGlobalResult(result: ContactResult) {
@@ -1978,7 +1995,7 @@ export default function Home() {
       /* Y con el encabezado flotando tampoco va el de arriba: el contenido
          tiene que llegar hasta el borde para pasar por detrás del reloj y del
          velo. El margen del reloj lo pone el propio encabezado. */
-      edges={headerFlota ? [] : suelto ? ['top'] : ['top', 'bottom']}
+      edges={headerFlota || (Platform.OS === 'ios' && suelto && music && (view.kind === 'playlist' || view.kind === 'library')) ? [] : suelto ? ['top'] : ['top', 'bottom']}
     >
       {/* Sin margen ni hueco en ningún ancho: las columnas van de borde a
           borde y se separan por luminancia — ver `Panel`. */}
@@ -2004,7 +2021,7 @@ export default function Home() {
          * Los colores literales salen del token `background` (#121212):
          * `LinearGradient` no lee variables CSS.
          */}
-        {headerFlota ? (
+        {headerFlota && !HAY_BORDE_SCROLL_NATIVO ? (
           <LinearGradient
             pointerEvents="none"
             colors={[
@@ -2020,6 +2037,7 @@ export default function Home() {
           />
         ) : null}
         <View
+          collapsable={false}
           /* Flotando, su alto es el techo que cada lista reserva adentro. */
           onLayout={
             headerFlota
@@ -2044,6 +2062,7 @@ export default function Home() {
               : undefined
           }
         >
+          {headerFlota ? <BordeScrollNativo key={music ? view.kind : 'social'} /> : null}
           {/* En el teléfono el ícono no va pegado a la esquina: al abrir el
               panel, la tarjeta redondea justo ahí (radio 44) y la curva se lo
               comía. Corrido a la derecha queda fuera del mordisco. */}
@@ -2301,7 +2320,7 @@ export default function Home() {
                       playlists={playlists}
                       openId={openPlaylist?.id ?? null}
                       seccion={
-                        view.kind === 'home'
+                        view.kind === 'search' ? 'buscar' : view.kind === 'home'
                           ? 'inicio'
                           : view.kind === 'gustos'
                             ? 'gustos'
@@ -2323,6 +2342,7 @@ export default function Home() {
                       }
                       buscando={searchingContacts}
                       onInicio={vivo ? () => setTab('inicio') : nada}
+                      onExplorar={vivo ? () => setTab('buscar') : nada}
                       onChats={
                         vivo
                           ? () => {
@@ -2443,7 +2463,7 @@ export default function Home() {
              * cierra por `dejarCara`.
              */
             <CentroSonando cara={caraCentro} pista={pistaSonando} sonando={sonandoAhora} />
-          ) : openPlaylist ? (
+          ) : music && openPlaylist ? (
             <PlaylistView
               playlist={openPlaylist}
               reloadToken={reloadToken}
@@ -2522,23 +2542,21 @@ export default function Home() {
                 <SearchDropdown
                   visible
                   embedded
-                  loading={searchingContacts}
+                  loading={searchingContacts || consultaRespondida !== `musica:${conversationQuery.trim()}`}
                   results={trackResults}
                   error={searchError}
                   /* El historial se escribe al **elegir**, no al teclear: lo
                      escrito a medias no es una búsqueda, es el camino hacia
                      una. Ver `state/recientes`. */
                   onSelect={(track) => {
-                    recordarBusqueda(conversationQuery)
-                    void playSearchResult(track)
-                  }}
-                  onPlay={(track) => {
-                    recordarBusqueda(conversationQuery)
-                    void playSearchResult(track)
+                    Keyboard.dismiss()
+                    recordarCancion(track)
+                    void playSearchResult(track, trackResults)
                   }}
                   artists={artistResults}
                   onOpenArtist={(a) => {
-                    recordarBusqueda(conversationQuery)
+                    Keyboard.dismiss()
+                    recordarArtista(a)
                     changeGlobalSearch('')
                     go({ kind: 'artist', id: a.id, name: a.name })
                   }}
@@ -2550,15 +2568,29 @@ export default function Home() {
                      pasan por detrás del velo al desplazar. */
                   topInset={techo}
                 />
-                ) : (
+                ) : campoBusquedaActivo ? (
                   /* Sin nada escrito, lo último que buscaste. Corre por debajo
                      del campo y se difumina a través del vidrio. */
                   <SearchRecents
-                      onPick={(termino) => {
+                    onPlay={(track) => {
+                      Keyboard.dismiss()
+                      recordarCancion(track)
+                      void playSearchResult(track)
+                    }}
+                    onOpenArtist={(artist) => {
+                      Keyboard.dismiss()
+                      recordarArtista(artist)
+                      changeGlobalSearch('')
+                      go({ kind: 'artist', id: artist.id, name: artist.name })
+                    }}
+                    menuFor={menuForTrack}
+                    onPick={(termino) => {
                       changeGlobalSearch(termino)
                       searchRef.current?.focus()
                     }}
                   />
+                ) : (
+                  <SearchExplore onOpenGenero={(g) => go({ kind: 'genero', params: g.params, name: g.name })} />
                 )}
 
               </View>
@@ -2571,6 +2603,7 @@ export default function Home() {
             <PlaylistLibrary
               playlists={playlists}
               openId={null}
+              onBack={() => canGoBack ? goBack() : setTab('inicio')}
               soundingId={soundingPlaylistId}
               showCollapse={false}
               onCollapse={() => undefined}
@@ -2586,7 +2619,7 @@ export default function Home() {
                las de cualquier canción; «quitar» lo agrega la vista, porque
                quitar de acá ES desmarcar. */
             <MeGustaView
-              onSearch={() => searchRef.current?.focus()}
+              onSearch={() => setTab('buscar')}
               menuFor={(t) => menuForTrack(playlistTrackAsResult(t))}
             />
           ) : music && collection ? (
@@ -2601,12 +2634,12 @@ export default function Home() {
                 <AlbumPanel
                   albumId={collection.id}
                   kind={collection.kind}
-                  onBack={goBack}
+                  onBack={() => canGoBack ? goBack() : setTab('inicio')}
                   menuFor={(track, artwork) => menuForTrack(albumTrackAsResult(track, artwork))}
                   /* El disco entero como cola, no la primera suelta: es la
                      misma promesa que una playlist. Ver `playAlbum`. */
-                  onPlayAll={(tracks, artwork) => playAlbum(tracks, artwork, 0)}
-                  onPlay={(track, artwork, tracks, at) => playAlbum(tracks, artwork, at)}
+                  onPlayAll={(tracks, artwork) => playAlbum(tracks, artwork, null)}
+                  onPlay={(_track, artwork, tracks, at) => playAlbum(tracks, artwork, at)}
                   onAdd={(track, artwork) => {
                     const asResult = albumTrackAsResult(track, artwork)
                     if (openPlaylist) void addToPlaylist(openPlaylist, asResult)
@@ -2627,7 +2660,7 @@ export default function Home() {
               >
                 <ArtistPage
                   artistId={view.id}
-                  onBack={goBack}
+                  onBack={() => canGoBack ? goBack() : setTab('inicio')}
                   onPlaySong={(song: ArtistSong) => void playSearchResult(song)}
                   onOpenAlbum={(item: HomeItem) =>
                     go({
@@ -2741,11 +2774,11 @@ export default function Home() {
                        * la misma esquina.
                        */}
                       <BotonSuperficie
-                        {...estadoControlWeb('none')}
+                        {...superficieInteractivaWeb('row')}
                         accessibilityRole="button"
                         accessibilityLabel={`Ver el perfil de ${contactName}`}
                         onPress={() => router.push(`/perfil/${contact.username}`)}
-                        className="min-h-11 min-w-0 flex-1 flex-row items-center gap-3 active:opacity-70"
+                        className="min-h-14 min-w-0 flex-1 flex-row items-center gap-3 rounded-xl px-3 py-2 active:opacity-70"
                       >
                         <Avatar name={contactName} path={contact.avatarPath} size={40} />
                         <View className="min-w-0 flex-1 gap-0.5">
@@ -2768,9 +2801,14 @@ export default function Home() {
                       <Text className="text-destructive text-subheadline">{error}</Text>
                     </View>
                   ) : (
-                    <Movible style={[{ flex: 1, minHeight: 0 }, seguirTeclado]}>
+                    <Movible style={[{ flex: 1, minHeight: 0, overflow: 'hidden' }, ajusteHilo]}>
                     <FlatList
                       ref={hilo}
+                      onLayout={Platform.OS === 'ios' ? () => {
+                        if (pegadoAlFinal.current && altoContenidoHilo.current > 0) {
+                          hilo.current?.scrollToOffset({ offset: altoContenidoHilo.current, animated: false })
+                        }
+                      } : undefined}
                       data={messages}
                       keyExtractor={(message) => message.id}
                       /* Cada vez que la lista cambia de alto: es donde se
@@ -2784,7 +2822,7 @@ export default function Home() {
                       /* En el teléfono la barra de desplazamiento no aporta y
                          se dibuja sobre las burbujas. */
                       showsVerticalScrollIndicator={!suelto}
-                      contentContainerClassName="gap-2 p-4"
+                      contentContainerClassName="p-4"
                       contentContainerStyle={{
                         flexGrow: 1,
                         justifyContent: 'flex-end',
@@ -2793,7 +2831,7 @@ export default function Home() {
                            campo y un respiro. Sin el respiro, el último mensaje
                            queda pegado al campo y parece cortado; con más, se
                            abre un hueco muerto. */
-                        paddingBottom: pisoChat + (draft.song ? 168 : 92),
+                        paddingBottom: pisoChat + espacioComposer,
                       }}
                       ListEmptyComponent={
                         /* Cargando no es lo mismo que vacío: mientras el hilo
@@ -2808,10 +2846,16 @@ export default function Home() {
                           <EmptyThread contactName={contactName} />
                         )
                       }
-                      renderItem={({ item }) => (
+                      renderItem={({ item, index: messageIndex }) => (
                         <ChatBubble
                           message={item}
+                          previous={messages[messageIndex - 1]}
+                          next={messages[messageIndex + 1]}
+                          onDetails={() => showDetail ? setSelectedId(item.id) : openMessage(item.id)}
                           mine={isSentBy(item, myUid)}
+                          userId={myUid}
+                          onEdit={() => requestMessageAction('edit', item)}
+                          onDelete={() => requestMessageAction('delete', item)}
                           selected={showDetail && selected?.id === item.id}
                           playing={player.currentId === item.id && player.playing}
                           sonando={player.currentId === item.id}
@@ -2865,7 +2909,7 @@ export default function Home() {
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      height: pisoChat + (draft.song ? 220 : 145),
+                      height: pisoChat + espacioComposer + 52,
                     }}
                   />
                   )}
@@ -2886,6 +2930,10 @@ export default function Home() {
                    * izquierda.
                    */}
                   <Movible
+                    onLayout={Platform.OS === 'ios' ? (event) => {
+                      const height = Math.ceil(event.nativeEvent.layout.height)
+                      setComposerHeight(previous => previous === height ? previous : height)
+                    } : undefined}
                     style={[
                       {
                         position: 'absolute',
@@ -2898,10 +2946,13 @@ export default function Home() {
                       seguirTeclado,
                     ]}
                   >
+                    {editingInline && messageAction ? <MessageActionDialog inline
+                      key={`edit:${messageAction.pairId}:${messageAction.message.id}`}
+                      target={messageAction} onClose={() => setMessageAction(null)} /> : <>
                     {draft.song ? (
                       <Glass radius={14} style={HAY_VIDRIO ? {} : { backgroundColor: 'rgb(24,24,24)' }}>
-                      <View className="flex-row items-center gap-3 p-2.5">
-                        {draft.song.artworkUrl ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, minHeight: 64 }}>
+                        {draft.song.artworkPath || draft.song.artworkUrl ? (
                           <Image
                             source={{
                               uri:
@@ -2926,7 +2977,7 @@ export default function Home() {
                             {draft.song.artist} · {Math.round(draft.song.durationMs / 1000)} s
                           </Text>
                         </View>
-                        <IconButton label="Quitar canción" symbol="xmark" onPress={() => setDraft({ song: null })} icon={<IconClose size={16} color={ICON_COLOR.muted} />} />
+                        <IconButton label="Quitar canción" symbol="xmark" lado={44} size={17} onPress={() => setDraft({ song: null })} icon={<IconClose size={16} color={ICON_COLOR.muted} />} />
                       </View>
                       </Glass>
                     ) : null}
@@ -3014,6 +3065,7 @@ export default function Home() {
                         )}
                       </BotonVidrio>
                     </View>
+                    </>}
                   </Movible>
                 </View>
               ) : (
@@ -3104,6 +3156,8 @@ export default function Home() {
           ) : null}
         </View>
       </View>
+      {messageAction && !editingInline ? <MessageActionDialog key={`${messageAction.kind}:${messageAction.message.id}`}
+        target={messageAction} onClose={() => setMessageAction(null)} /> : null}
     </SafeAreaView>
   )
 }
@@ -3315,7 +3369,7 @@ function ConversationSidebar({
       )}
 
       <FlatList
-        renderScrollComponent={onBuscar ? (props) => <ScrollArea {...props} /> : undefined}
+        renderScrollComponent={(props) => <ScrollArea {...props} />}
         style={{ flex: 1, minHeight: 0 }}
         data={conversations}
         keyExtractor={(conversation) => conversation.pairId}

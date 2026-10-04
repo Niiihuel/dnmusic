@@ -1,3 +1,4 @@
+import type { EstadoDiscordRemoto, MensajeControlDiscord } from '../services/protocoloDiscordRemoto'
 import { LATIDO_ESCUCHA_MS, VIGENCIA_ESCUCHA_MS } from '../services/lecturaViva'
 import { AppState } from 'react-native'
 import { getSupabase } from '../lib/supabase'
@@ -61,6 +62,7 @@ export type TransferenciaEscucha = { destino: string; estado: 'pendiente' | 'con
 export type ActividadEscucha = { deviceId: string | null; nombre: string | null; estado: 'sonando' | 'pausado' | 'preparando' | 'desconectado' | 'inactivo' }
 type Estado = {
   conexion: ConexionEscucha
+  sesionControl: string | null
   transferencia: TransferenciaEscucha | null
   actividad: ActividadEscucha
   sonandoLocal: boolean
@@ -84,7 +86,7 @@ type Estado = {
 }
 
 const store = createStore<Estado>({
-  conexion: 'desconectado', transferencia: null,
+  conexion: 'desconectado', sesionControl: null, transferencia: null,
   actividad: { deviceId: null, nombre: null, estado: 'inactivo' },
   sonandoLocal: false, ahora: Date.now(),
   escucha: null,
@@ -109,6 +111,10 @@ let desuscribir: Unsubscribe | null = null
 let inicio: Promise<void> | null = null
 /** Enviar el «tomá vos» a un aparato: lo arma el canal en `iniciarEscucha`. */
 let mandarAImpl: ((destino: string, suena?: boolean, revision?: number) => Promise<void>) | null = null
+let mandarControlDiscordImpl: ((mensaje: MensajeControlDiscord) => Promise<void>) | null = null
+let anunciarDiscordImpl: ((estado: EstadoDiscordRemoto | null) => void) | null = null
+let discordAnunciado: { userId: string; estado: EstadoDiscordRemoto } | null = null
+let recibirControlDiscord: ((mensaje: unknown) => void) | null = null
 let soltarPlayback: (() => void) | null = null
 let refetchTimer: ReturnType<typeof setTimeout> | null = null
 let publicarTimer: ReturnType<typeof setTimeout> | null = null
@@ -402,6 +408,9 @@ function aplicarFila(fila: Escucha) {
       posicionVisible(fila, s.offsetMs),
     )
     aplicandoRemoto = false
+  } else {
+    // Mostrar canción y segundo juntos, sin esperar otro viaje para la cola.
+    volcar(null)
   }
   programarRefetch()
   ajustarTicker()
@@ -484,6 +493,8 @@ async function conectarEscucha(v: number): Promise<void> {
   store.set({ deviceId })
   if (v !== version) return
   const sub = suscribirEscucha(userId, deviceId, {
+    onSesionControl: sesionControl => { if (v === version) store.set({ sesionControl }) },
+    onControlDiscord: mensaje => { if (v === version) recibirControlDiscord?.(mensaje) },
     onFila: (fila) => {
       if (v === version) aplicarFila(fila)
     },
@@ -509,6 +520,9 @@ async function conectarEscucha(v: number): Promise<void> {
   })
   desuscribir = sub.desuscribir
   mandarAImpl = sub.mandarA
+  mandarControlDiscordImpl = sub.mandarControlDiscord ?? null
+  anunciarDiscordImpl = sub.anunciarDiscord ?? null
+  if (discordAnunciado?.userId === uid) anunciarDiscordImpl?.(discordAnunciado.estado)
   await sub.listo
   if (v !== version) return
   soltarPlayback = subscribePlayback(() => { actualizarActividad(); alCambiarPlayback() })
@@ -536,6 +550,9 @@ export function desconectarEscucha() {
   desuscribir?.()
   desuscribir = null
   mandarAImpl = null
+  mandarControlDiscordImpl = null
+  anunciarDiscordImpl = null
+  discordAnunciado = null
   soltarPlayback?.()
   soltarPlayback = null
   if (refetchTimer) {
@@ -552,12 +569,22 @@ export function desconectarEscucha() {
   }
   publicado = null
   colaPendiente = false
-  store.set({ escucha: null, presentes: null, espejo: false, pendiente: null, offsetMs: 0, deviceId: null, conexion: 'desconectado', transferencia: null, selectorAbierto: false, sonandoLocal: false })
+  store.set({ escucha: null, presentes: null, espejo: false, pendiente: null, offsetMs: 0, deviceId: null, conexion: 'desconectado', sesionControl: null, transferencia: null, selectorAbierto: false, sonandoLocal: false })
 }
 
 /* La app vuelve al frente: lo que haya pasado mientras tanto, de una vez. */
 const appStateSubscription = AppState.addEventListener('change', (estado) => {
-  if (estado === 'active' && uid && store.get().escucha) programarRefetch()
+  if (estado !== 'active' || !uid) return
+  const s = store.get()
+  if (!s.escucha) return
+  // Repintar el reloj ya conocido antes del refetch: al despertar los timers
+  // pueden haber quedado detenidos, pero la canción de la PC siguió avanzando.
+  if (s.espejo && s.escucha.track && !hayJam() && filaVigente(s)) {
+    aplicandoRemoto = true
+    escuchaTransporte(suenaEnOtro(s), posicionVisible(s.escucha, s.offsetMs))
+    aplicandoRemoto = false
+  }
+  programarRefetch()
 })
 
 // Metro ejecuta dispose antes de reevaluar el módulo: no quedan listeners del
@@ -665,13 +692,14 @@ async function ejecutarPublicacion() {
   const sig = actual ? colaSigDe(p) : ''
   const suena = actual !== null && p.wantPlay && s.sonandoLocal
   const posicion = actual ? p.positionMs : 0
+  const medidoEn = Date.now()
 
   try {
     const revision = await publicarEscucha({
       deviceId: s.deviceId,
       deviceNombre: nombreDispositivo(),
       revision: s.escucha?.revision ?? 0,
-      track: actual,
+      track: actual && p.durationMs > 0 ? { ...actual, durationMs: p.durationMs } : actual,
       suena,
       posicionMs: posicion,
       cola:
@@ -685,7 +713,7 @@ async function ejecutarPublicacion() {
       suena,
       colaSig: sig,
       posicionMs: posicion,
-      enviadoEn: Date.now(),
+      enviadoEn: medidoEn,
     }
     colaPendiente = false
     // Confirmada por el RPC: la fila es nuestra. El eco trae esta misma
@@ -697,7 +725,7 @@ async function ejecutarPublicacion() {
         track: actual,
         suena,
         posicionMs: posicion,
-        arrancadoEn: suena ? Date.now() + store.get().offsetMs : null,
+        arrancadoEn: suena ? medidoEn + store.get().offsetMs : null,
         revision,
         actualizadoEn: Date.now() + store.get().offsetMs,
       },
@@ -876,6 +904,7 @@ registerEscucha({
 
 /* ── Hooks ────────────────────────────────────────────────────────────────── */
 
+export const esEscuchaEspejo = () => store.get().espejo && !hayJam()
 export const useEscuchaEspejo = () => useStore(store, (s) => s.espejo && !hayJam())
 /** El nombre del aparato donde suena, o null si este no es un espejo. */
 export const useEscuchaEspejoNombre = () =>
@@ -915,15 +944,35 @@ const VACIO: DispositivoPresente[] = []
  */
 export function leerEscuchaParaIntegraciones() {
   const s = store.get(), p = getPlaybackState(), ahora = Date.now()
-  const local = !s.espejo && (!s.escucha || s.escucha.deviceId === s.deviceId)
-  if (hayJam()) return null
+  // Un Jam también puede sonar en esta PC. Sólo el motor confirma escucha:
+  // un participante que controla otra salida no inventa actividad local.
+  const local = hayJam() || (!s.espejo && (!s.escucha || s.escucha.deviceId === s.deviceId))
   if (local) {
     const track = p.manual ?? p.tracks[p.index]
     if (!track || !p.wantPlay || !s.sonandoLocal || p.error) return null
-    return { track, sonando: true, posicionMs: p.positionMs, actualizadoEn: ahora }
+    return { track: p.durationMs > 0 ? { ...track, durationMs: p.durationMs } : track, sonando: true, posicionMs: p.positionMs, actualizadoEn: ahora }
   }
   const e = s.escucha
   if (!e?.track || !e.suena || s.conexion !== 'conectado' || !s.presentes || !duenoPresente(s) || !filaVigente(s) || e.actualizadoEn === null) return null
   return { track: e.track, sonando: true, posicionMs: posicionVisible(e, s.offsetMs), actualizadoEn: e.actualizadoEn - s.offsetMs }
 }
 export const suscribirActividadParaIntegraciones = (fn: () => void) => store.subscribe(fn)
+
+
+/** Transporte efímero sobre el mismo canal privado de la cuenta. */
+export function leerConexionDiscord() {
+  const s = store.get()
+  return { userId: uid, deviceId: s.deviceId, sesion: s.sesionControl, conexion: s.conexion, presentes: s.presentes ?? VACIO }
+}
+export function anunciarDiscordEnDispositivos(userId: string, estado: EstadoDiscordRemoto | null) {
+  discordAnunciado = estado ? { userId, estado } : null
+  if (uid === userId) anunciarDiscordImpl?.(estado)
+}
+export function mandarControlDiscord(mensaje: MensajeControlDiscord): Promise<void> {
+  if (!mandarControlDiscordImpl || store.get().conexion !== 'conectado') return Promise.reject(new Error('Conectate para controlar Discord en tu PC.'))
+  return mandarControlDiscordImpl(mensaje)
+}
+export function suscribirControlDiscord(callback: (mensaje: unknown) => void) {
+  recibirControlDiscord = callback
+  return () => { if (recibirControlDiscord === callback) recibirControlDiscord = null }
+}

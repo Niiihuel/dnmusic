@@ -2,6 +2,7 @@ import { artworkSource } from '../lib/artwork'
 import { getSupabase, SUPABASE_ANON_KEY } from '../lib/supabase'
 import { temaDe, type Tema } from '../lib/tema'
 import type { Encuadre } from './profile'
+import { assertStorageBudget } from './storageBudget'
 
 /** Un encuadre del payload, o null. Mismo criterio que en `profile`. */
 function encuadreDe(v: unknown): Encuadre | null {
@@ -9,9 +10,12 @@ function encuadreDe(v: unknown): Encuadre | null {
   if (!r || typeof r !== 'object') return null
   const { x, y, escala, rotacion } = r
   if (typeof x !== 'number' || typeof y !== 'number' || typeof escala !== 'number') return null
-  return typeof rotacion === 'number' && Number.isFinite(rotacion) && rotacion !== 0
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(escala)) return null
+  const base = typeof rotacion === 'number' && Number.isFinite(rotacion) && rotacion !== 0
     ? { x, y, escala, rotacion }
     : { x, y, escala }
+  return typeof r.aspecto === 'number' && Number.isFinite(r.aspecto) && r.aspecto > 0
+    ? { ...base, aspecto: r.aspecto } : base
 }
 
 /**
@@ -591,6 +595,7 @@ export async function uploadIlustracion(
 ): Promise<string> {
   validarIlustracion(file, mime)
   const path = rutaDeIlustracion(ownerId, fileName, mime)
+  await assertStorageBudget(file)
   const { error } = await getSupabase()
     .storage.from('showcases')
     .upload(path, file, { contentType: mime, upsert: true })
@@ -618,6 +623,7 @@ export async function uploadIlustracionConProgreso(
 ): Promise<string> {
   validarIlustracion(file, mime)
   const path = rutaDeIlustracion(ownerId, fileName, mime)
+  await assertStorageBudget(file)
   const supabase = getSupabase()
   const { data, error } = await supabase.storage
     .from('showcases')

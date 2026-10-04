@@ -15,21 +15,18 @@ import type { InterruptorProps } from './Interruptor.types'
  * VoiceOver diciendo «activado/desactivado», y que se actualice solo cuando
  * Apple cambie el control.
  *
- * **El verde no aparece.** `seedColor` siembra el tinte del entorno de SwiftUI,
- * así que el encendido es el blanco —el acento de esta app— y no el verde del
- * sistema, que sería el único color de una interfaz que es toda gris a
- * propósito (docs/DESIGN.md). El `colorScheme` va fijo en oscuro por lo mismo
- * que en `Segmentado`: la app no sigue el tema del sistema.
+ * Conserva el verde semántico del estado activo y la perilla blanca.
+ * El área segura la resuelve la fila que aloja el control.
  */
 export function Interruptor({ activo, onCambiar, compacto = false, disabled = false, rotulo }: InterruptorProps) {
   return (
     <Host
       matchContents
+      ignoreSafeArea="all"
       colorScheme="dark"
-      seedColor="#FFFFFF"
       /* El control tiene su tamaño y el sistema lo escala solo; `compacto` no
          cambia el dibujo, solo lo que la fila reserva a su alrededor. */
-      style={compacto ? { width: 44 } : undefined}
+      style={{ minWidth: 51, minHeight: compacto ? 32 : 44 }}
     >
       <Toggle
         isOn={activo}
@@ -37,7 +34,7 @@ export function Interruptor({ activo, onCambiar, compacto = false, disabled = fa
         modifiers={[
           accessibilityLabel(rotulo),
           toggleStyle('switch'),
-          tint('#FFFFFF'),
+          tint('#34C759'),
           deshabilitado(disabled),
         ]}
       />

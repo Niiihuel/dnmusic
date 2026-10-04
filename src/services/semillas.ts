@@ -74,16 +74,6 @@ export async function guardarSemillas(semillas: Semilla[]): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-/** Arranca una semilla. Para una pantalla futura de reelección. */
-export async function quitarSemilla(kind: Semilla['kind'], ref: string): Promise<void> {
-  const { error } = await getSupabase()
-    .from('semillas')
-    .delete()
-    .eq('kind', kind)
-    .eq('ref', ref)
-  if (error) throw new Error(error.message)
-}
-
 /*
  * La bandera de onboarding vive **en el aparato**, no en la base.
  *

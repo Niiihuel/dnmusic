@@ -1,13 +1,14 @@
 import { usePreferencia } from './ajustes'
 import { createStore, useStore } from './store'
+import type { PasoVersion } from '../lib/novedades'
 
 /**
  * El actualizador del escritorio, visto desde la app.
  *
  * Vive en un store por lo mismo que el aviso de abajo: el estado lo publica el
  * proceso principal de Electron, y lo miran **dos** lugares que no se conocen
- * entre sí —la píldora de «hay una nueva» que dibuja el layout y la pantalla de
- * Novedades—. Suscribirse dos veces al mismo puente daría dos verdades y una de
+ * entre sí —la píldora de «hay una nueva» que dibuja el layout y los ajustes de
+ * Actualizaciones—. Suscribirse dos veces al mismo puente daría dos verdades y una de
  * ellas siempre estaría un evento atrás.
  *
  * En la web y en el teléfono el puente no existe: `hayActualizador` es falso,
@@ -16,7 +17,7 @@ import { createStore, useStore } from './store'
  */
 
 /** Qué trae la versión que viene, sacado del feed (ver desktop/src/actualizador.ts). */
-export type NotasVersion = { titulo: string; cambios: string[]; fecha: string | null }
+export type NotasVersion = { titulo: string; cambios: string[]; fecha: string | null; pasos?: PasoVersion[] }
 
 /** El estado tal cual lo publica `desktop/src/actualizador.ts`. */
 export type EstadoActualizacion =
@@ -136,8 +137,8 @@ export const useActualizacion = () => useStore(store, (s) => s.estado)
  * en cada lectura y `useSyncExternalStore` lo leería como cambio constante: por
  * eso se devuelve el objeto guardado, no uno derivado.)
  */
-function seleccionarAviso(s: Estado): Extract<EstadoActualizacion, { fase: 'lista' }> | null {
-  return s.estado.fase === 'lista' && s.descartada !== s.estado.version ? s.estado : null
+function seleccionarAviso(s: Estado): Extract<EstadoActualizacion, { fase: 'lista' | 'esperando-silencio' | 'bajando' }> | null {
+  return (s.estado.fase === 'lista' || s.estado.fase === 'esperando-silencio' || s.estado.fase === 'bajando') && s.descartada !== s.estado.version ? s.estado : null
 }
 
 /** La versión lista para instalar, con sus notas. La usa la píldora. */

@@ -1,17 +1,15 @@
-import { Fragment, useCallback, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { Platform, Pressable, Text, useWindowDimensions, View, type ScrollView as RNScrollView } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   AjustesCompactos,
+  AjustesNativos,
   FilaAjuste,
   FilaCuenta,
   FilaInterruptor,
   FilaOpciones,
   GrupoAjustes,
-  ListaAjustes,
-  FilaAccion,
-  FilaDato,
   FilaConfirmable,
 } from '../../src/ui/Ajustes'
 import { Avatar } from '../../src/ui/Avatar'
@@ -35,7 +33,10 @@ import {
   IconLogOut,
   IconMusic,
   IconSearch,
-  IconSparkles,
+  IconNovedades,
+  IconUpdate,
+  IconCursor,
+  IconDispositivo,
   IconTrash,
   IconUser,
   IconWifi,
@@ -58,15 +59,15 @@ import { mensajeError } from '../../src/lib/mensajeError'
 import { useKeyboardH, usePiso } from '../../src/state/shell'
 import { volver } from '../../src/lib/volver'
 import { NOVEDADES } from '../../src/lib/novedades'
-import { HAY_ACTUALIZADOR, buscarActualizacion, useActualizacion } from '../../src/state/actualizacion'
 import { DETALLE_PRECARGA_SESION, DETALLE_RED_PC, inventarioDescargas } from '../../src/ui/descargasControl'
 import { TECLADO_FISICO } from '../../src/lib/teclado'
 import { ListaSolicitudes } from '../../src/ui/SolicitudesAcceso'
 import { ConectarGoogle } from '../../src/ui/ConectarGoogle'
 import { DiscordIcon } from '../../src/ui/DiscordIcon'
 import { AjustesDiscord } from '../../src/ui/AjustesDiscord'
-import { HAY_DISCORD } from '../../src/state/discord'
-import { AdministrarActualizaciones } from '../../src/ui/AdministrarActualizaciones'
+import { AjustesActualizaciones } from '../../src/ui/AjustesActualizaciones'
+import { useResumenEcualizador } from '../../src/state/ecualizador'
+import { setModoTransicionGlobal, setSegundosCrossfade, useTransicionesGlobales } from '../../src/state/transiciones'
 
 /** Desde acá la pantalla es la de macOS: barra lateral con las categorías y el detalle al lado. */
 const ESCRITORIO_PX = 780
@@ -87,6 +88,8 @@ const normalizar = (valor: string) =>
 type Categoria = {
   id: string
   titulo: string
+  resumen: string
+  simbolo: string
   icono: (p: IconProps) => React.ReactElement
   /** Con qué palabras se la encuentra buscando. */
   palabras: string
@@ -98,12 +101,9 @@ type Categoria = {
 /**
  * Configuración, con la anatomía del sistema en las dos plataformas.
  *
- * **En el teléfono es Configuración de iOS**: el título grande, la fila de la
- * cuenta arriba con la cara y el nombre, y debajo los bloques de filas —placa
- * de ícono, rótulo, valor en gris, chevron o interruptor— sin títulos de
- * sección (la raíz de Configuración no los lleva: cada bloque agrupa lo que va
- * junto y su pie explica lo que haga falta). El buscador **flota abajo**, como
- * en iOS 26, y la lista pasa por detrás.
+ * **En iPhone es Configuración de iOS**: una raíz breve con la cuenta y las
+ * categorías. Cada categoría abre su propio destino nativo, con gesto de
+ * regreso, barra translúcida y título administrados por NavigationStack.
  *
  * **En la compu es Ajustes del Sistema de macOS**: una barra lateral con el
  * buscador, la cuenta y la lista de categorías, y a la derecha el detalle de la
@@ -122,6 +122,8 @@ export default function Configuracion() {
   const cuentaAuth = useAuthUser()
   const dormirMin = useDormirMin()
   const modoReproduccion = useModoReproduccion()
+  const resumenEcualizador = useResumenEcualizador()
+  const transiciones = useTransicionesGlobales()
   const perfil = useMyProfile()
   const nombre = perfil?.displayName?.trim() || perfil?.username || 'Tu cuenta'
   const { items } = useDescargas()
@@ -129,18 +131,6 @@ export default function Configuracion() {
   const descargasManuales = inventario.filter(e => !e.descarga.temporal).length
   const cacheTemporal = inventario.length - descargasManuales
   const pendientes = useNovedadesPendientes()
-  const actualizacion = useActualizacion()
-  /* Lo que dice la fila a la derecha: en qué anda el actualizador. En reposo
-     muestra la versión instalada, que es lo que uno viene a mirar. */
-  const detalleActualizacion =
-    actualizacion.fase === 'buscando' ? 'Buscando…'
-    : actualizacion.fase === 'bajando' ? `Bajando ${actualizacion.porcentaje}%`
-    : actualizacion.fase === 'lista' ? `${actualizacion.version} lista`
-    : actualizacion.fase === 'esperando-silencio' ? `${actualizacion.version} en espera`
-    : actualizacion.fase === 'error' ? 'No se pudo comprobar'
-    : actualizacion.fase === 'apagado' ? actualizacion.motivo
-    : actualizacion.fase === 'sin-novedad' ? `${actualizacion.version} · al día`
-    : actualizacion.version || null
   const [busqueda, setBusqueda] = useState('')
   const { width } = useWindowDimensions()
   const escritorio = Platform.OS !== 'ios' && width >= ESCRITORIO_PX
@@ -160,9 +150,11 @@ export default function Configuracion() {
     {
       id: 'reproduccion',
       titulo: 'Reproducción',
+      resumen: 'Modo, ecualizador y transiciones',
+      simbolo: 'waveform',
       icono: IconDisc,
       palabras:
-        'reproducción modo orden aleatorio descubrimiento recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música diagnóstico audio errores fallos recuperación',
+        'reproducción modo orden aleatorio descubrimiento recomendaciones temporizador apagar dormir minutos pausa géneros artistas gustos música ecualizador graves agudos bandas presets sonido diagnóstico audio errores fallos recuperación mixes mixear playlist transiciones crossfade fusión crescendo',
       visible: true,
       bloques: (
         <>
@@ -199,6 +191,18 @@ export default function Configuracion() {
               ultima
             />
           </GrupoAjustes>
+          <GrupoAjustes pie="Estos ajustes afectan solo la música de DMusic. En cada playlist, «Mixear» permite crear variantes y elegir transiciones y sonido propios.">
+            <FilaAjuste rotulo="Ecualizador" detalle="10 bandas · presets personales · comparación A/B" valor={resumenEcualizador} icono={<IconSliders size={17} color={ICON_COLOR.muted} />}
+              onPress={() => router.push('/ajustes/ecualizador')} />
+            <FilaOpciones rotulo="Transición global" valor={transiciones.modo} opciones={[
+              { value: 'normal', label: 'Normal' },
+              { value: 'sin-pausa', label: 'Sin pausa' },
+              { value: 'crossfade', label: 'Crossfade' },
+            ]} onElegir={setModoTransicionGlobal} ultima={transiciones.modo !== 'crossfade'} />
+            {transiciones.modo === 'crossfade' ? <FilaOpciones rotulo="Duración" valor={transiciones.segundos}
+              opciones={[1, 2, 3, 4, 5, 6, 8, 10, 12].map(value => ({ value, label: `${value} s` }))}
+              onElegir={setSegundosCrossfade} ultima /> : null}
+          </GrupoAjustes>
           <GrupoAjustes pie="Consultá los fallos y recuperaciones recientes del audio en este dispositivo.">
             <FilaAjuste rotulo="Diagnóstico de audio" vacio="" icono={<IconDisc size={17} color={ICON_COLOR.muted} />}
               onPress={() => router.push('/ajustes/diagnostico-audio')} ultima />
@@ -209,6 +213,8 @@ export default function Configuracion() {
     {
       id: 'descargas',
       titulo: HAY_DESCARGAS ? 'Descargas y caché' : 'Precarga',
+      resumen: 'Música sin conexión y uso de datos',
+      simbolo: 'arrow.down.circle',
       icono: IconDownload,
       palabras: 'almacenamiento descargas caché cache automática precarga espacio límite wifi datos conexión bajadas sin conexión',
       visible: true,
@@ -243,8 +249,10 @@ export default function Configuracion() {
     {
       id: 'app',
       titulo: 'La app',
-      icono: IconSparkles,
-      palabras: 'novedades actualizaciones versión avisos ayudas cursor interfaz app rótulos',
+      resumen: 'Novedades y comportamiento',
+      simbolo: 'app.badge',
+      icono: IconDispositivo,
+      palabras: 'novedades avisos ayudas cursor interfaz app rótulos',
       visible: true,
       bloques: (
         <GrupoAjustes
@@ -257,59 +265,36 @@ export default function Configuracion() {
           {TECLADO_FISICO ? (
             <FilaInterruptor
               rotulo="Ayudas al pasar el cursor"
-              icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+              icono={<IconCursor size={17} color={ICON_COLOR.muted} />}
               activo={ajustes.ayudasCursor}
               onCambiar={(v) => setPreferencia('ayudasCursor', v)}
             />
           ) : null}
           <FilaInterruptor
             rotulo="Novedades al abrir"
-            icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+            icono={<IconNovedades size={17} color={ICON_COLOR.muted} />}
             activo={ajustes.novedadesAlAbrir}
             onCambiar={(v) => setPreferencia('novedadesAlAbrir', v)}
-            ultima={!HAY_ACTUALIZADOR}
+            ultima
           />
-          {HAY_ACTUALIZADOR ? (
-            <FilaInterruptor
-              rotulo="Avisar cuando haya una versión nueva"
-              icono={<IconDownload size={17} color={ICON_COLOR.muted} />}
-              activo={ajustes.avisosActualizacion}
-              onCambiar={(v) => setPreferencia('avisosActualizacion', v)}
-            />
-          ) : null}
-          {/*
-           * Buscar una versión nueva, acá y no en la barra de menú.
-           *
-           * Vivía en «Ayuda → Buscar actualizaciones» del menú del sistema, y
-           * ese menú dejó de estar a la vista cuando la ventana pasó a dibujar
-           * su propio cromo (ver `ui/BandaVentana`). Además es donde lo pone
-           * Apple: Ajustes del Sistema tiene su «Actualización de software»,
-           * no un menú escondido detrás de Alt.
-           */}
-          {HAY_ACTUALIZADOR ? (
-            <FilaAjuste
-              rotulo="Buscar actualizaciones"
-              valor={detalleActualizacion}
-              vacio=""
-              icono={<IconDownload size={17} color={ICON_COLOR.muted} />}
-              onPress={() => buscarActualizacion()}
-              ultima
-            />
-          ) : null}
         </GrupoAjustes>
       ),
     },
     {
       id: 'actualizaciones',
       titulo: 'Actualizaciones',
-      icono: IconDownload,
-      palabras: 'actualizaciones versiones mínima obligatoria opcional administración',
-      visible: esAdmin,
-      bloques: <AdministrarActualizaciones />,
+      resumen: 'Versión instalada y disponibilidad',
+      simbolo: 'arrow.triangle.2.circlepath',
+      icono: IconUpdate,
+      palabras: 'actualizaciones versión instalada descargar reiniciar novedades TestFlight tienda',
+      visible: true,
+      bloques: <AjustesActualizaciones />,
     },
     {
       id: 'accesos',
       titulo: 'Solicitudes de acceso',
+      resumen: 'Personas que quieren entrar a DMusic',
+      simbolo: 'person.2',
       icono: IconUser,
       palabras: 'administración aprobar rechazar solicitudes acceso cuentas google',
       visible: esAdmin,
@@ -331,14 +316,18 @@ export default function Configuracion() {
     {
       id: 'discord',
       titulo: 'Discord',
+      resumen: 'Presencia y actividad',
+      simbolo: 'bubble.left.and.bubble.right',
       icono: DiscordIcon,
       palabras: 'discord presencia compartir canción escuchando actividad',
-      visible: HAY_DISCORD,
+      visible: true,
       bloques: <AjustesDiscord />,
     },
     {
       id: 'privacidad',
       titulo: 'Privacidad',
+      resumen: 'Bloqueados e historial de escucha',
+      simbolo: 'hand.raised',
       icono: IconLock,
       palabras: 'privacidad datos bloqueados borrar historial escucha recomendaciones',
       visible: true,
@@ -362,6 +351,8 @@ export default function Configuracion() {
     {
       id: 'cuenta',
       titulo: 'Cuenta',
+      resumen: 'Perfil, Google y sesión',
+      simbolo: 'person.crop.circle',
       icono: IconUser,
       palabras: 'perfil foto nombre fuente tipografía espacio cerrar sesión salir cuenta conectar google vincular correo',
       visible: true,
@@ -408,7 +399,7 @@ export default function Configuracion() {
       <FilaAjuste
         rotulo="Novedades"
         valor={NOVEDADES[0]?.version}
-        icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+        icono={<IconNovedades size={17} color={ICON_COLOR.muted} />}
         globito={pendientes?.length || undefined}
         onPress={() => router.push('/ajustes/novedades')}
         ultima
@@ -458,7 +449,7 @@ export default function Configuracion() {
             <FilaAjuste
               rotulo="Novedades"
               valor={NOVEDADES[0]?.version}
-              icono={<IconSparkles size={17} color={ICON_COLOR.muted} />}
+              icono={<IconNovedades size={17} color={ICON_COLOR.muted} />}
               globito={pendientes?.length || undefined}
               onPress={() => router.push('/ajustes/novedades')}
               ultima
@@ -535,19 +526,17 @@ function Telefono({
      apoya sobre él. La lista reserva su alto para llegar a la última fila. */
   const pieBuscador = Math.max(insets.bottom, 12) + teclado
 
-  const [mostrarTodas, setMostrarTodas] = useState(false)
-  if (Platform.OS === 'ios') {
-    const enfocada = !mostrarTodas && !buscando ? coinciden.find(c => c.id === initialId) : undefined
-    const visibles = enfocada ? [enfocada] : coinciden
-    return <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-row items-center px-3 py-1"><BotonVolver label="Volver" onPress={onVolver} /></View>
-      <ListaAjustes titulo={enfocada?.titulo ?? 'Configuración'} piso={piso + 72}>
-        {enfocada ? <GrupoAjustes><FilaAccion rotulo="Ver toda la configuración" onPress={() => setMostrarTodas(true)} ultima /></GrupoAjustes> : !buscando ? cuenta : null}
-        {visibles.map(c => <Fragment key={c.id}>{c.bloques}</Fragment>)}
-        {!visibles.length ? <GrupoAjustes pie="Probá con otra palabra."><FilaDato rotulo="Sin resultados" valor={busqueda} /><FilaAccion rotulo="Ver todo" onPress={() => onBusqueda('')} ultima /></GrupoAjustes> : null}
-      </ListaAjustes>
-      <View style={{ position: 'absolute', left: 16, right: 16, bottom: pieBuscador }}><SearchField value={busqueda} onChangeText={onBusqueda} placeholder="Buscar" /></View>
-    </SafeAreaView>
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    return <AjustesNativos
+      initialId={initialId}
+      categorias={coinciden.map(c => ({ id: c.id, titulo: c.titulo, resumen: c.resumen, simbolo: c.simbolo, bloques: c.bloques }))}
+      cuenta={cuenta}
+      piso={piso}
+      buscando={buscando}
+      busqueda={busqueda}
+      onBusqueda={onBusqueda}
+      onVolver={onVolver}
+    />
   }
 
   return (
@@ -663,7 +652,7 @@ function Escritorio({
                     activa ? 'bg-muted' : 'hover:bg-white/5 active:bg-muted'
                   }`}
                 >
-                  <Icono size={16} color={activa ? ICON_COLOR.foreground : ICON_COLOR.muted} />
+                  <Icono size={16} color={c.id === 'discord' || activa ? ICON_COLOR.foreground : ICON_COLOR.muted} />
                   <Text className={`min-w-0 flex-1 text-footnote ${activa ? 'text-foreground font-medium' : 'text-foreground'}`} numberOfLines={1}>{c.titulo}</Text>
                 </Pressable>
               )

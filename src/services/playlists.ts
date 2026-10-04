@@ -1,4 +1,5 @@
 import { getSupabase } from '../lib/supabase'
+import { assertStorageBudget } from './storageBudget'
 
 /**
  * Listas de reproducción propias.
@@ -276,6 +277,7 @@ export async function listTracks(playlistId: string): Promise<PlaylistTrack[]> {
     )
     .eq('playlist_id', playlistId)
     .order('position', { ascending: true })
+    .order('id', { ascending: true })
   if (error) throw error
 
   return (data ?? []).map((r) => ({
@@ -290,6 +292,48 @@ export async function listTracks(playlistId: string): Promise<PlaylistTrack[]> {
     durationMs: (r.duration_ms as number) ?? 0,
     truePeak: typeof r.true_peak === 'number' ? r.true_peak : undefined,
   }))
+}
+
+/** Otro editor cambió el contenido o el orden desde que se abrió la vista previa. */
+export class PlaylistOrderConflictError extends Error {
+  constructor() {
+    super('La lista cambió mientras preparabas el orden. Actualizala y volvé a intentar.')
+    this.name = 'PlaylistOrderConflictError'
+  }
+}
+
+/**
+ * Confirma un orden propuesto solo si la playlist todavía tiene exactamente el
+ * orden que vio el cliente. La RPC mueve posiciones de las mismas filas, por lo
+ * que los IDs usados por las transiciones del Mix siguen siendo válidos.
+ */
+export async function reorderPlaylistTracks(
+  playlistId: string,
+  expectedOrder: readonly string[],
+  newOrder: readonly string[],
+): Promise<string[]> {
+  if (!playlistId || !Array.isArray(expectedOrder) || !Array.isArray(newOrder)
+    || expectedOrder.some(id => typeof id !== 'string' || !id)
+    || newOrder.length !== expectedOrder.length
+    || new Set(expectedOrder).size !== expectedOrder.length
+    || new Set(newOrder).size !== expectedOrder.length
+    || newOrder.some(id => !expectedOrder.includes(id))) {
+    throw new Error('El orden propuesto debe contener exactamente las mismas canciones.')
+  }
+  const { data, error } = await getSupabase().rpc('reorder_playlist_tracks', {
+    p_playlist: playlistId,
+    p_expected_order: [...expectedOrder],
+    p_new_order: [...newOrder],
+  })
+  if (error) {
+    if (error.message.includes('playlist_order_conflict')) throw new PlaylistOrderConflictError()
+    throw error
+  }
+  if (!Array.isArray(data) || data.length !== newOrder.length
+    || data.some((id, index) => id !== newOrder[index])) {
+    throw new Error('No se pudo confirmar el nuevo orden de la lista.')
+  }
+  return data as string[]
 }
 
 /**
@@ -364,6 +408,7 @@ export async function uploadCover(
 
   const path = `${userId}/${playlistId}-${Date.now()}.${ext}`
 
+  await assertStorageBudget(file)
   const { error } = await getSupabase()
     .storage.from(COVER_BUCKET)
     .upload(path, file, { contentType, upsert: true })
@@ -471,15 +516,4 @@ export async function removeCollaborator(playlistId: string, userId: string): Pr
     p_user: userId,
   })
   if (error) throw error
-}
-
-/**
- * Irse de una lista donde colaborás.
- *
- * Lo que agregaste se queda: irse no es deshacer. Sacar tus canciones al salir
- * dejaría a la lista de los demás distinta de como la vieron la última vez, y
- * por una decisión que es solo tuya.
- */
-export async function leavePlaylist(playlistId: string, myId: string): Promise<void> {
-  await removeCollaborator(playlistId, myId)
 }

@@ -11,6 +11,7 @@ function harness(path, injected = {}) {
     forwardRef: f => props => f(props, props.ref),
     createContext: value => ({ value, Provider: 'Provider' }), useContext: context => context.value,
     useRef: current => { const i = index++; return states[i] ??= { current } },
+    useState: initial => { const i = index++; states[i] ??= initial; return [states[i], value => { states[i] = value }] },
     useEffect: f => effects.push(f), useImperativeHandle: (ref, f) => { if (ref) ref.current = f() },
   }
   const native = { useNativeState: initial => { const r = react.useRef(initial); return { get: () => r.current, set: v => { r.current = v } } } }
@@ -22,6 +23,10 @@ function harness(path, injected = {}) {
     if (id === '@expo/ui/swift-ui') return new Proxy(native, { get: (o, k) => o[k] ?? k })
     if (id === '@expo/ui/swift-ui/modifiers') return new Proxy({}, { get: (_, k) => (...args) => ({ kind: k, args }) })
     if (id === 'react-native') return { View: 'View', StyleSheet: { flatten: style => Array.isArray(style) ? Object.assign({}, ...style) : style }, ...injected.native }
+    if (id === 'react-native-safe-area-context') return { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ bottom: 0 }) }
+    if (id === '../state/shell') return { useKeyboardH: () => 0 }
+    if (id === './SearchField') return { SearchField: 'SearchField' }
+    if (id === './CollectionScrollEdge') return { BordeScrollNativo: 'BordeScrollNativo' }
     if (id === './Ajustes.shared') return { GrupoAjustes: 'SharedGroup' }
     throw Error(id)
   })
@@ -77,4 +82,19 @@ test('acciones de Ajustes nativas no ejecutan ocupado; borrar exige elección en
   assert.match(alerts[0][1], /No se puede deshacer/)
   alerts[0][2][1].onPress()
   assert.deepEqual(calls, ['borrar'])
+})
+
+test('Google conserva su logo en las filas conectada y de vinculación con tamaño nativo explícito', () => {
+  const h = harness('src/ui/Ajustes.ios.tsx'), icono = { type: 'GoogleIcon', props: { size: 17 } }
+  const dato = h.render('FilaDato', { rotulo: 'Google conectado', valor: 'correo@example.test', icono }).find(n => n.type === 'LabeledContent')
+  const label = nodes(dato.props.label)
+  assert.ok(label.some(n => n.type === 'Text' && n.props.children === 'Google conectado'))
+  const puente = label.find(n => typeof n.type === 'function' && n.props.children === icono)
+  assert.ok(puente, 'FilaDato entrega el logo al puente en vez de descartarlo')
+  const ui = nodes(puente.type(puente.props))
+  assert.deepEqual(mod(ui.find(n => n.type === 'HStack'), 'frame'), [{ width: 24, height: 24 }])
+  assert.equal(ui.find(n => n.type === 'View').props.collapsable, false)
+  assert.ok(ui.some(n => n.type === 'GoogleIcon'))
+  const accion = h.render('FilaAccion', { rotulo: 'Conectar con Google', icono })
+  assert.ok(accion.some(n => typeof n.type === 'function' && n.props.children === icono))
 })

@@ -35,6 +35,7 @@ export function useClicDerecho() {
       preventDefault?: () => void
       clientX?: number
       clientY?: number
+      currentTarget?: { focus?: () => void }
       nativeEvent?: { clientX?: number; clientY?: number }
     }
     /* Sin esto sale el menú del navegador —o el de Electron— encima del
@@ -44,15 +45,21 @@ export function useClicDerecho() {
     const x = evento?.clientX ?? evento?.nativeEvent?.clientX
     const y = evento?.clientY ?? evento?.nativeEvent?.clientY
     if (typeof x !== 'number' || typeof y !== 'number') return
+    evento.currentTarget?.focus?.()
     setPunto({ x, y })
   }, [])
 
-  /*
-   * `onContextMenu` no está en los tipos de React Native —es de la web— pero
-   * react-native-web sí lo reenvía al DOM. El casteo es el mismo truco que ya
-   * se usa para `dataSet` en `Menu` y en `Glass`.
-   */
-  const gestos = TECLADO_FISICO ? ({ onContextMenu: alClicDerecho } as object) : ({} as object)
+  const alTeclado = useCallback((event: unknown) => {
+    const e = event as { key?: string; shiftKey?: boolean; preventDefault?: () => void; stopPropagation?: () => void;
+      currentTarget?: { getBoundingClientRect?: () => { left: number; top: number; width: number; height: number } } }
+    if (e.key !== 'ContextMenu' && !(e.key === 'F10' && e.shiftKey)) return
+    const rect = e.currentTarget?.getBoundingClientRect?.()
+    if (!rect) return
+    e.preventDefault?.()
+    e.stopPropagation?.()
+    setPunto({ x: rect.left + Math.min(rect.width, 32), y: rect.top + Math.min(rect.height, 32) })
+  }, [])
 
+  const gestos = TECLADO_FISICO ? ({ onContextMenu: alClicDerecho, onKeyDown: alTeclado } as object) : ({} as object)
   return { punto, cerrar, gestos }
 }

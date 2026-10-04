@@ -1,3 +1,4 @@
+import { View } from 'react-native'
 import { Button, HStack, Host, ProgressView, RNHostView, Text } from '@expo/ui/swift-ui'
 import {
   accessibilityHint,
@@ -18,7 +19,7 @@ import type { GoogleOAuthButtonProps } from './GoogleOAuthButton.types'
 export function GoogleOAuthButton({ label, onPress, busy = false, disabled = false }: GoogleOAuthButtonProps) {
   const inactivo = disabled || busy
   return (
-    <Host matchContents={{ vertical: true }} colorScheme="dark" seedColor="#FFFFFF" style={{ width: '100%', minHeight: 50 }}>
+    <Host ignoreSafeArea="all" matchContents={{ vertical: true }} colorScheme="dark" seedColor="#FFFFFF" style={{ width: '100%', minHeight: 50 }}>
       <Button
         onPress={inactivo ? undefined : onPress}
         modifiers={[
@@ -32,7 +33,7 @@ export function GoogleOAuthButton({ label, onPress, busy = false, disabled = fal
         ]}
       >
         <HStack spacing={8} modifiers={[foregroundStyle('#121212')]}>
-          {busy ? <ProgressView modifiers={[controlSize('small'), tint('#121212')]} /> : <RNHostView matchContents><GoogleIcon size={18} /></RNHostView>}
+          {busy ? <ProgressView modifiers={[controlSize('small'), tint('#121212')]} /> : <HStack modifiers={[frame({ width: 18, height: 18 })]}><RNHostView matchContents><View collapsable={false} style={{ width: 18, height: 18 }}><GoogleIcon size={18} /></View></RNHostView></HStack>}
           <Text modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' })]}>{label}</Text>
         </HStack>
       </Button>

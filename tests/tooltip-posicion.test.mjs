@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 
-const source=readFileSync('src/ui/Tooltip.tsx','utf8')
+const source=readFileSync('src/ui/tooltipGeometry.ts','utf8')
 const output=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText
 const exports={}
 new Function('exports','require',output)(exports,id=>{

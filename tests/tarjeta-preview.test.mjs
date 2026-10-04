@@ -30,7 +30,7 @@ function cargar({ tarjeta, shellRota = false, baseRota = false }) {
   const pedidos = []
   const contexto = {
     exports,
-    require: () => ({}),
+    require: () => ({ crearImagenTarjeta: async () => Buffer.from('png-de-prueba') }),
     process: {
       env: {
         EXPO_PUBLIC_SUPABASE_URL: 'https://proyecto.supabase.co',
@@ -38,6 +38,7 @@ function cargar({ tarjeta, shellRota = false, baseRota = false }) {
       },
     },
     URL,
+    Buffer,
     fetch: async (url, init) => {
       pedidos.push({ url: String(url), init })
       if (String(url).endsWith('/index.html')) {
@@ -90,7 +91,7 @@ test('la tarjeta reemplaza el bloque marcado y deja un solo título', async () =
   assert.match(res.cuerpo, /content="Artista · Escuchalo en dnmusic"/)
   assert.match(
     res.cuerpo,
-    /property="og:image" content="https:\/\/proyecto\.supabase\.co\/storage\/v1\/object\/public\/artwork\/abc\.jpg"/,
+    /property="og:image" content="https:\/\/dnmusic-production-c3f4\.up\.railway\.app\/api\/tarjeta\?modo=imagen&amp;que=cancion&amp;id=abc123"/,
   )
   assert.match(res.cuerpo, /og:url" content="https:\/\/dnmusic-production-c3f4\.up\.railway\.app\/cancion\/abc123"/)
   /* La app tiene que seguir arrancando: esto es el shell, no una página nueva. */
@@ -137,7 +138,36 @@ test('el embed es una página suelta, sin bundle y sí incrustable', async () =>
   assert.ok(!res.cuerpo.includes('id="root"'), 'el embed no trae la app')
   assert.match(res.headers['content-security-policy'], /frame-ancestors \*/)
   assert.match(res.cuerpo, /href="https:\/\/dnmusic-production-c3f4\.up\.railway\.app\/cancion\/abc123"/)
-  assert.match(res.cuerpo, /background-image:url\('https:\/\/cdn\.test\/x\.jpg'\)/)
+  assert.match(res.cuerpo, /class="tapa" src="https:\/\/cdn\.test\/x\.jpg"/)
+})
+
+test('la tarjeta compacta abre el enlace con teclado y no publica un reproductor', async () => {
+  for (const que of ['cancion', 'lista', 'jam', 'perfil']) {
+    const { handler } = cargar({ tarjeta: { titulo: 'Tema', subtitulo: 'Artista', tapa: null } })
+    const res = respuesta()
+    await handler(pedido(`/api/tarjeta?modo=embed&que=${que}&id=propia%3Aid%252F`), res)
+    assert.equal((res.cuerpo.match(/<a\b/g) ?? []).length, 1, 'una sola acción sin controles anidados')
+    assert.match(res.cuerpo, new RegExp(`href="https://dnmusic-production-c3f4\\.up\\.railway\\.app/${que}/propia%3Aid%252F"`))
+    assert.match(res.cuerpo, /aria-label="Abrir Tema en dnmusic"/)
+    assert.match(res.cuerpo, /target="_blank" rel="noopener noreferrer"/)
+    assert.doesNotMatch(res.cuerpo, /<audio\b|<video\b|<button\b|<script\b/)
+    assert.match(res.headers['content-security-policy'], /sandbox allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation/)
+    assert.doesNotMatch(res.headers['content-security-policy'], /allow-scripts|allow-same-origin/, 'sólo la pestaña de la app sale del sandbox')
+  }
+})
+
+test('las capas de portada y el nombre accesible escapan datos de la tarjeta', async () => {
+  const { handler } = cargar({ tarjeta: {
+    titulo: 'Tema" onclick="alert(1)<script>',
+    subtitulo: 'Artista & <b>otra persona</b>',
+    tapa: 'https://cdn.test/cover.jpg" onerror="alert(1)',
+  } })
+  const res = respuesta()
+  await handler(pedido('/api/tarjeta?modo=embed&que=cancion&id=abc'), res)
+  assert.doesNotMatch(res.cuerpo, /<script>|\sonclick="|\sonerror="/)
+  assert.match(res.cuerpo, /aria-label="Abrir Tema&quot;/)
+  assert.match(res.cuerpo, /class="fondo" src="https:\/\/cdn\.test\/cover\.jpg&quot; onerror=&quot;alert\(1\)"/)
+  assert.match(res.cuerpo, /Artista &amp; &lt;b&gt;otra persona&lt;\/b&gt;/)
 })
 
 test('el shell se pide una sola vez por instancia', async () => {
@@ -145,4 +175,45 @@ test('el shell se pide una sola vez por instancia', async () => {
   await handler(pedido('/api/tarjeta?que=cancion&id=uno'), respuesta())
   await handler(pedido('/api/tarjeta?que=cancion&id=dos'), respuesta())
   assert.equal(pedidos.filter((p) => p.url.endsWith('/index.html')).length, 1)
+})
+
+
+test('oEmbed describe la canción sin exponer audio y la imagen se sirve como PNG', async () => {
+  const { handler, pedidos } = cargar({ tarjeta: { titulo: 'Tema', subtitulo: 'Artista', tapa: null } })
+  const embed = respuesta()
+  await handler(pedido('/api/tarjeta?modo=oembed&que=cancion&id=abc'), embed)
+  const datos = JSON.parse(embed.cuerpo)
+  assert.equal(datos.version, '1.0')
+  assert.equal(datos.type, 'rich')
+  assert.equal(datos.author_name, 'Artista')
+  assert.equal(datos.thumbnail_width, 1200)
+  assert.equal(datos.width, 560)
+  assert.equal(datos.height, 152)
+  assert.match(datos.html, /embed\/cancion\/abc/)
+  assert.doesNotMatch(datos.html, /audio|autoplay/)
+  const png = respuesta()
+  await handler(pedido('/api/tarjeta?modo=imagen&que=cancion&id=abc'), png)
+  assert.equal(png.headers['content-type'], 'image/png')
+  assert.ok(Buffer.isBuffer(png.cuerpo))
+  assert.equal(pedidos.some(p => p.url.endsWith('/index.html')), false)
+})
+
+test('tarjetas privadas o inexistentes no generan previews ni respuestas cacheadas', async () => {
+  const { handler } = cargar({ tarjeta: null })
+  for (const modo of ['imagen', 'oembed']) {
+    const res = respuesta()
+    await handler(pedido(`/api/tarjeta?modo=${modo}&que=lista&id=privada`), res)
+    assert.equal(res.statusCode, 404)
+    assert.equal(res.headers['cache-control'], 'no-store')
+  }
+})
+
+test('el id se decodifica una sola vez y la tarjeta temporal nunca queda cacheada por un día', async () => {
+  const { handler, pedidos } = cargar({ tarjeta: { titulo: '100% música', subtitulo: 'Artista', tapa: null } })
+  const res = respuesta()
+  await handler(pedido('/api/tarjeta?que=cancion&id=propia%3Aid%252F'), res)
+  assert.equal(JSON.parse(pedidos[0].init.body).p_id, 'propia:id%2F')
+  assert.match(res.cuerpo, /og:image:width/)
+  assert.match(res.cuerpo, /application\/json\+oembed/)
+  assert.doesNotMatch(res.headers['cache-control'], /stale-while-revalidate/)
 })

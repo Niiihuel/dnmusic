@@ -180,6 +180,9 @@ export function MenuNativo({
   size = 17,
   symbol = 'ellipsis',
   children,
+  preview,
+  onPreviewPress,
+  previewCornerRadius,
   longPress = false,
   fullWidth = false,
   disabled: estaDeshabilitado = false,
@@ -187,7 +190,7 @@ export function MenuNativo({
   const [width, setWidth] = useState(0)
   if (estaDeshabilitado && longPress) return <>{children}</>
   if (children && longPress && fullWidth && HAY_CONTEXTO_COLECCION) {
-    return <MenuContextualColeccion items={items}>{children}</MenuContextualColeccion>
+    return <MenuContextualColeccion items={items} previewCornerRadius={previewCornerRadius} preview={preview} onPreviewPress={onPreviewPress}>{children}</MenuContextualColeccion>
   }
   /*
    * El disparador que se toca va por UIKit; SwiftUI queda de respaldo.

@@ -9,9 +9,10 @@ const vidrio = Number.parseInt(String(Platform.Version), 10) >= 26
 export function IconButton({ label, symbol, onPress, disabled: bloqueado = false, busy = false, disableWhileBusy = false, selected = false, size = 20, lado = 44, variant = 'plain', muted = false }: IconButtonProps) {
   const inactivo = bloqueado || (busy && disableWhileBusy)
   const area = Math.max(44, lado)
-  const contenido = variant === 'plain' ? area : Math.max(20, area - 20)
+  const iconSize = Math.min(size, area - 16)
+  const contenido = variant === 'plain' ? area : iconSize
   const color = variant === 'primary' ? '#121212' : muted && !selected ? '#B3B3B3' : '#FFFFFF'
-  return <Host style={{ width: area, height: area, flexShrink: 0 }} colorScheme="dark" seedColor="#FFFFFF">
+  return <Host ignoreSafeArea="all" style={{ width: area, height: area, flexShrink: 0 }} colorScheme="dark" seedColor="#FFFFFF">
     <Button onPress={inactivo ? undefined : onPress} modifiers={[
       accessibilityLabel(label), ...(busy ? [accessibilityValue('En curso')] : []),
       ...(selected ? [accessibilityAddTraits(['isSelected'])] : []),
@@ -19,7 +20,7 @@ export function IconButton({ label, symbol, onPress, disabled: bloqueado = false
       buttonBorderShape('circle'), tint('#FFFFFF'), frame({ width: area, height: area }), disabled(inactivo),
     ]}>
       {busy ? <ProgressView modifiers={[tint(color), frame({ width: contenido, height: contenido })]} /> :
-        <Image systemName={symbol} size={size} color={color}
+        <Image systemName={symbol} size={iconSize} color={color}
           modifiers={[frame({ width: contenido, height: contenido }), contentShape(shapes.rectangle())]} />}
     </Button>
   </Host>

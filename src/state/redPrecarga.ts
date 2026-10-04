@@ -46,7 +46,3 @@ export function useTipoRedPrecarga(datosPermitidos: boolean): RedPrecarga {
   }, [datosPermitidos])
   return permitida
 }
-
-export function useRedPrecarga(datosPermitidos: boolean): boolean {
-  return useTipoRedPrecarga(datosPermitidos) !== 'no'
-}

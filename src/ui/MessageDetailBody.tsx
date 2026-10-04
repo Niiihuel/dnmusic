@@ -11,7 +11,6 @@ import { CabeceraLateral, BotonLateral } from './CabeceraLateral'
 import { InvitacionJam } from './InvitacionJam'
 import { formatMessageDate } from './MessageCard'
 import { Lyrics } from './Lyrics'
-import { Onda, usePicos } from './Onda'
 import { SeekBar } from './SeekBar'
 import { ScrollArea } from './ScrollArea'
 import { Vacio } from './Vacio'
@@ -32,10 +31,9 @@ export type MessageDetailBodyProps = {
 }
 
 /** Inspector del chat: la invitación ya trae su propia superficie y sus acciones. */
-export function MessageDetailBody({ message, mine, contactName, playing, sonando, positionMs, posicionSV, onCollapse, onPlay, onSeek }: MessageDetailBodyProps) {
+export function MessageDetailBody({ message, mine, contactName, playing, sonando, positionMs, onCollapse, onPlay, onSeek }: MessageDetailBodyProps) {
   const piso = usePiso(24)
   const song = message?.song
-  const picos = usePicos(song?.videoId, song ? { desdeMs: song.startMs, durMs: song.durationMs } : undefined)
   const art = song ? artworkSource(song.artworkPath, song.artworkUrl, 640) : null
   const elapsed = song && sonando ? Math.max(0, Math.min(song.durationMs, positionMs - song.startMs)) : 0
   const invitacion = message ? invitacionEnTexto(message.text) : null
@@ -69,10 +67,8 @@ export function MessageDetailBody({ message, mine, contactName, playing, sonando
           </View>
           <IconButton label={playing ? 'Pausar fragmento' : 'Reproducir fragmento'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={onPlay} variant="primary" icon={playing ? <IconPause size={18} color={ICON_COLOR.onPrimary} /> : <IconPlay size={18} color={ICON_COLOR.onPrimary} />} />
         </View>
-        {picos ? <Onda picos={picos} posicionMs={posicionSV} desdeMs={song.startMs} duracionMs={song.durationMs}
-          activa={sonando} onSeek={onSeek} height={36} etiqueta={song.title} /> :
-          <SeekBar label={song.title} elapsedMs={elapsed} totalMs={song.durationMs}
-            progress={elapsed / Math.max(1, song.durationMs)} onSeek={onSeek} />}
+        <SeekBar label={song.title} elapsedMs={elapsed} totalMs={song.durationMs}
+          progress={elapsed / Math.max(1, song.durationMs)} onSeek={onSeek} />
         {/* Cuatro renglones y no tres: desde que los versos largos se parten en dos
             en vez de cortarse con puntos suspensivos, con tres se veía un verso
             y medio. */}

@@ -66,13 +66,13 @@ test('iOS: abrir conserva la lupa de 44pt; el campo nativo está fuera de las ac
   assert.equal(h.animations(), 0)
   assert.equal(h.render('CampoBusquedaColeccion', props), null)
   const actions = []
-  const field = nodes(h.render('CampoBusquedaColeccion', { ...props, abierto: true, contexto: 'álbum', filtro: 'Tema',
-    onFiltro: q => actions.push(q), onCerrar: () => actions.push('cancelar') }), 'NativeSearch')[0]
+  const ui = h.render('CampoBusquedaColeccion', { ...props, abierto: true, contexto: 'álbum', filtro: 'Tema',
+    onFiltro: q => actions.push(q), onCerrar: () => actions.push('cancelar') })
+  const field = nodes(ui, 'SearchField')[0]
   assert.equal(field.props.placeholder, 'Buscar en este álbum')
-  assert.equal(field.props.style.width, '100%')
-  assert.equal(field.props.text, 'Tema')
-  field.props.onChangeText({ nativeEvent: { text: 'Artista' } })
-  field.props.onCancel()
+  assert.equal(field.props.value, 'Tema')
+  field.props.onChangeText('Artista')
+  nodes(ui, 'Pressable')[0].props.onPress()
   assert.deepEqual(actions, ['Artista', 'cancelar'])
 })
 
@@ -98,12 +98,12 @@ test('abrir, filtrar, cancelar y cambiar colección limpian estado y teclado', (
   assert.equal(state.abierto, false)
 })
 
-test('cliente iOS anterior conserva campo independiente, limpiar nativo y cancelar', () => {
+test('colecciones usan el mismo campo SwiftUI con o sin el módulo UIKit anterior', () => {
   const h = search('ios', null)
   let cancelled = false
   const ui = h.render('CampoBusquedaColeccion', { ...props, abierto: true, onCerrar: () => { cancelled = true } })
-  const field = nodes(ui, 'TextInput')[0]
-  assert.equal(field.props.clearButtonMode, 'while-editing')
+  const field = nodes(ui, 'SearchField')[0]
+  assert.equal(nodes(ui, 'TextInput').length, 0)
   assert.equal(field.props.autoFocus, true)
   nodes(ui, 'Pressable')[0].props.onPress()
   assert.equal(cancelled, true)
@@ -198,4 +198,53 @@ test('álbum filtra por título/artista y reproduce el índice original en la co
   const empty = album('inexistente').render('AlbumPanel', { albumId: 'album', kind: 'album' })
   assert.equal(nodes(empty, 'TrackRow').length, 0)
   assert.equal(nodes(empty, 'Vacio')[0].props.titulo, 'Sin resultados')
+})
+
+test('búsqueda persistente de playlist entra sin teclado y cancelar limpia sin ocultar el campo', () => {
+  const h = search()
+  const queries = []
+  let closes = 0
+  let ui = h.render('CampoBusquedaColeccion', { ...props, siempreVisible: true, filtro: 'Tema', onFiltro: q => queries.push(q), onCerrar: () => closes++ })
+  const field = nodes(ui, 'SearchField')[0]
+  assert.equal(field.props.autoFocus, false)
+  nodes(ui, 'Pressable')[0].props.onPress()
+  assert.deepEqual(queries, [''])
+  assert.equal(closes, 0)
+  assert.equal(h.dismisses(), 1)
+  ui = h.render('CampoBusquedaColeccion', { ...props, siempreVisible: true })
+  assert.equal(nodes(ui, 'SearchField').length, 1)
+  assert.equal(nodes(ui, 'Pressable').length, 0, 'sin texto no ocupa espacio una acción vacía')
+})
+
+
+test('la vista previa contextual recibe metadatos y abrirla no ejecuta acciones del menú', () => {
+  const h = load('src/ui/MenuContextualColeccion.tsx', menuDeps)
+  const calls = []
+  const preview = { title: 'Álbum', subtitle: 'Artista', artwork: 'https://example.test/cover.jpg' }
+  const ui = h.render('MenuContextualColeccion', { children: jsx('AlbumRow', {}), preview,
+    onPreviewPress: () => calls.push('abrir'), items: [{ label: 'Eliminar', onPress: () => calls.push('eliminar') }] })
+  const native = nodes(ui, 'NativeContext')[0]
+  assert.equal(native.props.preview, preview)
+  native.props.onPreviewPress()
+  assert.deepEqual(calls, ['abrir'])
+})
+
+test('buscador de playlist participa del scroll bajo la barra fija y conserva el campo montado', () => {
+  const source = ts.createSourceFile('PlaylistView.tsx', readFileSync('src/ui/PlaylistView.tsx', 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let scrollingSearch = 0
+  function visit(node) {
+    if (ts.isJsxAttribute(node) && node.name.getText(source) === 'ListHeaderComponent') {
+      function field(child) {
+        if (ts.isJsxSelfClosingElement(child) && child.tagName.getText(source) === 'CampoBusquedaColeccion') {
+          assert.ok(child.attributes.properties.some(p => ts.isJsxAttribute(p) && p.name.getText(source) === 'siempreVisible'))
+          scrollingSearch++
+        }
+        ts.forEachChild(child, field)
+      }
+      field(node)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  assert.equal(scrollingSearch, 1)
 })

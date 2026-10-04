@@ -85,7 +85,7 @@ test('la imagen cambia de ancho y reencuadra contra su proporción real, sin alt
   let width = 300
   const VitrinaImagen = funcion('src/ui/Vitrina.tsx', 'VitrinaImagen', {
     useState: () => [width, next => { width = typeof next === 'function' ? next(width) : next }],
-    View: 'View', Image: 'Image', ilustracionUrl: path => path,
+    View: 'View', Image: 'Image', ExpoImage: 'ExpoImage', ilustracionUrl: path => path,
     estiloEncuadrado: (w, encuadre, h) => ({ w, h, encuadre }),
   })
   const props = { imagen: { path: 'imagen-local', encuadre: { x: 0.5, y: 0.5, escala: 1 } } }

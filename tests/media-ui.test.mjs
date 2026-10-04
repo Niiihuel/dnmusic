@@ -11,6 +11,7 @@ function harness(path, deps = {}, extra = '') {
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx }
     if (id === 'react') return { useState(v) { const n = i++; if (!(n in states)) states[n] = v; return [states[n], v => states[n] = typeof v === 'function' ? v(states[n]) : v] }, useRef(v) { const n = i++; return states[n] ??= { current: v } }, useEffect() {} }
     if (id in deps) return deps[id]
+    if (id === './estadoFilaReproduccion') return harness('src/ui/estadoFilaReproduccion.ts').exports
     if (id.endsWith('/icons')) return new Proxy({ ICON_COLOR: {} }, { get: (target, k) => target[k] ?? k })
     return new Proxy({}, { get: (_, k) => k })
   })
@@ -26,7 +27,7 @@ const byLabel = (ui, label) => nodes(ui, n => n.props?.accessibilityLabel === la
 
 test('duración/corazón ocupan una sola columna; hover y teclado muestran like sin reproducir', () => {
   let plays = 0, likes = 0
-  const h = harness('src/ui/TrackRow.shared.tsx', { 'react-native': rn, '../state/playback': { usePlaybackCargada: () => true }, './useClicDerecho': { useClicDerecho: () => ({ gestos: {}, punto: null }) }, './SeekBar': { formatClock: () => '3:00' }, './estadoControl': { estadoControlWeb: modo => ({ dataSet: { dnHover: modo } }) } })
+  const h = harness('src/ui/TrackRow.shared.tsx', { 'react-native': rn, '../state/playback': { usePlaybackCargada: () => true }, './useClicDerecho': { useClicDerecho: () => ({ gestos: {}, punto: null }) }, './SeekBar': { formatClock: () => '3:00' }, './estadoControl': harness('src/ui/estadoControl.ts', { 'react-native': rn }).exports })
   const props = { index: 0, title: 'Tema', artist: 'Artista', artwork: null, durationMs: 180000, sounding: false, playing: false,
     onPlay: () => plays++, gusto: jsx('Pressable', { accessibilityLabel: 'Me gusta', onPress: () => likes++ }) }
   let ui = h.render('TrackRow', props)
@@ -48,7 +49,7 @@ test('duración/corazón ocupan una sola columna; hover y teclado muestran like 
   ui.props.onPointerEnter()
   ui = h.render('TrackRow', props)
   assert.equal(nodes(ui, n => n.props?.children === '3:00')[0].props.style.opacity, 0)
-  assert.match(ui.props.className, /bg-muted/)
+  assert.equal(ui.props.dataSet.dnSurface, 'row', 'web aplica el material de hover por CSS sobre la fila')
   assert.equal(nodes(ui, n => n.props?.style?.position === 'absolute' && n.props?.style?.inset === 0)[0].props.pointerEvents, 'auto')
   byLabel(ui, 'Me gusta').props.onPress()
   assert.equal(likes, 1)
@@ -139,6 +140,7 @@ test('álbum conserva el audio real resuelto y reutiliza el me gusta existente a
 test('minirreproductor iOS nativo muestra el destino real y conserva los mandos sin tocar audio al navegar', () => {
   const calls = []
   let preparando = true
+  let error = null
   const destino = { resumen: 'En pausa en Computadora', remoto: true, estado: 'pausado' }
   const h = harness('src/ui/NowPlayingBar.tsx', {
     'react-native': { ...rn, Platform: { OS: 'ios' }, useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1.6 }) },
@@ -148,7 +150,7 @@ test('minirreproductor iOS nativo muestra el destino real y conserva los mandos 
     './Dispositivos.shared': { useDestinoEscucha: () => destino },
     '../lib/artwork': { artworkSource: () => 'https://cover' }, '../state/shell': { useTabsVisible: () => true },
     '../state/playback': {
-      usePlaybackState: () => ({ tracks: [track], index: 0, manual: null, wantPlay: true, positionMs: 0, durationMs: 180000, volume: .5, cargada: !preparando, view: null, error: null }),
+      usePlaybackState: () => ({ tracks: [track], index: 0, manual: null, wantPlay: true, positionMs: 0, durationMs: 180000, volume: .5, cargada: !preparando, view: null, error }),
       useHaySiguiente: () => false, usePlaybackOriginName: () => '', useModoReproduccion: () => 'orden', canOpenPlaylist: () => false,
       togglePlayback: () => calls.push('toggle'), playNext: () => calls.push('next'), playPrevious: () => calls.push('previous'),
     },
@@ -159,10 +161,21 @@ test('minirreproductor iOS nativo muestra el destino real y conserva los mandos 
   let mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
   assert.equal(mini.props.subtitle, 'En pausa en Computadora'); assert.equal(mini.props.remote, true)
   assert.equal(mini.props.deviceLabel, destino.resumen); assert.equal(mini.props.canNext, false)
-  assert.ok(mini.props.style.height >= 76); assert.equal(mini.props.busy, true)
+  assert.ok(mini.props.style.height >= 76); assert.equal(mini.props.busy, false, 'la escucha remota no carga audio local')
   mini.props.onOpen(); mini.props.onDevices(); assert.deepEqual(calls, [['route', '/playing'], 'devices'])
   mini.props.onPlayPause(); assert.equal(calls.at(-1), 'toggle')
   preparando = false; destino.resumen = 'Sonando en Computadora'; destino.estado = 'sonando'
   mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
   assert.equal(mini.props.subtitle, 'Sonando en Computadora'); assert.equal(mini.props.busy, false)
+  assert.equal(mini.props.playing, false, 'sonando en otro aparato no declara reproducción local')
+  destino.remoto = false; preparando = true
+  mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
+  assert.equal(mini.props.busy, true, 'la carga local permite pausarla')
+  error = 'No se pudo cargar la canción'
+  mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
+  assert.equal(mini.props.busy, false, 'un error de carga no deja un spinner permanente')
+  assert.equal(mini.props.subtitle, error)
+  preparando = false; error = null
+  mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
+  assert.equal(mini.props.playing, true)
 })

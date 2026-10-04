@@ -24,7 +24,7 @@ export function EstadoGoogle({ activo, contexto }: { activo: boolean; contexto: 
   if (!activo) return null
   const mensaje = textoEsperaGoogle(contexto)
   return (
-    <Host matchContents={{ vertical: true }} colorScheme="dark" seedColor="#FFFFFF" style={{ width: '100%' }}>
+    <Host ignoreSafeArea="all" matchContents={{ vertical: true }} colorScheme="dark" seedColor="#FFFFFF" style={{ width: '100%' }}>
       <HStack
         alignment="top"
         spacing={10}

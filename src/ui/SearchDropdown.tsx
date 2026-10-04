@@ -1,13 +1,16 @@
+import { superficieInteractivaWeb } from './estadoControl'
 import { ScrollArea } from './ScrollArea'
+import { ES_WEB, vidrioCss } from './Glass'
 import { useState } from 'react'
 import { Image, Platform, Pressable, Text, View } from 'react-native'
-import { togglePlayback, usePlaybackTrack, useWantPlay } from '../state/playback'
+import { togglePlayback, usePlaybackCargada, usePlaybackTrack, useWantPlay } from '../state/playback'
 import { useKeyboardH, usePiso } from '../state/shell'
 import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { useClicDerecho } from './useClicDerecho'
 import { EstadoTapa } from './CoverState'
+import { RowSurface } from './RowSurface'
 import { SkeletonList } from './Skeleton'
-import { ICON_COLOR, IconMusic, IconPlus, IconUser } from './icons'
+import { ICON_COLOR, IconChevronRight, IconMusic, IconPlus, IconUser } from './icons'
 import { proxiedImage, type ArtistResult, type TrackResult } from '../services/music'
 import { artworkUrlAtSize } from '../lib/artwork'
 
@@ -36,8 +39,6 @@ type Props = {
    */
   quickAddLabel?: string
   onQuickAdd?: (track: TrackResult) => void
-  /** Reproducir sin guardar en ningún lado. Aparece sobre la carátula. */
-  onPlay?: (track: TrackResult) => void
   /**
    * Tocar la fila **siempre elige**, aunque sea la canción que está sonando.
    *
@@ -85,7 +86,6 @@ export function SearchDropdown({
   embedded = false,
   quickAddLabel,
   onQuickAdd,
-  onPlay,
   pendingId,
   menuFor,
   alwaysSelect = false,
@@ -98,6 +98,7 @@ export function SearchDropdown({
    */
   const current = usePlaybackTrack()
   const wantPlay = useWantPlay()
+  const cargada = usePlaybackCargada()
   /* Los resultados terminan justo antes del teclado: si siguen por debajo, los
      últimos quedan tapados y no hay forma de llegar a ellos sin cerrarlo. */
   const teclado = useKeyboardH()
@@ -109,6 +110,7 @@ export function SearchDropdown({
 
   return (
     <View
+      {...(ES_WEB && !embedded ? { dataSet: { dnGlass: 'regular', dnGlassDropdown: 'true' } } : {})}
       /*
        * Embebida **no lleva tarjeta**.
        *
@@ -132,6 +134,7 @@ export function SearchDropdown({
           ? undefined
           : {
               maxHeight: MAX_H,
+              ...(ES_WEB ? vidrioCss() : {}),
               // Sombra pesada: sobre casi negro, una sutil no se ve y el panel
               // parece pegado al fondo en vez de flotar.
               boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
@@ -168,7 +171,7 @@ export function SearchDropdown({
         >
           {onOpenArtist && artists.length
             ? artists.map((a) => (
-                <ArtistHit key={a.id} artist={a} onPress={() => onOpenArtist(a)} />
+                <ArtistHit key={a.id} artist={a} onPress={() => onOpenArtist(a)} amplia={embedded} />
               ))
             : null}
 
@@ -178,12 +181,13 @@ export function SearchDropdown({
               track={r}
               sounding={current?.videoId === r.videoId}
               playing={wantPlay}
-              busy={pendingId === r.videoId}
+              busy={pendingId === r.videoId || (current?.videoId === r.videoId && wantPlay && !cargada)}
               alwaysSelect={alwaysSelect}
               onSelect={onSelect}
               onQuickAdd={onQuickAdd}
               quickAddLabel={quickAddLabel}
               menuFor={menuFor}
+              amplia={embedded}
             />
           ))}
         </ScrollArea>
@@ -208,7 +212,7 @@ export function SearchDropdown({
  * mover el mouse redibujaba **todas** las filas, que es el mismo problema que
  * ya se había arreglado en `TrackRow`.
  */
-function ResultadoFila({
+export function ResultadoFila({
   track,
   sounding,
   playing,
@@ -218,6 +222,7 @@ function ResultadoFila({
   onQuickAdd,
   quickAddLabel,
   menuFor,
+  amplia = false,
 }: {
   track: TrackResult
   /** Es la que está puesta en el reproductor. */
@@ -230,6 +235,7 @@ function ResultadoFila({
   onQuickAdd?: (track: TrackResult) => void
   quickAddLabel?: string
   menuFor?: (track: TrackResult) => MenuItem[]
+  amplia?: boolean
 }) {
   const [over, setOver] = useState(false)
   const clic = useClicDerecho()
@@ -245,7 +251,7 @@ function ResultadoFila({
        * <button> dentro de otro <button>. Lo tocable es la parte de la
        * izquierda, que ocupa todo lo que sobra.
        */
-      <View
+      <RowSurface
         {...clic.gestos}
         onPointerEnter={() => setOver(true)}
         onPointerLeave={() => setOver(false)}
@@ -256,7 +262,8 @@ function ResultadoFila({
          * excepción — la carátula, que se oscurece y muestra el play,
          * ya dice de sobra cuál fila se va a accionar.
          */
-        className={`flex-row items-center gap-1 rounded-lg pr-1 ${over ? 'bg-muted' : ''}`}
+        {...superficieInteractivaWeb('row')}
+        className={`flex-row items-center gap-1 rounded-lg pr-1 ${Platform.OS !== 'web' && over ? 'bg-muted' : ''}`}
       >
         <Pressable
           accessibilityRole="button"
@@ -273,7 +280,7 @@ function ResultadoFila({
           {/* La carátula se convierte en el botón de reproducir al
               pasar el cursor: escuchar antes de decidir es lo primero
               que uno quiere hacer con un resultado. */}
-          <View className="h-11 w-11 overflow-hidden rounded bg-muted">
+          <View className="overflow-hidden rounded bg-muted" style={{ width: amplia ? 56 : 44, height: amplia ? 56 : 44 }}>
             {track.artworkUrl ? (
               /* Por nuestro proxy y no directo al CDN de Google: sin
                  CORS, Chrome descarta la respuesta entera (ORB) y la
@@ -281,10 +288,10 @@ function ResultadoFila({
                  que usan las tapas de la portada. */
               <Image
                 source={{ uri: proxiedImage(artworkUrlAtSize(track.artworkUrl, 96)) }}
-                className="h-11 w-11"
+                style={{ width: '100%', height: '100%' }}
               />
             ) : (
-              <View className="h-11 w-11 items-center justify-center">
+              <View className="flex-1 items-center justify-center">
                 <IconMusic size={16} color={ICON_COLOR.muted} />
               </View>
             )}
@@ -301,12 +308,12 @@ function ResultadoFila({
               {track.title}
             </Text>
             <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
-              {track.artist}
+              {amplia ? `Canción · ${track.artist}` : track.artist}
             </Text>
           </View>
-          <Text className="text-muted-foreground text-caption2 tabular-nums">
+          {!amplia ? <Text className="text-muted-foreground text-caption2 tabular-nums">
             {fmtDur(track.durationMs)}
-          </Text>
+          </Text> : null}
         </Pressable>
 
         {/*
@@ -348,31 +355,35 @@ function ResultadoFila({
         {clic.punto && items.length ? (
           <Menu items={items} sinDisparador abiertoEn={clic.punto} onCerrarPunto={clic.cerrar} />
         ) : null}
-      </View>
+      </RowSurface>
   )
 
   if (!items.length) return fila
-  return <MantenerApretado items={items}>{fila}</MantenerApretado>
+  return <MantenerApretado items={items} preview={{ title: track.title, subtitle: track.artist, artwork: track.artworkUrl ? proxiedImage(track.artworkUrl) : undefined }}>{fila}</MantenerApretado>
 }
 
-function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => void }) {
+export function ArtistHit({ artist, onPress, amplia = false, extraItems = [] }: { artist: ArtistResult; onPress: () => void; amplia?: boolean; extraItems?: MenuItem[] }) {
   const [over, setOver] = useState(false)
   /* Por el proxy y no directo: las fotos de artista viven en `yt3`, que
      responde sin CORS y deja el hueco en blanco (ver `proxiedImage`). */
   const photo = artist.photoUrl ? proxiedImage(artworkUrlAtSize(artist.photoUrl, 96)) : ''
   return (
+    <MantenerApretado items={[{ label: 'Ir al artista', sfSymbol: 'music.microphone', onPress }, ...extraItems]}
+      preview={{ title: artist.name, subtitle: 'Artista', artwork: photo }} onPreviewPress={onPress}>
+    <RowSurface className="flex-row items-center">
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Ir a ${artist.name}`}
       onPress={onPress}
       onPointerEnter={() => setOver(true)}
       onPointerLeave={() => setOver(false)}
-      className={`flex-row items-center gap-3 rounded-lg p-2 ${over ? 'bg-muted' : ''}`}
+      {...superficieInteractivaWeb('row')}
+      className={`min-w-0 flex-1 flex-row items-center gap-3 rounded-lg p-2 ${Platform.OS !== 'web' && over ? 'bg-muted' : ''}`}
     >
       {photo ? (
-        <Image source={{ uri: photo }} className="h-11 w-11 rounded-full bg-muted" />
+        <Image source={{ uri: photo }} style={{ width: amplia ? 56 : 44, height: amplia ? 56 : 44 }} className="rounded-full bg-muted" />
       ) : (
-        <View className="h-11 w-11 items-center justify-center rounded-full bg-muted">
+        <View style={{ width: amplia ? 56 : 44, height: amplia ? 56 : 44 }} className="items-center justify-center rounded-full bg-muted">
           <IconUser size={16} color={ICON_COLOR.muted} />
         </View>
       )}
@@ -384,7 +395,11 @@ function ArtistHit({ artist, onPress }: { artist: ArtistResult; onPress: () => v
           Artista
         </Text>
       </View>
+      {amplia ? <IconChevronRight size={18} color={ICON_COLOR.muted} /> : null}
     </Pressable>
+    {extraItems.length ? <Menu items={extraItems} label={`Opciones de ${artist.name}`} size={15} /> : null}
+    </RowSurface>
+    </MantenerApretado>
   )
 }
 

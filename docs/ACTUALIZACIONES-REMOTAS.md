@@ -6,7 +6,8 @@ verificar en dry-run que eran las únicas pendientes. No se crearon políticas:
 ninguna versión queda obligatoria hasta que el administrador la configure.
 Las pruebas SQL locales finalizaron con ROLLBACK. Después se aplicaron ambas
 migraciones al entorno local, también sin crear políticas.
-El cliente todavía requiere distribución; no se publicó una versión en esta tarea.
+Una política sólo debe exigir versiones que ya estén disponibles para sus
+destinatarios; desplegar esta funcionalidad no crea políticas automáticamente.
 
 ## Integración raíz
 
@@ -78,9 +79,11 @@ nunca el nombre mutable `nihuel` ni `user_metadata`.
    desactivar, apagar el interruptor y confirmar otro guardado.
 
 Los destinos permitidos son HTTPS, sin credenciales, puertos ni fragmentos:
-releases de `github.com/Niiihuel/dnmusic-releases`, App Store/TestFlight para iOS,
+releases de `github.com/Niihuel/dnmusic-releases`, App Store/TestFlight para iOS,
 Google Play con el package `com.nihuel.dnmusic` o releases para Android, y
-`https://dnmusic-app.vercel.app/` (con query opcional) para web. Para incorporar
+`https://dnmusic-production-c3f4.up.railway.app/` para web. El host heredado
+`dnmusic-app.vercel.app` sigue permitido por compatibilidad; los destinos web
+admiten query opcional. Para incorporar
 otro host legítimo, ampliar a la vez el validador TypeScript y SQL y sus pruebas.
 La validación comprueba la forma y el destino permitido; **no prueba por HTTP que
 un instalador exista ni que una tienda ya haya aprobado ese release**. No se
