@@ -129,7 +129,7 @@ ${metaDeTarjeta(t, que, id)}
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: transparent; color: #fff;
+  body { margin: 0; background: transparent; color: #f4f4f5;
          font: 15px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   a.tarjeta { position: relative; display: flex; align-items: center; gap: 16px;
               height: 152px; padding: 20px; overflow: hidden; isolation: isolate;
@@ -138,7 +138,7 @@ ${metaDeTarjeta(t, que, id)}
   .fondo { position: absolute; inset: -50%; width: 200%; height: 200%; z-index: -2;
            object-fit: cover; opacity: .65; filter: blur(40px) saturate(1.3); pointer-events: none; }
   .velo { position: absolute; inset: 0; z-index: -1; pointer-events: none;
-          background: linear-gradient(180deg, rgba(0,0,0,.65), rgba(0,0,0,.8)); }
+          background: linear-gradient(180deg, rgba(0,0,0,.82), rgba(0,0,0,.94)); }
   .arte { position: relative; display: flex; align-items: center; width: ${musical ? '136' : '112'}px;
           height: 112px; flex: none; }
   .tapa { position: relative; z-index: 1; width: 112px; height: 112px;
@@ -155,14 +155,15 @@ ${metaDeTarjeta(t, que, id)}
   a.tarjeta:hover .tapa, a.tarjeta:focus-visible .tapa { transform: translateX(-2px); }
   a.tarjeta:hover .vinilo, a.tarjeta:focus-visible .vinilo { transform: translateX(4px); }
   .texto { display: flex; flex-direction: column; justify-content: space-between;
-           align-self: stretch; min-width: 0; flex: 1; text-align: right; }
+           align-self: stretch; min-width: 0; flex: 1; text-align: left; }
   .titulo { font-weight: 600; font-size: 17px; letter-spacing: -.23px; margin: 0 0 3px;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sub { color: #d0cbd0; font-size: 13px; margin: 0;
+            display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+            overflow: hidden; overflow-wrap: anywhere; }
+  .sub { color: #b3b3bd; font-size: 13px; margin: 0;
          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .marca { display: flex; align-items: center; justify-content: flex-end; gap: 6px;
-           color: #d6d1d4; font-size: 12px; font-weight: 600; margin: 0; }
-  .marca svg { width: 15px; height: 15px; }
+  .marca { display: flex; align-items: center; justify-content: flex-start; gap: 6px;
+           color: #a3a3ae; font-size: 12px; font-weight: 600; margin: 0; }
+  .marca svg { width: 15px; height: 15px; flex: none; }
   .abrir { color: #e0dde0; font-size: 11px; margin: 6px 0 0; }
   @media (max-width: 360px) {
     a.tarjeta { padding: 16px; gap: 12px; }

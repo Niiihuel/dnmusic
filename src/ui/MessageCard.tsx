@@ -6,6 +6,7 @@ import { Image, Pressable, Text, View } from 'react-native'
 import type { Message } from '../models/message'
 import { artworkSource } from '../lib/artwork'
 import { ICON_COLOR, IconMusic, IconPause, IconPlay } from './icons'
+import { messageDisplayText } from './chatPresentation'
 
 type Props = {
   message: Message
@@ -31,6 +32,7 @@ export function MessageCard({
   onPress,
 }: Props) {
   const song = message.song
+  const text = messageDisplayText(message)
   const art = song ? artworkSource(song.artworkPath, song.artworkUrl, 96) : null
   const unread = !mine && message.readAt === null
   const status = mine
@@ -44,7 +46,7 @@ export function MessageCard({
       : 'Visto'
 
   return (
-    <View className={`gap-3 rounded-2xl p-4 ${selected ? 'bg-muted' : 'bg-card'}`}>
+    <View className={message.sharedSong ? 'min-w-0 gap-3' : `gap-3 rounded-2xl p-4 ${selected ? 'bg-muted' : 'bg-card'}`}>
       <Pressable accessibilityRole={onPress ? "button" : undefined} accessibilityState={{ selected }} onPress={onPress} className="gap-3 active:opacity-70">
         <View className="flex-row items-center gap-3">
           <View className={`h-11 w-11 items-center justify-center rounded-full ${selected ? 'bg-card' : 'bg-muted'}`}>
@@ -70,8 +72,8 @@ export function MessageCard({
           ) : null}
         </View>
 
-        {message.text.length > 0 && !invitacionEnTexto(message.text) ? (
-          <Text className="text-card-foreground text-callout leading-6">{message.text}</Text>
+        {text.length > 0 && !invitacionEnTexto(text) ? (
+          <Text className="text-card-foreground text-callout leading-6">{text}</Text>
         ) : null}
       </Pressable>
 

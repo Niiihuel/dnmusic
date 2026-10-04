@@ -28,7 +28,7 @@ const MARKER = '<!-- dany:pwa -->'
  * El dominio va absoluto porque las tarjetas lo piden así: los crawlers no
  * resuelven rutas relativas, y con una ruta suelta el preview sale sin imagen.
  */
-const SITIO = process.env.SITE_URL?.trim() || 'https://dnmusic-production-c3f4.up.railway.app'
+const SITIO = (process.env.SITE_URL?.trim() || 'https://dnmusic-production-c3f4.up.railway.app').replace(/\/$/, '')
 const TITULO = 'dnmusic'
 const DESCRIPCION =
   'Escuchá tu música, armá tus listas y ponete en Jam: la misma canción, al mismo tiempo, con quien quieras.'
@@ -64,6 +64,7 @@ const HEAD_TAGS = `${MARKER}
     <link rel="manifest" href="/manifest.json" />
     ${TARJETA_ABRE}
     <title>${TITULO}</title>
+    <link rel="canonical" href="${SITIO}" />
     <meta name="description" content="${DESCRIPCION}" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="${TITULO}" />
@@ -71,10 +72,15 @@ const HEAD_TAGS = `${MARKER}
     <meta property="og:description" content="${DESCRIPCION}" />
     <meta property="og:url" content="${SITIO}" />
     <meta property="og:image" content="${SITIO}/icons/icon-512.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="dnmusic" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="${TITULO}" />
     <meta name="twitter:description" content="${DESCRIPCION}" />
     <meta name="twitter:image" content="${SITIO}/icons/icon-512.png" />
+    <meta name="twitter:image:alt" content="dnmusic" />
     ${TARJETA_CIERRA}
     <!-- iOS ignora buena parte del manifest y necesita estos meta propios para
          abrir sin la barra de Safari y usar el ícono correcto. -->

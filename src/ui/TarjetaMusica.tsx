@@ -7,7 +7,6 @@ import { LinearGradient } from 'expo-linear-gradient'
 import Svg, { Circle, Path } from 'react-native-svg'
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
 import { artworkUrlAtSize } from '../lib/artwork'
-import { useColorPortada } from '../lib/colorPortada'
 import { estadoControlWeb } from './estadoControl'
 import { IconMusic, IconPause, IconPlay, IconWave } from './icons'
 import { useMovimientoVisible } from './useMovimientoVisible'
@@ -31,6 +30,9 @@ export type TarjetaMusicaProps = {
 }
 
 const ES_WEB = Platform.OS === 'web'
+const LADO_PORTADA = 75
+const ESPACIO_PORTADA = 24
+const RELLENO = 12
 function instalarGiroWeb() {
   if (!ES_WEB || typeof document === 'undefined' || document.getElementById('dn-tarjeta-musica-motion')) return
   const hoja = document.createElement('style')
@@ -50,14 +52,15 @@ export const TarjetaMusica = memo(function TarjetaMusica({
 }: TarjetaMusicaProps) {
   const [hover, setHover] = useState(false)
   const [foco, setFoco] = useState(false)
+  const [focoInformacion, setFocoInformacion] = useState(false)
   const [presionada, setPresionada] = useState(false)
   const [falloImagen, setFalloImagen] = useState<string>()
   const [ancho, setAncho] = useState(325)
   const { fontScale } = useWindowDimensions()
-  const alto = ES_WEB ? 100 : Math.max(100, Math.ceil(24 + 54 * fontScale))
+  const alto = Math.max(112, Math.ceil(2 * RELLENO + Math.max(18, 14 * fontScale) + 8 + 54 * fontScale + 2))
+  const anchoInformacion = Math.max(0, ancho - 2 * RELLENO - LADO_PORTADA - ESPACIO_PORTADA)
   const uri = datos.imagen ? artworkUrlAtSize(datos.imagen, 240) : null
   const imagen = uri && falloImagen !== uri ? uri : null
-  const tinte = useColorPortada(imagen)
   const permiteMovimiento = useMovimientoVisible(Boolean(onReproducir))
   const sonando = reproduciendo && !cargando
   const visible = Boolean(onReproducir) && (sonando || hover || foco || presionada)
@@ -83,6 +86,7 @@ export const TarjetaMusica = memo(function TarjetaMusica({
   }, [girando, angulo])
 
   const accionPortada = onReproducir ?? onAbrir
+  const etiquetaAbrir = `Abrir ${datos.titulo}${datos.artista ? `, ${datos.artista}` : ''} en dnmusic`
   const etiquetaPortada = etiquetaReproduccion ?? `${reproduciendo || cargando ? 'Pausar' : 'Reproducir'} ${datos.titulo}, ${datos.artista}`
   const portada = <>
     {onReproducir ? <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
@@ -106,50 +110,56 @@ export const TarjetaMusica = memo(function TarjetaMusica({
     </View>
   </>
   const informacion = <>
-    <View style={s.marca}><IconWave size={18} color="#D6D1D4" /><Text style={s.marcaTexto}>dnmusic</Text></View>
+    <View style={s.marca}><View style={s.iconMarca}><IconWave size={18} color="#A3A3AE" /></View><Text style={s.marcaTexto} numberOfLines={1}>dnmusic</Text></View>
     <View style={s.textos}>
-      <Text style={s.titulo} numberOfLines={1} ellipsizeMode="tail">{datos.titulo}</Text>
+      <Text style={s.titulo} numberOfLines={2} ellipsizeMode="tail">{datos.titulo}</Text>
       <Text style={s.artista} numberOfLines={1} ellipsizeMode="tail">{datos.artista}</Text>
     </View>
   </>
 
-  return <View testID={testID} style={[s.tarjeta, { height: alto }, tinte ? { backgroundColor: tinte } : null, style]} accessibilityState={{ busy: cargando }}
-    onLayout={event => { const valor = event.nativeEvent.layout.width; if (valor > 0 && valor !== ancho) setAncho(valor) }}>
+  return <View testID={testID} style={[s.tarjeta, { minHeight: alto }, style]} accessibilityState={{ busy: cargando }}
+    onLayout={event => { const valor = event.nativeEvent.layout.width; if (valor > 0) setAncho(actual => valor === actual ? actual : valor) }}>
     <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={s.fondo}>
       {imagen ? <Image source={{ uri: imagen }} accessible={false} blurRadius={ES_WEB ? 0 : 50}
-        style={[s.imagenFondo, { height: ancho * 1.2, top: alto / 2 - ancho * 0.6 }, ES_WEB ? { filter: 'blur(50px) brightness(1.5)' } as object : null]} /> : null}
-      <LinearGradient colors={['rgba(0,0,0,0.65)', 'rgba(0,0,0,0.8)']} style={StyleSheet.absoluteFill} />
+        style={[s.imagenFondo, { height: ancho * 1.2, marginTop: -ancho * 0.6 }, ES_WEB ? { filter: 'blur(50px)' } as object : null]} /> : null}
+      <LinearGradient colors={['rgba(0,0,0,0.82)', 'rgba(0,0,0,0.94)']} style={StyleSheet.absoluteFill} />
     </View>
     {accionPortada ? <Pressable {...estadoControlWeb('none')} accessibilityRole="button"
-      accessibilityLabel={onReproducir ? etiquetaPortada : `Abrir ${datos.titulo} en dnmusic`}
+      accessibilityLabel={onReproducir ? etiquetaPortada : etiquetaAbrir}
       accessibilityState={{ busy: cargando }} onPress={accionPortada} style={s.botonPortada}
       onHoverIn={ES_WEB ? () => setHover(true) : undefined} onHoverOut={ES_WEB ? () => setHover(false) : undefined}
       onFocus={ES_WEB ? () => setFoco(true) : undefined} onBlur={ES_WEB ? () => setFoco(false) : undefined}
       onPressIn={() => setPresionada(true)} onPressOut={() => setPresionada(false)}>{portada}</Pressable>
       : <View style={s.botonPortada}>{portada}</View>}
-    {onAbrir ? <Pressable {...estadoControlWeb('none')} accessibilityRole="button" accessibilityLabel={`Abrir ${datos.titulo} en dnmusic`}
-      onPress={onAbrir} style={({ pressed }) => [s.informacion, pressed ? s.presionada : null]}>{informacion}</Pressable>
-      : <View style={s.informacion}>{informacion}</View>}
+    <View style={[s.informacion, { width: anchoInformacion }]}>
+      {onAbrir ? <Pressable {...estadoControlWeb('none')} accessibilityRole="button" accessibilityLabel={etiquetaAbrir}
+        onPress={onAbrir} onFocus={ES_WEB ? () => setFocoInformacion(true) : undefined} onBlur={ES_WEB ? () => setFocoInformacion(false) : undefined}
+        style={({ pressed }) => [s.contenidoInformacion, pressed ? s.presionada : null, focoInformacion ? s.focoInformacion : null]}>{informacion}</Pressable>
+        : <View style={s.contenidoInformacion}>{informacion}</View>}
+    </View>
   </View>
 })
 
 const s = StyleSheet.create({
-  tarjeta: { width: '100%', maxWidth: 325, height: 100, minWidth: 0, flexShrink: 1, flexDirection: 'row', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#ffffff14', backgroundColor: '#242024', overflow: 'hidden' },
+  tarjeta: { width: '100%', maxWidth: 325, minWidth: 0, flexShrink: 1, flexDirection: 'row', alignItems: 'center', columnGap: ESPACIO_PORTADA, padding: RELLENO, borderRadius: 16, borderWidth: 0, backgroundColor: '#18181C', overflow: 'hidden' },
   fondo: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' },
-  imagenFondo: { position: 'absolute', width: '120%', left: '-10%' },
-  botonPortada: { width: 75, height: 75, alignSelf: 'center', flexShrink: 0, zIndex: 1 },
-  portada: { width: 75, height: 75, borderRadius: 8, backgroundColor: '#322e32', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.2)' },
+  imagenFondo: { position: 'absolute', width: '120%', top: '50%', left: '-10%' },
+  botonPortada: { width: LADO_PORTADA, height: LADO_PORTADA, alignSelf: 'center', flexShrink: 0, zIndex: 1 },
+  portada: { width: LADO_PORTADA, height: LADO_PORTADA, borderRadius: 8, backgroundColor: '#2B2B30', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.2)' },
   portadaSalida: { transform: [{ translateX: -2 }] },
   presionada: { opacity: 0.75 },
   foco: { borderWidth: 2, borderColor: '#D6D1D4' },
+  focoInformacion: ES_WEB ? { outlineWidth: 2, outlineColor: '#B6B6C6', outlineStyle: 'solid', outlineOffset: 3, borderRadius: 4 } as ViewStyle : {},
   imagen: { width: '100%', height: '100%' },
   vinilo: { position: 'absolute', left: 7.5, top: 7.5, width: 60, height: 60 },
   disco: { width: 60, height: 60 },
   control: { position: 'absolute', bottom: 5, right: 5, width: 24, height: 24, borderRadius: 12, backgroundColor: '#000000b8', alignItems: 'center', justifyContent: 'center' },
-  informacion: { flex: 1, minWidth: 0, paddingLeft: 24, alignItems: 'stretch', justifyContent: 'space-between', zIndex: 2 },
-  marca: { alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 4 },
-  marcaTexto: { color: '#D6D1D4', fontSize: 10, fontWeight: '600', letterSpacing: -0.2 },
-  textos: { minWidth: 0, gap: 1 },
-  titulo: { color: '#D6D1D4', fontSize: 14, lineHeight: 18, fontWeight: '600', letterSpacing: -0.084, textAlign: 'right' },
-  artista: { color: '#BAAEBA', fontSize: 14, lineHeight: 18, fontWeight: '500', letterSpacing: -0.084, textAlign: 'right' },
+  informacion: { flexGrow: 1, flexShrink: 1, minWidth: 0, zIndex: 2 },
+  contenidoInformacion: { width: '100%', minWidth: 0, minHeight: LADO_PORTADA, justifyContent: 'center', gap: 8 },
+  marca: { width: '100%', minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  iconMarca: { width: 18, height: 18, flexShrink: 0 },
+  marcaTexto: { minWidth: 0, flexShrink: 1, color: '#A3A3AE', fontSize: 10, lineHeight: 14, fontWeight: '600', letterSpacing: -0.2, textAlign: 'left' },
+  textos: { width: '100%', minWidth: 0, overflow: 'hidden', gap: 2 },
+  titulo: { width: '100%', color: '#F4F4F5', fontSize: 14, lineHeight: 18, fontWeight: '600', letterSpacing: -0.084, textAlign: 'left' },
+  artista: { width: '100%', color: '#B3B3BD', fontSize: 13, lineHeight: 18, fontWeight: '500', letterSpacing: -0.084, textAlign: 'left' },
 })
