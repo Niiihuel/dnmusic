@@ -80,14 +80,17 @@ npm run build:web
 ```
 
 `npm run check` runs `typecheck:all`, `test:all`, then lint.
-`npm test` tests the app; `npm run test:all` also tests the service and desktop.
+`npm run test:all` builds and tests the service and desktop before testing the app.
+For `npm test` alone, first run `npm --prefix server run build`: the app's
+Railway routing tests load the compiled service.
 
 Portable DSP tests need a C compiler. Local runs can skip them when one is
 unavailable; CI sets `REQUIRE_EQ_DSP_TEST=1` so a missing compiler fails the gate.
 
-Server tests build `server/dist` before importing it; they run before the root
-lint, which also resolves service imports. Desktop tests compile the shell and
-do not need to launch Electron; `--ignore-scripts` skips its binary download.
+Server tests build `server/dist` before importing it; the aggregate check runs
+them before app tests and lint, which also resolve service imports. Desktop
+tests compile the shell and do not need to launch Electron; `--ignore-scripts`
+skips its binary download.
 A web export checks the JavaScript bundle, not Swift/Kotlin compilation or
 playback on a physical device.
 

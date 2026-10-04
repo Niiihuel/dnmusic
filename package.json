@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:all": "npm run typecheck && npm --prefix server run typecheck && npm --prefix desktop run typecheck",
     "test": "node --test tests/*.test.mjs",
-    "test:all": "npm test && npm --prefix server test && npm --prefix desktop test",
+    "test:all": "npm --prefix server test && npm --prefix desktop test && npm test",
     "check": "npm run typecheck:all && npm run test:all && npm run lint",
     "ios:dev": "eas build --profile development --platform ios",
     "ios:preview": "eas build --profile preview --platform ios",
