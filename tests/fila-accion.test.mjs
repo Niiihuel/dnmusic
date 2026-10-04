@@ -75,17 +75,15 @@ test('copiar conserva dos líneas y ancho acotado durante idle, pending, copied 
     assert.equal(ui.props.accessibilityLiveRegion, 'polite')
     assert.equal(ui.props.style.flex, 1)
     assert.equal(ui.props.style.minWidth, 0)
-    const labelBox = ui.props.children[1]
-    assert.equal(labelBox.type, 'View')
-    assert.equal(labelBox.props.style.flex, 1)
-    const swap = labelBox.props.children
-    assert.equal(swap.props.value, value)
-    for (const text of [swap.props.reserve, swap.props.children]) {
-      assert.equal(text.props.numberOfLines, 2)
-      assert.equal(text.props.style.width, '100%')
-    }
-    assert.equal(swap.props.children.props.children, title)
-    assert.equal(swap.props.reserve.props.children, label)
+    const text = ui.props.children[1]
+    assert.equal(text.type, 'Text', 'el label multilínea no depende del ancho intrínseco del grid de animación')
+    assert.equal(text.props.style.flex, 1)
+    assert.equal(text.props.style.minWidth, 0)
+    assert.equal(text.props.style.width, '100%')
+    assert.equal(text.props.numberOfLines, 2)
+    assert.equal(text.props.children, title)
+    assert.equal(ui.props.children[0].type, 'ActionSwap', 'el icono conserva su animación')
+    assert.equal(ui.props.children[0].props.value, value)
   }
 })
 
