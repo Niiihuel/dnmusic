@@ -1,8 +1,8 @@
 import { FilaSocial } from '../../src/ui/FilaSocial'
 import { useState } from 'react'
-import { FlatList, Platform, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, FlatList, Platform, Pressable, ScrollView, Text, View } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
-import { estiloDeFuente, FUENTES, type Fuente } from '../../src/lib/fuentes'
+import { estiloDeFuente, familiaSwiftUI, FUENTES, useEstadoFuentesDelPerfil, type Fuente } from '../../src/lib/fuentes'
 import { Hoja, useHojaModal, usePisoHoja } from '../../src/ui/Hoja'
 import { ICON_COLOR, IconCheck } from '../../src/ui/icons'
 import { CabeceraEdicionPerfil } from '../../src/ui/EditorDeCampo'
@@ -19,6 +19,7 @@ export default function ElegirFuente() {
   const router = useRouter()
   const piso = usePisoHoja(24)
   const modal = useHojaModal()
+  const [fuentesListas, errorFuentes] = useEstadoFuentesDelPerfil()
   const perfil = useIniciarPerfilEdicion()
   const { ocupado: guardando } = usePerfilEdicion()
   const elegida = perfil?.fuente ?? null
@@ -44,10 +45,16 @@ export default function ElegirFuente() {
       style={{ flex: 1, backgroundColor: '#121212' }}
       contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: piso }}
       contentInsetAdjustmentBehavior="automatic"
-      data={OPCIONES}
-      extraData={{ elegida, guardando, muestra }}
+      data={fuentesListas ? OPCIONES : []}
+      extraData={{ elegida, guardando, muestra, fuentesListas }}
+      ListEmptyComponent={<View style={{ padding: 24, alignItems: 'center', gap: 12 }}>
+        {!errorFuentes ? <ActivityIndicator color="#FFFFFF" /> : null}
+        <Text accessibilityRole={errorFuentes ? 'alert' : undefined} style={{ color: '#B3B3B3', textAlign: 'center' }}>
+          {errorFuentes ? 'No se pudieron cargar las tipografías. Volvé a abrir esta hoja.' : 'Cargando tipografías…'}
+        </Text>
+      </View>}
       keyExtractor={item => item?.id ?? 'sistema'}
-      ListHeaderComponent={<View style={{ gap: 12, paddingBottom: 24 }}>
+      ListHeaderComponent={fuentesListas ? <View style={{ gap: 12, paddingBottom: 24 }}>
         <Text style={{ color: '#b3b3b3', fontSize: 13 }}>Vista previa</Text>
         <View style={{ padding: 20, borderRadius: 18, backgroundColor: '#1c1c1e', gap: 8 }}>
           <Text style={[{ color: '#fff', fontSize: 28 }, estiloDeFuente(elegida, 28)]}>{muestra}</Text>
@@ -55,7 +62,7 @@ export default function ElegirFuente() {
           <Text style={[{ color: '#c7c7cc', fontSize: 17 }, estiloDeFuente(elegida, 17)]}>Tu música, tu espacio. Así se ve lo que compartís.</Text>
         </View>
         <Text style={{ color: '#b3b3b3', fontSize: 13, lineHeight: 19 }}>Se aplica a todo tu perfil y sus piezas. Guardá los cambios al volver al editor.</Text>
-      </View>}
+      </View> : null}
       renderItem={({ item }) => <Opcion
         nombre={item?.nombre ?? 'Del sistema'} detalle={item?.detalle ?? 'La de toda la app'} muestra={muestra}
         estilo={estiloDeFuente(item?.id, 20)} elegida={elegida === (item?.id ?? null)}
@@ -127,7 +134,7 @@ function Opcion({ nombre, detalle, muestra, estilo, elegida, desactivada, onPres
   desactivada: boolean
   onPress: () => void
 }) {
-  if (Platform.OS === 'ios') return <FilaSocial titulo={muestra} detalle={`${nombre} · ${detalle}`} fontFamily={estilo?.fontFamily}
+  if (Platform.OS === 'ios') return <FilaSocial titulo={muestra} detalle={`${nombre} · ${detalle}`} fontFamily={familiaSwiftUI(estilo?.fontFamily)} fontSize={estilo?.fontSize ?? 20}
     label={`Fuente ${nombre}. ${detalle}`} selected={elegida} disabled={desactivada} onPress={onPress} />
   return (
     <Pressable

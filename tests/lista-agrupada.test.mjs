@@ -16,20 +16,14 @@ test('en iOS la lista la dibuja el sistema, no nosotros', () => {
   }
 })
 
-test('la paleta acromática sobrevive al material del sistema', () => {
-  /*
-   * SwiftUI pinta la lista agrupada con su gris claro y tiñe de azul lo
-   * interactivo. En una app que es toda gris a propósito (docs/DESIGN.md) eso
-   * sería el único color de la pantalla, así que las tres piezas que lo evitan
-   * no son decorativas: son la condición para poder usar el control nativo.
-   */
+test('la superficie oscura conserva switches verdes distinguibles', () => {
   assert.match(ios, /scrollContentBackground\('hidden'\)/)
   assert.match(ios, /listRowBackground\(FILA\)/)
   assert.match(ios, /seedColor=\{ACENTO\}/)
   assert.match(ios, /const FILA = '#181818'/)
   assert.match(ios, /const ACENTO = '#FFFFFF'/)
   assert.match(ios, /toggleStyle\('switch'\)/)
-  assert.match(ios, /tint\(ACENTO\)/)
+  assert.match(ios, /tint\('#34C759'\)/)
 })
 
 test('las filas se describen como datos, que es lo que la vuelve nativa', () => {

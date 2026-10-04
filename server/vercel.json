@@ -56,6 +56,10 @@
       "destination": "/api/todo?ruta=/peaks"
     },
     {
+      "source": "/analysis",
+      "destination": "/api/todo?ruta=/analysis"
+    },
+    {
       "source": "/home",
       "destination": "/api/todo?ruta=/home"
     },

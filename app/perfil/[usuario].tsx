@@ -165,7 +165,6 @@ export default function PerfilAjeno() {
     <Vitrinas
       ownerId={perfil.userId}
       recarga={0}
-      onCambio={() => undefined}
       temaGlobal={perfil.tema}
       reaccionable={!soyYo}
       /* El usuario viaja también: la pantalla del sub-space lo necesita para

@@ -1,10 +1,10 @@
 import { BotonSuperficie } from '../src/ui/BotonSuperficie'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Image,
   ScrollView,
-  StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native'
 import { useRouter, useLocalSearchParams } from 'expo-router'
@@ -26,6 +26,8 @@ import { FormError, GhostButton, PrimaryButton } from '../src/ui/Button'
 import { ICON_COLOR, IconCheck } from '../src/ui/icons'
 import { SearchField } from '../src/ui/SearchField'
 import { Skeleton } from '../src/ui/Skeleton'
+import { anchoTarjetaGenero, catalogoGeneros } from '../src/lib/catalogoEditorial'
+import { TarjetaGenero } from '../src/ui/TarjetaGenero'
 
 /** Mínimo de elecciones por paso: tres es lo que pide el referente y lo que
  *  necesita la radio para no sonar a un solo artista. */
@@ -56,8 +58,8 @@ export default function Onboarding() {
   const [artistasElegidos, setArtistasElegidos] = useState<ArtistResult[]>([])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  /** Los `params` de los géneros ya plantados: los cruza la grilla al cargar. */
-  const [semillasGuardadas, setSemillasGuardadas] = useState<string[]>([])
+  const [semillasListas, setSemillasListas] = useState(false)
+  const [intentoSemillas, setIntentoSemillas] = useState(0)
 
   /* Lo ya plantado, para premarcarlo: quien vuelve desde Ajustes tiene que
      ver lo que eligió la última vez, no una grilla virgen. Los géneros se
@@ -71,12 +73,15 @@ export default function Onboarding() {
         .filter((s) => s.kind === 'artista')
         .map((s) => ({ id: s.ref, name: s.name, photoUrl: s.artworkUrl, subtitle: '' }))
       if (artistas.length) setArtistasElegidos(artistas)
-      setSemillasGuardadas(semillas.filter((s) => s.kind === 'genero').map((s) => s.ref))
-    })
+      // También conserva categorías antiguas que ya no estén en el catálogo.
+      setGenerosElegidos(semillas.filter(s => s.kind === 'genero').map(s => ({ params: s.ref, name: s.name, artworkUrl: s.artworkUrl })))
+      setSemillasListas(true)
+      setError(null)
+    }).catch(() => { if (alive) setError('No se pudieron cargar tus gustos. Volvé a intentar.') })
     return () => {
       alive = false
     }
-  }, [])
+  }, [intentoSemillas])
 
   const irse = async () => {
     await completarOnboarding()
@@ -138,11 +143,12 @@ export default function Onboarding() {
         locations={[0, 1]}
         style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 480 }}
       />
-      {paso === 'generos' ? (
+      <View style={{ flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center' }}>
+      {!semillasListas ? <View className="flex-1 justify-center gap-4 px-6">
+        {error ? <PrimaryButton label="Reintentar" onPress={() => setIntentoSemillas(v => v + 1)} /> : <Text className="text-muted-foreground">Preparando tus gustos…</Text>}
+      </View> : paso === 'generos' ? (
         <PasoGeneros
           elegidos={generosElegidos}
-          /* Los géneros ya plantados, para premarcarlos al llegar la grilla. */
-          premarcados={semillasGuardadas}
           reeleccion={reeleccion}
           onToggle={alTocarGenero}
           onSeguir={() => setPaso('artistas')}
@@ -157,6 +163,7 @@ export default function Onboarding() {
           guardando={guardando}
           onTerminar={terminar}
           onSaltear={saltear}
+          onVolver={() => setPaso('generos')}
         />
       )}
       {error ? (
@@ -164,6 +171,7 @@ export default function Onboarding() {
           <FormError message={error} />
         </View>
       ) : null}
+      </View>
     </SafeAreaView>
   )
 }
@@ -172,41 +180,30 @@ export default function Onboarding() {
 
 function PasoGeneros({
   elegidos,
-  premarcados,
   reeleccion,
   onToggle,
   onSeguir,
   onSaltear,
 }: {
   elegidos: Genero[]
-  /** Refs de los géneros ya plantados: se premarcan al llegar la grilla. */
-  premarcados?: string[]
   reeleccion?: boolean
   onToggle: (g: Genero) => void
   onSeguir: () => void
   onSaltear: () => void
 }) {
   const [generos, setGeneros] = useState<Genero[] | null>(null)
-  /* La premarcación corre una sola vez: sin el candado, destocar un género
-     después lo volvería a marcar en cada render. */
-  const premarcado = useRef(false)
+  const [intento, setIntento] = useState(0)
+  const ancho = anchoTarjetaGenero(Math.min(useWindowDimensions().width, 760))
 
   useEffect(() => {
     let alive = true
-    fetchGeneros().then((g) => alive && setGeneros(g))
+    fetchGeneros().then((g) => alive && setGeneros(catalogoGeneros(g, 'genero')))
+      .catch(() => { if (alive) setGeneros([]) })
     return () => {
       alive = false
     }
-  }, [])
-
-  useEffect(() => {
-    if (!generos || premarcado.current || !premarcados?.length) return
-    const iniciales = generos.filter((g) => premarcados.includes(g.params))
-    if (iniciales.length) {
-      premarcado.current = true
-      for (const g of iniciales) onToggle(g)
-    }
-  }, [generos, premarcados, onToggle])
+  }, [intento])
+  const opciones = generos ? [...generos, ...elegidos.filter(g => !generos.some(actual => actual.params === g.params))] : null
 
   const listo = elegidos.length >= MINIMO
 
@@ -214,103 +211,48 @@ function PasoGeneros({
     <>
       <Encabezado
         titulo={reeleccion ? '¿Sigue gustándote?' : '¿Qué te gusta escuchar?'}
+        paso={1}
         detalle={
           reeleccion
-            ? `Lo que tenías ya está marcado. Elegí al menos ${MINIMO} géneros y guardá.`
-            : `Elegí al menos ${MINIMO} géneros. Con esto armamos tu inicio; después lo afina solo tu escucha.`
+            ? 'Tus gustos, a tu manera. Podés cambiar lo que habías elegido.'
+            : `Elegí ${MINIMO} o más. Es el punto de partida; tu música hace el resto.`
         }
         onSaltear={onSaltear}
       />
-      <ScrollView className="min-h-0 flex-1" contentContainerClassName="flex-row flex-wrap gap-4 px-6 pb-6">
-        {(generos ?? Array.from({ length: 12 }, () => null)).map((g, i) =>
+      <ScrollView className="min-h-0 flex-1" contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24, width: '100%', maxWidth: 760, alignSelf: 'center' }}>
+        {generos?.length === 0 ? <View className="gap-3 py-5">
+          <Text className="text-muted-foreground">No pudimos cargar los géneros. Tus elecciones siguen guardadas.</Text>
+          <GhostButton label="Volver a intentar" onPress={() => { setGeneros(null); setIntento(v => v + 1) }} />
+        </View> : null}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+        {(opciones ?? Array.from({ length: 12 }, () => null)).map((g, i) =>
           g === null ? (
-            <Skeleton key={i} width={160} height={160 * 0.58} radius={8} />
+            <Skeleton key={i} width={ancho} height={164} radius={18} />
           ) : (
-            <GeneroOpcion
+            <TarjetaGenero
               key={g.params}
-              genero={g}
+              nombre={g.name}
+              ancho={ancho}
               elegido={elegidos.some((x) => x.params === g.params)}
               onPress={() => onToggle(g)}
             />
           ),
         )}
+        </View>
       </ScrollView>
       <View className="gap-3 px-6 pb-6">
+        <Text accessibilityLiveRegion="polite" className="text-muted-foreground text-footnote text-center">{elegidos.length ? `${elegidos.length} elegidos` : 'Tu selección empieza acá'}</Text>
         <PrimaryButton
-          label={listo ? 'Seguir' : `Elegí ${MINIMO - elegidos.length} más`}
+          label={listo ? 'Elegir artistas' : `Elegí ${MINIMO - elegidos.length} más`}
           onPress={onSeguir}
           disabled={!listo}
         />
-        <GhostButton label={reeleccion ? 'Dejarlo como está' : 'Saltar'} onPress={onSaltear} />
       </View>
     </>
   )
 }
 
-/** La tarjeta de género de la portada, con el estado «elegida» encima:
- *  velo claro y tilde. Sin color nuevo — el estado es luminancia. */
-function GeneroOpcion({
-  genero,
-  elegido,
-  onPress,
-}: {
-  genero: Genero
-  elegido: boolean
-  onPress: () => void
-}) {
-  const lado = 160
-  const alto = Math.round(lado * 0.58)
-  return (
-    <BotonSuperficie
-      accessibilityRole="button"
-      accessibilityLabel={`${elegido ? 'Quitar' : 'Elegir'} ${genero.name}`}
-      accessibilityState={{ selected: elegido }}
-      onPress={onPress}
-      style={{ width: lado }}
-      className="active:opacity-80"
-    >
-      <View
-        className="overflow-hidden rounded-lg bg-card"
-        style={{
-          width: lado,
-          height: alto,
-          opacity: elegido ? 1 : 0.55,
-        }}
-      >
-        {genero.artworkUrl ? (
-          <Image
-            source={{ uri: proxiedImage(artworkUrlAtSize(genero.artworkUrl, 400)) }}
-            resizeMode="cover"
-            style={{ width: lado, height: alto }}
-          />
-        ) : null}
-        <LinearGradient
-          pointerEvents="none"
-          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.78)']}
-          locations={[0.4, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-        <Text
-          numberOfLines={1}
-          className="absolute bottom-2 left-2.5 right-2.5 text-foreground text-footnote font-bold"
-          style={{ textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 6 }}
-        >
-          {genero.name}
-        </Text>
-        {elegido ? (
-          <View
-            style={StyleSheet.absoluteFill}
-            className="items-center justify-center"
-          >
-            <View className="h-9 w-9 items-center justify-center rounded-full bg-background/90">
-              <IconCheck size={18} color={ICON_COLOR.foreground} />
-            </View>
-          </View>
-        ) : null}
-      </View>
-    </BotonSuperficie>
-  )
-}
+
 
 /* ── Paso 2: artistas ────────────────────────────────────────────────────── */
 
@@ -322,6 +264,7 @@ function PasoArtistas({
   guardando,
   onTerminar,
   onSaltear,
+  onVolver,
 }: {
   generos: Genero[]
   elegidos: ArtistResult[]
@@ -330,13 +273,14 @@ function PasoArtistas({
   guardando: boolean
   onTerminar: () => void
   onSaltear: () => void
+  onVolver: () => void
 }) {
   /** Artistas sugeridos por los géneros elegidos: los `kind: 'artist'` que
    *  traen las páginas de las categorías. Su id ya es de canal (`UC…`),
    *  el mismo espacio del historial. */
   const [sugeridos, setSugeridos] = useState<ArtistResult[] | null>(null)
   const [busqueda, setBusqueda] = useState('')
-  const [hallados, setHallados] = useState<ArtistResult[]>([])
+  const [hallados, setHallados] = useState<{ termino: string; artistas: ArtistResult[] } | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -351,7 +295,7 @@ function PasoArtistas({
           for (const item of items as (HomeItem & { photoUrl?: string })[]) {
             if (item.kind !== 'artist' || !item.id || vistos.has(item.id)) continue
             vistos.add(item.id)
-            pool.push({ id: item.id, name: item.title, photoUrl: '', subtitle: '' })
+            pool.push({ id: item.id, name: item.title, photoUrl: item.artworkUrl, subtitle: '' })
           }
         }
         setSugeridos(pool)
@@ -372,8 +316,8 @@ function PasoArtistas({
     let alive = true
     const timer = setTimeout(() => {
       searchMusic(term)
-        .then((hits) => alive && setHallados(hits.artists))
-        .catch(() => alive && setHallados([]))
+        .then((hits) => alive && setHallados({ termino: term, artistas: hits.artists }))
+        .catch(() => alive && setHallados({ termino: term, artistas: [] }))
     }, 400)
     return () => {
       alive = false
@@ -382,9 +326,10 @@ function PasoArtistas({
   }, [busqueda])
 
   const lista = useMemo(() => {
-    if (busqueda.trim()) return hallados
-    return sugeridos ?? []
-  }, [busqueda, hallados, sugeridos])
+    if (busqueda.trim()) return hallados?.termino === busqueda.trim() ? hallados.artistas : []
+    return [...elegidos, ...(sugeridos ?? []).filter(a => !elegidos.some(e => e.id === a.id))]
+  }, [busqueda, hallados, sugeridos, elegidos])
+  const buscando = !!busqueda.trim() && hallados?.termino !== busqueda.trim()
 
   const listo = elegidos.length >= MINIMO
 
@@ -392,23 +337,27 @@ function PasoArtistas({
     <>
       <Encabezado
         titulo="Ahora, algunos artistas"
-        detalle={`Elegí al menos ${MINIMO}. Te sugerimos por tus géneros; también podés buscar.`}
+        paso={2}
+        detalle={`Elegí ${MINIMO} o más voces que quieras tener cerca.`}
         onSaltear={onSaltear}
+        disabled={guardando}
       />
       <View className="px-6 pb-4">
         <SearchField
           value={busqueda}
           onChangeText={setBusqueda}
           placeholder="Buscar artistas"
+          loading={buscando}
         />
       </View>
       <ScrollView className="min-h-0 flex-1" contentContainerClassName="px-6 pb-6 gap-1.5">
+        {busqueda.trim() && !buscando && lista.length === 0 ? <Text className="text-muted-foreground text-subheadline py-4">No encontramos artistas. Probá con otro nombre.</Text> : null}
         {lista.length === 0 && sugeridos !== null && !busqueda.trim() ? (
           <Text className="text-muted-foreground text-subheadline">
             No encontré sugerencias para tus géneros. Buscá alguno que te guste.
           </Text>
         ) : null}
-        {sugeridos === null && !busqueda.trim()
+        {(sugeridos === null && !busqueda.trim() && !elegidos.length) || buscando
           ? [0, 1, 2, 3, 4, 5].map((i) => (
               <View key={i} className="flex-row items-center gap-3 py-1">
                 <Skeleton width={52} height={52} radius={26} />
@@ -425,21 +374,20 @@ function PasoArtistas({
             ))}
       </ScrollView>
       <View className="gap-3 px-6 pb-6">
+        <Text accessibilityLiveRegion="polite" className="text-muted-foreground text-footnote text-center">{elegidos.length} artistas elegidos</Text>
         <PrimaryButton
           label={
             listo
               ? reeleccion
                 ? 'Guardar elección'
-                : elegidos.length === 1
-                  ? 'Con este artista, empezar'
-                  : `Con ${elegidos.length} artistas, empezar`
+                : 'Empezar a escuchar'
               : `Elegí ${MINIMO - elegidos.length} más`
           }
           onPress={onTerminar}
           disabled={!listo || guardando}
           busy={guardando}
         />
-        <GhostButton label={reeleccion ? 'Dejarlo como está' : 'Saltar'} onPress={onSaltear} disabled={guardando} />
+        <GhostButton label="Volver a géneros" onPress={onVolver} disabled={guardando} />
       </View>
     </>
   )
@@ -468,7 +416,7 @@ function ArtistaOpcion({
             source={{ uri: proxiedImage(artworkUrlAtSize(artista.photoUrl, 128)) }}
             className="h-[52px] w-[52px]"
           />
-        ) : null}
+        ) : <View className="flex-1 items-center justify-center"><Text className="text-foreground text-title3 font-semibold">{artista.name.charAt(0).toUpperCase()}</Text></View>}
       </View>
       <Text className="min-w-0 flex-1 text-foreground text-subheadline" numberOfLines={1}>
         {artista.name}
@@ -485,24 +433,30 @@ function Encabezado({
   titulo,
   detalle,
   onSaltear,
+  paso,
+  disabled = false,
 }: {
   titulo: string
   detalle: string
   onSaltear: () => void
+  paso: 1 | 2
+  disabled?: boolean
 }) {
   return (
-    <View className="gap-4 px-6 pt-8 pb-5">
+    <View className="gap-4 px-6 pt-5 pb-5">
+      <View className="flex-row items-center gap-3">
+        <Text className="flex-1 text-muted-foreground text-caption1 font-semibold">TU MÚSICA · {paso} DE 2</Text>
+        <GhostButton label="Ahora no" onPress={onSaltear} disabled={disabled} />
+      </View>
       <View className="flex-row items-start justify-between gap-3">
-        <Text className="text-foreground text-title2 font-bold" style={{ maxWidth: '75%' }}>
+        <Text className="text-foreground text-title1 font-bold" style={{ letterSpacing: -0.7 }}>
           {titulo}
         </Text>
-        <BotonSuperficie accessibilityRole="button" onPress={onSaltear} className="active:opacity-70">
-          <Text className="text-muted-foreground text-footnote font-semibold underline">
-            Saltar
-          </Text>
-        </BotonSuperficie>
       </View>
       <Text className="text-muted-foreground text-subheadline">{detalle}</Text>
+      <View accessibilityRole="progressbar" accessibilityValue={{ min: 1, max: 2, now: paso }} style={{ flexDirection: 'row', gap: 6 }}>
+        {[1, 2].map(n => <View key={n} style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: n <= paso ? '#D5D5D5' : '#343434' }} />)}
+      </View>
     </View>
   )
 }

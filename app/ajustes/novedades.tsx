@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AjustesNovedades } from '../../src/ui/AjustesNovedades'
 import { Panel } from '../../src/ui/Panel'
-import { Actualizador } from '../../src/ui/Actualizador'
 import { BotonVolver } from '../../src/ui/BotonVolver'
 import { ICON_COLOR, IconChevronRight } from '../../src/ui/icons'
 import { NOVEDADES, type Novedad } from '../../src/lib/novedades'
@@ -30,7 +29,7 @@ function Version({ novedad, ultima }: { novedad: Novedad; ultima: boolean }) {
             <Text className="text-muted-foreground text-caption2">{novedad.fecha}</Text>
             {ultima ? (
               <Text className="text-muted-foreground text-footnote uppercase">
-                Esta versión
+                Última nota
               </Text>
             ) : null}
           </View>
@@ -67,7 +66,7 @@ export default function Novedades() {
       <View className={`min-h-0 flex-1 ${suelto ? '' : 'gap-2 p-2'}`}>
         <View className="flex-row items-center gap-3 px-3 py-1">
           <BotonVolver onPress={() => volver(router, '/ajustes')} />
-          <Text className="text-foreground text-subheadline font-semibold">Actualizaciones</Text>
+          <Text className="text-foreground text-subheadline font-semibold">Novedades</Text>
         </View>
         {Platform.OS === 'ios' ? <AjustesNovedades novedades={NOVEDADES} piso={piso} /> : <Panel className="flex-1">
           <ScrollView
@@ -90,7 +89,6 @@ export default function Novedades() {
                   </Text>
                 </View>
               </View>
-              <Actualizador />
               <View className="gap-3">
                 <Text className="px-1 text-muted-foreground text-footnote font-semibold uppercase">
                   Historial de versiones

@@ -1,68 +1,16 @@
 import { AccionSocial } from './Social'
 import { IconButton } from './IconButton'
-import { useEffect, useRef, useState } from 'react'
-import { Image, Platform, Text, View } from 'react-native'
+import { Image, Text, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
-import type { PlaylistTrack } from '../services/playlists'
-import { getPlaybackState } from '../state/playback'
 import { usePiso } from '../state/shell'
 import { Glass, HAY_VIDRIO } from './Glass'
-import { compartirHistoria } from './CompartirHistoria'
+import { useOfertaCaptura } from './useOfertaCaptura'
 import { ICON_COLOR, IconClose, IconMusic } from './icons'
 
-/** Cuánto se queda la oferta a la vista antes de retirarse sola. */
-const OFERTA_MS = 8000
-
-/**
- * La oferta de compartir después de una captura de pantalla.
- *
- * Es el gesto de Spotify: le sacás una captura a la app con música sonando y
- * aparece una tarjetita ofreciendo armar la historia — porque una captura de
- * un reproductor es, casi siempre, alguien queriendo mostrar qué está
- * escuchando. La tarjeta usa el mismo camino del menú («Compartir en una
- * historia»): la imagen de 1080×1920 y la hoja del sistema, donde Instagram
- * ofrece «Agregar a tu historia».
- *
- * La detección es del sistema (`expo-screen-capture`) y **el módulo es
- * opcional**: en la web no existe, y un development client compilado antes de
- * agregarlo tampoco lo trae. En esos casos esto no dibuja nada y la app sigue
- * igual — el mismo trato que `remote-commands`.
- *
- * Solo ofrece cuando hay una canción cargada: una captura del chat o de los
- * ajustes sin nada sonando no es una historia de música.
- */
+/** Oferta discreta; el archivo compartido es la tarjeta de música de la app. */
 export function AvisoCaptura() {
-  const [oferta, setOferta] = useState<PlaylistTrack | null>(null)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { oferta, cerrar, compartir } = useOfertaCaptura()
   const piso = usePiso(12)
-
-  useEffect(() => {
-    if (Platform.OS === 'web') return
-    let sub: { remove: () => void } | null = null
-    try {
-      /* Perezoso a propósito: si el binario no trae el módulo nativo, el
-         import de arriba de todo reventaría la app al arrancar. Acá falla
-         adentro del try y simplemente no hay oferta. */
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const ScreenCapture = require('expo-screen-capture') as {
-        addScreenshotListener: (fn: () => void) => { remove: () => void }
-      }
-      sub = ScreenCapture.addScreenshotListener(() => {
-        const state = getPlaybackState()
-        const track = state.manual ?? (state.index >= 0 ? state.tracks[state.index] : null)
-        if (!track) return
-        setOferta(track)
-        if (timer.current) clearTimeout(timer.current)
-        timer.current = setTimeout(() => setOferta(null), OFERTA_MS)
-      })
-    } catch {
-      // Sin módulo de capturas: sin oferta, y todo lo demás funciona igual.
-    }
-    return () => {
-      sub?.remove()
-      if (timer.current) clearTimeout(timer.current)
-    }
-  }, [])
 
   if (!oferta) return null
 
@@ -90,8 +38,8 @@ export function AvisoCaptura() {
               {oferta.title} — {oferta.artist}
             </Text>
           </View>
-          <AccionSocial label="Historia" accessibilityLabel="Compartir en una historia" expandida={false} onPress={() => { setOferta(null); compartirHistoria(oferta) }} />
-          <IconButton label="Cerrar" symbol="xmark" onPress={() => setOferta(null)} icon={<IconClose size={14} color={ICON_COLOR.muted} />} />
+          <AccionSocial label="Historia" accessibilityLabel="Compartir en una historia" expandida={false} onPress={compartir} />
+          <IconButton label="Cerrar" symbol="xmark" onPress={cerrar} icon={<IconClose size={14} color={ICON_COLOR.muted} />} />
         </View>
       </Glass>
     </View>

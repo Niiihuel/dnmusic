@@ -29,6 +29,7 @@ test('el estado OAuth explica el retorno automático en iOS y el navegador exter
   assert.match(texto(ios.EstadoGoogle({ activo: true, contexto: 'acceso' })), /ventana segura/)
   assert.match(texto(ios.EstadoGoogle({ activo: true, contexto: 'acceso' })), /automáticamente/)
   const pc = cargar('web', true)
+  assert.match(texto(pc.EstadoGoogle({ activo: true, contexto: 'acceso' })), /continuará en esta ventana/)
   assert.match(texto(pc.EstadoGoogle({ activo: true, contexto: 'vinculacion' })), /navegador/)
   assert.match(texto(pc.EstadoGoogle({ activo: true, contexto: 'vinculacion' })), /misma cuenta/)
   assert.equal(pc.EstadoGoogle({ activo: false, contexto: 'acceso' }), null)
@@ -49,8 +50,12 @@ test('iOS dibuja botón y estado con SwiftUI, mientras PC conserva su botón con
 
   for (const source of [buttonIOS, feedbackIOS]) {
     assert.match(source, /@expo\/ui\/swift-ui/)
-    assert.doesNotMatch(source, /from ['"]react-native['"]/)
+    assert.doesNotMatch(source, /Pressable|TouchableOpacity|TextInput/)
+    assert.match(source, /ignoreSafeArea="all"/)
   }
+  assert.match(buttonIOS, /frame\(\{ width: 18, height: 18 \}\)/)
+  assert.match(buttonIOS, /RNHostView/)
+  assert.match(buttonIOS, /GoogleIcon size=\{18\}/)
   assert.match(buttonIOS, /buttonStyle\('borderedProminent'\)/)
   assert.match(buttonIOS, /buttonBorderShape\('capsule'\)/)
   assert.match(feedbackIOS, /ProgressView/)

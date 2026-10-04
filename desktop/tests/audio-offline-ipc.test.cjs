@@ -45,7 +45,7 @@ test('preload expone el contrato exacto, desacopla eventos Electron y desuscribe
   ipc.invoke = async (...p) => { calls.push(p); return [] }
   let bridge
   const exports = {}
-  runInNewContext(readFileSync(require.resolve('../dist/preload.js'), 'utf8'), { exports, require: id => {
+  runInNewContext(readFileSync(require.resolve('../dist/preload.js'), 'utf8'), { process: { platform: process.platform }, exports, require: id => {
     assert.equal(id, 'electron', 'el preload sandbox no carga módulos Node de disco')
     return { contextBridge: { exposeInMainWorld: (name, api) => { assert.equal(name, 'dnmusicEscritorio'); bridge = api } }, ipcRenderer: ipc }
   } })

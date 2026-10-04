@@ -169,6 +169,7 @@ final class MediaMiniPlayerView: ExpoView {
     model.onDevices = { [weak self] in self?.onDevices([:]) }
     model.onOptions = { [weak self] in self?.onOptions([:]) }
     hostingController = UIHostingController(rootView: MiniPlayerSurface(model: model))
+    hostingController.safeAreaRegions = []
     hostingController.view.backgroundColor = .clear
     // Yoga supplies the frame. SwiftUI never sends measured sizes back to RN.
     addSubview(hostingController.view)

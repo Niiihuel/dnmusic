@@ -30,6 +30,7 @@ export type FilaAgrupada =
     }
   | {
       tipo: 'accion'
+      copyText?: string
       id: string
       rotulo: string
       detalle?: string

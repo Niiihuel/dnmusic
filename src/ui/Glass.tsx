@@ -41,7 +41,7 @@ export const HAY_VIDRIO = isLiquidGlassAvailable() || ES_WEB
  * pasa tal cual al CSS, igual que `boxShadow`. El prefijo -webkit- va escrito
  * porque Safari todavía lo pide.
  */
-function vidrioCss(tint?: string): ViewStyle {
+export function vidrioCss(tint?: string): ViewStyle {
   return {
     backdropFilter: 'blur(18px) saturate(160%)',
     WebkitBackdropFilter: 'blur(18px) saturate(160%)',
@@ -118,7 +118,7 @@ export function Glass({
 
   if (ES_WEB) {
     return (
-      <View {...({ dataSet } as object)} style={[forma, vidrioCss(tint), style]}>
+      <View {...({ dataSet: { dnGlass: tint ? 'tinted' : 'regular', ...dataSet } } as object)} style={[forma, vidrioCss(tint), style]}>
         {children}
       </View>
     )
@@ -179,7 +179,7 @@ export function GlassAnimado({
 
   if (ES_WEB) {
     return (
-      <Animated.View pointerEvents={pointerEvents} style={[forma, vidrioCss(tint), style]}>
+      <Animated.View {...({ dataSet: { dnGlass: tint ? 'tinted' : 'regular' } } as object)} pointerEvents={pointerEvents} style={[forma, vidrioCss(tint), style]}>
         {children}
       </Animated.View>
     )

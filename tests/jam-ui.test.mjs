@@ -26,6 +26,8 @@ function cargar(path, imports) {
 
 const rn = { ActivityIndicator: 'ActivityIndicator', Pressable: 'Pressable', Text: 'Text', View: 'View', useWindowDimensions: () => ({ width: 390 }) }
 const cabecera = cargar('src/ui/EncabezadoHoja.tsx', {
+  react: { isValidElement: value => !!value?.type },
+  './ModalContext': { useDentroModalPC: () => false },
   'react/jsx-runtime': runtime, 'react-native': rn,
   'expo-linear-gradient': { LinearGradient: 'LinearGradient' },
   './BotonVolver': { BotonVolver: 'BotonVolver' },
@@ -34,6 +36,8 @@ const cabecera = cargar('src/ui/EncabezadoHoja.tsx', {
   './icons': { ICON_COLOR: {}, IconCheck: 'IconCheck', IconClose: 'IconClose', IconChevronLeft: 'IconChevronLeft' },
 })
 const social = cargar('src/ui/Social.tsx', {
+  './CopyFeedback': { CopyFeedback: 'CopyFeedback' },
+  '../state/copia': { useEstadoCopia: () => 'idle' },
   'react/jsx-runtime': runtime, 'react-native': rn,
   './EncabezadoHoja': cabecera,
   './icons': { ICON_COLOR: {} },

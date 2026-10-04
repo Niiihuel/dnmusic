@@ -12,15 +12,14 @@ ahora, y lo que le dejaron.
 | `app/profile/index.tsx` | Tu perfil, como lo ve cualquiera — y el **modo de edición** del mosaico |
 | `app/profile/editar/index.tsx` | La identidad: foto, nombre, línea, fondo, marco — lista agrupada en el teléfono, barra lateral con secciones en la compu |
 | `src/ui/EditorDeCampo.tsx` | El campo de texto del perfil con su validación: pantalla apilada en el teléfono, fila de Ajustes del Sistema en la compu (`FilaCampo`) |
-| `app/perfil/encuadrar.tsx` | Encuadrar la foto, el fondo o la imagen de una pieza; con `que=fondo-nuevo` encuadra el fondo recién elegido y lo sube al confirmar, con barra de progreso |
-| `src/state/fondoPendiente.ts` | El fondo elegido que espera encuadre antes de subir |
+| `app/perfil/encuadrar.tsx` | Encuadrar medios ya preparados: foto, fondo o imagen de una pieza |
+| `src/state/perfilEdicion.ts` | Borrador de identidad, privacidad y medios hasta Guardar cambios |
 | `src/ui/Progreso.tsx` | La barra de progreso determinada, para lo que se sube |
 | `app/profile/agregar.tsx` | La hoja del «+»: qué pieza sumar |
 | `app/profile/vitrina.tsx` | El editor de una pieza: vista previa, tema, imagen de fondo |
 | `app/profile/elegir.tsx` | El buscador que elige la canción, el artista o el álbum |
 | `app/profile/tema.tsx` | La hoja del tema, de una pieza o del perfil entero |
 | `app/perfil/[usuario].tsx` | El de otra persona |
-| `app/perfil/encuadrar.tsx` | Encuadrar la foto o el fondo |
 | `src/ui/PerfilPublico.tsx` | `FondoPerfil`, `Identidad`, `Vitrinas`, `Resumen` |
 | `src/ui/Vitrina.tsx` | Una vitrina, de cualquier tipo, con su tema y sus controles |
 | `src/lib/tema.ts` | Los temas: presets, paleta y qué color de texto va sobre cada fondo |
@@ -343,21 +342,23 @@ Borrarlo borra lo de adentro (cascada) y el «¿seguro?» dice cuántas piezas s
 lleva. El tema del dueño ajeno llega por `usuario` en la query —`profiles`
 solo se lee por nombre—; sin él, las piezas heredan vidrio.
 
-## El fondo: se encuadra antes de subir
+## El fondo: preparar, previsualizar y confirmar
 
-Elegir un fondo ya no lo sube al toque. Una imagen o un GIF se deja esperando
-(`state/fondoPendiente`) y se abre la pantalla de encuadre sobre el archivo
-local; el tilde sube el archivo con `uploadIlustracionConProgreso` —una URL
-firmada de subida y un `XMLHttpRequest`, porque storage-js no cuenta bytes— y
-recién con la ruta en mano guarda el perfil con el encuadre. Mientras sube se
-ve la barra debajo del recuadro. Un clip no se encuadra (el reproductor lo
-dibuja a sangre): sube directo desde el editor, con la misma barra en el
-bloque. El bloque del fondo muestra la **vista previa** con el mismo
-`FondoPerfil` del perfil, velo incluido, y debajo las filas: cambiar,
-encuadrar (solo una imagen) y quitar, que va última y sin flecha.
+`app/profile/editar/index.tsx` selecciona imagen, GIF o video con `pickImage`
+y prepara el archivo mediante `uploadIlustracionConProgreso`. La subida usa
+una URL firmada y muestra el progreso; la ruta resultante entra al borrador
+`perfilEdicion`, todavía sin reemplazar el perfil guardado. El usuario puede
+encuadrar el medio preparado, cambiarlo o quitarlo en la vista previa.
 
-La pantalla de encuadre es una hoja de las de siempre: la cruz cancela (y
-suelta el fondo pendiente), el tilde guarda, y abajo queda solo «Centrar».
+**Guardar cambios** confirma identidad, privacidad, medios y mosaicos. Un
+error conserva el borrador para reintentar. Restablecer o salir descarta los
+archivos nuevos que aún no se intentaron asignar; si pudo perderse una respuesta
+del guardado, no se borra un archivo que la base podría estar usando.
+
+La previa del fondo usa `FondoPerfil`; el probador de decoraciones
+`src/ui/EstudioPerfil.tsx` aplica los cambios al mismo borrador. La ruta
+`/perfil/encuadrar` ajusta el encuadre de medios existentes, sin un segundo
+almacén de fondos pendientes ni una subida al confirmar el recorte.
 
 ## Decoraciones en imagen: marcos y efectos del catálogo
 

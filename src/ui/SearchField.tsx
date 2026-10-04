@@ -99,7 +99,7 @@ export function SearchField({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Limpiar la búsqueda"
-          onPress={() => onChangeText('')}
+          onPress={() => { onChangeText(''); input.current?.focus() }}
           style={{ width: compacto ? 28 : 44, height: altura, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: altura / 2 }}
           className="hover:bg-white/10 focus:bg-white/10 active:bg-white/15"
           hitSlop={compacto ? 0 : 4}

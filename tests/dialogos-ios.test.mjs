@@ -107,7 +107,7 @@ const jsx = (type, props) => ({ type, props })
 function nodes(node) {
   if (!node || typeof node !== 'object') return []
   if (Array.isArray(node)) return node.flatMap(nodes)
-  return [node, ...nodes(node.props?.children)]
+  return [node, ...nodes(node.props?.children), ...nodes(node.props?.izquierda)]
 }
 function viewFixture(path) {
   const state = { pendiente: { nombre: 'PC' }, ocupado: true, error: null, confirmar() {}, cancelar() {} }
@@ -119,11 +119,12 @@ function viewFixture(path) {
     if (id === 'react-native') return { Modal: 'Modal', Pressable: 'Pressable', View: 'View', Text: 'Text', StyleSheet: { absoluteFill: {} } }
     if (id === './Button') return { PrimaryButton: 'PrimaryButton', GhostButton: 'GhostButton' }
     if (id === './EncabezadoHoja') return { EncabezadoHoja: 'EncabezadoHoja', BotonHoja: 'BotonHoja' }
+    if (id === './Dialogo') return { Dialogo: 'Dialogo' }
     if (id === './Hoja') return { Hoja: 'Hoja' }
     if (id === './ListaAgrupada') return { ListaAgrupada: 'ListaAgrupada' }
     assert.fail(`Import inesperado ${id}`)
   })
-  return { state, render: () => nodes(exports.Traspaso()) }
+  return { state, render: () => { const tree = exports.Traspaso(); return tree?.type === 'Dialogo' ? [tree, ...nodes(tree.props.contenidoPC)] : nodes(tree) } }
 }
 
 test('iOS mantiene hoja viva con progreso, bloquea swipe y conserva error al pie para reintentar', () => {
@@ -147,10 +148,10 @@ test('iOS mantiene hoja viva con progreso, bloquea swipe y conserva error al pie
 test('PC conserva modal accesible con progreso, cierre deshabilitado y error anunciado', () => {
   const f = viewFixture('src/ui/Traspaso.tsx')
   let ui = f.render()
-  assert.equal(ui[0].type, 'Modal')
+  assert.equal(ui[0].type, 'Dialogo')
   assert.equal(ui.find(node => node.type === 'PrimaryButton').props.busy, true)
   assert.equal(ui.find(node => node.type === 'GhostButton').props.disabled, true)
-  assert.equal(ui.find(node => node.type === 'Pressable').props.disabled, true)
+  assert.equal(ui.find(node => node.type === 'BotonHoja').props.disabled, true)
   f.state.ocupado = false; f.state.error = 'No se pudo conectar'
   ui = f.render()
   const error = ui.find(node => node.props?.accessibilityRole === 'alert')

@@ -46,7 +46,7 @@ releaseInfo:
 
 publish:
   provider: github
-  owner: Niiihuel
+  owner: Niihuel
   repo: dnmusic-releases
   # Sin esto electron-builder publica el release como borrador, y un borrador
   # es invisible para electron-updater: la app no encontraría nunca la

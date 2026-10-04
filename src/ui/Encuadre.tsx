@@ -28,6 +28,17 @@ import type { Encuadre } from '../services/profile'
 export function estiloEncuadrado(lado: number, encuadre: Encuadre | null, alto?: number): ImageStyle {
   const rotacion = encuadre?.rotacion ?? 0
   const altoReal = alto ?? lado
+  if (encuadre?.aspecto) {
+    const base = cajaOriginal(lado, altoReal, encuadre.aspecto)
+    const escala = Math.max(encuadre.escala, escalaOriginal(rotacion, lado, altoReal, base.w, base.h, alto === undefined))
+    const dentro = limitarOriginal(encuadre.x, encuadre.y, escala, rotacion, lado, altoReal, base.w, base.h, alto === undefined)
+    return {
+      position: 'absolute', width: base.w * escala, height: base.h * escala,
+      left: (lado - base.w * escala) / 2 + dentro.x * lado,
+      top: (altoReal - base.h * escala) / 2 + dentro.y * altoReal,
+      ...(rotacion ? { transform: [{ rotate: `${rotacion}deg` }] } : {}),
+    }
+  }
   const escala =
     alto === undefined
       ? (encuadre?.escala ?? 1)
@@ -52,6 +63,39 @@ export function estiloEncuadrado(lado: number, encuadre: Encuadre | null, alto?:
        hay: así el estilo de un encuadre viejo es byte a byte el de antes. */
     ...(rotacion ? { transform: [{ rotate: `${rotacion}deg` }] } : {}),
   }
+}
+
+/** Conserva la imagen completa, incluido lo que queda fuera del visor. */
+export function cajaOriginal(w: number, h: number, aspecto: number) {
+  'worklet'
+  return aspecto > w / h ? { w: h * aspecto, h } : { w, h: w / aspecto }
+}
+
+export function escalaOriginal(rot: number, w: number, h: number, iw: number, ih: number, redondo: boolean) {
+  'worklet'
+  const t = rot * Math.PI / 180, c = Math.abs(Math.cos(t)), s = Math.abs(Math.sin(t))
+  return Math.max(1, (redondo ? w : c * w + s * h) / iw, (redondo ? h : s * w + c * h) / ih)
+}
+
+export function limitarOriginal(x: number, y: number, escala: number, rot: number, w: number, h: number, iw: number, ih: number, redondo: boolean) {
+  'worklet'
+  const t = rot * Math.PI / 180, c = Math.cos(t), s = Math.sin(t)
+  const a = Math.max(0, (iw * escala - (redondo ? w : Math.abs(c) * w + Math.abs(s) * h)) / 2)
+  const b = Math.max(0, (ih * escala - (redondo ? h : Math.abs(s) * w + Math.abs(c) * h)) / 2)
+  // El contrato persistido admite desplazamientos de hasta dos lados.
+  const dx = Math.max(-2, Math.min(2, x)) * w, dy = Math.max(-2, Math.min(2, y)) * h
+  const u = Math.min(a, Math.max(-a, c * dx + s * dy)), v = Math.min(b, Math.max(-b, -s * dx + c * dy))
+  const rx = (c * u - s * v) / w, ry = (s * u + c * v) / h
+  const factor = Math.max(1, Math.abs(rx) / 2, Math.abs(ry) / 2)
+  return { x: rx / factor, y: ry / factor }
+}
+
+/** Zoom alrededor del punto que está entre los dedos, no del centro del visor. */
+export function zoomEnFoco(x: number, y: number, antes: number, despues: number, fx: number, fy: number, w: number, h: number) {
+  'worklet'
+  const razon = despues / antes
+  return { x: ((fx - w / 2) * (1 - razon) + x * w * razon) / w,
+    y: ((fy - h / 2) * (1 - razon) + y * h * razon) / h }
 }
 
 /**

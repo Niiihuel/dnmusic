@@ -1,6 +1,6 @@
 {
   "name": "dnmusic-desktop",
-  "version": "1.0.0",
+  "version": "1.18.0",
   "description": "dnmusic para Windows y Linux",
   "author": "Nihuel",
   "license": "UNLICENSED",
@@ -28,7 +28,7 @@
   "devDependencies": {
     "@types/jsdom": "^28.0.3",
     "@types/node": "^22.10.0",
-    "electron": "^43.4.0",
+    "electron": "43.5.0",
     "electron-builder": "^26.15.3",
     "typescript": "^5.9.0"
   }

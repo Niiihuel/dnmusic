@@ -114,7 +114,7 @@ test('vitrina global entrega borrador y navega sin invocar los servicios', async
   const calls = []
   const draft = { id: 'a', kind: 'texto', contenido: { kind: 'texto', texto: 'Pendiente' } }
   const { guardar } = funciones(vitrina, ['guardar', 'listo'], {
-    global: true, edicion: { ocupado: false }, subiendo: false, user: { id: 'yo' },
+    global: true, edicion: { ocupado: false }, enVuelo: { current: false }, subiendo: false, user: { id: 'yo' },
     borrador: draft, temporal: 'tmp', inicial: draft, borradorVitrinaCompleto: () => true,
     ponerVitrinaEdicion: (...args) => { calls.push(args); return 'a' },
     volver: () => calls.push('volver'), router: {},
@@ -130,12 +130,44 @@ test('Centrar encuadre sólo actualiza los shared values de la vista previa', ()
   const x = shared(.3), y = shared(.2), escalaPedida = shared(2), giro = shared(90), fino = shared(7)
   const inicial = { x: .1, y: -.2, escala: 1.5, rotacion: 93 }
   const { centrar } = funciones(encuadre, ['centrar', 'ponerEncuadre', 'partirRotacion', 'normalizarGiro'], {
-    enVuelo: { current: false }, x, y, escalaPedida, giro, fino, inicial, setError() {},
+    salir: false, x, y, escalaPedida, giro, fino, inicial, setError() {},
     saveMyProfile: () => assert.fail('Centrar no debe escribir en la base'),
     escribirEnBorrador: () => assert.fail('El encuadre debe confirmarse antes de tocar la vitrina'),
   })
   centrar()
   assert.deepEqual([x.value, y.value, escalaPedida.value, giro.value, fino.value], [0, 0, 1, 0, 0])
+})
+
+test('confirmar encuadre modifica sólo el borrador de perfil o vitrina y pide la salida', () => {
+  const geometria = { x: .1, y: -.2, escala: 1.5 }
+  for (const que of ['foto', 'fondo', 'vitrina', 'vitrina-imagen']) {
+    const esVitrina = que.startsWith('vitrina')
+    const cambios = [], salidas = []
+    const { guardar } = funciones(encuadre, ['guardar'], {
+      que, esVitrina, salir: false, uri: 'imagen.gif', cargado: true, modificado: true,
+      armarEncuadre: () => geometria,
+      escribirEnBorrador: cambio => cambios.push(copia(cambio)),
+      actualizarPerfilEdicion: cambio => cambios.push(copia(cambio)),
+      setSalir: value => salidas.push(value), avisar() {},
+      saveMyProfile: () => assert.fail('El encuadre se confirma en el editor'),
+    })
+    guardar()
+    assert.deepEqual(cambios, [esVitrina ? geometria : { [que === 'fondo' ? 'bannerEncuadre' : 'avatarEncuadre']: geometria }])
+    assert.deepEqual(salidas, [true])
+  }
+})
+
+test('confirmar encuadre espera la imagen y no escribe si falta modificación o ya está saliendo', () => {
+  for (const estado of [{ uri: null }, { cargado: false }, { modificado: false }, { salir: true }]) {
+    const salidas = []
+    const { guardar } = funciones(encuadre, ['guardar'], {
+      salir: false, uri: 'imagen.gif', cargado: true, modificado: true, ...estado,
+      armarEncuadre: () => assert.fail('No hay un encuadre nuevo por guardar'),
+      setSalir: value => salidas.push(value),
+    })
+    guardar()
+    assert.deepEqual(salidas, estado.modificado === false ? [true] : [])
+  }
 })
 
 test('la guarda de encuadre se compila a worklet y redondear puede correr en UI', () => {

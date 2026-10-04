@@ -1,6 +1,7 @@
 import { fuenteDe } from '../lib/fuentes'
 import { getSupabase } from '../lib/supabase'
 import { temaDe, type Tema } from '../lib/tema'
+import { assertStorageBudget } from './storageBudget'
 
 /**
  * Perfil propio: usuario, nombre visible y foto.
@@ -85,7 +86,7 @@ export type Profile = {
  * nada. Gira la imagen sobre su propio centro, después de agrandarla y
  * correrla; es la última capa de la misma cuenta (`ui/Encuadre`).
  */
-export type Encuadre = { x: number; y: number; escala: number; rotacion?: number }
+export type Encuadre = { x: number; y: number; escala: number; rotacion?: number; aspecto?: number }
 
 type ProfileRow = {
   user_id?: unknown
@@ -117,9 +118,11 @@ function encuadreDe(v: unknown): Encuadre | null {
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(escala)) return null
   /* La rotación solo viaja si es un número de verdad y distinto de cero: un
      encuadre sin girar se guarda con los tres números de siempre. */
-  return typeof rotacion === 'number' && Number.isFinite(rotacion) && rotacion !== 0
+  const base = typeof rotacion === 'number' && Number.isFinite(rotacion) && rotacion !== 0
     ? { x, y, escala, rotacion }
     : { x, y, escala }
+  return typeof r.aspecto === 'number' && Number.isFinite(r.aspecto) && r.aspecto > 0
+    ? { ...base, aspecto: r.aspecto } : base
 }
 
 function profileFromRow(row: ProfileRow | null | undefined): Profile | null {
@@ -254,6 +257,7 @@ export async function uploadAvatar(
   const ext = fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
   const path = `${userId}/${Date.now()}.${ext}`
 
+  await assertStorageBudget(file)
   const { error } = await getSupabase()
     .storage.from(AVATAR_BUCKET)
     .upload(path, file, { contentType: mime, upsert: true })
@@ -279,9 +283,10 @@ export function initialsFor(name: string): string {
 }
 
 /**
- * El perfil público de alguien, por su usuario.
+ * El perfil visible de alguien, por su usuario.
  *
- * Devuelve `null` si esa cuenta está en privado — o si no existe. Las dos cosas
+ * Un perfil privado se ve si ya son contactos. Devuelve `null` si no tenés
+ * acceso — o si no existe. Las dos cosas
  * se ven igual a propósito: «existe pero no te deja ver» ya es información sobre
  * alguien que decidió no mostrarse.
  */
@@ -290,8 +295,8 @@ export async function fetchProfile(username: string): Promise<Profile | null> {
   if (error) throw error
   const fila = Array.isArray(data) ? data[0] : data
   const perfil = profileFromRow(fila)
-  /* La función pública no devuelve la visibilidad de otro —no es asunto de
-     quien mira— así que se completa con lo único que se puede afirmar: si te lo
-     está devolviendo, es porque se deja ver. */
+  /* La función no expone la elección de visibilidad de otra persona. El valor
+     no se usa como control de acceso: lo decide el servidor antes de devolver
+     la fila, incluso cuando se trata de un contacto con perfil privado. */
   return perfil ? { ...perfil, visibility: 'publico' } : null
 }

@@ -20,6 +20,13 @@ export type Novedad = {
   fecha: string
   titulo: string
   cambios: string[]
+  pasos?: PasoVersion[]
+}
+
+export type PasoVersion = {
+  titulo: string
+  detalle: string
+  medio?: { tipo: 'imagen' | 'video'; url: string; descripcion: string }
 }
 
 /** De la más nueva a la más vieja, que es como se leen. */

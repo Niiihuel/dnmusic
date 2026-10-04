@@ -31,11 +31,11 @@ type Busqueda = {
    */
   consulta: string
   /**
-   * El campo está en uso: con el cursor puesto o con algo escrito.
+   * La búsqueda está activada, hasta cancelar o cambiar de sección.
    *
    * Es lo que decide que la barra de pestañas se repliegue en el botón de
    * inicio y que el campo se dibuje. Con el término vacío y sin cursor, la
-   * cáscara vuelve a la normal.
+   * exploración se recupera al cancelar, no en el blur anterior a un click.
    */
   activo: boolean
   /** Qué dice el campo cuando está vacío. Lo pone la pantalla que lo abre. */
@@ -99,8 +99,8 @@ export function setActivo(activo: boolean) {
 }
 
 /** Abre el buscador con su texto de ayuda. Lo llaman la lupa y las pestañas. */
-export function abrirBusqueda(pista: string) {
-  store.set({ activo: true, pista })
+export function abrirBusqueda(pista: string, enfocar = true) {
+  store.set({ activo: enfocar, pista })
 }
 
 /**

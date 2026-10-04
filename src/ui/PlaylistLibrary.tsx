@@ -1,5 +1,11 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { BordeScrollNativo } from './CollectionScrollEdge'
+import { superficieInteractivaWeb } from './estadoControl'
+import { Glass } from './Glass'
+import { ANDROID_CARD, ANDROID_COLORS, ANDROID_TYPE } from './androidDesign'
 import { BotonSuperficie } from './BotonSuperficie'
 import { NativeMediaRow } from '../../modules/media-controls'
+import { IconSpotify } from './IconSpotify'
 import { artworkSource } from '../lib/artwork'
 import { coverUrl } from '../services/playlists'
 import { useState } from 'react'
@@ -21,8 +27,8 @@ import { MantenerApretado, Menu, type MenuItem } from './Menu'
 import { useClicDerecho } from './useClicDerecho'
 import {
   ICON_COLOR,
+  IconChevronRight,
   IconCollapseRight,
-  IconDownload,
   IconGlobe,
   IconHeartFilled,
   IconMusic,
@@ -57,6 +63,7 @@ export function PlaylistLibrary({
   /** Se muestra el botón de contraer: el panel está bajo el cursor. */
   showCollapse: boolean
   onCollapse: () => void
+  onBack?: () => void
   onOpen: (playlist: Playlist) => void
   onCreate: () => Promise<void>
   /** Abre «Tus me gusta». Sin esto la fila fija no se dibuja. */
@@ -74,6 +81,8 @@ export function PlaylistLibrary({
   error: string | null
 }) {
   const [busy, setBusy] = useState(false)
+  const [orden, setOrden] = useState<'recientes' | 'nombre'>('recientes')
+  const ordenadas = playlists?.slice().sort((a, b) => orden === 'nombre' ? a.name.localeCompare(b.name, 'es') : (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0))
   const cuantosGustos = useCuantosMeGusta()
   /* En el teléfono esto es la pestaña «Listas» y llega hasta el borde: la
      última tiene que quedar arriba de lo que flota. */
@@ -88,6 +97,10 @@ export function PlaylistLibrary({
      escritorio quedan apretadas. Ver `TrackRow`. */
   const suelto = useWindowDimensions().width < 780
   const colapso = useColapso()
+  const safeTop = useSafeAreaInsets().top
+  const toolbarIOS = Platform.OS === 'ios' && suelto
+  const bibliotecaMovil = (Platform.OS === 'ios' || Platform.OS === 'android') && suelto
+  const [altoToolbar, setAltoToolbar] = useState(safeTop + 60)
 
   /*
    * Crear no pregunta nada.
@@ -108,7 +121,27 @@ export function PlaylistLibrary({
 
   return (
     <Panel tone="lateral" className="flex-1">
-      <View className="flex-row items-center justify-between gap-4 px-4 pb-2" style={{ paddingTop: techo }}>
+      {toolbarIOS ? <View collapsable={false} onLayout={e => setAltoToolbar(e.nativeEvent.layout.height)}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, paddingHorizontal: 20, paddingTop: safeTop + 8, paddingBottom: 10 }}>
+        <BordeScrollNativo />
+        <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <Text accessibilityRole="header" numberOfLines={1}
+            style={{ flex: 1, color: '#FFFFFF', fontSize: 34, lineHeight: 41, fontWeight: '700', letterSpacing: 0.2 }}>
+            Playlists
+          </Text>
+          <Glass radius={24}><View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 }}>
+            <IconButton label="Nueva playlist" symbol="plus" onPress={() => void create()} busy={busy} disabled={busy} />
+            <Menu label="Ordenar playlists" triggerSymbol="line.3.horizontal.decrease" items={[
+              { label: 'Actualizadas recientemente', selected: orden === 'recientes', onPress: () => setOrden('recientes') },
+              { label: 'Título', selected: orden === 'nombre', onPress: () => setOrden('nombre') },
+            ]} />
+            <Menu label="Opciones de playlists" items={[
+              { label: 'Nueva playlist', sfSymbol: 'plus', onPress: () => void create(), disabled: busy },
+              ...(onImportar ? [{ label: 'Traer de Spotify', sfSymbol: 'square.and.arrow.down' as const, onPress: onImportar }] : []),
+            ]} />
+          </View></Glass>
+        </View>
+      </View> : <View className="flex-row items-center justify-between gap-4 px-4 pb-2" style={{ paddingTop: techo }}>
         <AnimatedSidebarTitle
           visible={showCollapse}
           label="Contraer las listas"
@@ -117,7 +150,7 @@ export function PlaylistLibrary({
           alignIconToFirstLine
         >
           <View className="gap-0.5">
-            <Text className="text-foreground text-title3 font-bold" numberOfLines={1}>
+            <Text className="text-foreground text-title3 font-bold" style={Platform.OS === 'android' ? ANDROID_TYPE.title : undefined} numberOfLines={1}>
               Tus listas
             </Text>
             <Text className="text-muted-foreground text-caption1" numberOfLines={1}>
@@ -133,29 +166,29 @@ export function PlaylistLibrary({
           <IconButton label="Nueva lista" symbol="plus" onPress={() => void create()} disabled={busy} busy={busy}
             disableWhileBusy variant="glass" size={15} icon={<IconPlus size={15} color={ICON_COLOR.foreground} />} />
         </View>
-      </View>
+      </View>}
 
       {error ? <Text className="px-4 pb-2 text-destructive text-caption1">{error}</Text> : null}
 
       {playlists === null ? (
-        <View className="px-4">
+        <View className="px-4" style={{ paddingTop: toolbarIOS ? altoToolbar : 0 }}>
           <SkeletonList rows={4} />
         </View>
       ) : (
         <FlatList
           renderScrollComponent={(props) => <ScrollArea {...props} />}
-          data={playlists}
+          data={Platform.OS === 'ios' ? ordenadas : playlists}
           keyExtractor={(p) => p.id}
           className="min-h-0 flex-1"
           contentContainerClassName="gap-0.5 px-2"
-          contentContainerStyle={{ paddingBottom: piso }}
+          contentContainerStyle={{ paddingTop: toolbarIOS ? altoToolbar : 0, paddingBottom: piso }}
           {...colapso}
           /* «Tus me gusta» va fija arriba, como en Spotify: no es una lista
              tuya —no se renombra ni se borra— pero es de donde más se
              escucha, y enterrarla entre las listas la volvería invisible. */
-          ListHeaderComponent={
-            onOpenGustos ? (
-              NativeMediaRow ? <NativeMediaRow title="Tus me gusta" subtitle={`${cuantosGustos} canciones`} symbol="heart.fill" label="Tus me gusta"
+          ListHeaderComponent={<>
+            {onOpenGustos ? (
+              bibliotecaMovil ? <ColeccionFavorita cantidad={cuantosGustos} onPress={onOpenGustos} /> : NativeMediaRow ? <NativeMediaRow title="Tus me gusta" subtitle={`${cuantosGustos} canciones`} symbol="heart.fill" label="Tus me gusta"
                 onActivate={onOpenGustos} style={{ height: 76, width: '100%' }} /> : (
               <BotonSuperficie
                 accessibilityRole="button"
@@ -186,14 +219,23 @@ export function PlaylistLibrary({
                 </View>
               </BotonSuperficie>
               )
+            ) : null}
+            {bibliotecaMovil && playlists.length > 0 ? (
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 26, paddingBottom: 8 }}>
+                <Text style={[{ color: '#FFFFFF', fontSize: 22, lineHeight: 28, fontWeight: '700' }, Platform.OS === 'android' && ANDROID_TYPE.section]}>Tus playlists</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>
+                  {playlists.length} {playlists.length === 1 ? 'playlist' : 'playlists'}
+                </Text>
+              </View>
             ) : null
-          }
+          }</>}
           ListEmptyComponent={
             <Vacio
               icono={<IconMusic size={22} color={ICON_COLOR.muted} />}
-              titulo="Todavía no tenés listas"
-              detalle="Creá la primera y sumale lo que quieras, o traete una de Spotify."
+              titulo="Creá tu primera playlist"
+              detalle="Juntá canciones para un momento, una idea o alguien especial."
               accion={{ rotulo: 'Nueva lista', onPress: () => void onCreate() }}
+              compacto={bibliotecaMovil}
             />
           }
           /*
@@ -206,39 +248,7 @@ export function PlaylistLibrary({
            * exactamente cuando uno nota que le falta algo.
            */
           ListFooterComponent={
-            onImportar ? (
-              NativeMediaRow ? <NativeMediaRow title="Traer de Spotify" subtitle={'Se rearma con tu música'} symbol="square.and.arrow.down" label="Traer de Spotify"
-                onActivate={onImportar} style={{ height: 76, width: '100%' }} /> : (
-              <BotonSuperficie
-                accessibilityRole="button"
-                onPress={onImportar}
-                className={`mt-1 flex-row items-center rounded-lg ${
-                  suelto ? 'gap-3 p-2.5' : 'gap-3 p-2'
-                } active:bg-card`}
-              >
-                <View
-                  className="items-center justify-center rounded bg-muted"
-                  style={{ width: suelto ? 60 : 48, height: suelto ? 60 : 48 }}
-                >
-                  <IconDownload size={suelto ? 20 : 17} color={ICON_COLOR.muted} />
-                </View>
-                <View className="min-w-0 flex-1 gap-0.5">
-                  <Text
-                    className={`text-foreground ${suelto ? 'text-callout' : 'text-subheadline'}`}
-                    numberOfLines={1}
-                  >
-                    Traer de Spotify
-                  </Text>
-                  <Text
-                    className={`text-muted-foreground ${suelto ? 'text-footnote' : 'text-caption1'}`}
-                    numberOfLines={1}
-                  >
-                    Se rearma con tu música
-                  </Text>
-                </View>
-              </BotonSuperficie>
-              )
-            ) : null
+            onImportar ? <ImportarSpotify onPress={onImportar} /> : null
           }
           renderItem={({ item }) => (
             <FilaLista
@@ -254,6 +264,60 @@ export function PlaylistLibrary({
         />
       )}
     </Panel>
+  )
+}
+
+/** La colección fija tiene jerarquía propia: no finge ser otra playlist. */
+function ColeccionFavorita({ cantidad, onPress }: { cantidad: number; onPress: () => void }) {
+  return (
+    <View style={{ paddingHorizontal: 10 }}>
+      <Text style={[{ color: '#FFFFFF', fontSize: 22, lineHeight: 28, fontWeight: '700', paddingHorizontal: 2, paddingBottom: 10 }, Platform.OS === 'android' && ANDROID_TYPE.section]}>
+        Tu música
+      </Text>
+      <BotonSuperficie
+        accessibilityRole="button"
+        accessibilityLabel={`Tus me gusta, ${cantidad} ${cantidad === 1 ? 'canción' : 'canciones'}`}
+        onPress={onPress}
+        style={[{ minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 18, backgroundColor: '#1C1C1E', padding: 12 }, Platform.OS === 'android' && ANDROID_CARD]}
+      >
+        <View style={{ width: 64, height: 64, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: '#303033' }}>
+          <IconHeartFilled size={27} color="#FFFFFF" />
+        </View>
+        <View style={{ minWidth: 0, flex: 1, gap: 3 }}>
+          <Text numberOfLines={1} style={[{ color: '#FFFFFF', fontSize: 17, lineHeight: 22, fontWeight: '600' }, Platform.OS === 'android' && { ...ANDROID_TYPE.body, color: ANDROID_COLORS.text }]}>Tus me gusta</Text>
+          <Text numberOfLines={1} style={[{ color: 'rgba(255,255,255,0.58)', fontSize: 14, lineHeight: 19 }, Platform.OS === 'android' && { ...ANDROID_TYPE.body, color: ANDROID_COLORS.muted }]}>
+            {cantidad} {cantidad === 1 ? 'canción guardada' : 'canciones guardadas'}
+          </Text>
+        </View>
+        <IconChevronRight size={18} color="rgba(255,255,255,0.42)" />
+      </BotonSuperficie>
+    </View>
+  )
+}
+
+/** Importar es una puerta a otro servicio, no una playlist vacía más. */
+function ImportarSpotify({ onPress }: { onPress: () => void }) {
+  return (
+    <View style={{ paddingHorizontal: 10, paddingTop: 24, paddingBottom: 8 }}>
+      <BotonSuperficie
+        accessibilityRole="button"
+        accessibilityLabel="Traer playlists de Spotify"
+        accessibilityHint="Abre el importador para pegar el enlace de una playlist"
+        onPress={onPress}
+        style={[{ flexDirection: 'row', alignItems: 'center', gap: 13, borderRadius: 18, backgroundColor: '#191A19', paddingHorizontal: 14, paddingVertical: 14 }, Platform.OS === 'android' && { ...ANDROID_CARD, borderRadius: 18 }]}
+      >
+        <View style={{ width: 46, height: 46, alignItems: 'center', justifyContent: 'center' }}>
+          <IconSpotify size={36} />
+        </View>
+        <View style={{ minWidth: 0, flex: 1, gap: 3 }}>
+          <Text numberOfLines={2} style={[{ color: '#FFFFFF', fontSize: 16, lineHeight: 21, fontWeight: '600' }, Platform.OS === 'android' && { ...ANDROID_TYPE.body, color: ANDROID_COLORS.text }]}>Traer de Spotify</Text>
+          <Text numberOfLines={2} style={[{ color: 'rgba(255,255,255,0.58)', fontSize: 13, lineHeight: 18 }, Platform.OS === 'android' && { ...ANDROID_TYPE.body, color: ANDROID_COLORS.muted }]}>
+            Importá una playlist
+          </Text>
+        </View>
+        <IconChevronRight size={18} color="rgba(255,255,255,0.42)" />
+      </BotonSuperficie>
+    </View>
   )
 }
 
@@ -320,7 +384,7 @@ function FilaLista({
       artworks={covers} selected={abierta} sounding={sonando} playing={playing}
       label={`Abrir ${playlist.name}, ${playlist.tracks} canciones${playlist.visibilidad === 'publica' ? ', lista pública' : ''}`}
       onActivate={() => onOpen(playlist)} style={{ height: Math.max(76, 42 * fontScale + 16), width: '100%' }} />
-    return menu?.length ? <MantenerApretado items={menu}>{row}</MantenerApretado> : row
+    return menu?.length ? <MantenerApretado items={menu} preview={{ title: playlist.name, subtitle: "Playlist", detail: `${playlist.tracks} canciones`, artwork: covers[0] }} onPreviewPress={() => onOpen(playlist)}>{row}</MantenerApretado> : row
   }
 
 
@@ -328,6 +392,7 @@ function FilaLista({
     <View {...clic.gestos}>
       <BotonSuperficie
         accessibilityRole="button"
+        {...superficieInteractivaWeb('row')}
         accessibilityState={{ selected: abierta }}
         onPress={() => onOpen(playlist)}
         onLongPress={Platform.OS === 'ios' && menu?.length ? () => {} : undefined}

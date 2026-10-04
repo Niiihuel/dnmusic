@@ -1,4 +1,4 @@
-import { Text, View } from 'react-native'
+import { Platform, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { invitacionEnTexto } from '../lib/invitacionJam'
 import { copiarAlPortapapeles } from '../lib/portapapeles'
@@ -16,7 +16,7 @@ export function InvitacionJam({ texto }: { texto: string }) {
     <View className="overflow-hidden rounded-2xl bg-muted">
       <FilaSocial titulo="Escuchemos juntos" detalle="Invitación a un Jam" valor="Abrir invitación"
         label={`Ver invitación al Jam ${codigo}`} onPress={() => router.push(`/jam/${codigo}`)} />
-      <FilaSocial titulo={codigo} valor="Copiar código" label={`Copiar código ${codigo}`}
+      <FilaSocial copyText={Platform.OS === 'web' ? codigo : undefined} titulo={codigo} valor="Copiar código" label={`Copiar código ${codigo}`}
         onPress={() => { void copiarAlPortapapeles(codigo).then(ok => avisar(ok ? 'Código copiado' : `Código del Jam: ${codigo}`)) }} />
     </View>
   </View>

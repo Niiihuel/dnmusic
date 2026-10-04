@@ -1,8 +1,9 @@
 # Migración de la interfaz de iOS a componentes nativos
 
-Revisión del 12 de septiembre de 2026. Los controles migrados están integrados
-y comprobados en JavaScript. El cierre sigue **pendiente del build y la prueba
-en iPhone**: empaquetar JavaScript no acredita compilación Swift.
+Revisión iniciada el 12 de septiembre de 2026, con registros de compilación
+posteriores al final del documento. Conserva arquitectura, inventario y matriz
+de prueba. Empaquetar JavaScript no acredita compilación Swift ni valida un
+binario posterior; la prueba física sigue siendo necesaria.
 
 ## Arquitectura elegida
 
@@ -113,7 +114,7 @@ un flujo de entrada y, según la integración elegida, una extensión de iOS.
 
 ## Comprobaciones y límites
 
-- Integración ampliada: 487 pruebas de `tests/` aprobadas, TypeScript y ESLint
+- Integración ampliada: pruebas de `tests/` aprobadas, TypeScript y ESLint
   sin errores ni advertencias. ESLint se ejecutó sin caché al cerrar.
 - Pruebas nuevas de serialización, fragmentos anteriores, adjuntos inválidos,
   errores de envío, búsqueda de contactos y bloqueo de doble toque.

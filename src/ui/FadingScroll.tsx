@@ -1,3 +1,4 @@
+import { SharedLayoutBg } from './SharedLayoutBg'
 import { useCallback, useRef, useState, type ReactNode } from 'react'
 import {
   Pressable,
@@ -6,6 +7,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native'
+import { BotonVidrio, ES_WEB } from './Glass'
 import { LinearGradient } from 'expo-linear-gradient'
 import { ICON_COLOR, IconChevronLeft, IconChevronRight } from './icons'
 
@@ -129,6 +131,7 @@ export function FadingRow({ children, gap = 16, padding = 24 }: Props) {
   const ref = useRef<ScrollView>(null)
   const offset = useRef(0)
   const viewport = useRef(0)
+  const contentWidth = useRef(0)
   const [hovered, setHovered] = useState(false)
   const [atStart, setAtStart] = useBordeEstable(true)
   const [atEnd, setAtEnd] = useBordeEstable(true)
@@ -158,16 +161,18 @@ export function FadingRow({ children, gap = 16, padding = 24 }: Props) {
         scrollEventThrottle={16}
         onLayout={(e) => {
           viewport.current = e.nativeEvent.layout.width
+          setAtEnd(offset.current + viewport.current >= contentWidth.current - EPS)
         }}
         onContentSizeChange={(w) => {
+          contentWidth.current = w
           // Si el contenido entra entero no hay nada que desvanecer ni a dónde ir.
           if (w <= viewport.current + EPS) setAtEnd(true)
           else if (offset.current <= EPS) setAtEnd(false)
         }}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap, paddingHorizontal: padding }}
+        contentContainerStyle={{ gap, paddingHorizontal: padding, ...(ES_WEB ? { paddingVertical: 8 } : {}) }}
       >
-        {children}
+        <SharedLayoutBg targets="surfaces" className="dn-shared-carousel" style={{ gap }}>{children}</SharedLayoutBg>
       </ScrollView>
 
       {!atStart && (
@@ -199,6 +204,15 @@ export function FadingRow({ children, gap = 16, padding = 24 }: Props) {
 }
 
 function Arrow({ side, onPress }: { side: 'left' | 'right'; onPress: () => void }) {
+  if (ES_WEB) return (
+    <View style={{ position: 'absolute', top: '32%', [side]: 6 }}>
+      <BotonVidrio label={side === 'left' ? 'Ver lo anterior' : 'Ver lo siguiente'}
+        onPress={onPress} style={{ width: 36, height: 36 }}>
+        {side === 'left' ? <IconChevronLeft size={16} color={ICON_COLOR.foreground} />
+          : <IconChevronRight size={16} color={ICON_COLOR.foreground} />}
+      </BotonVidrio>
+    </View>
+  )
   return (
     <Pressable
       accessibilityRole="button"

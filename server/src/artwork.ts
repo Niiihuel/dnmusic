@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { ensureStorageBudget } from './storage-budget.js'
 
 /**
  * Copia de carátulas y fotos de artista a Storage.
@@ -88,6 +89,7 @@ export async function cacheImage(
     if (!bytes.length) return null
 
     const path = `${key}.${ext}`
+    await ensureStorageBudget(supabase, bytes.length)
     const { error } = await supabase.storage
       .from(BUCKET)
       .upload(path, bytes, { contentType: type, upsert: true })

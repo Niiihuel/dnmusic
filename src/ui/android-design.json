@@ -1,0 +1,22 @@
+{
+  "colors": {
+    "background": "#121212",
+    "surface": "#1D1D1F",
+    "raised": "#29292C",
+    "text": "#ECECEE",
+    "muted": "#A7A7AD",
+    "strong": "#FFFFFF",
+    "track": "#333337",
+    "primary": "#FFFFFF",
+    "onPrimary": "#121212",
+    "error": "#FF918B"
+  },
+  "type": {
+    "title": { "fontSize": 22, "lineHeight": 28, "letterSpacing": -0.7, "fontFamily": "InterTight_600SemiBold", "fontWeight": "600" },
+    "section": { "fontSize": 19, "lineHeight": 24, "letterSpacing": 0.6, "fontFamily": "InterTight_600SemiBold", "fontWeight": "600" },
+    "body": { "fontSize": 14.5, "lineHeight": 18, "letterSpacing": 0.3, "fontFamily": "InterTight_400Regular", "fontWeight": "400" },
+    "caption": { "fontSize": 12, "lineHeight": 16, "letterSpacing": 0.3, "fontFamily": "InterTight_400Regular", "fontWeight": "400" }
+  },
+  "radius": { "inset": 12, "card": 16, "floating": 18 },
+  "control": { "small": 38, "regular": 44, "large": 46, "touch": 48 }
+}

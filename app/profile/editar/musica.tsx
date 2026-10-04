@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Text, useWindowDimensions, View } from 'react-native'
+import { Platform, Text, useWindowDimensions, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { BusquedaPerfilNativa } from '../../../src/ui/EditorPerfilNativo'
 import { Panel } from '../../../src/ui/Panel'
 import { BotonVolver } from '../../../src/ui/BotonVolver'
 import { SearchDropdown } from '../../../src/ui/SearchDropdown'
@@ -80,6 +81,10 @@ export default function BuscarParaPerfil() {
   const [error, setError] = useState<string | null>(null)
   /* Se entra a buscar: el campo se abre al montar y se cierra al salir. */
   useEffect(() => {
+    if (Platform.OS === 'ios') {
+      setTermino('')
+      return () => setTermino('')
+    }
     abrirBusqueda('Buscá una canción para fijar')
     registerBusquedaHandler(() => setError(null))
     return () => {
@@ -115,6 +120,13 @@ export default function BuscarParaPerfil() {
       controller.abort()
     }
   }, [termino])
+
+  if (Platform.OS === 'ios') return <BusquedaPerfilNativa termino={termino} resultados={resultados}
+    cargando={cargando} error={error} piso={teclado > 0 ? 24 : piso} onCambiar={setTermino}
+    onVolver={() => volver(router, '/profile/editar')} onElegir={track => {
+      proponerRecorte(track)
+      router.push('/song?destino=perfil')
+    }} />
 
   return (
     /* El negro puro es el de la ventana en escritorio, donde los paneles

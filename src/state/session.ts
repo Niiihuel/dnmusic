@@ -437,10 +437,6 @@ export async function endSession() {
   await logOut()
 }
 
-export function clearError() {
-  store.set({ error: null })
-}
-
 /** Deja el perfil recién guardado a la vista sin recargar la sesión. */
 export function setMyProfile(profile: Profile) {
   store.set({ profile })
@@ -486,11 +482,6 @@ export const useCargandoMensajes = () => useStore(store, (state) => state.isLoad
 export const useCargandoConversaciones = () =>
   useStore(store, (state) => state.isLoadingConversations)
 export const useSessionError = () => useStore(store, (state) => state.error)
-export const useIsBooting = () =>
-  useStore(
-    store,
-    (state) => state.user === undefined || state.isLoadingConversations || state.isLoadingMessages,
-  )
 
 export function getSession() {
   return store.get()

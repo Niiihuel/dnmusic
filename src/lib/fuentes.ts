@@ -48,13 +48,39 @@ const ARCHIVOS: Record<string, number> = {
   CormorantGaramond_600SemiBold: require('@expo-google-fonts/cormorant-garamond/600SemiBold/CormorantGaramond_600SemiBold.ttf'),
 }
 
+/** SwiftUI Font.custom no resuelve los alias que expo-font agrega a React Native.
+ * Son los nombres PostScript (nameID 6) de los TTF empaquetados, no sus filenames. */
+const NOMBRES_SWIFTUI: Record<string, string> = {
+  PlayfairDisplay_700Bold: 'PlayfairDisplay-Bold',
+  Nunito_800ExtraBold: 'Nunito-ExtraBold',
+  SpaceMono_700Bold: 'SpaceMono-Bold',
+  Caveat_700Bold: 'Caveat-Bold',
+  BebasNeue_400Regular: 'BebasNeue-Regular',
+  Righteous_400Regular: 'Righteous-Regular',
+  Lora_600SemiBold: 'Lora-SemiBold',
+  Montserrat_600SemiBold: 'Montserrat-SemiBold',
+  Oswald_500Medium: 'Oswald-Medium',
+  Pacifico_400Regular: 'Pacifico-Regular',
+  Quicksand_600SemiBold: 'Quicksand-SemiBold',
+  CormorantGaramond_600SemiBold: 'CormorantGaramond-SemiBold',
+}
+
+export function familiaSwiftUI(alias: string | undefined): string | undefined {
+  return alias ? NOMBRES_SWIFTUI[alias] ?? alias : undefined
+}
+
+/** Expo comparte la carga: suscribirse en la hoja no vuelve a descargar los TTF. */
+export function useEstadoFuentesDelPerfil() {
+  return useFonts(ARCHIVOS)
+}
+
 /**
  * Carga el catálogo al arrancar. No bloquea nada: mientras llegan, las piezas se
  * dibujan con la del sistema y cambian solas — es un lujo, no un requisito.
  * Va en la raíz de la app (`app/_layout.tsx`) para cargarlas una vez.
  */
 export function useFuentesDelPerfil(): boolean {
-  const [listas] = useFonts(ARCHIVOS)
+  const [listas] = useEstadoFuentesDelPerfil()
   return listas
 }
 

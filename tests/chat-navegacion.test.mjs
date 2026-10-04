@@ -148,12 +148,16 @@ test('el chat no afirma presencia con un rótulo fijo independiente de datos', (
 
 
 test('el desvanecido superior del chat vive dentro del hilo y no sobre avatar/nombre', () => {
-  const start = index.indexOf('<Movible style={[{ flex: 1, minHeight: 0 }, seguirTeclado]}>')
+  const start = index.lastIndexOf('<Movible', index.indexOf('ref={hilo}'))
   const end = index.indexOf('</Movible>', start) + '</Movible>'.length
   assert.ok(start >= 0 && end > start)
   for (const suelto of [false, true]) {
+    const scrolls = []
     const globals = {
-      suelto, seguirTeclado: null, hilo: {}, messages: [], pisoChat: 80, draft: {}, cargandoMensajes: false, contactName: 'Cuenta local',
+      suelto, ajusteHilo: { marginBottom: 250 }, Platform: { OS: 'ios' },
+      hilo: { current: { scrollToOffset: options => scrolls.push(options) } },
+      pegadoAlFinal: { current: true }, altoContenidoHilo: { current: 2400 },
+      messages: [], pisoChat: 80, espacioComposer: 148, draft: {}, cargandoMensajes: false, contactName: 'Cuenta local',
       ...Object.fromEntries(['Movible', 'FlatList', 'LinearGradient', 'View', 'SkeletonList', 'EmptyThread', 'ChatBubble'].map(k => [k, k])),
       ubicarHiloAlFinal() {}, alSoltarHilo() {},
     }
@@ -167,7 +171,13 @@ test('el desvanecido superior del chat vive dentro del hilo y no sobre avatar/no
     assert.equal(gradient.props.pointerEvents, 'none')
     assert.equal(nodes(tree, 'Avatar').length, 0)
     assert.equal(list.props.onContentSizeChange, globals.ubicarHiloAlFinal)
-    assert.equal(list.props.contentContainerStyle.paddingBottom, 172)
+    assert.equal(list.props.contentContainerStyle.paddingBottom, 228)
+    list.props.onLayout()
+    assert.deepEqual(scrolls, [{ offset: 2400, animated: false }], 'al subir teclado sigue el final del hilo')
+    globals.pegadoAlFinal.current = false
+    list.props.onLayout()
+    assert.equal(scrolls.length, 1, 'no arrastra a quien está leyendo mensajes anteriores')
+    assert.ok(tree.props.style.some(style => style.overflow === 'hidden'), 'las burbujas no dibujan sobre el encabezado')
     assert.equal(list.props.showsVerticalScrollIndicator, !suelto)
   }
 })

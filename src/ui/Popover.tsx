@@ -8,6 +8,7 @@ import {
   type View as RNView,
 } from 'react-native'
 import { HAY_MENU_NATIVO, Menu } from './Menu'
+import { ES_WEB, Glass } from './Glass'
 import { ICON_COLOR, IconCheck, IconChevronDown, IconChevronUp } from './icons'
 
 export type PopoverOption<T> = { value: T; label: string }
@@ -93,11 +94,22 @@ export function Popover<T extends string | number>({
     </View>
   )
 
-  if (HAY_MENU_NATIVO) {
+  if (HAY_MENU_NATIVO || ES_WEB) {
     return (
       <Menu
-        label={accessibilityLabel ?? label ?? 'Elegir'}
-        trigger={disparador(false)}
+        label={accessibilityLabel ?? ([label, text].filter(Boolean).join(': ') || 'Elegir')}
+        trigger={ES_WEB ? (
+          <Glass radius={999}>
+            <View className="flex-row items-center gap-2 px-4" style={{ minHeight: 44 }}>
+              {icon}
+              {label ? <Text className="text-muted-foreground text-caption1">{label}</Text> : null}
+              {text !== '' ? <Text className="text-foreground text-footnote font-medium">{text}</Text> : null}
+              <View {...({ dataSet: { dnGlassChevron: 'true' } } as object)}>
+                <IconChevronDown size={14} color={ICON_COLOR.muted} />
+              </View>
+            </View>
+          </Glass>
+        ) : disparador(false)}
         items={options.map((o) => ({
           label: o.label,
           onPress: () => onChange(o.value),

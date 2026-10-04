@@ -1,7 +1,8 @@
 import { IconButton } from '../../src/ui/IconButton'
 import { AccionSocial } from '../../src/ui/Social'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
+  ActivityIndicator,
   ScrollView,
   Text,
   useWindowDimensions,
@@ -18,21 +19,18 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated'
-import { mensajeError } from '../../src/lib/mensajeError'
 import { volver } from '../../src/lib/volver'
 import { avatarUrl, type Encuadre } from '../../src/services/profile'
-import { ilustracionUrl, uploadIlustracionConProgreso } from '../../src/services/showcases'
+import { ilustracionUrl } from '../../src/services/showcases'
 import { avisar } from '../../src/state/aviso'
-import { fondoPendiente, soltarFondoPendiente } from '../../src/state/fondoPendiente'
 import { usePiso } from '../../src/state/shell'
-import { useUser } from '../../src/state/session'
 import { actualizarBorrador, useBorrador } from '../../src/state/vitrinaBorrador'
 import { BotonHoja, EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
 import { actualizarPerfilEdicion, useIniciarPerfilEdicion } from '../../src/state/perfilEdicion'
 import { useSalidaConCambios } from '../../src/ui/useSalidaConCambios'
-import { escalaQueCubre } from '../../src/ui/Encuadre'
+import { cajaOriginal, escalaOriginal, escalaQueCubre, limitarOriginal, zoomEnFoco } from '../../src/ui/Encuadre'
+import { MedioEncuadre } from '../../src/ui/MedioEncuadre'
 import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
-import { BarraDeProgreso, porciento } from '../../src/ui/Progreso'
 import { ICON_COLOR, IconGirarDer, IconGirarIzq } from '../../src/ui/icons'
 
 /** Hasta dónde se puede acercar. Más allá, cualquier foto se ve rota. */
@@ -45,46 +43,15 @@ const PX_POR_GRADO = 4
 /** Por debajo de esto, al soltar el dial vuelve a cero: nadie quiere 1° de inclinación sin querer. */
 const IMAN = 1.5
 
-/**
- * Qué se está encuadrando. Las dos primeras viven en el perfil; `fondo-nuevo`
- * es un fondo recién elegido que todavía no subió (ver `state/fondoPendiente`);
- * las otras dos, en el borrador de la pieza (`state/vitrinaBorrador`), que
- * todavía no llegó a la base.
- */
-type Que = 'foto' | 'fondo' | 'fondo-nuevo' | 'vitrina' | 'vitrina-imagen'
+type Que = 'foto' | 'fondo' | 'vitrina' | 'vitrina-imagen'
 
 /**
- * Elegir cómo se ve la foto, el fondo o la imagen de una pieza: arrastrar
- * para mover, pellizcar para acercar, girar con el dial.
- *
- * **No recorta la imagen, la encuadra.** No se genera ningún archivo nuevo: lo
- * que se guarda son unos números que dicen cómo mirarla (ver la migración
- * `encuadre_perfil`). Esa es la diferencia que hace que un GIF de perfil siga
- * animado — el recortador del sistema en iOS devuelve un JPG de un cuadro, y
- * por eso una foto animada se subía bien y llegaba quieta.
- *
- * Y es lo que le da encuadre al **fondo**, que nunca tuvo ninguno, y a la
- * imagen de una pieza del mosaico: la misma pantalla, cambiando la forma del
- * recuadro y a dónde se escribe el resultado. Para la pieza no se guarda en
- * la base sino en el borrador, como el resto del editor: nada llega hasta
- * «Agregar al mosaico».
- *
- * **Un fondo recién elegido se encuadra antes de subir** (`fondo-nuevo`): la
- * pantalla trabaja sobre el archivo local, y el tilde sube el archivo —con
- * una barra de cuánto va— y recién entonces guarda la ruta con el encuadre.
- * Antes el fondo subía al toque y encuadrarlo era otra fila aparte, que casi
- * nadie encontraba.
- *
- * La rotación es la que abre Airbuds después de elegir la foto —pasos de 90°
- * y un dial fino—, pero sigue la regla de acá: es un número más del encuadre,
- * no un archivo nuevo.
- *
- * La cruz protege la salida; la barra compartida restablece o guarda.
- * Centrar modifica sólo la vista previa hasta confirmar.
+ * Guarda la geometría en el borrador sin generar otro archivo: así los GIF
+ * conservan su animación. El editor de perfil o vitrina confirma los cambios
+ * en la base; esta hoja sólo encuadra y protege la salida sin guardar.
  */
 export default function Encuadrar() {
   const router = useRouter()
-  const user = useUser()
   const borrador = useBorrador()
   const { width, height } = useWindowDimensions()
   const modal = useHojaModal()
@@ -92,25 +59,23 @@ export default function Encuadrar() {
   const { que: queCrudo } = useLocalSearchParams<{ que?: string }>()
   const que: Que =
     queCrudo === 'fondo' ||
-    queCrudo === 'fondo-nuevo' ||
     queCrudo === 'vitrina' ||
     queCrudo === 'vitrina-imagen'
       ? queCrudo
       : 'foto'
   const esVitrina = que === 'vitrina' || que === 'vitrina-imagen'
   const perfil = useIniciarPerfilEdicion(!esVitrina)
-  const esFondo = que === 'fondo' || que === 'fondo-nuevo'
+  const esFondo = que === 'fondo'
   const redondo = que === 'foto'
   /* A dónde se vuelve: la pieza a su editor, lo del perfil a «Editar perfil». */
   const destino = esVitrina ? '/profile/vitrina' : '/profile/editar'
 
-  const [guardando, setGuardando] = useState(false)
-  const enVuelo = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [modificado, setModificado] = useState(false)
   const [salir, setSalir] = useState(false)
-  /** Cuánto subió el fondo nuevo, de 0 a 1; `null` mientras no se sube. */
-  const [progreso, setProgreso] = useState<number | null>(null)
+  const [manipulando, setManipulando] = useState(false)
+  const [aspecto, setAspecto] = useState<number | undefined>(undefined)
+  const [cargado, setCargado] = useState(false)
 
   /* De dónde sale la imagen y con qué encuadre arranca, según qué se encuadra. */
   const imagenDeVitrina =
@@ -119,23 +84,18 @@ export default function Encuadrar() {
       : que === 'vitrina-imagen' && borrador?.contenido?.kind === 'imagen'
         ? borrador.contenido.imagen
         : null
-  const pendiente = que === 'fondo-nuevo' ? fondoPendiente() : null
   const uri = esVitrina
     ? imagenDeVitrina
       ? ilustracionUrl(imagenDeVitrina.path)
       : null
-    : que === 'fondo-nuevo'
-      ? (pendiente?.uri ?? null)
-      : que === 'fondo'
-        ? perfil?.bannerPath
-          ? ilustracionUrl(perfil.bannerPath)
-          : null
-        : avatarUrl(perfil?.avatarPath)
+    : que === 'fondo'
+      ? perfil?.bannerPath
+        ? ilustracionUrl(perfil.bannerPath)
+        : null
+      : avatarUrl(perfil?.avatarPath)
   const [inicial] = useState<Encuadre | null>(() => esVitrina
     ? (imagenDeVitrina?.encuadre ?? null)
-    : que === 'fondo-nuevo'
-      ? null
-      : ((que === 'fondo' ? perfil?.bannerEncuadre : perfil?.avatarEncuadre) ?? null))
+    : ((que === 'fondo' ? perfil?.bannerEncuadre : perfil?.avatarEncuadre) ?? null))
 
   /*
    * El recuadro de trabajo: cuadrado para la foto —así se ve en todos lados—,
@@ -150,15 +110,24 @@ export default function Encuadrar() {
    * botones sumaban más que la pantalla: los controles quedaban debajo del
    * reproductor flotante — era el recuadro rojo del reporte.
    */
-  const lado = Math.min(width - 48, ANCHO_HOJA - 48, Math.round(height * 0.4))
+  const lado = Math.min(width - 32, ANCHO_HOJA - 32, Math.round(height * 0.52))
   const razonAlto = redondo ? 1 : que === 'vitrina-imagen' && borrador?.ancho === 'grande' ? 0.92 : 0.62
   const alto = Math.round(lado * razonAlto)
   /* El lado largo sobre el corto: lo que la rotación obliga a acercar. */
   const razon = Math.max(lado / alto, alto / lado)
+  const base = aspecto ? cajaOriginal(lado, alto, aspecto) : { w: lado, h: alto }
+  const alCargar = useCallback((w: number, h: number) => {
+    if (w <= 0 || h <= 0) return
+    // Los recortes viejos conservan su geometría; no cambian al abrir el editor.
+    setAspecto(inicial ? inicial.aspecto : w / h)
+    setCargado(true)
+  }, [inicial])
+  const alFallar = useCallback(() => {
+    setCargado(false)
+    setError('No se pudo abrir el archivo. Volvé a elegirlo en Fotos.')
+  }, [])
 
-  const cambiado = modificado || (que === 'fondo-nuevo' && !!pendiente)
-  const dialogoSalida = useSalidaConCambios(cambiado && !salir, guardando && !salir,
-    () => { if (que === 'fondo-nuevo') soltarFondoPendiente() })
+  const dialogoSalida = useSalidaConCambios(modificado && !salir)
   useEffect(() => { if (salir) { if (esVitrina) volver(router, destino); else router.dismissTo('/profile/editar') } }, [salir, router, destino, esVitrina])
 
   /*
@@ -186,17 +155,26 @@ export default function Encuadrar() {
   const yIni = useSharedValue(0)
   const escalaIni = useSharedValue(1)
   const finoIni = useSharedValue(0)
+  const pinchX = useSharedValue(0)
+  const pinchY = useSharedValue(0)
+  const focoX = useSharedValue(0)
+  const focoY = useSharedValue(0)
+  const escalaFoco = useSharedValue(1)
+  const gestosActivos = useSharedValue(0)
+  useAnimatedReaction(() => gestosActivos.value > 0, (actual, anterior) => {
+    if (actual !== anterior) runOnJS(setManipulando)(actual)
+  })
 
   // El estado sucio cruza de UI a JS sólo al cambiar el booleano, no por
   // cada pixel del gesto. La comparación usa la misma precisión del guardado.
   const inicioX = redondear(inicial?.x ?? 0)
   const inicioY = redondear(inicial?.y ?? 0)
   const inicioGiro = Math.round(inicial?.rotacion ?? 0)
-  const inicioEscala = redondear(escalaEfectiva(inicial?.escala ?? 1, inicial?.rotacion ?? 0, razon, redondo))
+  const inicioEscala = redondear(escalaEfectiva(inicial?.escala ?? 1, inicial?.rotacion ?? 0, razon, redondo, aspecto))
   useAnimatedReaction(
     () => redondear(x.value) !== inicioX || redondear(y.value) !== inicioY ||
       Math.round(giro.value + fino.value) !== inicioGiro ||
-      redondear(escalaEfectiva(escalaPedida.value, giro.value + fino.value, razon, redondo)) !== inicioEscala,
+      redondear(escalaEfectiva(escalaPedida.value, giro.value + fino.value, razon, redondo, aspecto)) !== inicioEscala,
     (actual, anterior) => { if (actual !== anterior) runOnJS(setModificado)(actual) },
   )
 
@@ -211,16 +189,19 @@ export default function Encuadrar() {
   )
 
   const arrastrar = Gesture.Pan()
-    .enabled(!guardando)
-    .onBegin(() => {
+    .enabled(!salir && cargado)
+    .maxPointers(1)
+    .onStart(() => {
       xIni.set(x.value)
       yIni.set(y.value)
     })
+    .onBegin(() => { gestosActivos.set(gestosActivos.value + 1) })
+    .onFinalize(() => { gestosActivos.set(Math.max(0, gestosActivos.value - 1)) })
     .onUpdate((e) => {
       /* En fracciones del lado, que es como se guarda: así el encuadre elegido
          acá sirve igual para el redondel chico de una fila. */
       const rot = giro.value + fino.value
-      const esc = escalaEfectiva(escalaPedida.value, rot, razon, redondo)
+      const esc = escalaEfectiva(escalaPedida.value, rot, razon, redondo, aspecto)
       const dentro = limitar(
         xIni.value + e.translationX / lado,
         yIni.value + e.translationY / alto,
@@ -229,29 +210,40 @@ export default function Encuadrar() {
         lado,
         alto,
         redondo,
+        aspecto,
       )
       x.set(dentro.x)
       y.set(dentro.y)
     })
 
   const pellizcar = Gesture.Pinch()
-    .enabled(!guardando)
-    .onBegin(() => {
+    .enabled(!salir && cargado)
+    .onBegin(() => { gestosActivos.set(gestosActivos.value + 1) })
+    .onFinalize(() => { gestosActivos.set(Math.max(0, gestosActivos.value - 1)) })
+    .onStart((e) => {
       escalaIni.set(escalaPedida.value)
+      escalaFoco.set(escalaEfectiva(escalaPedida.value, giro.value + fino.value, razon, redondo, aspecto))
+      pinchX.set(x.value)
+      pinchY.set(y.value)
+      focoX.set(e.focalX)
+      focoY.set(e.focalY)
     })
     .onUpdate((e) => {
       escalaPedida.set(Math.min(ESCALA_MAX, Math.max(1, escalaIni.value * e.scale)))
       /* Al alejar, lo que antes era un corrimiento válido puede dejar un borde
          al descubierto: se vuelve a meter adentro en el mismo gesto. */
       const rot = giro.value + fino.value
+      const nuevaEscala = escalaEfectiva(escalaPedida.value, rot, razon, redondo, aspecto)
+      const foco = zoomEnFoco(pinchX.value, pinchY.value, escalaFoco.value, nuevaEscala, focoX.value, focoY.value, lado, alto)
       const dentro = limitar(
-        x.value,
-        y.value,
-        escalaEfectiva(escalaPedida.value, rot, razon, redondo),
+        foco.x + (e.focalX - focoX.value) / lado,
+        foco.y + (e.focalY - focoY.value) / alto,
+        nuevaEscala,
         rot,
         lado,
         alto,
         redondo,
+        aspecto,
       )
       x.set(dentro.x)
       y.set(dentro.y)
@@ -266,22 +258,25 @@ export default function Encuadrar() {
    * imanta: una inclinación de un grado nunca es a propósito.
    */
   const girarFino = Gesture.Pan()
-    .enabled(!guardando)
+    .enabled(!salir && cargado)
     .activeOffsetX([-4, 4])
     .onBegin(() => {
+      gestosActivos.set(gestosActivos.value + 1)
       finoIni.set(fino.value)
     })
+    .onFinalize(() => { gestosActivos.set(Math.max(0, gestosActivos.value - 1)) })
     .onUpdate((e) => {
       fino.set(Math.min(FINO_MAX, Math.max(-FINO_MAX, finoIni.value - e.translationX / PX_POR_GRADO)))
       const rot = giro.value + fino.value
       const dentro = limitar(
         x.value,
         y.value,
-        escalaEfectiva(escalaPedida.value, rot, razon, redondo),
+        escalaEfectiva(escalaPedida.value, rot, razon, redondo, aspecto),
         rot,
         lado,
         alto,
         redondo,
+        aspecto,
       )
       x.set(dentro.x)
       y.set(dentro.y)
@@ -293,11 +288,12 @@ export default function Encuadrar() {
         const dentro = limitar(
           x.value,
           y.value,
-          escalaEfectiva(escalaPedida.value, rot, razon, redondo),
+          escalaEfectiva(escalaPedida.value, rot, razon, redondo, aspecto),
           rot,
           lado,
           alto,
           redondo,
+          aspecto,
         )
         x.set(dentro.x)
         y.set(dentro.y)
@@ -316,7 +312,7 @@ export default function Encuadrar() {
    * pasa una vez y no compite con nada.
    */
   function acercar(paso: number) {
-    if (enVuelo.current) return
+    if (salir) return
     setError(null)
     escalaPedida.set(Math.min(ESCALA_MAX, Math.max(1, escalaPedida.value + paso)))
     acomodar(giro.value + fino.value)
@@ -328,7 +324,7 @@ export default function Encuadrar() {
    * una esquina un instante, pero donde cae está bien.
    */
   function girar(paso: number) {
-    if (enVuelo.current) return
+    if (salir) return
     setError(null)
     const destinoGiro = normalizarGiro(giro.value + paso)
     giro.set(withTiming(destinoGiro, { duration: 220 }))
@@ -340,11 +336,12 @@ export default function Encuadrar() {
     const dentro = limitar(
       x.value,
       y.value,
-      escalaEfectiva(escalaPedida.value, rot, razon, redondo),
+      escalaEfectiva(escalaPedida.value, rot, razon, redondo, aspecto),
       rot,
       lado,
       alto,
       redondo,
+      aspecto,
     )
     x.set(dentro.x)
     y.set(dentro.y)
@@ -357,9 +354,9 @@ export default function Encuadrar() {
    */
   const estilo = useAnimatedStyle(() => {
     const rot = giro.value + fino.value
-    const esc = escalaEfectiva(escalaPedida.value, rot, razon, redondo)
-    const anchoImg = lado * esc
-    const altoImg = alto * esc
+    const esc = escalaEfectiva(escalaPedida.value, rot, razon, redondo, aspecto)
+    const anchoImg = base.w * esc
+    const altoImg = base.h * esc
     return {
       position: 'absolute',
       width: anchoImg,
@@ -382,7 +379,8 @@ export default function Encuadrar() {
          cerca, y guardar 0.31578947368 es ruido en la base para siempre. */
       x: redondear(x.value),
       y: redondear(y.value),
-      escala: redondear(escalaEfectiva(escalaPedida.value, rot, razon, redondo)),
+      escala: redondear(Math.min(ESCALA_MAX, escalaEfectiva(escalaPedida.value, rot, razon, redondo, aspecto))),
+      ...(aspecto ? { aspecto } : {}),
     }
     /* Sin girar no se escribe: un encuadre sin rotación es el de siempre. */
     if (Math.round(rot) !== 0) encuadre.rotacion = Math.round(rot)
@@ -404,57 +402,27 @@ export default function Encuadrar() {
     }
   }
 
-  /** La cruz: nada se guarda, y el fondo que esperaba deja de esperar. */
   function cancelar() {
-    if (guardando) return
+    if (salir) return
     volver(router, destino)
   }
 
-  async function guardar() {
-    if (enVuelo.current || !uri || !cambiado) return
+  function guardar() {
+    if (salir || !uri || !cargado) return
+    if (!modificado) { setSalir(true); return }
+    const encuadre = armarEncuadre()
     if (esVitrina) {
-      escribirEnBorrador(armarEncuadre())
+      escribirEnBorrador(encuadre)
       avisar('Imagen encuadrada')
-      setSalir(true)
-      return
+    } else {
+      actualizarPerfilEdicion(que === 'fondo' ? { bannerEncuadre: encuadre } : { avatarEncuadre: encuadre })
     }
-    enVuelo.current = true
-    setError(null)
-    setGuardando(true)
-    try {
-      const encuadre = armarEncuadre()
-      if (que === 'fondo-nuevo') {
-        /* Primero el archivo, con la barra; después la ruta junto al encuadre,
-           así el perfil nunca apunta a un fondo que todavía no existe. */
-        if (!pendiente || !user) throw new Error('No hay ningún fondo por subir.')
-        setProgreso(0)
-        const ruta = await uploadIlustracionConProgreso(
-          user.id,
-          pendiente.blob,
-          pendiente.fileName,
-          pendiente.mime,
-          setProgreso,
-        )
-        actualizarPerfilEdicion({ bannerPath: ruta, bannerEncuadre: encuadre })
-        soltarFondoPendiente()
-        avisar('Fondo agregado al borrador')
-      } else {
-        actualizarPerfilEdicion(que === 'fondo' ? { bannerEncuadre: encuadre } : { avatarEncuadre: encuadre })
-
-      }
-      setSalir(true)
-    } catch (e) {
-      setError(mensajeError(e))
-      setProgreso(null)
-    } finally {
-      enVuelo.current = false
-      setGuardando(false)
-    }
+    setSalir(true)
   }
 
   /** Centrar y restablecer sólo cambian el borrador; nunca escriben en la base. */
   function ponerEncuadre(encuadre: Encuadre | null) {
-    if (enVuelo.current) return
+    if (salir) return
     const rotacion = partirRotacion(encuadre?.rotacion ?? 0)
     x.set(encuadre?.x ?? 0)
     y.set(encuadre?.y ?? 0)
@@ -478,8 +446,8 @@ export default function Encuadrar() {
     <EncabezadoHoja
       titulo={titulo}
       sobre="Encuadrar"
-      izquierda={<BotonHoja tipo="cerrar" onPress={cancelar} />}
-      derecha={<IconButton label="Usar encuadre" symbol="checkmark" disabled={guardando || !uri || !cambiado} busy={guardando} onPress={() => void guardar()} icon={<Text className="text-foreground">Listo</Text>} />}
+      izquierda={<BotonHoja tipo="cerrar" disabled={salir} onPress={cancelar} />}
+      derecha={<IconButton label="Usar encuadre" symbol="checkmark" disabled={salir || !uri || !cargado} onPress={guardar} icon={<Text className="text-foreground">Listo</Text>} />}
     />
   )
 
@@ -493,11 +461,9 @@ export default function Encuadrar() {
             <Text className="text-muted-foreground text-center text-footnote">
               {esVitrina
                 ? 'Todavía no pusiste una imagen.'
-                : que === 'fondo-nuevo'
-                  ? 'No hay ningún fondo por subir. Volvé y elegí uno.'
-                  : esFondo
-                    ? 'Todavía no pusiste un fondo.'
-                    : 'Todavía no pusiste una foto.'}
+                : esFondo
+                  ? 'Todavía no pusiste un fondo.'
+                  : 'Todavía no pusiste una foto.'}
             </Text>
           </View>
         </View>
@@ -509,24 +475,20 @@ export default function Encuadrar() {
     <Hoja>
       {dialogoSalida}
       <View className="flex-1 bg-background">
+      {encabezado}
       {/*
        * La cabecera queda pegada dentro del scroll. La raíz ocupa el alto
        * de la hoja y la barra flota sobre el espacio reservado al final.
        */}
       <ScrollView
         className="flex-1 bg-background"
-        stickyHeaderIndices={[0]}
+        scrollEnabled={!manipulando}
         contentContainerStyle={{ flexGrow: 1, paddingBottom: (modal ? 24 : piso) }}
       >
-        {encabezado}
         <View
-          className="flex-1 items-center justify-center gap-6 px-6 pt-2"
+          className="flex-1 items-center justify-center gap-5 px-4 pt-2"
           style={{ maxWidth: ANCHO_HOJA, width: '100%', alignSelf: 'center' }}
         >
-          <Text className="text-muted-foreground text-center text-footnote leading-[18px]">
-            Arrastrá para mover, pellizcá para acercar y girá con el dial.
-          </Text>
-
           {/*
            * El recuadro es la máscara: la imagen es más grande y lo que sobra
            * se recorta al dibujar. Es exactamente lo que va a pasar después en
@@ -538,31 +500,29 @@ export default function Encuadrar() {
                 width: lado,
                 height: alto,
                 overflow: 'hidden',
-                borderRadius: redondo ? lado / 2 : 16,
+                borderRadius: redondo ? lado / 2 : 4,
                 backgroundColor: '#1F1F1F',
               }}
             >
-              <Animated.Image source={{ uri }} style={estilo} resizeMode="cover" />
+              <Animated.View style={estilo}>
+                <MedioEncuadre uri={uri} onLoad={alCargar} onError={alFallar} />
+              </Animated.View>
+              {!cargado && !error ? <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#FFFFFF" /></View> : null}
+              <View pointerEvents="none" style={{ position: 'absolute', inset: 0, borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)', borderRadius: redondo ? lado / 2 : 4 }} />
+              {manipulando ? <View pointerEvents="none" style={{ position: 'absolute', inset: 0 }}>
+                {[1, 2].map(n => <View key={`v${n}`} style={{ position: 'absolute', top: 0, bottom: 0, left: `${n * 100 / 3}%`, width: 1, backgroundColor: 'rgba(255,255,255,0.5)' }} />)}
+                {[1, 2].map(n => <View key={`h${n}`} style={{ position: 'absolute', left: 0, right: 0, top: `${n * 100 / 3}%`, height: 1, backgroundColor: 'rgba(255,255,255,0.5)' }} />)}
+              </View> : null}
             </View>
           </GestureDetector>
 
-          {/* Mientras sube, cuánto va: la barra ocupa el ancho del recuadro. */}
-          {progreso !== null ? (
-            <View style={{ width: lado }}>
-              <BarraDeProgreso
-                valor={progreso}
-                rotulo={progreso >= 1 ? 'Guardando…' : `Subiendo el fondo… ${porciento(progreso)}`}
-              />
-            </View>
-          ) : null}
-
           {/* Acercar y alejar, para quien no tiene con qué pellizcar. */}
           <View className="flex-row items-center gap-4">
-            <IconButton label="Alejar" symbol="minus" disabled={guardando} onPress={() => acercar(-0.25)} variant="glass" icon={<Text className="text-foreground text-title3 font-bold">−</Text>} />
+            <IconButton label="Alejar" symbol="minus" disabled={salir} onPress={() => acercar(-0.25)} variant="glass" icon={<Text className="text-foreground text-title3 font-bold">−</Text>} />
             <Text className="text-muted-foreground text-footnote uppercase">
               Acercar
             </Text>
-            <IconButton label="Acercar" symbol="plus" disabled={guardando} onPress={() => acercar(0.25)} variant="glass" icon={<Text className="text-foreground text-title3 font-bold">+</Text>} />
+            <IconButton label="Acercar" symbol="plus" disabled={salir} onPress={() => acercar(0.25)} variant="glass" icon={<Text className="text-foreground text-title3 font-bold">+</Text>} />
           </View>
 
           {/*
@@ -572,7 +532,7 @@ export default function Encuadrar() {
            * explicarlo.
            */}
           <View className="flex-row items-center gap-3" style={{ width: lado }}>
-            <IconButton label="Girar un cuarto a la izquierda" symbol="rotate.left" disabled={guardando} onPress={() => girar(-90)} variant="glass" icon={<IconGirarIzq size={18} color={ICON_COLOR.foreground} />} />
+            <IconButton label="Girar un cuarto a la izquierda" symbol="rotate.left" disabled={salir} onPress={() => girar(-90)} variant="glass" icon={<IconGirarIzq size={18} color={ICON_COLOR.foreground} />} />
             <View className="min-w-0 flex-1 items-center gap-1.5">
               <Text className="text-muted-foreground text-caption2 tabular-nums tracking-[1.2px]">
                 {grados}°
@@ -582,7 +542,13 @@ export default function Encuadrar() {
                   accessibilityRole="adjustable"
                   accessibilityLabel="Enderezar"
                   accessibilityValue={{ text: `${grados} grados` }}
-                  style={{ width: '100%', height: 36, overflow: 'hidden', justifyContent: 'center' }}
+                  accessibilityActions={[{ name: 'increment', label: 'Girar un grado a la derecha' }, { name: 'decrement', label: 'Girar un grado a la izquierda' }]}
+                  onAccessibilityAction={e => {
+                    if (salir) return
+                    fino.set(Math.min(FINO_MAX, Math.max(-FINO_MAX, fino.value + (e.nativeEvent.actionName === 'increment' ? 1 : -1))))
+                    acomodar(giro.value + fino.value)
+                  }}
+                  style={{ width: '100%', height: 44, overflow: 'hidden', justifyContent: 'center' }}
                 >
                   <Regla estilo={estiloRegla} />
                   {/* La aguja: blanco pleno porque es el estado activo, no un adorno (docs/DESIGN.md). */}
@@ -602,11 +568,11 @@ export default function Encuadrar() {
                 </View>
               </GestureDetector>
             </View>
-            <IconButton label="Girar un cuarto a la derecha" symbol="rotate.right" disabled={guardando} onPress={() => girar(90)} variant="glass" icon={<IconGirarDer size={18} color={ICON_COLOR.foreground} />} />
+            <IconButton label="Girar un cuarto a la derecha" symbol="rotate.right" disabled={salir} onPress={() => girar(90)} variant="glass" icon={<IconGirarDer size={18} color={ICON_COLOR.foreground} />} />
           </View>
 
           {/* Centrar se prueba en pantalla; sólo Guardar cambios lo confirma. */}
-          <AccionSocial label="Volver al centro" secundaria disabled={guardando} onPress={() => void centrar()} />
+          <AccionSocial label="Restablecer" secundaria disabled={salir} onPress={centrar} />
         </View>
       </ScrollView>
       {error ? <Text accessibilityRole="alert" className="text-destructive px-5 py-3">{error}</Text> : null}
@@ -674,8 +640,12 @@ function escalaMinima(rotacion: number, razon: number, redondo: boolean): number
 }
 
 /** La escala que se dibuja: la pedida, o la que el giro obliga si es mayor. */
-function escalaEfectiva(pedida: number, rotacion: number, razon: number, redondo: boolean): number {
+function escalaEfectiva(pedida: number, rotacion: number, razon: number, redondo: boolean, aspecto?: number): number {
   'worklet'
+  if (aspecto) {
+    const base = cajaOriginal(razon, 1, aspecto)
+    return Math.max(pedida, escalaOriginal(rotacion, razon, 1, base.w, base.h, redondo))
+  }
   return Math.max(pedida, escalaMinima(rotacion, razon, redondo))
 }
 
@@ -709,8 +679,13 @@ function limitar(
   lado: number,
   alto: number,
   redondo: boolean,
+  aspecto?: number,
 ): { x: number; y: number } {
   'worklet'
+  if (aspecto) {
+    const base = cajaOriginal(lado, alto, aspecto)
+    return limitarOriginal(x, y, escala, rotacion, lado, alto, base.w, base.h, redondo)
+  }
   const t = (rotacion * Math.PI) / 180
   const c = Math.cos(t)
   const s = Math.sin(t)

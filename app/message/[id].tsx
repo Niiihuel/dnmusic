@@ -1,3 +1,4 @@
+import { PlayerHeader } from '../../src/ui/PlayerHeader'
 import { IconButton } from '../../src/ui/IconButton'
 import { CancionCompartida } from '../../src/ui/CancionCompartida'
 import { invitacionEnTexto } from '../../src/lib/invitacionJam'
@@ -5,24 +6,24 @@ import { InvitacionJam } from '../../src/ui/InvitacionJam'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
-  Image,
   Platform,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { volver } from '../../src/lib/volver'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { LinearGradient } from 'expo-linear-gradient'
-import { CabeceraSocial, AccionSocial, SeccionSocial } from '../../src/ui/Social'
-import { SeekBar, formatClock } from '../../src/ui/SeekBar'
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
+import { CabeceraSocial, AccionSocial } from '../../src/ui/Social'
+import { SeekBar } from '../../src/ui/SeekBar'
 import { Vacio } from '../../src/ui/Vacio'
-import { SongDisc } from '../../src/ui/SongDisc'
+import { PlayerArtwork } from '../../src/ui/PlayerArtwork'
+import { PlayerBackdrop } from '../../src/ui/PlayerBackdrop'
+import { FadedLyrics } from '../../src/ui/FadedLyrics'
 import { Lyrics } from '../../src/ui/Lyrics'
-import { Onda, usePicos } from '../../src/ui/Onda'
 import { Popover } from '../../src/ui/Popover'
+import { Segmentado } from '../../src/ui/Segmentado'
+import { Menu } from '../../src/ui/Menu'
 import { isSentBy } from '../../src/models/message'
 import { markOpened, markRead } from '../../src/services/messages'
 import { getSession, useContact, useMessages, useUser } from '../../src/state/session'
@@ -42,9 +43,7 @@ import { contactLabel } from '../../src/services/contacts'
 import { formatMessageDate } from '../../src/ui/MessageCard'
 import {
   ICON_COLOR,
-  IconDisc,
   IconLanguages,
-  IconLyrics,
   IconMessage,
   IconPause,
   IconPlay,
@@ -64,6 +63,11 @@ const WIDE_PX = 720
  * leerse juntos, que es de lo que se trata compartir un fragmento.
  */
 const ANCHO_MAX = 1020
+const ESTILO_FRASE = { flexShrink: 0, minWidth: 0, padding: 20, borderRadius: 20,
+  backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }
+const TEXTO_FRASE = { color: '#F5F5F5', fontSize: 17, lineHeight: 27, flexShrink: 0,
+  ...(Platform.OS === 'web' ? { overflowWrap: 'anywhere' as const } : {}) }
+
 
 type StoryView = 'disc' | 'lyrics'
 
@@ -78,28 +82,7 @@ const LANG_NAMES: Record<string, string> = {
   ja: 'japonés',
 }
 
-/**
- * El mensaje a pantalla completa, al modo de una historia.
- *
- * En el chat un mensaje es una fila más de una lista; acá es una pieza sola en
- * la que uno se detiene: el disco girando, la frase, y la letra si se quiere
- * seguir. Es el mismo contenido con otro peso.
- *
- * El fondo es la carátula desenfocada, y **con la letra a la vista va a color**.
- *
- * docs/DESIGN.md prohíbe los colores de marca, pero eso protege la interfaz:
- * botones, textos y controles siguen siendo grises acá. La carátula es
- * contenido, no cromo — es la tapa del disco que eligió la persona—, y a 72px
- * de desenfoque no es una imagen sino atmósfera.
- *
- * Con el disco en pantalla sí va desaturada: ahí la tapa ya está a todo color
- * en el centro, y repetir sus tonos atrás enturbia la composición en vez de
- * sumar. Con la letra la tapa no está, y el color es lo único que dice de qué
- * canción se trata.
- *
- * Encima va siempre un degradado que garantiza que el texto se lea, sea cual
- * sea la imagen.
- */
+/** Fragmento compartido con la misma portada, fondo y controles de Sonando. */
 export default function MessageStory() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const messages = useMessages()
@@ -107,7 +90,8 @@ export default function MessageStory() {
   const contact = useContact()
   const router = useRouter()
   const player = useSnippetPlayer()
-  const piso = usePiso(16)
+  const pisoShell = usePiso(16)
+  const piso = Platform.OS === 'ios' ? 16 : pisoShell
   /*
    * Arranca en el estilo que eligió quien lo mandó.
    *
@@ -133,26 +117,17 @@ export default function MessageStory() {
    * instantáneo.
    */
   const [lang, setLang] = useState<LyricLang>('off')
-  /**
-   * La frase, que puede ser larga.
-   *
-   * Se puede ocultar, y mostrarla nunca mueve la letra ni el disco: en PC vive
-   * en una columna al costado —ahí sobra ancho— y en el teléfono en una tarjeta
-   * de tres líneas que se despliega con su propio desplazamiento. Antes iba en
-   * la misma columna centrada, debajo de la letra: cuanto más escribías, más
-   * empujaba y aplastaba todo lo demás.
-   */
+  // La nota se lee en el mismo scroll del disco, sin un segundo viewport
+  // que pueda quedar oculto debajo de los controles.
   const [verFrase, setVerFrase] = useState(true)
-  const [fraseAbierta, setFraseAbierta] = useState(false)
   const [versions, setVersions] = useState<Partial<Record<LyricLang, LyricLine[]>>>({})
 
   const message = messages.find((m) => m.id === id)
   const song = message?.song ?? null
-  const picos = usePicos(
-    song?.videoId,
-    song ? { desdeMs: song.startMs, durMs: song.durationMs } : undefined,
-  )
   const mine = message && user ? isSentBy(message, user.id) : false
+  useEffect(() => {
+    if (message?.deletedAt && player.currentId === message.id) player.stop()
+  }, [message?.deletedAt, message?.id, player])
 
   /*
    * Arranca sola, como una historia.
@@ -241,78 +216,37 @@ export default function MessageStory() {
   const playing = player.currentId === message.id && player.playing
 
   return (
+    <SafeAreaProvider>
     <View className="flex-1 bg-background" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-      {backdrop ? (
-        <Image
-          source={{ uri: backdrop }}
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              // La escala evita que el desenfoque deje los bordes transparentes.
-              transform: [{ scale: 1.3 }],
-              opacity: onLyrics ? 0.62 : 0.45,
-            },
-            // `filter` solo existe en web; en nativo queda la imagen atenuada,
-            // que con el degradado encima sigue funcionando como fondo.
-            Platform.OS === 'web'
-              ? ({
-                  filter: onLyrics
-                    ? // Un poco de saturación extra: al desenfocar tanto, los
-                      // tonos se promedian y la tapa pierde fuerza.
-                      'blur(72px) saturate(1.5)'
-                    : 'blur(64px) grayscale(1)',
-                } as object)
-              : null,
-          ]}
-          blurRadius={Platform.OS === 'web' ? 0 : 40}
-        />
-      ) : null}
-
-      {/* El degradado es lo que hace legible el texto pase lo que pase con la
-          imagen de atrás: sin él, una tapa clara se come la frase. */}
-      {backdrop ? <LinearGradient
-        pointerEvents="none"
-        // Con la letra el velo afloja en el medio para dejar respirar el color,
-        // y aprieta arriba y abajo, que es donde va el texto de servicio.
-        colors={
-          onLyrics
-            ? ['rgba(0,0,0,0.80)', 'rgba(0,0,0,0.38)', 'rgba(0,0,0,0.88)']
-            : ['rgba(0,0,0,0.72)', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.92)']
-        }
-        style={StyleSheet.absoluteFill}
-      /> : null}
+      <PlayerBackdrop uri={backdrop} />
 
       <SafeAreaView className="flex-1" edges={['top', 'bottom']}>
-        <CabeceraSocial titulo={mine ? `Para ${who}` : `De ${who}`}
-          detalle={message.createdAt ? formatMessageDate(message.createdAt, true) : undefined}
-          onCerrar={() => volver(router, '/')} />
+        <PlayerHeader title={mine ? `Para ${who}` : `De ${who}`}
+          subtitle={message.createdAt ? formatMessageDate(message.createdAt, true) : undefined}
+          closeLabel="Volver al chat" onClose={() => volver(router, '/')} />
 
-        <ScrollView className="min-h-0 flex-1" contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 24, paddingBottom: song ? 24 : piso }}>
+        <ScrollView className="min-h-0 flex-1" contentInsetAdjustmentBehavior="never" contentContainerStyle={{ flexGrow: 1, alignItems: 'center', paddingTop: 20, paddingBottom: song ? 32 : piso }}>
           <View
             className="w-full flex-row items-center justify-center gap-8 px-5"
             style={{ maxWidth: ANCHO_MAX }}
           >
-            {/* En ancho, la frase al costado: no le saca una sola línea a la
-              letra. Con su propio desplazamiento, así una frase larga no
-              estira la columna. */}
+            {/* La dedicatoria completa comparte el scroll con la portada.
+                No tiene altura fija ni un segundo desplazamiento anidado. */}
             {wide && song && verFrase && message.text ? (
               <View style={{ width: Math.min(300, width * 0.34) }}>
                 {invitacionEnTexto(message.text) ? <InvitacionJam texto={message.text} /> :
-                  <SeccionSocial titulo="Mensaje"><Text selectable className="text-foreground p-4 text-callout leading-6">{message.text}</Text></SeccionSocial>}
+                  <View style={ESTILO_FRASE}><Text selectable style={TEXTO_FRASE}>{message.text}</Text></View>}
               </View>
             ) : null}
 
-            <View className="min-h-0 flex-1 items-center justify-center gap-7">
+            <View className="min-w-0 flex-1 items-center gap-7" style={{ flexShrink: 0 }}>
               {message.sharedSong ? <CancionCompartida song={message.sharedSong} /> : null}
-              {/*
-            La letra va en una ventana de líneas fijas y no ocupando todo el
-            alto: con el alto libre la última línea quedaba cortada por la mitad
-            contra la frase de abajo. Con un número de líneas la ventana cierra
-            siempre en un renglón entero.
-          */}
+
               {chosen === 'lyrics' && hasLyrics ? (
-                <View className="w-full max-w-xl items-center">
-                  <Lyrics lines={lyrics} atMs={player.positionMs} size="lg" visible={5} />
+                <View className="w-full max-w-xl" style={{ height: 320, flexShrink: 0 }}>
+                  <FadedLyrics><Lyrics lines={lyrics} atMs={player.positionMs} size="xl"
+                    onPickLine={atMs => { if (song) void player.seek(message.id, song, Math.max(0, Math.min(1, (atMs - song.startMs) / Math.max(1, song.durationMs)))).catch((e: unknown) => avisar(mensajeError(e), true)) }} />
+                  </FadedLyrics>
                   {song?.lyricsLang ? (
                     <Text className="text-muted-foreground pt-3 text-center text-footnote">
                       Traducida al {LANG_NAMES[song.lyricsLang] ?? song.lyricsLang}
@@ -321,43 +255,30 @@ export default function MessageStory() {
                 </View>
               ) : song ? (
                 <>
-                  <SongDisc
-                    artworkUrl={song.artworkUrl}
-                    artworkPath={artPath}
-                    title={song.title}
-                    playing={playing}
-                    size={Math.min(wide ? DISC_WIDE : DISC_NARROW, Math.max(140, width - 80))}
-                  />
-                  <View className="items-center gap-1">
-                    <Text className="text-foreground text-title3 font-semibold" numberOfLines={1}>
+                  <View style={{ width: Math.min(wide ? DISC_WIDE : DISC_NARROW, Math.max(140, width - 80)), flexShrink: 0 }}>
+                    {backdrop ? <PlayerArtwork uri={backdrop} playing={playing} /> :
+                      <View className="aspect-square items-center justify-center rounded-2xl bg-muted"><IconMessage size={48} color={ICON_COLOR.muted} /></View>}
+                  </View>
+                  <View className="w-full items-center gap-1">
+                    <Text className="text-foreground text-title3 text-center font-semibold">
                       {song.title}
                     </Text>
-                    <Text className="text-muted-foreground text-subheadline" numberOfLines={1}>
+                    <Text className="text-muted-foreground text-subheadline text-center">
                       {song.artist}
                     </Text>
                   </View>
                 </>
               ) : null}
 
-              {/* En el teléfono, una tarjeta de tres líneas debajo del contenido.
-              Desplegada crece hasta un tope y se desplaza adentro: lo que no
-              puede pasar es que empuje la letra fuera de la pantalla. */}
               {(!wide || !song) && verFrase && message.text ? (
-                <View className={`w-full max-w-xl ${invitacionEnTexto(message.text) ? '' : 'rounded-2xl bg-card/80 p-4'}`}>
+                <View style={invitacionEnTexto(message.text) ? { flexShrink: 0 } : ESTILO_FRASE} className="w-full max-w-xl">
                   {invitacionEnTexto(message.text) ? (
                     <InvitacionJam texto={message.text} />
-                  ) : fraseAbierta ? (
-                    <ScrollView className="max-h-[180px]" showsVerticalScrollIndicator={false}>
-                      <InvitacionJam texto={message.text} />
-                    </ScrollView>
                   ) : (
-                    <Text className="text-foreground text-subheadline leading-6" numberOfLines={3}>
+                    <Text selectable style={TEXTO_FRASE}>
                       {message.text}
                     </Text>
                   )}
-                  {!invitacionEnTexto(message.text) ? (
-                    <AccionSocial label={fraseAbierta ? 'Ver menos' : 'Ver más'} secundaria expandida={false} onPress={() => setFraseAbierta(v => !v)} />
-                  ) : null}
                 </View>
               ) : null}
             </View>
@@ -370,69 +291,23 @@ export default function MessageStory() {
              ancho de la ventana, la onda y el segmentado quedaban a metros de
              lo que están controlando. Y con aire abajo: pegado al borde se
              cortaba contra el filo de la ventana. */
-          <View className="items-center px-5 pt-3" style={{ paddingBottom: piso }}>
+          <View className="items-center px-5 pt-3" style={{ paddingBottom: piso, flexShrink: 0 }}>
             <View className="w-full items-center gap-4" style={{ maxWidth: ANCHO_MAX }}>
-              {/* La onda del fragmento, que además es la única forma de moverse
-                dentro de él: esta pantalla no tenía barra de posición. */}
-              {picos ? (
-                <View className="w-full max-w-xl">
-                  <Onda
-                    picos={picos}
-                    posicionMs={player.posicionSV}
-                    desdeMs={song.startMs}
-                    duracionMs={song.durationMs}
-                    activa={player.currentId === message.id}
-                    onSeek={(fraccion) =>
-                      player
-                        .seek(message.id, song, fraccion)
-                        .catch((e: unknown) => avisar(mensajeError(e), true))
-                    }
-                    height={40}
-                    etiqueta={song.title}
-                  />
-                  <View className="flex-row justify-between">
-                    <Text className="text-muted-foreground text-caption1 tabular-nums">{formatClock(Math.max(0, Math.min(song.durationMs, player.positionMs - song.startMs)))}</Text>
-                    <Text className="text-muted-foreground text-caption1 tabular-nums">{formatClock(song.durationMs)}</Text>
-                  </View>
-                </View>
-              ) : <View className="w-full max-w-xl">
+              <View className="w-full max-w-xl">
                 <SeekBar label={song.title}
                   progress={Math.max(0, Math.min(1, (player.positionMs - song.startMs) / Math.max(1, song.durationMs)))}
                   elapsedMs={Math.max(0, Math.min(song.durationMs, player.positionMs - song.startMs))}
                   totalMs={song.durationMs}
                   onSeek={(fraction) => { void player.seek(message.id, song, fraction).catch((e: unknown) => avisar(mensajeError(e), true)) }} />
-              </View>}
+              </View>
 
               <IconButton label={playing ? 'Pausar' : 'Reproducir'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={() => player.toggle(message.id, song).catch((e: unknown) => avisar(mensajeError(e), true))} variant="primary" lado={56} icon={playing ? <IconPause size={20} color={ICON_COLOR.onPrimary} /> : <IconPlay size={20} color={ICON_COLOR.onPrimary} />} />
 
-              {/* Disco o letra, el mismo segmentado que el editor. Sin letra
-                guardada el botón no lleva a ningún lado y se apaga. */}
-              <View className="flex-row flex-wrap items-center justify-center gap-2">
-                <View className="flex-row items-center rounded-full bg-background/70 p-1">
-                  <Segment
-                    active={chosen === 'disc'}
-                    label="Disco"
-                    icon={
-                      <IconDisc
-                        size={14}
-                        color={chosen === 'disc' ? ICON_COLOR.onPrimary : ICON_COLOR.muted}
-                      />
-                    }
-                    onPress={() => setView('disc')}
-                  />
-                  <Segment
-                    active={chosen === 'lyrics'}
-                    label="Letra"
-                    enabled={hasLyrics}
-                    icon={
-                      <IconLyrics
-                        size={14}
-                        color={chosen === 'lyrics' ? ICON_COLOR.onPrimary : ICON_COLOR.muted}
-                      />
-                    }
-                    onPress={() => setView('lyrics')}
-                  />
-                </View>
+              <View style={{ width: '100%', maxWidth: 560, flexDirection: 'row', flexWrap: Platform.OS === 'ios' ? 'nowrap' : 'wrap', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                {hasLyrics ? <View style={{ flex: 1, minWidth: 140, maxWidth: 280 }}>
+                  <Segmentado<StoryView> value={chosen} onChange={setView} label="Vista del fragmento"
+                    options={[{ value: 'disc', label: 'Portada' }, { value: 'lyrics', label: 'Letra' }]} />
+                </View> : null}
 
                 {/* Mostrar y ocultar la frase. Solo si hay algo escrito: sin texto
                 sería un interruptor que no enciende nada. */}
@@ -441,7 +316,10 @@ export default function MessageStory() {
                 ) : null}
 
                 {/* Traducir: solo aparece si hay letra que traducir. */}
-                {hasLyrics ? (
+                {hasLyrics && onLyrics ? Platform.OS === 'ios' ? (
+                  <Menu label={translating ? 'Traduciendo la letra' : 'Traducir la letra'} triggerSymbol="character.bubble"
+                    items={LYRIC_LANGS.map(l => ({ label: l.label, selected: l.value === lang, onPress: () => setLang(l.value) }))} />
+                ) : (
                   <Popover
                     value={lang}
                     options={LYRIC_LANGS.map((l) => ({ value: l.value, label: l.label }))}
@@ -466,21 +344,6 @@ export default function MessageStory() {
         ) : null}
       </SafeAreaView>
     </View>
+    </SafeAreaProvider>
   )
-}
-
-function Segment({
-  active,
-  label,
-  icon,
-  enabled = true,
-  onPress,
-}: {
-  active: boolean
-  label: string
-  icon: React.ReactNode
-  enabled?: boolean
-  onPress: () => void
-}) {
-  return <AccionSocial label={label} icono={icon} selected={active} secundaria={!active} disabled={!enabled} expandida={false} onPress={onPress} />
 }

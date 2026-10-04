@@ -8,6 +8,8 @@ export type ListeningActivity = {
   /** Posición al crear el snapshot; updatedAt mide frescura, no el inicio. */
   positionMs: number
   updatedAt: number
+  /** Instante de la posición, distinto de la frescura del latido remoto. */
+  sampledAt: number
   expiresAt: number
   trackUrl?: string
   artworkUrl?: string
@@ -25,7 +27,7 @@ function caratulaPublica(value: unknown): string | undefined {
     const url = new URL(value)
     if (url.protocol !== 'https:' || url.username || url.password || url.port || url.search || url.hash) return
     const cdn = ['i.ytimg.com', 'img.youtube.com', 'yt3.googleusercontent.com', 'lh3.googleusercontent.com', 'yt3.ggpht.com', 'lh3.ggpht.com'].includes(url.hostname)
-    const storage = url.hostname.endsWith('.supabase.co') && url.pathname.startsWith('/storage/v1/object/public/artwork/')
+    const storage = (/^[a-z0-9-]+\.supabase\.co$/.test(url.hostname) || url.hostname === 'envoy-production-2fb6.up.railway.app') && url.pathname.startsWith('/storage/v1/object/public/artwork/')
     if (cdn || storage) return url.href
   } catch { /* Metadatos malformados no salen del dispositivo. */ }
 }
@@ -48,6 +50,6 @@ export function actividadParaCompartir({ track, sonando, autorizada, actualizado
   const videoId = typeof data.videoId === 'string' ? data.videoId : ''
   const trackUrl = /^[A-Za-z0-9_-]{11}$/.test(videoId) ? `https://music.youtube.com/watch?v=${videoId}` : undefined
   const artworkUrl = caratulaPublica(data.artworkUrl)
-  return { title, artist: texto(data.artist), durationMs, positionMs, updatedAt, expiresAt: Math.min(updatedAt + VIGENCIA_ESCUCHA_MS, durationMs > 0 ? ahora + durationMs - positionMs : Infinity),
+  return { title, artist: texto(data.artist), durationMs, positionMs, updatedAt, sampledAt: ahora, expiresAt: Math.min(updatedAt + VIGENCIA_ESCUCHA_MS, durationMs > 0 ? ahora + durationMs - positionMs : Infinity),
     ...(trackUrl ? { trackUrl } : {}), ...(artworkUrl ? { artworkUrl } : {}) }
 }

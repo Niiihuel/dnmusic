@@ -22,8 +22,11 @@ function fixture() {
     ],
     elegir: id => state.calls.push(id),
   } }
+  const effects = [], cleanups = []
   const exports = {}
   new Function('exports', 'require', code)(exports, id => {
+    if (id === 'react') return { useEffect: fn => effects.push(fn) }
+    if (id === 'expo-router') return { useRouter: () => ({ navigate: route => state.calls.push(route) }) }
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx }
     if (id === 'react-native') return { Modal: 'Modal' }
     if (id === '../state/escucha') return {
@@ -36,14 +39,16 @@ function fixture() {
     if (id === './ListaAgrupada') return { ListaAgrupada: 'ListaAgrupada' }
     assert.fail(`Import inesperado ${id}`)
   })
-  const render = () => nodes(exports.SelectorDispositivos())
-  return { state, render, list: () => render().find(node => node.type === 'ListaAgrupada').props,
+  const render = () => nodes(exports.PanelDispositivos({ onCerrar: () => { state.abierto = false; state.calls.push('cerrar') } }))
+  const open = () => { exports.SelectorDispositivos(); effects.splice(0).forEach(fn => { const cleanup = fn(); if (cleanup) cleanups.push(cleanup) }) }
+  const unmount = () => { effects.splice(0).forEach(fn => { const cleanup = fn(); if (cleanup) cleanups.push(cleanup) }); cleanups.splice(0).forEach(fn => fn()) }
+  return { state, render, open, unmount, list: () => render().find(node => node.type === 'ListaAgrupada').props,
     row: id => render().find(node => node.type === 'ListaAgrupada').props.secciones[0].filas.find(row => row.id === id) }
 }
 
 test('iOS presenta una hoja nativa viva y actualiza pausa, reproducción y nuevos dispositivos', () => {
   const f = fixture()
-  assert.equal(f.render()[0].props.presentationStyle, 'formSheet')
+  assert.equal(f.render()[0].type, 'Hoja', 'el router presenta la hoja sobre la ruta actual')
   assert.equal(f.row('pc').symbol, 'pause.circle', 'ser seleccionado no significa sonar')
   assert.equal(f.row('pc').valor, 'Seleccionado')
   f.state.panel.filas[1] = { ...f.state.panel.filas[1], estado: 'sonando', detalle: 'Sonando ahora' }
@@ -85,9 +90,23 @@ test('sin dispositivos conserva contexto y el gesto cierra sin transferir', () =
   assert.equal(f.list().secciones[0].filas[0].valor, 'Ninguno disponible')
   assert.equal(f.list().secciones[0].pie, 'Conectando con tus dispositivos…')
   assert.equal(f.render().find(node => node.type === 'EncabezadoHoja').props.sobre, 'Sin reproducción')
-  const modal = f.render()[0]
-  assert.equal(modal.props.allowSwipeDismissal, true)
-  modal.props.onRequestClose()
+  f.render().find(node => node.type === 'EncabezadoHoja').props.izquierda.props.onPress()
   assert.deepEqual(f.state.calls, ['cerrar'])
-  assert.equal(f.render().length, 0)
+  assert.equal(f.state.abierto, false)
+})
+
+
+test('el selector navega sobre el reproductor y puede reabrirse después de descartar la hoja', () => {
+  const f = fixture()
+  f.open()
+  assert.deepEqual(f.state.calls, ['/dispositivos'])
+  f.render()
+  f.unmount()
+  assert.equal(f.state.abierto, false)
+  f.state.calls = []
+  f.open()
+  assert.deepEqual(f.state.calls, [], 'cerrado no navega')
+  f.state.abierto = true
+  f.open()
+  assert.deepEqual(f.state.calls, ['/dispositivos'])
 })

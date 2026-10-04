@@ -39,13 +39,18 @@ export function prepararMenuContextual(items: MenuItem[]) {
   return { items: convertir(items), acciones }
 }
 
-export function MenuContextualColeccion({ items, children }: { items: MenuItem[]; children: ReactNode }) {
+export function MenuContextualColeccion({ items, children, preview, onPreviewPress, previewCornerRadius }: {
+  items: MenuItem[]; children: ReactNode
+  previewCornerRadius?: number
+  preview?: import('../../modules/collection-controls').CollectionPreview
+  onPreviewPress?: () => void
+}) {
   const preparado = useMemo(() => prepararMenuContextual(items), [items])
   const abiertas = useRef(preparado.acciones)
   if (!CollectionContext) return <>{children}</>
   return <View collapsable={false}>
     <CollectionContext pointerEvents="none" style={StyleSheet.absoluteFill}
-      items={preparado.items}
+      items={preparado.items} previewCornerRadius={previewCornerRadius} preview={preview} onPreviewPress={onPreviewPress}
       onOpen={() => { abiertas.current = preparado.acciones }}
       onSelect={event => abiertas.current.get(event.nativeEvent.id)?.()} />
     {children}

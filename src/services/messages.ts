@@ -2,6 +2,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { getSupabase } from '../lib/supabase'
 import {
   messageFromRow,
+  mergeMessage,
   toMessageRow,
   type Message,
   type MessageRow,
@@ -16,8 +17,9 @@ import {
  * con los deltas. Mantenemos un Map local y emitimos el array ordenado.
  */
 
-const SELECT_COLUMNS =
-  'id, pair_id, sender_id, text, song, created_at, opened_at, read_at'
+// A wildcard also keeps reads compatible with servers awaiting the additive migration.
+const SELECT_COLUMNS = '*'
+const mutationListeners = new Map<string, Set<(message: Message) => void>>()
 
 export type Unsubscribe = () => void
 
@@ -34,8 +36,9 @@ export function subscribeToMessages(
   /* Si ya pasó el SELECT completo. Hasta entonces, lo que hay en el mapa es lo
      que se coló por el canal: no alcanza para decir «el hilo está vacío». */
   let hidratado = false
-  /* El primer SUBSCRIBED es el de siempre: la carga inicial ya va aparte. */
-  let primera = true
+  let revision = 0
+  let loadVersion = 0
+  const changedAt = new Map<string, number>()
 
   const emit = () => {
     if (cancelled) return
@@ -45,13 +48,52 @@ export function subscribeToMessages(
     onChange(sorted, hidratado)
   }
 
+  const accept = (message: Message) => {
+    changedAt.set(message.id, ++revision)
+    byId.set(message.id, mergeMessage(byId.get(message.id), message))
+    emit()
+  }
+  const listeners = mutationListeners.get(pairId) ?? new Set<(message: Message) => void>()
+  listeners.add(accept)
+  mutationListeners.set(pairId, listeners)
+
   const upsert = (row: unknown) => {
     const message = messageFromRow(row)
     if (message) {
-      byId.set(message.id, message)
-      emit()
+      accept(message)
     }
   }
+
+  /* La carga completa. Corre al arrancar y otra vez en cada reenganche. */
+  const cargar = async () => {
+    const startedAt = revision
+    const version = ++loadVersion
+    const { data, error } = await supabase
+      .from('messages')
+      .select(SELECT_COLUMNS)
+      .eq('pair_id', pairId)
+      .order('created_at', { ascending: true })
+    if (cancelled || version !== loadVersion) return
+    if (error) {
+      onError?.(new Error(error.message))
+      return
+    }
+    // The snapshot repairs edits/deletions missed while disconnected, except for
+    // newer changes already received during this SELECT (including local RPCs).
+    const present = new Set<string>()
+    for (const row of data ?? []) {
+      const message = messageFromRow(row)
+      if (!message) continue
+      present.add(message.id)
+      if ((changedAt.get(message.id) ?? 0) <= startedAt) byId.set(message.id, mergeMessage(byId.get(message.id), message))
+    }
+    for (const id of byId.keys()) {
+      if (!present.has(id) && (changedAt.get(id) ?? 0) <= startedAt) byId.delete(id)
+    }
+    hidratado = true
+    emit()
+  }
+
 
   // Se suscribe ANTES de la carga inicial a propósito: al revés hay una ventana
   // entre el SELECT y el subscribe en la que un mensaje nuevo se pierde y el
@@ -64,7 +106,10 @@ export function subscribeToMessages(
       (payload) => {
         if (payload.eventType === 'DELETE') {
           const id = (payload.old as { id?: string })?.id
-          if (id && byId.delete(id)) emit()
+          if (id) {
+            changedAt.set(id, ++revision)
+            if (byId.delete(id)) emit()
+          }
           return
         }
         upsert(payload.new)
@@ -75,53 +120,19 @@ export function subscribeToMessages(
         onError?.(new Error('Se perdió la conexión en tiempo real con el jardín.'))
         return
       }
-      /*
-       * Al (re)suscribirse, el estado completo tapa la ventana.
-       *
-       * El socket se cae solo —la app al fondo, el wifi que pasa a datos, la
-       * compu que duerme— y el cliente de realtime se reconecta y se vuelve a
-       * unir al tema **sin** pasar de nuevo por acá. Todo lo que se mandó
-       * durante ese hueco no estaba en ningún lado: no llegó por el canal
-       * (estaba caído) y el SELECT ya había corrido una sola vez, al principio.
-       * Eran los mensajes que «a veces no cargan» hasta salir y volver a entrar.
-       *
-       * Es el mismo criterio del Jam y de la escucha (ver `services/jam`), que
-       * ya lo hacían; el chat era el único que no, aunque los comentarios de al
-       * lado dieran por hecho que sí.
-       */
+      // subscribe() starts an asynchronous join: even the first SUBSCRIBED
+      // needs a snapshot to repair changes between the initial SELECT and join.
       if (status !== 'SUBSCRIBED') return
-      if (primera) {
-        primera = false
-        return
-      }
       void cargar()
     })
 
-  /* La carga completa. Corre al arrancar y otra vez en cada reenganche. */
-  const cargar = async () => {
-    const { data, error } = await supabase
-      .from('messages')
-      .select(SELECT_COLUMNS)
-      .eq('pair_id', pairId)
-      .order('created_at', { ascending: true })
-    if (cancelled) return
-    if (error) {
-      onError?.(new Error(error.message))
-      return
-    }
-    // Sin pisar lo que ya haya llegado por realtime mientras cargaba.
-    for (const row of data ?? []) {
-      const message = messageFromRow(row)
-      if (message && !byId.has(message.id)) byId.set(message.id, message)
-    }
-    hidratado = true
-    emit()
-  }
 
   void cargar()
 
   return () => {
     cancelled = true
+    listeners.delete(accept)
+    if (!listeners.size) mutationListeners.delete(pairId)
     if (channel) void supabase.removeChannel(channel)
   }
 }
@@ -186,4 +197,37 @@ async function updateFlag(pairId: string, messageId: string, column: 'opened_at'
     .eq('id', messageId)
     .eq('pair_id', pairId)
   if (error) throw error
+}
+
+
+/** Mutations never invent a successful result: the server returns the authorized row. */
+async function mutateMessage(action: 'edit_message' | 'delete_message', pairId: string, messageId: string, extra: Record<string, string> = {}): Promise<Message> {
+  const { data, error } = await getSupabase().rpc(action, { p_pair_id: pairId, p_message_id: messageId, ...extra })
+  if (error) throw messageActionError(error)
+  const message = messageFromRow(Array.isArray(data) ? data[0] : data)
+  if (!message || message.id !== messageId) throw new Error('No se pudo confirmar el cambio. Volvé a intentarlo.')
+  for (const listener of mutationListeners.get(pairId) ?? []) listener(message)
+  return message
+}
+
+export function editMessage(pairId: string, messageId: string, text: string, expectedText: string): Promise<Message> {
+  return mutateMessage('edit_message', pairId, messageId, { p_text: text.trim(), p_expected_text: expectedText })
+}
+
+export function deleteMessage(pairId: string, messageId: string): Promise<Message> {
+  return mutateMessage('delete_message', pairId, messageId)
+}
+
+function messageActionError(error: { code?: string; message?: string }): Error {
+  const reasons: Record<string, string> = {
+    message_author_required: 'Solo podés modificar tus propios mensajes en este chat.',
+    message_already_deleted: 'Este mensaje ya fue eliminado.',
+    message_invalid_text: 'Escribí hasta 2000 caracteres. Un mensaje sin canción necesita texto.',
+    message_edit_conflict: 'El mensaje cambió en otro dispositivo. Cerrá el editor y abrilo de nuevo para ver la versión actual.',
+  }
+  if (error.message && reasons[error.message]) return new Error(reasons[error.message])
+  if (error.code === 'PGRST202' || error.code === '42883') {
+    return new Error('El servidor todavía no tiene habilitada esta función. Tu mensaje no se modificó.')
+  }
+  return new Error('No se pudo modificar el mensaje. Revisá la conexión y volvé a intentarlo.')
 }

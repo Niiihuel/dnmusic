@@ -19,6 +19,60 @@ deployments en GitHub no elimina los sitios alojados en Vercel.
 
 Referencia: https://vercel.com/docs/project-configuration/git-configuration
 
+### Flujo de Railway
+
+La rama destinada a producción es `production` de `Niiihuel/dnmusic`. El
+servicio Railway `dnmusic` sirve web y API en un mismo contenedor. El
+repositorio fija `Dockerfile` y el healthcheck `/live` en
+`railway.toml`; `/health` comprueba además las dependencias de la API.
+
+En **Railway → dnmusic → Settings → Source**, la fuente es el repositorio
+`Niiihuel/dnmusic` y la rama de despliegue es `production`. Un despliegue
+iniciado manualmente desde esa fuente ya compiló y pasó el healthcheck `/live`.
+La conexión de la fuente por sí sola no creó un trigger de GitHub: los pushes
+a `production` todavía no publican automáticamente ni esperan CI en Railway.
+Verificar el SHA y el estado de cada despliegue antes de darlo por publicado.
+
+En GitHub, proteger `production`: exigir PR y el check **Types & lint** del
+workflow `.github/workflows/ci-checks.yml`, sin saltar el requisito para las
+publicaciones normales. El workflow corre para PR dirigidos a `production` y
+`main`, y para cada push a `production`. Ejecuta `npm run check` (tipos de los
+tres paquetes, tests de app/servicio/escritorio y lint completo), exige el DSP C
+con `REQUIRE_EQ_DSP_TEST=1` y ejecuta la prueba de permisos en PostgreSQL aparte.
+La automatización prevista es un job de GitHub
+Actions que dependa de **Types & lint** y despliegue con un `RAILWAY_TOKEN`
+limitado al proyecto y guardado en GitHub Secrets. Hasta verificar ese job y
+el despliegue resultante, iniciar y supervisar cada publicación manualmente.
+Un PR o una fuente Git conectada no constituyen por sí solos una publicación.
+
+Las migraciones `20261001000000_playlist_mixes.sql`,
+`20261002000000_playlist_rhythm_reorder.sql` y
+`20261003000000_music_health_service_role.sql` ya se aplicaron al PostgreSQL
+de producción y figuran en su ledger. Supabase es autogestionado en Railway;
+no asumir que enlazar el repositorio o desplegar `dnmusic` aplica migraciones.
+Para cambios futuros:
+
+1. Revisar la migración y su compatibilidad con la versión que aún está en
+   producción. Probarla y respaldar los datos cuando el cambio lo requiera.
+2. Aplicarla al PostgreSQL correcto en orden de nombre/versión, registrar su
+   versión en el ledger y verificar tablas, políticas RLS, permisos y RPC
+   afectados. Evitar volver a ejecutar las tres migraciones ya registradas.
+3. Dejar pasar CI, integrar a `production` e iniciar el despliegue de ese
+   commit en Railway. La fuente Git está conectada, pero actualmente no hay
+   trigger automático. Cuando el job de GitHub Actions esté verificado,
+   confirmar que terminó correctamente y publicó ese mismo commit.
+4. Comparar el SHA desplegado con `production` y comprobar que `/live` responda
+   `200` JSON, `/health` responda `200` JSON con dependencias sanas, la web
+   abra, y `/analysis` y `/peaks` respondan JSON de autorización a solicitudes
+   sin sesión (no HTML de la SPA). Confirmar también logs y errores del servicio.
+
+Si una migración rompe la versión anterior, dividir el cambio en fases
+compatibles antes de integrarlo. Un rollback de código no revierte el esquema.
+
+Referencias: [Railway GitHub autodeploys](https://docs.railway.com/deployments/github-autodeploys),
+[Railway CLI deployments](https://docs.railway.com/cli/deploying)
+y [GitHub protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches).
+
 ## Identificadores de compatibilidad
 
 El slug de Expo `flora` identifica el proyecto EAS existente, no el nombre
@@ -26,6 +80,9 @@ visible de la app. No cambiarlo sin coordinar el proyecto remoto, las
 actualizaciones y la firma. Los dominios internos antiguos de autenticación
 y los marcadores de tarjetas tampoco deben reemplazarse sin una migración:
 pueden seguir siendo necesarios para cuentas y artefactos ya creados.
+
+El `project_id = "dany"` de `supabase/config.toml` identifica el stack local y
+sus contenedores/volúmenes. Cambiarlo no migra los datos del stack existente.
 
 ## Secretos
 

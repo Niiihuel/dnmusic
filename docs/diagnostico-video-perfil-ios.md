@@ -65,7 +65,7 @@ Versiones inspeccionadas en `node_modules`: `expo-image-picker` 57.0.8,
 ## Verificación y límites
 
 `tests/perfil-video-ios.test.mjs` ejecuta el código TypeScript real con picker,
-FileSystem, Storage/XHR y player simulados: 14 pruebas, incluidas selección →
+FileSystem, Storage/XHR y player simulados, incluida selección →
 subida → detección como video, MIME/extensión, cancelación, errores de lectura,
 tamaño, PUT, progreso, timeout, aborto, estado nativo y cambio de URI.
 Las mismas pruebas fallan sobre los tres archivos de HEAD anteriores al cambio.
@@ -74,7 +74,7 @@ Esto es evidencia de regresión de JS; no emula PhotoKit ni decodifica un video.
 La ejecución conjunta con las regresiones del perfil, Discord, probador,
 mosaico y vitrinas pasó 99/99. ESLint pasó en los tres archivos modificados.
 La verificación integrada final pasó TypeScript del cliente y escritorio,
-ESLint completo y 392 pruebas. Las exportaciones web e iOS también pasaron;
+ESLint completo y pruebas. Las exportaciones web e iOS también pasaron;
 la exportación iOS comprueba el bundle JS, no compila código Swift.
 
 En un iPhone queda por verificar: seleccionar con permiso de Fotos denegado y

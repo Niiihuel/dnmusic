@@ -38,8 +38,9 @@ export function avisar(texto: string, malo = false) {
   store.set({ texto, malo, turno: store.get().turno + 1 })
 }
 
-export function limpiarAviso() {
-  if (store.get().texto !== null) store.set({ texto: null })
+export function limpiarAviso(turno?: number) {
+  const actual = store.get()
+  if (actual.texto !== null && (turno === undefined || actual.turno === turno)) store.set({ texto: null })
 }
 
 export const useAviso = () => useStore(store, (s) => s)

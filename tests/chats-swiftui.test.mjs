@@ -13,6 +13,7 @@ function load(file, ios) {
   if(name==='react-native')return {Platform:{Version:ios},View:'View',Text:'RNText',ActivityIndicator:'ActivityIndicator'}
   if(name==='@expo/ui/swift-ui')return components
   if(name==='@expo/ui/swift-ui/modifiers')return modifiers
+  if(name==='./estadoControl')return {superficieInteractivaWeb:()=>({})}
   if(name==='./Avatar')return {Avatar:'Avatar'}
   if(name==='./BotonSuperficie')return {BotonSuperficie:'BotonSuperficie'}
   if(name==='./IconButton')return {IconButton:'IconButton'}

@@ -1,3 +1,4 @@
+import { BandaVentana } from '../src/ui/BandaVentana'
 import { useEffect, useRef, useState } from 'react'
 import { Stack, usePathname, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
@@ -10,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ActivityIndicator,
   Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   useWindowDimensions,
@@ -28,6 +30,9 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { restaurarVolumen, restorePlayback, usePlaybackTrack } from '../src/state/playback'
 import { cargarNovedadesVistas } from '../src/state/novedadesVistas'
 import { cargarAjustes } from '../src/state/ajustes'
+import { cargarEcualizador } from '../src/state/ecualizador'
+import { cargarTransicionesGlobales } from '../src/state/transiciones'
+import { cargarPreferenciasSonidoPlaylist } from '../src/state/playlistSoundPreference'
 import { cargarDescargas } from '../src/state/descargas'
 import { reconectarJam } from '../src/state/jam'
 import { iniciarEscucha } from '../src/state/escucha'
@@ -75,6 +80,7 @@ import { NovedadesAlAbrir } from '../src/ui/NovedadesAlAbrir'
 import { FilaChat } from '../src/ui/TabBar'
 import { Cascara } from '../src/ui/Cascara'
 import '../global.css'
+import { AndroidTheme } from '../src/ui/AndroidTheme'
 
 /** Debajo de esto no entran los tres paneles y la app pasa a pestañas. */
 const SHELL_PX = 780
@@ -140,8 +146,11 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="light" />
-      <ControlActualizaciones><Chrome /></ControlActualizaciones>
-      {splashListo ? null : <SplashAnimado onDone={() => setSplashListo(true)} />}
+      <BandaVentana />
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <AndroidTheme><ControlActualizaciones><Chrome /></ControlActualizaciones></AndroidTheme>
+        {splashListo ? null : <SplashAnimado onDone={() => setSplashListo(true)} />}
+      </View>
     </GestureHandlerRootView>
   )
 }
@@ -192,6 +201,7 @@ function Chrome() {
    */
   const sinReproductor =
     enEditor ||
+    (segmentos[0] === 'lista' && segmentos[1] === 'mix') ||
     segmentos[0] === 'ajustes' ||
     segmentos[0] === 'onboarding' ||
     (segmentos[0] === 'profile' && segmentos[1] === 'editar')
@@ -237,6 +247,7 @@ function Chrome() {
        poder nacer donde está la tarjeta del reproductor (ver `app/playing.tsx`),
        así que ya no hay controlador que tape la cáscara por nosotros. */
     segmentos[0] === 'playing' ||
+    (segmentos[0] === 'lista' && segmentos[1] === 'mix') ||
     (ES_WEB &&
       (segmentos[0] === 'vincular-google' || segmentos[0] === 'cola' || segmentos[0] === 'message' || segmentos[0] === 'jam'))
   const tabGuardada = useTab()
@@ -372,7 +383,9 @@ function Chrome() {
      acorta: si no, quedaba una franja oscura enorme arriba de las pestañas. */
   const sonando = usePlaybackTrack() !== null
   const teclado = useKeyboardH()
-  const buscando = useBuscando()
+  const campoActivo = useBuscando()
+  // Explorar mantiene el campo al pie sin forzar el foco ni abrir el teclado.
+  const buscando = campoActivo || (enRaiz && tabGuardada === 'buscar')
   const colapsada = useColapsada()
   const enChat = useEnChat()
   /*
@@ -898,6 +911,9 @@ function SessionGate() {
     startSession()
     void esOnboardingPendiente().then(setOnboardingPendiente)
     void cargarAjustes()
+    void cargarEcualizador()
+    void cargarTransicionesGlobales()
+    void cargarPreferenciasSonidoPlaylist()
     /* Antes que nada de música: es lo que decide si una canción suena del
        teléfono o de la red, y contrasta el índice contra el disco. */
     void cargarDescargas()
@@ -1063,10 +1079,11 @@ function SessionGate() {
       </Stack.Protected>
       <Stack.Protected guard={approved}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="importar" options={HOJA_SOCIAL} />
+      <Stack.Screen name="importar" options={Platform.OS === 'ios' ? { ...HOJA_SOCIAL, sheetAllowedDetents: [0.6, 1], sheetInitialDetentIndex: 0 } : HOJA_SOCIAL} />
       <Stack.Screen name="vincular-google" options={HOJA_SOCIAL} />
       <Stack.Screen name="ajustes/novedades" />
       <Stack.Screen name="ajustes/accesos" />
+      <Stack.Screen name="ajustes/compatibilidad" />
       {/* El onboarding: géneros y artistas con los que nace la radio de una
           cuenta nueva. Pantalla común, como las puertas de entrada. */}
       <Stack.Screen name="onboarding" />
@@ -1090,8 +1107,11 @@ function SessionGate() {
       />
       <Stack.Screen name="ajustes/index" />
       <Stack.Screen name="ajustes/descargas" />
-          <Stack.Screen name="ajustes/diagnostico-audio" />
+      <Stack.Screen name="ajustes/ecualizador" />
+      <Stack.Screen name="ajustes/diagnostico-audio" />
       <Stack.Screen name="ajustes/bloqueados" />
+      {/* El editor de mixes necesita todo el ancho para las ondas y los controles. */}
+      <Stack.Screen name="lista/mix" />
       {/*
        * Sin animación: el perfil propio es una **pestaña**, aunque viva como
        * ruta. Las otras cuatro pestañas intercambian el contenido en el lugar,
@@ -1122,7 +1142,8 @@ function SessionGate() {
             ? HOJA_WEB
             : {
                 presentation: 'formSheet',
-                sheetAllowedDetents: 'fitToContents',
+                sheetAllowedDetents: [0.85, 1],
+                sheetInitialDetentIndex: 0,
                 sheetGrabberVisible: true,
                 sheetCornerRadius: RADIO.hojaMedia,
               }
@@ -1144,37 +1165,15 @@ function SessionGate() {
       />
       {/* Elegir una canción y recortarla son pasos del mismo formulario. */}
       <Stack.Screen name="song" options={HOJA_SOCIAL} />
-      {/*
-       * Lo que suena, a pantalla completa. **Sin animación del sistema.**
-       *
-       * Era `presentation: 'modal'`, y de ahí venía el problema: un sheet de
-       * iOS sube siempre desde el borde inferior de la pantalla, y no hay forma
-       * de darle otro origen. Pero esta pantalla no se abre desde el borde: se
-       * abre tocando la tarjeta del reproductor, que está más arriba. La
-       * expansión tiene que arrancar **ahí**, como en Apple Music, o el
-       * movimiento no cuenta de dónde salió.
-       *
-       * Así que la animación —y el gesto para bajarla— los hace la pantalla,
-       * que es la única que puede saber desde dónde crecer. Ver `app/playing.tsx`.
-       *
-       * Sigue siendo una presentación por encima, pero **transparente**: la
-       * pantalla de abajo tiene que quedar montada y a la vista, porque mientras
-       * esto crece se ve la app detrás. Una ruta común la habría escondido y el
-       * hueco de arriba quedaría negro durante todo el movimiento.
-       */}
-      <Stack.Screen
-        name="playing"
-        options={{
-          presentation: 'transparentModal',
-          animation: 'none',
-          /* La transparencia hay que pedirla dos veces: la presentación pone
-             la escena encima sin taparla, pero el `contentStyle` global le
-             pinta el #121212 opaco de fondo — y con eso el crecimiento subía
-             como una lámina negra desde el borde de abajo, tapando la app y
-             la tarjeta de la que se supone que nace. */
-          contentStyle: { backgroundColor: 'transparent' },
-        }}
-      />
+      {/* iOS presenta una pantalla completa; el gesto de letras no cierra el player. */}
+      <Stack.Screen name="dispositivos" options={HOJA_SOCIAL} />
+      <Stack.Screen name="playing" options={Platform.OS === 'ios' ? {
+        presentation: 'fullScreenModal', animation: 'slide_from_bottom', gestureEnabled: false,
+        contentStyle: { backgroundColor: '#121212' },
+      } : {
+        presentation: 'transparentModal', animation: 'none',
+        contentStyle: { backgroundColor: 'transparent' },
+      }} />
       {/*
        * El Jam es una **pila de drawers nativos**, como el referente: la hoja
        * principal sube a tres cuartos y se estira a todo con el dedo; invitar
@@ -1347,7 +1346,7 @@ function SessionGate() {
         }
       />
       {/* El mensaje a pantalla completa, al modo de una historia. */}
-      <Stack.Screen name="message/[id]" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="message/[id]" options={{ presentation: Platform.OS === 'ios' ? 'fullScreenModal' : 'modal' }} />
       </Stack.Protected>
 
       {/*

@@ -3,6 +3,7 @@ import { constants } from 'node:fs'
 import { mkdir, readdir, readFile, lstat, open, rename, rm, statfs } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
+import { esOrigenNubePermitido } from './audio-offline-origen'
 
 export type AudioOffline = { key: string; uri: string; bytes: number }
 export type ProgresoAudioOffline = { key: string; bytesWritten: number; totalBytes: number }
@@ -26,7 +27,7 @@ export function validarUrlAudio(url: string, key: string, origen: string | null,
   validarKey(key)
   if (!origen || typeof url !== 'string' || url.length > 32768) throw Error('Origen de audio no configurado')
   const u = new URL(url), base = new URL(origen)
-  const nube = base.protocol === 'https:' && /^[a-z0-9-]+\.supabase\.co$/.test(base.hostname) && !base.port
+  const nube = esOrigenNubePermitido(base)
   const local = desarrollo && base.protocol === 'http:' && ['127.0.0.1', '[::1]'].includes(base.hostname) && !!base.port
   if ((!nube && !local) || u.origin !== base.origin || u.username || u.password || u.hash || base.username || base.password) throw Error('Origen de audio no permitido')
   const prefix = '/storage/v1/object/sign/songs/'

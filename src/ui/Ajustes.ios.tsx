@@ -1,8 +1,12 @@
 import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
 import { Alert, View } from 'react-native'
-import { Button, HStack, Host, Image, LabeledContent, List, Menu, ProgressView, RNHostView, Section, Spacer, Text, TextField, Toggle, VStack, useNativeState } from '@expo/ui/swift-ui'
-import { accessibilityLabel, autocorrectionDisabled, background, buttonStyle, clipShape, disabled, font, foregroundStyle, frame, listRowBackground, listRowSeparator, listStyle, padding, scrollContentBackground, scrollDismissesKeyboard, textInputAutocapitalization, tint, toggleStyle } from '@expo/ui/swift-ui/modifiers'
-import { useEffect } from 'react'
+import { Button, HStack, Host, Image, LabeledContent, List, Menu, NavigationDestination, NavigationLink, NavigationStack, ProgressView, RNHostView, Section, Spacer, Text, TextField, Toggle, Toolbar, VStack, useNativeState } from '@expo/ui/swift-ui'
+import { accessibilityLabel, autocorrectionDisabled, background, buttonStyle, clipShape, disabled, font, foregroundStyle, frame, listRowBackground, listRowSeparator, listStyle, navigationTitle, padding, scrollContentBackground, scrollDismissesKeyboard, textInputAutocapitalization, tint, toggleStyle } from '@expo/ui/swift-ui/modifiers'
+import { useEffect, useState } from 'react'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useKeyboardH } from '../state/shell'
+import { SearchField } from './SearchField'
+import { BordeScrollNativo } from './CollectionScrollEdge'
 import * as Shared from './Ajustes.shared'
 import type { FilaSostener } from './Mantener'
 
@@ -12,7 +16,7 @@ const FILA = '#181818', TEXTO = '#FFFFFF', SECUNDARIO = '#B3B3B3'
 
 /** Un único List desplaza todas las secciones, sin un ScrollView de RN alrededor. */
 export function ListaAjustes({ children, piso = 24, titulo }: ComponentProps<typeof Shared.ListaAjustes>) {
-  return <EnLista.Provider value><Host style={{ flex: 1 }} useViewportSizeMeasurement colorScheme="dark" seedColor={TEXTO}>
+  return <EnLista.Provider value><Host ignoreSafeArea="container" style={{ flex: 1 }} colorScheme="dark" seedColor={TEXTO}>
     <List modifiers={[listStyle('insetGrouped'), scrollContentBackground('hidden'), scrollDismissesKeyboard('interactively'), tint(TEXTO)]}>
       {titulo ? <Text modifiers={[font({ textStyle: 'largeTitle', weight: 'bold' }), listRowBackground('clear'), listRowSeparator('hidden')]}>{titulo}</Text> : null}
       {children}
@@ -31,14 +35,14 @@ export function GrupoAjustes(props: ComponentProps<typeof Shared.GrupoAjustes>) 
 function Fila({ children }: { children: ReactNode }) {
   const lista = useContext(EnLista)
   if (lista) return children
-  return <Host style={{ width: '100%' }} matchContents={{ vertical: true }} colorScheme="dark" seedColor={TEXTO}>
+  return <Host ignoreSafeArea="all" style={{ width: '100%' }} matchContents={{ vertical: true }} colorScheme="dark" seedColor={TEXTO}>
     <VStack modifiers={[padding({ horizontal: 16, vertical: 6 }), frame({ minHeight: 52 })]}>{children}</VStack>
   </Host>
 }
 function ImagenExistente({ children, size = 24 }: { children: ReactNode; size?: number }) {
   if (!children) return null
   // Sólo gráficos con dimensiones fijas cruzan el puente; la fila y su alto son SwiftUI.
-  return <RNHostView matchContents><View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>{children}</View></RNHostView>
+  return <HStack modifiers={[frame({ width: size, height: size })]}><RNHostView matchContents><View collapsable={false} style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>{children}</View></RNHostView></HStack>
 }
 function Rotulo({ rotulo, detalle }: { rotulo: string; detalle?: string }) {
   return <VStack alignment="leading" spacing={3}>
@@ -47,6 +51,70 @@ function Rotulo({ rotulo, detalle }: { rotulo: string; detalle?: string }) {
   </VStack>
 }
 const fondo = () => [listRowBackground(FILA), frame({ minHeight: 44, maxWidth: Infinity })]
+
+/**
+ * Configuración de iPhone como jerarquía SwiftUI real.
+ *
+ * La raíz sólo muestra cuenta y categorías; cada categoría entra en un destino
+ * de NavigationStack con gesto de regreso, título y material de barra nativos.
+ * Así el contenido desplaza por debajo de la cabecera en vez de empezar tras
+ * una franja opaca dibujada por React Native.
+ */
+export function AjustesNativos({ categorias, initialId, cuenta, piso, buscando, busqueda, onBusqueda, onVolver }: Shared.AjustesNativosProps) {
+  const initialPath = initialId && categorias.some(c => c.id === initialId) ? [initialId] : []
+  const [path, setPath] = useState<string[]>(initialPath)
+  const insets = useSafeAreaInsets()
+  const keyboard = useKeyboardH()
+  const searchBottom = Math.max(insets.bottom, 12) + keyboard
+
+  const buscar = (value: string) => {
+    if (value.trim() && path.length) setPath([])
+    onBusqueda(value)
+  }
+
+  const lista = (titulo: string, children: ReactNode, raiz = false) => (
+    <Toolbar>
+      <EnLista.Provider value>
+        <List modifiers={[navigationTitle(titulo), listStyle('insetGrouped'), scrollContentBackground('hidden'), scrollDismissesKeyboard('interactively'), tint(TEXTO)]}>
+          {children}
+          <Text modifiers={[frame({ height: piso + 72 }), listRowBackground('clear'), listRowSeparator('hidden'), accessibilityLabel('')]}>{' '}</Text>
+        </List>
+      </EnLista.Provider>
+      {raiz ? <Toolbar.Content><Button label="Listo" role="cancel" onPress={onVolver} /></Toolbar.Content> : null}
+    </Toolbar>
+  )
+
+  // NavigationStack owns the top safe area and its scroll-edge material. A RN
+  // top inset clips the whole SwiftUI canvas before it can blur under the clock.
+  return <View style={{ flex: 1, backgroundColor: '#121212' }}>
+    <Host style={{ flex: 1 }} colorScheme="dark" seedColor={TEXTO}>
+      <NavigationStack path={path} onPathChange={setPath}>
+        {lista('Configuración', <>
+          {!buscando ? cuenta : null}
+          <Section title={buscando ? 'Resultados' : undefined}>
+            {categorias.map(c => <NavigationLink key={c.id} value={c.id} modifiers={[listRowBackground(FILA)]}>
+              <HStack spacing={12} modifiers={[frame({ minHeight: 50 })]}>
+                <Image systemName={c.simbolo as never} size={21} modifiers={[frame({ width: 28 })]} />
+                <VStack alignment="leading" spacing={3}>
+                  <Text>{c.titulo}</Text>
+                  {buscando ? <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(SECUNDARIO)]}>{c.resumen}</Text> : null}
+                </VStack>
+              </HStack>
+            </NavigationLink>)}
+            {!categorias.length ? <Text modifiers={[foregroundStyle(SECUNDARIO)]}>No encontramos ese ajuste.</Text> : null}
+          </Section>
+        </>, true)}
+        {categorias.map(c => <NavigationDestination key={c.id} value={c.id}>
+          {lista(c.titulo, c.bloques)}
+        </NavigationDestination>)}
+      </NavigationStack>
+    </Host>
+    <BordeScrollNativo nativeNavigation key={path.join('/')} />
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: 16, right: 16, bottom: searchBottom }}>
+      <SearchField value={busqueda} onChangeText={buscar} placeholder="Buscar" />
+    </View>
+  </View>
+}
 
 export function FilaAjuste({ rotulo, detalle, valor, vacio = 'Sin poner', icono, globito, onPress, destructivo, disabled: apagada }: ComponentProps<typeof Shared.FilaAjuste>) {
   const valorVisible = valor?.trim() ? valor : vacio
@@ -59,8 +127,9 @@ export function FilaAjuste({ rotulo, detalle, valor, vacio = 'Sin poner', icono,
     </HStack>
   </Button></Fila>
 }
-export function FilaDato({ rotulo, valor }: ComponentProps<typeof Shared.FilaDato>) {
-  return <Fila><LabeledContent label={rotulo} modifiers={fondo()}><Text modifiers={[foregroundStyle(SECUNDARIO)]}>{valor}</Text></LabeledContent></Fila>
+export function FilaDato({ rotulo, valor, icono }: ComponentProps<typeof Shared.FilaDato>) {
+  const label = icono ? <HStack spacing={10}><ImagenExistente>{icono}</ImagenExistente><Text modifiers={[foregroundStyle(TEXTO)]}>{rotulo}</Text></HStack> : rotulo
+  return <Fila><LabeledContent label={label} modifiers={fondo()}><Text modifiers={[foregroundStyle(SECUNDARIO)]}>{valor}</Text></LabeledContent></Fila>
 }
 export function FilaTexto({ rotulo, valor, onCambiar, marcador, editable = true, autoCapitalize = 'none', autoCorrect = false }: ComponentProps<typeof Shared.FilaTexto>) {
   const texto = useNativeState(valor)
@@ -70,10 +139,10 @@ export function FilaTexto({ rotulo, valor, onCambiar, marcador, editable = true,
       modifiers={[disabled(!editable), accessibilityLabel(rotulo), autocorrectionDisabled(!autoCorrect), textInputAutocapitalization(autoCapitalize === 'none' ? 'never' : autoCapitalize)]} />
   </LabeledContent></Fila>
 }
-export function FilaAccion({ rotulo, onPress, destacada, disabled: apagada, busy }: ComponentProps<typeof Shared.FilaAccion>) {
+export function FilaAccion({ rotulo, onPress, icono, destacada, disabled: apagada, busy }: ComponentProps<typeof Shared.FilaAccion>) {
   const activa = !apagada && !busy
   return <Fila><Button onPress={activa ? onPress : undefined} modifiers={[...fondo(), disabled(!activa), buttonStyle('plain')]}>
-    <HStack><Text modifiers={[foregroundStyle(activa ? TEXTO : SECUNDARIO), font({ textStyle: 'body', weight: destacada ? 'semibold' : 'regular' })]}>{rotulo}</Text><Spacer />{busy ? <ProgressView /> : null}</HStack>
+    <HStack spacing={10}><ImagenExistente>{icono}</ImagenExistente><Text modifiers={[foregroundStyle(activa ? TEXTO : SECUNDARIO), font({ textStyle: 'body', weight: destacada ? 'semibold' : 'regular' })]}>{rotulo}</Text><Spacer />{busy ? <ProgressView /> : null}</HStack>
   </Button></Fila>
 }
 export function FilaCuenta({ nombre, detalle, onPress, avatar }: ComponentProps<typeof Shared.FilaCuenta>) {
@@ -82,7 +151,7 @@ export function FilaCuenta({ nombre, detalle, onPress, avatar }: ComponentProps<
   </HStack></Button></Fila>
 }
 export function FilaInterruptor({ rotulo, detalle, activo, onCambiar, disabled: apagada }: ComponentProps<typeof Shared.FilaInterruptor>) {
-  return <Fila><Toggle isOn={activo} onIsOnChange={apagada ? undefined : onCambiar} modifiers={[...fondo(), toggleStyle('switch'), tint(TEXTO), disabled(!!apagada)]}>
+  return <Fila><Toggle isOn={activo} onIsOnChange={apagada ? undefined : onCambiar} modifiers={[...fondo(), toggleStyle('switch'), tint('#34C759'), disabled(!!apagada)]}>
     <Rotulo rotulo={rotulo} detalle={detalle} />
   </Toggle></Fila>
 }

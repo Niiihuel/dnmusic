@@ -16,6 +16,7 @@
 import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { origenAudioConfigurado } from '../dist/audio-offline-origen.js'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const RAIZ = resolve(AQUI, '..', '..')
@@ -37,6 +38,12 @@ if (!existsSync(join(WEB_ORIGEN, 'index.html'))) {
 if (!existsSync(ICONO_ORIGEN) || !existsSync(ICO_ORIGEN)) {
   console.error(`✗ Faltan recursos de escritorio: ${ICONO_ORIGEN} o ${ICO_ORIGEN}. Ejecutá python scripts/generar-iconos.py --desktop-only.`)
   process.exit(1)
+}
+
+// La app instalada no hereda las EXPO_PUBLIC_* del runner. Verificar el
+// bundle real evita publicar un instalador que no puede abrir Google.
+if (!(await origenAudioConfigurado(WEB_ORIGEN, true, ''))) {
+  throw new Error('El export web no contiene un origen de Auth/Storage de producción reconocido. No se empaqueta un escritorio sin login.')
 }
 
 // Se borra entero: si quedaran chunks de un export anterior, el .asar los

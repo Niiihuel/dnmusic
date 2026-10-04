@@ -1,7 +1,7 @@
 import { usePerfilEdicion } from '../../src/state/perfilEdicion'
 import { idVitrinaTemporal, ponerVitrinaEdicion } from '../../src/state/mosaicoEdicion'
-import { useState } from 'react'
-import { ScrollView, Text } from 'react-native'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { ActivityIndicator, Platform, ScrollView, Text, View } from 'react-native'
 import { CabeceraSocial } from '../../src/ui/Social'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { mensajeError } from '../../src/lib/mensajeError'
@@ -11,7 +11,8 @@ import { addShowcase, SIN_ESTILO, uploadIlustracion, type ShowcaseKind } from '.
 import { avisar } from '../../src/state/aviso'
 import { useUser } from '../../src/state/session'
 import { actualizarBorrador, empezarBorrador } from '../../src/state/vitrinaBorrador'
-import { FilaAjuste, GrupoAjustes } from '../../src/ui/Ajustes'
+import { FilaAjuste, GrupoAjustes, ListaAjustes } from '../../src/ui/Ajustes'
+import { useSalidaConCambios } from '../../src/ui/useSalidaConCambios'
 import { ANCHO_HOJA, Hoja, useHojaModal, usePisoHoja } from '../../src/ui/Hoja'
 import {
   ICON_COLOR,
@@ -52,6 +53,16 @@ export default function AgregarVitrina() {
   const piso = usePisoHoja(24)
   const modal = useHojaModal()
   const [subiendo, setSubiendo] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [destino, setDestino] = useState<'editor' | 'perfil' | null>(null)
+  const enVuelo = useRef(false)
+  const ocupado = subiendo || edicion.ocupado || !!destino
+  const dialogoSalida = useSalidaConCambios(false, subiendo && !destino)
+  // Navegar después de levantar el bloqueo de la hoja, no desde el upload.
+  useEffect(() => {
+    if (destino === 'editor') router.replace('/profile/vitrina')
+    else if (destino === 'perfil') volver(router, '/profile')
+  }, [destino, router])
 
   /**
    * Un espacio no tiene nada que editar —ni texto, ni tema, ni imagen—, así
@@ -59,26 +70,31 @@ export default function AgregarVitrina() {
    * una pantalla con un solo botón.
    */
   async function agregarEspacio() {
-    if (!user || subiendo || edicion.ocupado) return
+    if (!user || enVuelo.current || ocupado) return
+    enVuelo.current = true
+    setError(null)
     setSubiendo(true)
     try {
       if (edicion.ownerId === user.id) {
         ponerVitrinaEdicion(user.id, { id: null, kind: 'espaciador', contenido: { kind: 'espaciador' }, ancho: 'entero', estilo: SIN_ESTILO, parentId }, idVitrinaTemporal(), null, true)
       } else await addShowcase(user.id, 'espaciador', {}, 'entero', SIN_ESTILO, parentId)
       avisar('Espacio agregado')
-      volver(router, '/profile')
+      setDestino('perfil')
     } catch (e) {
-      avisar(mensajeError(e), true)
+      setError(mensajeError(e))
     } finally {
       setSubiendo(false)
+      enVuelo.current = false
     }
   }
 
   function elegir(kind: ShowcaseKind) {
+    if (enVuelo.current || ocupado) return
     if (kind === 'espaciador') {
       void agregarEspacio()
       return
     }
+    enVuelo.current = true
     empezarBorrador(kind, parentId)
     if (kind === 'cancion' || kind === 'artista' || kind === 'album' || kind === 'letra') {
       router.replace({ pathname: '/profile/elegir', params: { que: kind } })
@@ -93,7 +109,9 @@ export default function AgregarVitrina() {
    * un solo botón.
    */
   async function elegirImagen() {
-    if (!user || subiendo || edicion.ocupado) return
+    if (!user || enVuelo.current || ocupado) return
+    enVuelo.current = true
+    setError(null)
     setSubiendo(true)
     try {
       const elegida = await pickImage()
@@ -101,105 +119,109 @@ export default function AgregarVitrina() {
       const ruta = await uploadIlustracion(user.id, elegida.blob, elegida.fileName, elegida.mime)
       empezarBorrador('imagen', parentId)
       actualizarBorrador({ contenido: { kind: 'imagen', imagen: { path: ruta, encuadre: null } } })
-      router.replace('/profile/vitrina')
+      setDestino('editor')
     } catch (e) {
-      avisar((e as Error).message || 'No se pudo subir la imagen', true)
+      setError(mensajeError(e))
     } finally {
       setSubiendo(false)
+      enVuelo.current = false
     }
   }
 
   return (
-    <Hoja medida="contenido" titulo="Agregar al mosaico">
-      <CabeceraSocial titulo="Agregar al mosaico" detalle="Elegí una pieza para tu perfil" ocupado={subiendo} onCerrar={() => volver(router, '/profile')} />
-      <ScrollView
-        className="bg-background"
-        style={{ flexGrow: 1 }}
-        contentContainerClassName="gap-6 px-5 pt-2"
-        contentContainerStyle={{
-          paddingBottom: modal ? 24 : piso,
-          maxWidth: ANCHO_HOJA,
-          width: '100%',
-          alignSelf: 'center',
-        }}
-      >
+    <Hoja titulo="Agregar al mosaico">
+      {dialogoSalida}
+      <CabeceraSocial titulo="Agregar al mosaico" ocupado={ocupado} onCerrar={() => { if (!enVuelo.current && !ocupado) volver(router, '/profile') }} />
+      {subiendo || error ? <View style={{ paddingHorizontal: 24, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        {subiendo ? <ActivityIndicator color={ICON_COLOR.muted} /> : null}
+        <Text accessibilityRole={error ? 'alert' : undefined} accessibilityLiveRegion="polite" className="text-footnote text-muted-foreground" style={{ flex: 1 }}>{error ?? 'Preparando tu pieza…'}</Text>
+      </View> : null}
+      <ListaPiezas piso={modal ? 24 : piso}>
         <GrupoAjustes titulo="Música">
           <FilaAjuste
             rotulo="Artista"
-            vacio="Una cara y un nombre"
+            vacio=""
+            disabled={ocupado}
             icono={<IconUser size={17} color={ICON_COLOR.muted} />}
             onPress={() => elegir('artista')}
           />
           <FilaAjuste
             rotulo="Canción"
-            vacio="Con su tapa y su play"
+            vacio=""
+            disabled={ocupado}
             icono={<IconMusic size={17} color={ICON_COLOR.muted} />}
             onPress={() => elegir('cancion')}
           />
           <FilaAjuste
             rotulo="Álbum"
-            vacio="La tapa y de quién es"
+            vacio=""
+            disabled={ocupado}
             icono={<IconAlbum size={17} color={ICON_COLOR.muted} />}
             onPress={() => elegir('album')}
           />
           <FilaAjuste
             rotulo="Letras"
-            vacio="Un verso, con la canción firmando"
+            vacio=""
+            disabled={ocupado}
             icono={<IconLyrics size={17} color={ICON_COLOR.muted} />}
             onPress={() => elegir('letra')}
             ultima
           />
         </GrupoAjustes>
 
-        <GrupoAjustes titulo="Otro">
+        <GrupoAjustes titulo="Diseño">
           {/* Primero: es la pieza que más cambia lo que un perfil puede ser.
               Solo en el mosaico principal — un solo nivel. */}
           {parentId ? null : (
             <FilaAjuste
               rotulo="Sub-space"
-              vacio="Un mosaico dentro de una pieza"
+              vacio=""
+              disabled={ocupado}
               icono={<IconGrilla size={17} color={ICON_COLOR.muted} />}
               onPress={() => elegir('subspace')}
             />
           )}
           <FilaAjuste
-            rotulo="Encabezado de sección"
-            vacio="Un título que separa"
+            rotulo="Título de sección"
+            vacio=""
+            disabled={ocupado}
             icono={<IconHeading size={17} color={ICON_COLOR.muted} />}
             onPress={() => elegir('encabezado')}
           />
           <FilaAjuste
             rotulo="Texto"
-            vacio="Lo que quieras decir"
+            vacio=""
+            disabled={ocupado}
             icono={<IconType size={17} color={ICON_COLOR.muted} />}
             onPress={() => elegir('texto')}
           />
           <FilaAjuste
             rotulo="Imagen"
-            vacio={subiendo ? 'Subiendo…' : 'Una foto o un GIF'}
+            vacio=""
+            disabled={ocupado}
             icono={<IconImage size={17} color={ICON_COLOR.muted} />}
             onPress={() => void elegirImagen()}
           />
           <FilaAjuste
             rotulo="Espaciador"
-            vacio="Aire entre piezas"
+            vacio=""
+            disabled={ocupado}
             icono={<IconEspacio size={17} color={ICON_COLOR.muted} />}
             onPress={() => elegir('espaciador')}
             ultima
           />
         </GrupoAjustes>
 
-        {/* En web la hoja no tiene grabber que bajar: un «Cancelar» explícito. */}
-        {modal ? null : (
-          <Text
-            accessibilityRole="button"
-            onPress={() => volver(router, '/profile')}
-            className="text-muted-foreground text-center text-footnote font-semibold"
-          >
-            Cancelar
-          </Text>
-        )}
-      </ScrollView>
+      </ListaPiezas>
     </Hoja>
   )
+}
+
+/** iOS tiene una sola lista nativa; nunca una List dentro de otro scroll. */
+function ListaPiezas({ children, piso }: { children: ReactNode; piso: number }) {
+  if (Platform.OS === 'ios') return <ListaAjustes piso={piso}>{children}</ListaAjustes>
+  return <ScrollView style={{ flex: 1 }} contentContainerClassName="gap-6 px-5 pt-2"
+    contentContainerStyle={{ paddingBottom: piso, maxWidth: ANCHO_HOJA, width: '100%', alignSelf: 'center' }}>
+    {children}
+  </ScrollView>
 }

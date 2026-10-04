@@ -8,6 +8,9 @@ export function validarEntorno(env) {
   if (!['production', 'preview'].includes(env.IOS_PROFILE)) throw new Error('Elegí production o preview.')
   if (!env.EXPO_TOKEN?.trim()) throw new Error('Falta el secreto EXPO_TOKEN en GitHub Actions.')
   if (!['true', 'false'].includes(env.SUBMIT_TESTFLIGHT)) throw new Error('La opción TestFlight debe ser true o false.')
+  if (env.IPA_RELEASE && (!/^ios-build-[0-9]+-[0-9]+$/.test(env.IPA_RELEASE) || env.IOS_PROFILE !== 'production' || env.SUBMIT_TESTFLIGHT !== 'true')) {
+    throw new Error('IPA_RELEASE requiere un borrador ios-build-ID-INTENTO y TestFlight production.')
+  }
   if (env.SUBMIT_TESTFLIGHT === 'true') {
     if (env.IOS_PROFILE !== 'production') throw new Error('TestFlight requiere el perfil production; preview es instalación interna.')
     // Sin overrides, EAS Submit reutiliza la clave guardada en Expo.

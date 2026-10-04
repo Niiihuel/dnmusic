@@ -1,9 +1,11 @@
+import { ScrollArea } from './ScrollArea'
 import { IconButton } from './IconButton'
 import { FlatList, View } from 'react-native'
 import { artworkSource } from '../lib/artwork'
 import type { PlaylistTrack } from '../services/playlists'
 import { alternarMeGusta, useMeGusta, useMeGustaCargado } from '../state/gustos'
 import {
+  playCollection,
   playQueue,
   togglePlayback,
   usePlaybackOriginId,
@@ -94,6 +96,7 @@ export function MeGustaView({
     <Panel className="flex-1">
       <View className="min-h-0 flex-1">
         <FlatList
+          renderScrollComponent={props => <ScrollArea {...props} />}
           data={canciones}
           keyExtractor={(t) => t.videoId}
           className="min-h-0 flex-1"
@@ -104,6 +107,7 @@ export function MeGustaView({
             <View>
               <CollectionHeader
                 kind="Colección"
+                bleedTop={techo}
                 title={<CollectionTitle>Tus me gusta</CollectionTitle>}
                 meta={`${total} ${total === 1 ? 'canción' : 'canciones'}${
                   totalMs > 0 ? ` · ${formatLength(totalMs)}` : ''
@@ -125,7 +129,7 @@ export function MeGustaView({
                         mine && soundingPlay ? 'Pausar' : 'Reproducir tus me gusta'
                       } symbol={mine && soundingPlay ? 'pause.fill' : 'play.fill'} onPress={() => {
                         if (mine) togglePlayback()
-                        else if (total > 0) play(0)
+                        else if (total > 0) playCollection(canciones, { id: ORIGEN_GUSTOS, name: 'Tus me gusta' })
                       }} disabled={total === 0} lado={56} size={20} variant="primary" icon={mine && soundingPlay ? (
                         <IconPause
                           size={20}

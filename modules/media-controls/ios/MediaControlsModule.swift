@@ -5,6 +5,8 @@ public final class MediaControlsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("MediaControls")
     Constant("miniPlayerVersion") { 1 }
+    Constant("rowHighlightVersion") { 1 }
+    View(MediaRowHighlightView.self) {}
     View(MediaTrackView.self) {
       Events("onActivate")
       Prop("title") { (view: MediaTrackView, value: String) in view.titleLabel.text = value }
@@ -18,6 +20,7 @@ public final class MediaControlsModule: Module {
       Prop("busy") { (view: MediaTrackView, value: Bool) in view.busy = value; view.updateState() }
       Prop("disabled") { (view: MediaTrackView, value: Bool) in view.button.isEnabled = !value; view.alpha = value ? 0.5 : 1 }
       Prop("selected") { (view: MediaTrackView, value: Bool) in view.selected = value; view.updateState() }
+      Prop("drawsHighlight") { (view: MediaTrackView, value: Bool) in view.drawsHighlight = value }
     }
     View(MediaActionView.self) {
       Events("onActivate", "onLongActivate", "onHighlight")
@@ -50,6 +53,32 @@ public final class MediaControlsModule: Module {
   }
 }
 
+/// Owns tile layout after Auto Layout has assigned the artwork bounds.
+/// Laying these out from the outer ExpoView could leave them at zero forever.
+private final class MediaArtworkView: UIView {
+  let placeholder = UIImageView()
+  var tiles: [UIImageView] = []
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    placeholder.contentMode = .scaleAspectFit
+    placeholder.tintColor = UIColor(white: 0.7, alpha: 1)
+    addSubview(placeholder)
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    let iconSide = min(bounds.width, bounds.height) * 0.44
+    placeholder.frame = CGRect(x: (bounds.width - iconSide) / 2, y: (bounds.height - iconSide) / 2, width: iconSide, height: iconSide)
+    for (index, tile) in tiles.enumerated() {
+      tile.frame = tiles.count == 4
+        ? CGRect(x: CGFloat(index % 2) * bounds.width / 2, y: CGFloat(index / 2) * bounds.height / 2, width: bounds.width / 2, height: bounds.height / 2)
+        : bounds
+    }
+  }
+}
+
 /// Yoga fija el marco; UIKit distribuye títulos y portada. No hospeda hijos RN
 /// ni envía medidas hacia Yoga. Las listas conservan su virtualización/gestos.
 final class MediaTrackView: ExpoView {
@@ -57,21 +86,21 @@ final class MediaTrackView: ExpoView {
   let button = UIButton(type: .custom)
   let titleLabel = UILabel()
   let subtitleLabel = UILabel()
-  private let artwork = UIImageView()
+  private let artwork = MediaArtworkView()
   private let stateImage = UIImageView()
   private let spinner = UIActivityIndicatorView(style: .medium)
   private let veil = UIView()
   private var imageTasks: [URLSessionDataTask] = []
   private var artworkURLs: [String] = []
   private var imageGeneration = 0
-  private var artworkTiles: [UIImageView] = []
   private static let cache = NSCache<NSString, UIImage>()
   var placeholderSymbol = "music.note"
-  func updatePlaceholder() { artwork.image = UIImage(systemName: placeholderSymbol) }
+  func updatePlaceholder() { artwork.placeholder.image = UIImage(systemName: placeholderSymbol) }
   var sounding = false
   var playing = false
   var busy = false
   var selected = false
+  var drawsHighlight = true
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -96,7 +125,6 @@ final class MediaTrackView: ExpoView {
     subtitleLabel.textColor = UIColor(white: 0.70, alpha: 1)
     titleLabel.numberOfLines = 1
     subtitleLabel.numberOfLines = 1
-    artwork.contentMode = .scaleAspectFill
     artwork.clipsToBounds = true
     artwork.layer.cornerRadius = 5
     artwork.tintColor = UIColor(white: 0.7, alpha: 1)
@@ -139,7 +167,7 @@ final class MediaTrackView: ExpoView {
   }
 
   @objc private func activate() { onActivate([:]) }
-  @objc private func highlight() { button.backgroundColor = UIColor(white: 0.16, alpha: 1) }
+  @objc private func highlight() { if drawsHighlight { button.backgroundColor = UIColor(white: 0.16, alpha: 1) } }
   @objc private func unhighlight() { updateState() }
 
   func updateState() {
@@ -150,41 +178,27 @@ final class MediaTrackView: ExpoView {
     titleLabel.font = sounding ? UIFont(descriptor: normal.fontDescriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: UIFont.Weight.semibold]]), size: 0) : normal
     veil.isHidden = !busy && !sounding
     stateImage.isHidden = busy || !sounding
-    stateImage.image = UIImage(systemName: playing ? "waveform" : "pause.fill")
+    stateImage.image = UIImage(systemName: playing ? "waveform" : "play.fill")
     if busy { spinner.startAnimating() } else { spinner.stopAnimating() }
-  }
-
-  override func layoutSubviews() {
-    super.layoutSubviews()
-    layoutArtwork()
-  }
-
-  private func layoutArtwork() {
-    let side = artwork.bounds.width
-    for (index, tile) in artworkTiles.enumerated() {
-      if artworkTiles.count == 4 {
-        tile.frame = CGRect(x: CGFloat(index % 2) * side / 2, y: CGFloat(index / 2) * side / 2, width: side / 2, height: side / 2)
-      } else { tile.frame = artwork.bounds }
-    }
   }
 
   func loadArtworks(_ values: [String]) {
     let values = Array(values.prefix(values.count < 4 ? 1 : 4))
-    guard values != artworkURLs || artwork.image == nil else { return }
+    guard values != artworkURLs || artwork.placeholder.image == nil else { return }
     artworkURLs = values
     imageGeneration += 1
     let generation = imageGeneration
     imageTasks.forEach { $0.cancel() }
     imageTasks = []
-    artworkTiles.forEach { $0.removeFromSuperview() }
-    artworkTiles = []
-    artwork.image = UIImage(systemName: placeholderSymbol)
+    artwork.tiles.forEach { $0.removeFromSuperview() }
+    artwork.tiles = []
+    updatePlaceholder()
     for value in values {
       let tile = UIImageView()
       tile.contentMode = .scaleAspectFill
       tile.clipsToBounds = true
       artwork.addSubview(tile)
-      artworkTiles.append(tile)
+      artwork.tiles.append(tile)
       guard let url = URL(string: value), ["https", "http", "file"].contains(url.scheme ?? "") else { continue }
       if let cached = Self.cache.object(forKey: value as NSString) { tile.image = cached; continue }
       let apply: (Data?) -> Void = { [weak self, weak tile] data in
@@ -206,7 +220,7 @@ final class MediaTrackView: ExpoView {
         task.resume()
       }
     }
-    layoutArtwork()
+    artwork.setNeedsLayout()
   }
 
   deinit { imageTasks.forEach { $0.cancel() } }
@@ -219,6 +233,8 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
   let onSelect = EventDispatcher()
   private let tabBar = UITabBar()
   private let ids = ["inicio", "listas", "chats", "perfil", "buscar"]
+  private var confirmedSelection = "inicio"
+  private var pendingRollback: DispatchWorkItem?
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -243,11 +259,17 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
       let item: UITabBarItem
       if ids[index] == "buscar" {
         item = UITabBarItem(tabBarSystemItem: .search, tag: index)
-        item.title = pair.0
+        item.title = nil
       } else {
-        item = UITabBarItem(title: pair.0, image: UIImage(systemName: pair.1), tag: index)
+        item = UITabBarItem(title: nil, image: UIImage(systemName: pair.1), tag: index)
         let selectedSymbols = ["house.fill", "music.note.list", "bubble.left.and.bubble.right.fill", "person.crop.circle.fill"]
         item.selectedImage = UIImage(systemName: selectedSymbols[index])
+      }
+      let configuration = UIImage.SymbolConfiguration(pointSize: 22, weight: .regular)
+      item.image = item.image?.applyingSymbolConfiguration(configuration)
+      item.selectedImage = item.selectedImage?.applyingSymbolConfiguration(configuration)
+      if #unavailable(iOS 26.0) {
+        item.imageInsets = UIEdgeInsets(top: 6, left: 0, bottom: -6, right: 0)
       }
       item.accessibilityIdentifier = "tab-\(ids[index])"
       item.accessibilityLabel = pair.0
@@ -260,6 +282,9 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
 
   override func layoutSubviews() { super.layoutSubviews(); tabBar.frame = bounds }
   func select(_ id: String) {
+    pendingRollback?.cancel()
+    pendingRollback = nil
+    confirmedSelection = id
     guard let index = ids.firstIndex(of: id), let item = tabBar.items?[index],
       tabBar.selectedItem !== item else { return }
     // A React echo of a native tap must not restart UIKit's selection state.
@@ -272,7 +297,21 @@ final class MediaTabBarView: ExpoView, UITabBarDelegate {
   }
   func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
     guard ids.indices.contains(item.tag) else { return }
-    onSelect(["id": ids[item.tag]])
+    let requested = ids[item.tag]
+    /* Keep UIKit on the item the person just touched while React and the
+       router change sections. Resetting it synchronously made the control
+       jump back and could turn the first tap into a visual no-op. If a route
+       guard really cancels navigation, React won't confirm `requested` and
+       this delayed check restores the last confirmed destination. */
+    onSelect(["id": requested])
+    pendingRollback?.cancel()
+    let rollback = DispatchWorkItem { [weak self, weak tabBar] in
+      guard let self, let tabBar, self.confirmedSelection != requested,
+        let index = self.ids.firstIndex(of: self.confirmedSelection) else { return }
+      tabBar.selectedItem = tabBar.items?[index]
+    }
+    pendingRollback = rollback
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: rollback)
   }
 }
 
@@ -312,7 +351,11 @@ final class MediaActionView: ExpoView {
     return result
   }
   @objc private func activate() { guard !held, button.isEnabled else { return }; onActivate(event()) }
-  @objc private func highlight() { held = false; button.backgroundColor = UIColor.white.withAlphaComponent(0.1); onHighlight(event(pressed: true)) }
+  @objc private func highlight() {
+    held = false
+    button.backgroundColor = hasMediaRowHighlight ? .clear : UIColor.white.withAlphaComponent(0.1)
+    onHighlight(event(pressed: true))
+  }
   @objc private func unhighlight() { button.backgroundColor = .clear; onHighlight(event(pressed: false)) }
   @objc private func longPressed(_ gesture: UILongPressGestureRecognizer) {
     switch gesture.state {

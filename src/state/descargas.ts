@@ -5,7 +5,7 @@ import { clasificarRedPrecarga } from '../lib/politicaPrecarga'
 import {
   audioV1, arteGuardado, escritorioAudio, escucharRedAudio, espacioLibreAudio, estadoRedAudio,
   guardarArte, hayAlmacenAudio, limpiarParciales, listarAudio, quitarAudio, quitarPausa, RESERVA_AUDIO,
-  transferirAudio, type PausaAudio, type TransferenciaAudio,
+  transferirAudio, type PausaAudio, type TransferenciaAudio, type UsoTransferenciaAudio,
 } from '../lib/almacenAudio'
 import { resolveSong, signedUrl } from '../services/music'
 import type { PlaylistTrack } from '../services/playlists'
@@ -42,7 +42,7 @@ let limiteModificado = false
 const consumidores = new Map<string, number>()
 const cacheExplicita = new Set<string>()
 
-type Trabajo = { key: string; controller: AbortController; transferencia?: TransferenciaAudio; detener?: 'pausa' | 'cancelar' | 'prioridad' | 'red'; detenido?: Promise<void> }
+type Trabajo = { key: string; controller: AbortController; transferencia?: TransferenciaAudio; uso?: UsoTransferenciaAudio; detener?: 'pausa' | 'cancelar' | 'prioridad' | 'red'; detenido?: Promise<void> }
 function escribir(items = store.get().items) {
   const s = store.get()
   const texto = JSON.stringify({ version: 2, items, cola: s.cola, limiteCacheMB: s.limiteCacheMB })
@@ -122,20 +122,27 @@ async function inicializar() {
   impulsar()
 }
 
-export function rutaLocal(audioPath: string): string | null {
-  const key = buscar(audioPath)
-  const d = key ? store.get().items[key] : null
-  if (!d || d.estado !== 'lista' || !d.uri) return null
-  return d.uri
+function descargaLista(audioPath: string, videoId?: string): { key: string; descarga: Descarga } | null {
+  const items = store.get().items
+  // El path del bucket puede cambiar al migrar o volver a resolver una canción.
+  // La descarga local pertenece al mismo videoId y sigue siendo reproducible.
+  const key = audioPath ? buscar(audioPath) : undefined
+  const descarga = key ? items[key] : null
+  if (key && descarga?.estado === 'lista' && descarga.uri && (!videoId || descarga.videoId === videoId)) return { key, descarga }
+  if (videoId) for (const [key, descarga] of Object.entries(items)) {
+    if (descarga.videoId === videoId && descarga.estado === 'lista' && descarga.uri) return { key, descarga }
+  }
+  return null
+}
+export function rutaLocal(audioPath: string, videoId?: string): string | null {
+  return descargaLista(audioPath, videoId)?.descarga.uri ?? null
 }
 /** Sólo desde un efecto de reproducción; rutaLocal también se consulta durante render. */
-export function marcarAudioUsado(audioPath: string) {
-  const key = buscar(audioPath), d = key ? store.get().items[key] : null
-  if (key && d?.estado === 'lista' && Date.now() - d.ultimoUso > 30_000) poner(key, { ultimoUso: Date.now() })
+export function marcarAudioUsado(audioPath: string, videoId?: string) {
+  const local = descargaLista(audioPath, videoId)
+  if (local && Date.now() - local.descarga.ultimoUso > 30_000) poner(local.key, { ultimoUso: Date.now() })
 }
 export function espacioUsado(items: Record<string, Descarga>) { return Object.values(items).reduce((s, d) => s + d.bytes, 0) }
-export function cuantasListas(items: Record<string, Descarga>) { return Object.values(items).filter(d => d.estado === 'lista').length }
-export function cuantasPendientes(items: Record<string, Descarga>) { return Object.values(items).filter(d => d.estado !== 'lista').length }
 export function resumenLista(tracks: PlaylistTrack[], items: Record<string, Descarga>) {
   let listas = 0, bajando = 0, parcial = 0
   for (const t of tracks) {
@@ -209,7 +216,7 @@ export async function prepararCache(track: PlaylistTrack, signal?: AbortSignal):
   if (!HAY_DESCARGAS || signal?.aborted) return null
   await cargarDescargas()
   if (signal?.aborted || !store.get().cargado) return null
-  const local = track.audioPath ? rutaLocal(track.audioPath) : null
+  const local = rutaLocal(track.audioPath ?? '', track.videoId)
   if (local) return local
   if (store.get().limiteCacheMB <= 0) return null
   const key = encolar(track, true)
@@ -246,7 +253,12 @@ export async function prepararCache(track: PlaylistTrack, signal?: AbortSignal):
     }
     off = store.subscribe(mirar); signal?.addEventListener('abort', abortar, { once: true }); mirar()
     const enCurso = activo && store.get().items[activo.key]
-    if (!terminado && enCurso && enCurso.estado !== 'lista' && !consumidores.has(`video:${enCurso.videoId}`)) detenerActivo('prioridad')
+    if (!terminado && enCurso && enCurso.estado !== 'lista') {
+      const necesaria = consumidores.has(`video:${enCurso.videoId}`)
+      // Si era una descarga offline ya iniciada, adoptarla también cambia la
+      // sesión al reanudar: conservar background podría dejarla esperando a iOS.
+      if (!necesaria || (activo?.transferencia && activo.uso !== 'reproduccion')) detenerActivo('prioridad')
+    }
     impulsar()
   })
 }
@@ -276,7 +288,6 @@ export const getDescargas = () => store.get()
 export const useDescargasCargadas = () => useStore(store, s => s.cargado)
 export const useDescargasError = () => useStore(store, s => s.error)
 export const getLimiteCacheMB = () => store.get().limiteCacheMB
-export const useLimiteCacheMB = () => useStore(store, s => s.limiteCacheMB)
 export function setLimiteCacheMB(mb: number) {
   if (!Number.isFinite(mb) || mb < 0) return
   limiteModificado = true; store.set({ limiteCacheMB: Math.round(mb) })
@@ -310,12 +321,6 @@ export function quitarDescarga(key: string) { luego(() => mantener(async () => {
   const k = buscar(key); if (!k) return
   if (protegida(store.get().items[k])) poner(k, { temporal: true, ultimoUso: Date.now(), quitarAlLiberar: true })
   else await eliminar(k, false)
-})) }
-export function quitarLista(tracks: PlaylistTrack[]) { for (const t of tracks) quitarDescarga(claveDescarga(t)) }
-export function borrarTodo() { luego(() => mantener(async () => {
-  for (const k of Object.keys(store.get().items)) {
-    if (protegida(store.get().items[k])) poner(k, { temporal: true, quitarAlLiberar: true }); else await eliminar(k, false)
-  }
 })) }
 export function limpiarCache() { luego(() => mantener(async () => {
   for (const k of Object.keys(store.get().items)) await eliminar(k, true)
@@ -419,13 +424,14 @@ async function bajar(t: Trabajo) {
   if (!vigente(t)) return
   poner(t.key, { estado: 'bajando' })
   let aviso = 0, bytesTotal = 0, sinEspacio = false
+  t.uso = consumidores.has(`video:${d.videoId}`) ? 'reproduccion' : 'descarga'
   t.transferencia = transferirAudio(d.audioPath, url, ({ bytesWritten, totalBytes }) => {
     if (!vigente(t)) return
     bytesTotal = Math.max(bytesTotal, totalBytes)
     const libres = espacioLibreAudio()
     if (libres !== null && libres < RESERVA_AUDIO + Math.max(0, totalBytes - bytesWritten)) { sinEspacio = true; t.transferencia?.cancelar() }
     if (Date.now() - aviso >= 200) { aviso = Date.now(); poner(t.key, { progreso: totalBytes > 0 ? Math.min(.99, bytesWritten / totalBytes) : 0 }, false) }
-  }, d.pausa)
+  }, d.pausa, t.uso)
   const f = await t.transferencia.resultado
   if (!vigente(t)) return
   if (sinEspacio || !f || f.key !== d.audioPath || !f.uri || !Number.isFinite(f.bytes) || f.bytes <= 0 || (bytesTotal > 0 && f.bytes < bytesTotal)) {
@@ -455,4 +461,3 @@ async function bajar(t: Trabajo) {
   }
 }
 export const useDescargas = () => useStore(store, s => s)
-export const useDescarga = (audioPath: string | undefined) => useStore(store, s => { const k = audioPath ? buscar(audioPath) : undefined; return k ? s.items[k] ?? null : null })

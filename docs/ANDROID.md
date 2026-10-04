@@ -1,0 +1,90 @@
+# Android nativo y pruebas en vivo
+
+DMusic conserva su lógica de reproducción, biblioteca, chat, perfil, sesión y sincronización en React. Los adaptadores `.android.tsx` usan controles reales de Jetpack Compose mediante `@expo/ui`, igual que los `.ios.tsx` usan SwiftUI. El módulo local `modules/android-controls` está escrito en Kotlin y aporta semántica de TalkBack dentro del árbol Compose. Los controles mantienen la paleta oscura/blanca, las superficies redondeadas y la jerarquía de DMusic.
+
+Android no llamó Liquid Glass a su renovación. Su lenguaje vigente es **Material 3 Expressive**, presentado con Android 16: amplía Material 3 con formas más expresivas, color dinámico, tipografía enfatizada, movimiento elástico y componentes adaptables. Puede usar desenfoque en partes del sistema, pero no propone una capa de vidrio universal como la de Apple. DMusic usa `@expo/ui` 57 sobre `androidx.compose.material3:material3:1.5.0-alpha17`, por lo que ya tiene las APIs Expressive; cada superficie debe adoptar el componente Material que le corresponde.
+
+## Cobertura de componentes
+
+El inventario del 14 de septiembre de 2026 encuentra **23 familias pareadas** entre SwiftUI y Compose:
+
+- navegación inferior; botones, botones de icono y volver; campos, búsqueda y composer de chat;
+- seek/volumen, transporte, progreso y reproducción de colecciones;
+- switches, segmentos, menús, confirmaciones y filas/acciones sociales;
+- encabezado de hoja, selector de catálogo, filtros y barra de guardado del perfil.
+
+Además, el aviso global usa `SnackbarHost` Material y las pestañas del perfil usan `SingleChoiceSegmentedButtonRow`. La navegación principal integra Inicio, Listas, Chats, Perfil y Buscar en una sola `NavigationBar`, con indicador y badge nativos.
+
+Todavía usan una composición React Native compartida o no tienen pantalla Android equivalente estas **21 familias**: Ajustes, AjustesNovedades, AppDrawer, AvisoCaptura, BotonSuperficie, CabeceraAcceso, CabeceraLateral, ContenidoChats, EditorPerfilNativo, FilaCuenta, GoogleOAuthButton, GoogleOAuthFeedback, HojaNombreListaNativa, ListaAgrupada, LyricsTranslationMenu, NovedadesAlAbrir, PantallaDispositivos, SelectorDispositivos, TrackRow, Traspaso, Vacio y los contenedores de listas/perfil relacionados. Que una pantalla use React Native para carátulas, burbujas o arte no es un defecto; los controles interactivos y patrones de plataforma sí deben migrarse.
+
+Orden de migración recomendado:
+
+1. `ListaAgrupada`, `AppDrawer`, `SelectorDispositivos` y `Traspaso`: hojas, listas y cambios de dispositivo.
+2. `EditorPerfilNativo`, `ContenidoChats`, `FilaCuenta` y `TrackRow`: perfil, chat y filas con interacción frecuente.
+3. Ajustes, autenticación, estados vacíos, novedades y avisos de captura.
+
+## Qué instalar
+
+- Android Studio, con SDK Platform **Android 16 / API 36**, SDK Build-Tools **35.0.0 y 36.0.0**, Platform-Tools (ADB), Android Emulator y una imagen **Google APIs x86_64 API 36** para esta PC Linux x86_64.
+- **JDK 17** para Gradle. Kotlin, el plugin de Compose y Gradle se resuelven con el proyecto; no necesitan instalación manual.
+- Para compilar también hacen falta NDK **27.1.12297006** y CMake **3.22.1** (el SDK Manager/Gradle los instala según el proyecto generado).
+- Un emulador creado en Android Studio → Device Manager, o un teléfono con opciones de desarrollador y depuración USB. En el teléfono hay que autorizar la huella de esta computadora.
+
+Estos números salen del catálogo de React Native instalado y de la compilación nativa comprobada en GitHub. No sustituirlos por versiones de preview del SDK. Se recomienda un emulador Pixel con Google APIs; un dispositivo físico evita el consumo de RAM del emulador.
+
+## En esta computadora: NixOS
+
+El diagnóstico inicial encontró KVM disponible, pero no Java, ADB ni SDK. `android-shell.nix` prepara Android Studio, JDK, SDK, NDK y emulador desde Nixpkgs, sin modificar la configuración del sistema. La configuración de Nixpkgs del archivo acepta la licencia del SDK de Android: revisá los términos antes de entrar al shell. La primera descarga es grande.
+
+```bash
+nix-shell android-shell.nix
+npm run android:doctor
+android-studio
+```
+
+Si Android Studio abre **SDK Components Setup** con las casillas deshabilitadas, pulsá **Cancel**: detectó el SDK inmutable de Nix y ya tiene los componentes declarados por el proyecto. No elijas un dispositivo remoto para probar localmente; en Device Manager usá un AVD local como `DMusic_Pixel_API_36`.
+
+Dentro de Android Studio, usá el SDK que muestra `echo "$ANDROID_HOME"`. Ese SDK lo administra Nix; no intentes instalar paquetes escribiendo en `/nix/store`. Creá el dispositivo virtual en Device Manager con la imagen instalada y encendelo. Dejá el IDE abierto y usá otra terminal entrando también con `nix-shell android-shell.nix` para ejecutar los comandos de la app. Los datos del emulador quedan en tu usuario. Si tu canal de Nixpkgs todavía no contiene esos paquetes, actualizá el canal o usá Android Studio con un SDK administrado por vos; no cambies versiones de Gradle/NDK al azar.
+
+## Primera instalación y ciclo de trabajo
+
+Con el emulador abierto o el teléfono autorizado:
+
+```bash
+npm run android:run
+```
+
+Genera la carpeta Android, compila el cliente de desarrollo, lo instala y abre Metro. `android/` es salida de prebuild: los cambios nativos duraderos van en `modules/`, la configuración Expo y plugins, no en archivos generados.
+
+Las siguientes sesiones, con ese cliente ya instalado:
+
+```bash
+npm run android:dev
+```
+
+Al guardar componentes o lógica JS/TS, Fast Refresh actualiza el dispositivo. Cambiar Kotlin, dependencias nativas o plugins exige volver a ejecutar `npm run android:run`. Esta app necesita su **cliente de desarrollo**, porque Expo Go no contiene los módulos locales de DMusic.
+
+Los scripts usan las URLs públicas del perfil preview de EAS por defecto, sin imprimir credenciales. Para usar tu servidor de música local por USB:
+
+```bash
+npm run android:usb
+EXPO_PUBLIC_MUSIC_API=http://127.0.0.1:8787 npm run android:dev
+```
+
+`android:usb` conecta los puertos 8081 (Metro) y 8787 (API) mediante ADB. Sin `adb reverse`, el localhost del emulador es el emulador: para acceder al host se usa `10.0.2.2`. En teléfono por Wi-Fi, usá la IP LAN de la PC y `npx expo start --dev-client --lan`.
+
+## Alcance y verificación
+
+Las variantes nativas cubren campos/formularios, chat, búsqueda, botones, reproducción/seek, switch, segmentos, progreso, navegación inferior, menús/pulsación larga, confirmaciones, acciones sociales y catálogo/guardado del perfil. Los callbacks y servicios actuales siguen compartidos. Las listas de contenido, carátulas y burbujas mantienen su layout React Native; no se reescribe el backend ni se sustituye el motor de audio.
+
+- `node --test tests/android-*.test.mjs`: borradores/foco/teclado, límites, seek frente a volumen, menús, confirmaciones y estados ocupados.
+- `npm run typecheck` y exportación `npx expo export --platform android`.
+- El workflow **Android — compilar** verifica Kotlin y un APK debug para ARM64/x86_64 al cambiar código nativo en ramas `codex/**`. La ejecución manual genera APK/AAB firmado con EAS local y puede guardar un borrador de Release si falla Artifacts; no publica en Google Play. Ver [guía del workflow](BUILD-ANDROID-GITHUB.md).
+- Prueba física pendiente: abrir sesión, reproducir música/fragmento, buscar, arrastrar seek, cambiar pestañas desde un editor, cancelar/guardar edición de mensaje, cambiar categoría/colección, abrir y cerrar menú con Atrás, confirmar/cancelar un borrado y usar TalkBack/texto grande. Verificar que mensajes/adjuntos/borradores se conserven.
+
+Referencias: [Expo UI con Compose](https://docs.expo.dev/versions/v57.0.0/sdk/ui/jetpack-compose/), [Android Studio](https://developer.android.com/studio/install), [aceleración del emulador](https://developer.android.com/studio/run/emulator-acceleration), [clientes de desarrollo Expo](https://docs.expo.dev/develop/development-builds/introduction/).
+
+La [compilación nativa del 14 de septiembre de 2026](https://github.com/Niiihuel/dnmusic/actions/runs/34796250045)
+verificó Kotlin, C++ y APK debug ARM64/x86_64; Artifacts no guardó esa descarga.
+Conserva evidencia de aquel commit. Los cambios nativos posteriores necesitan
+otra compilación; no se validan sólo cargando JS desde Metro.

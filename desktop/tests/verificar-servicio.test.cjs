@@ -6,13 +6,30 @@ const respuesta = (status, body) => new Response(JSON.stringify(body), { status 
 test('valida salud, búsquedas y ambas rutas de aporte sin credenciales ni subidas', async () => {
   const rutas = []
   const base = await verificarServicio(' https://music.example.test/ ', async (url, opciones) => {
-    rutas.push(new URL(url).pathname)
+    rutas.push(`${opciones.method} ${new URL(url).pathname}`)
     assert.equal(opciones.headers?.Authorization, undefined)
     assert.ok(!opciones.body || opciones.body === '{}')
+    if (opciones.method === 'OPTIONS') {
+      assert.equal(opciones.headers.Origin, 'app://dnmusic')
+      return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': 'app://dnmusic' } })
+    }
     return url.endsWith('/health') ? respuesta(200, { ok: true }) : respuesta(401, { error: 'No autorizado' })
   })
   assert.equal(base, 'https://music.example.test')
-  assert.deepEqual(rutas.sort(), ['/aportar/confirmar', '/aportar/url', '/health', '/search'])
+  assert.deepEqual(rutas.sort(), [
+    'GET /health', 'GET /search', 'GET /spotify', 'OPTIONS /emparejar',
+    'OPTIONS /search', 'OPTIONS /spotify', 'POST /aportar/confirmar',
+    'POST /aportar/url', 'POST /emparejar',
+  ])
+})
+
+test('rechaza API sana que no permite el origen de Electron', async () => {
+  await assert.rejects(verificarServicio('https://music.example.test', async (url, opciones) => {
+    if (opciones.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': 'https://web.example.test' } })
+    }
+    return url.endsWith('/health') ? respuesta(200, { ok: true }) : respuesta(401, { error: 'No autorizado' })
+  }), /no permite el escritorio.*CORS/)
 })
 
 test('rechaza un dominio retirado que responde 404 de plataforma', async () => {

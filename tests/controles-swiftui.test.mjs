@@ -25,6 +25,8 @@ function harness(path, imports = {}) {
     if (id === '@expo/ui/swift-ui/modifiers') return new Proxy({}, { get: (_, k) => (...args) => ({ kind: k, args }) })
     if (id === './tiempos') return { formatClock: String }
     if (id in imports) return imports[id]
+    if (id === 'expo-glass-effect') return { isLiquidGlassAvailable: () => true }
+    if (id === 'react-native') return { View: 'View', Text: 'Text' }
     throw Error(id)
   })
   return { render(name, props) { index = 0; return exports[name](props) }, effects }
@@ -76,6 +78,18 @@ test('el buscador SwiftUI conserva foco externo, submit y limpiar el estado nati
   find(ui, 'Button').props.onPress()
   assert.equal(field.props.text.get(), '')
   assert.deepEqual(calls, ['focus', 'blur', 'submit', '', 'focus'])
+})
+
+test('el buscador usa una sola cápsula Liquid Glass, con respaldo para iOS anterior', () => {
+  for (const available of [true, false]) {
+    const h = harness('src/ui/SearchField.ios.tsx', { 'expo-glass-effect': { isLiquidGlassAvailable: () => available } })
+    const ui = h.render('SearchField', { value: '', onChangeText() {}, density: 'compact' })
+    const mods = find(ui, 'HStack').props.modifiers
+    assert.equal(ui.props.style.height, 44)
+    assert.equal(mods.filter(m => m.kind === 'glassEffect').length, available ? 1 : 0)
+    assert.equal(mods.some(m => m.kind === 'background'), !available)
+    assert.equal(mods.some(m => m.kind === 'clipShape'), !available)
+  }
 })
 
 test('acciones sociales nativas bloquean reenvíos y guardados mientras están ocupadas', () => {
@@ -164,4 +178,81 @@ test('cuentas iOS separa visitar perfil, elegir y aceptar sin cambiar destinatar
   actions = buttons(h.render('FilaCuenta', { ...base, busy: true }))
   assert.equal(actions.length, 1)
   assert.equal(actions[0].props.onPress, undefined)
+})
+
+
+test('barra de cambios: guardar requiere borrador válido y restablecer espera la confirmación', () => {
+  const calls = []
+  const h = harness('src/ui/BarraCambiosPerfil.ios.tsx', {
+    'react-native': { View: 'View', Platform: { Version: 26 } },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
+  })
+  const props = { visible: false, onGuardar: () => calls.push('guardar'), onRestablecer: () => calls.push('restablecer') }
+  assert.equal(h.render('BarraCambiosPerfil', props), null)
+  function walk(n) { return !n || typeof n !== 'object' ? [] : Array.isArray(n) ? n.flatMap(walk) : [n, ...walk(n.props?.children)] }
+  const button = (ui, label) => walk(ui).find(n => n.type === 'Button' && (n.props.label === label || n.props.children?.props?.children === label))
+  let ui = h.render('BarraCambiosPerfil', { ...props, visible: true })
+  button(ui, 'Guardar').props.onPress()
+  assert.deepEqual(calls, ['guardar'])
+  assert.equal(find(ui, 'ConfirmationDialog').props.isPresented, false)
+  button(ui, 'Restablecer').props.onPress()
+  ui = h.render('BarraCambiosPerfil', { ...props, visible: true })
+  assert.equal(find(ui, 'ConfirmationDialog').props.isPresented, true)
+  assert.deepEqual(calls, ['guardar'], 'abrir la confirmación conserva el borrador')
+  button(ui, 'Cancelar').props.onPress()
+  ui = h.render('BarraCambiosPerfil', { ...props, visible: true })
+  assert.equal(find(ui, 'ConfirmationDialog').props.isPresented, false)
+  assert.deepEqual(calls, ['guardar'])
+  button(ui, 'Restablecer').props.onPress()
+  ui = h.render('BarraCambiosPerfil', { ...props, visible: true })
+  const label = button(ui, 'Guardar').props.children
+  assert.equal(label.props.modifiers.find(m => m.kind === 'foregroundStyle').args[0], '#111111')
+  walk(ui).find(n => n.type === 'Button' && n.props.role === 'destructive').props.onPress()
+  assert.deepEqual(calls, ['guardar', 'restablecer'])
+  for (const patch of [{ ocupado: true }, { puedeGuardar: false }]) {
+    ui = h.render('BarraCambiosPerfil', { ...props, visible: true, ...patch })
+    assert.equal(button(ui, 'Guardar').props.onPress, undefined)
+  }
+})
+
+
+test('categorías nativas: conserva selección, filtra colecciones y bloquea cambios durante guardado', () => {
+  const calls = []
+  const h = harness('src/ui/FiltrosCatalogoPerfil.ios.tsx', {
+    'react-native': { View: 'View', useWindowDimensions: () => ({ width: 390, fontScale: 1 }) },
+    './SearchField': { SearchField: 'SearchField' }, './Menu': { Menu: 'Menu' }, './IconButton': { IconButton: 'IconButton' },
+  })
+  const props = { tipo: 'marco', tipos: [{ id: 'marco', nombre: 'Marco de la foto' }, { id: 'efecto', nombre: 'Efecto del perfil' }],
+    onTipo: v => calls.push(v), buscar: '', onBuscar: v => calls.push(v), coleccion: 'cosmos',
+    colecciones: [{ id: 'todas', nombre: 'Todas las colecciones' }, { id: 'cosmos', nombre: 'Cosmos' }],
+    onColeccion: v => calls.push(v), onPrevia: () => calls.push('previa') }
+  let ui = h.render('FiltrosCatalogoPerfil', props)
+  const picker = find(ui, 'Picker')
+  assert.equal(picker.props.selection, 'marco')
+  picker.props.onSelectionChange(null); picker.props.onSelectionChange('desconocido')
+  assert.deepEqual(calls, [])
+  picker.props.onSelectionChange('efecto')
+  const menu = find(ui, 'Menu')
+  assert.equal(menu.props.label, 'Colección: Cosmos')
+  assert.equal(menu.props.items[1].selected, true)
+  menu.props.items[0].onPress()
+  find(ui, 'SearchField').props.onChangeText('aurora')
+  find(ui, 'IconButton').props.onPress()
+  assert.deepEqual(calls, ['efecto', 'todas', 'aurora', 'previa'])
+  ui = h.render('FiltrosCatalogoPerfil', { ...props, ocupado: true })
+  find(ui, 'Picker').props.onSelectionChange('efecto')
+  find(ui, 'Menu').props.items[0].onPress()
+  assert.equal(calls.length, 4)
+})
+
+test('categorías con texto grande usan símbolos con nombres completos para VoiceOver', () => {
+  const h = harness('src/ui/FiltrosCatalogoPerfil.ios.tsx', {
+    'react-native': { View: 'View', useWindowDimensions: () => ({ width: 390, fontScale: 1.6 }) },
+    './SearchField': { SearchField: 'SearchField' }, './Menu': { Menu: 'Menu' }, './IconButton': { IconButton: 'IconButton' },
+  })
+  const ui = h.render('FiltrosCatalogoPerfil', { tipo: 'marcoPerfil', tipos: [{ id: 'marcoPerfil', nombre: 'Marco de estadísticas' }], colecciones: [] })
+  const image = find(ui, 'Image')
+  assert.equal(image.props.systemName, 'square.grid.2x2')
+  assert.equal(image.props.modifiers.find(m => m.kind === 'accessibilityLabel').args[0], 'Marco de estadísticas')
+  assert.equal(image.props.modifiers.find(m => m.kind === 'tag').args[0], 'marcoPerfil')
 })

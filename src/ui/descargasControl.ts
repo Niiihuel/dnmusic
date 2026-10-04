@@ -1,9 +1,11 @@
 import type { PlaylistTrack } from '../services/playlists'
+import { createElement } from 'react'
 import {
-  descargarLista, pausarDescarga, reanudarDescarga, reintentarDescarga, quitarDescarga, cancelarDescarga,
+  descargar, descargarLista, HAY_DESCARGAS, pausarDescarga, reanudarDescarga, reintentarDescarga, quitarDescarga, cancelarDescarga,
   type Descarga,
 } from '../state/descargas'
 import type { MenuItem } from './Menu'
+import { ICON_COLOR, IconDownload } from './icons'
 
 /** Lee también índices anteriores, que no tenían metadatos completos ni tipo de caché. */
 export type DescargaUI = Descarga & Partial<Pick<PlaylistTrack, 'durationMs' | 'artistId' | 'artworkUrl' | 'truePeak'>>
@@ -66,6 +68,21 @@ export function menuDescarga({ clave, descarga: d }: EntradaDescarga): MenuItem[
     onPress: () => d.estado === 'lista' ? quitarDescarga(clave) : cancelarDescarga(clave),
   })
   return opciones
+}
+
+/** La misma gestión de descarga para los tres puntos, el toque largo y el clic derecho. */
+export function menuDescargaCancion(track: PlaylistTrack, entrada: EntradaDescarga | null): MenuItem[] {
+  if (!HAY_DESCARGAS) return []
+  if (entrada && !entrada.descarga.temporal) {
+    return menuDescarga(entrada).map((item, index) => index === 0 ? { ...item, separadorAntes: true } : item)
+  }
+  return [{
+    label: 'Descargar para escuchar sin conexión',
+    separadorAntes: true,
+    onPress: () => descargar(track),
+    icon: createElement(IconDownload, { size: 16, color: ICON_COLOR.muted }),
+    sfSymbol: 'arrow.down.circle',
+  }]
 }
 
 /** Acciones explícitas: pausar y cancelar pendientes jamás quitan canciones terminadas. */

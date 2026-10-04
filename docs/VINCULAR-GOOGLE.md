@@ -20,7 +20,12 @@ de Supabase, client_id, state y retorno con nonce/flowId. Un binario anterior si
 ese método pide actualizar antes de iniciar. Se necesita distribuir un nuevo
 cliente de PC; los cambios móviles entran en la próxima compilación habitual.
 
-## Activación aplicada
+## Antecedente de activación · septiembre de 2026
+
+Este registro corresponde al anterior proyecto de Supabase Cloud y al stack
+local usado durante esa revisión. Para configurar el servicio autogestionado
+actual, seguir [Google y aprobación](ACCESO-GOOGLE.md); una activación en el
+proyecto anterior no habilita automáticamente otra instancia de Auth.
 
 Autorizada por el dueño y aplicada el 9 de septiembre de 2026 en el proyecto
 `tdvndpjaxuqhibcpufat`. Se envió únicamente

@@ -88,3 +88,9 @@ desktop/diagnosticos/
 /.github/
 /docker-compose.yml
 /vercel.json
+/.idea/
+/.railway-config-pull-*/
+/src/server/
+/Dockerfile
+/Dockerfile.railway
+/railway.toml
