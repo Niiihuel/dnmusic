@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.18.1",
+    "fecha": "4 de octubre de 2026",
+    "titulo": "Compartir música, más claro.",
+    "cambios": [
+      "Las tarjetas de canciones se muestran sin bordes, con el título y el artista legibles dentro de su espacio, también en pantallas pequeñas.",
+      "En Chats, la canción aparece una sola vez, con la hora y el estado de envío debajo. Las dedicatorias que escribas se conservan.",
+      "Compartir abre primero la tarjeta de la canción y las opciones del enlace. «Crear historia» lleva a un paso aparte para ver y enviar la imagen."
+    ]
+  },
+  {
     "version": "1.18.0",
     "fecha": "4 de octubre de 2026",
     "titulo": "Compartí música. Afiná cada detalle.",

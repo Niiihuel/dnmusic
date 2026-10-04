@@ -1089,9 +1089,6 @@ function SessionGate() {
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="compose" options={HOJA_SOCIAL} />
       <Stack.Screen name="compartir-contactos" options={HOJA_SOCIAL} />
-      {/* Compartir una canción: la previa de la historia y las dos formas de
-          pasarla. Mide su contenido —tres filas y una tapa— y no la pantalla
-          entera. Ver `app/compartir.tsx`. */}
       <Stack.Screen
         name="compartir"
         options={

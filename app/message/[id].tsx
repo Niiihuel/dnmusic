@@ -41,6 +41,7 @@ import {
 } from '../../src/services/music'
 import { contactLabel } from '../../src/services/contacts'
 import { formatMessageDate } from '../../src/ui/MessageCard'
+import { messageDisplayText } from '../../src/ui/chatPresentation'
 import {
   ICON_COLOR,
   IconLanguages,
@@ -205,6 +206,7 @@ export default function MessageStory() {
     )
   }
 
+  const text = messageDisplayText(message)
   const wide = width >= WIDE_PX
   const chosen = view ?? (song?.style === 'lyrics' ? 'lyrics' : 'disc')
   const onLyrics = chosen === 'lyrics' && (song?.lyrics?.length ?? 0) > 0
@@ -232,10 +234,10 @@ export default function MessageStory() {
           >
             {/* La dedicatoria completa comparte el scroll con la portada.
                 No tiene altura fija ni un segundo desplazamiento anidado. */}
-            {wide && song && verFrase && message.text ? (
+            {wide && song && verFrase && text ? (
               <View style={{ width: Math.min(300, width * 0.34) }}>
                 {invitacionEnTexto(message.text) ? <InvitacionJam texto={message.text} /> :
-                  <View style={ESTILO_FRASE}><Text selectable style={TEXTO_FRASE}>{message.text}</Text></View>}
+                  <View style={ESTILO_FRASE}><Text selectable style={TEXTO_FRASE}>{text}</Text></View>}
               </View>
             ) : null}
 
@@ -270,13 +272,13 @@ export default function MessageStory() {
                 </>
               ) : null}
 
-              {(!wide || !song) && verFrase && message.text ? (
+              {(!wide || !song) && verFrase && text ? (
                 <View style={invitacionEnTexto(message.text) ? { flexShrink: 0 } : ESTILO_FRASE} className="w-full max-w-xl">
                   {invitacionEnTexto(message.text) ? (
                     <InvitacionJam texto={message.text} />
                   ) : (
                     <Text selectable style={TEXTO_FRASE}>
-                      {message.text}
+                      {text}
                     </Text>
                   )}
                 </View>
@@ -311,7 +313,7 @@ export default function MessageStory() {
 
                 {/* Mostrar y ocultar la frase. Solo si hay algo escrito: sin texto
                 sería un interruptor que no enciende nada. */}
-                {message.text ? (
+                {text ? (
                   <IconButton label={verFrase ? 'Ocultar la frase' : 'Ver la frase'} symbol="text.bubble" selected={verFrase} onPress={() => setVerFrase(v => !v)} icon={<IconMessage size={18} color={ICON_COLOR.foreground} />} />
                 ) : null}
 

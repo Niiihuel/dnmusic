@@ -1,7 +1,7 @@
 import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
 import { Alert, View } from 'react-native'
 import { Button, HStack, Host, Image, LabeledContent, List, Menu, NavigationDestination, NavigationLink, NavigationStack, ProgressView, RNHostView, Section, Spacer, Text, TextField, Toggle, Toolbar, VStack, useNativeState } from '@expo/ui/swift-ui'
-import { accessibilityLabel, autocorrectionDisabled, background, buttonStyle, clipShape, disabled, font, foregroundStyle, frame, listRowBackground, listRowSeparator, listStyle, navigationTitle, padding, scrollContentBackground, scrollDismissesKeyboard, textInputAutocapitalization, tint, toggleStyle } from '@expo/ui/swift-ui/modifiers'
+import { accessibilityLabel, autocorrectionDisabled, background, buttonStyle, clipShape, disabled, font, foregroundStyle, frame, layoutPriority, lineLimit, listRowBackground, listRowSeparator, listStyle, navigationTitle, padding, scrollContentBackground, scrollDismissesKeyboard, textInputAutocapitalization, tint, toggleStyle } from '@expo/ui/swift-ui/modifiers'
 import { useEffect, useState } from 'react'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useKeyboardH } from '../state/shell'
@@ -139,10 +139,10 @@ export function FilaTexto({ rotulo, valor, onCambiar, marcador, editable = true,
       modifiers={[disabled(!editable), accessibilityLabel(rotulo), autocorrectionDisabled(!autoCorrect), textInputAutocapitalization(autoCapitalize === 'none' ? 'never' : autoCapitalize)]} />
   </LabeledContent></Fila>
 }
-export function FilaAccion({ rotulo, onPress, icono, destacada, disabled: apagada, busy }: ComponentProps<typeof Shared.FilaAccion>) {
+export function FilaAccion({ rotulo, lineas = 1, onPress, icono, destacada, disabled: apagada, busy }: ComponentProps<typeof Shared.FilaAccion>) {
   const activa = !apagada && !busy
   return <Fila><Button onPress={activa ? onPress : undefined} modifiers={[...fondo(), disabled(!activa), buttonStyle('plain')]}>
-    <HStack spacing={10}><ImagenExistente>{icono}</ImagenExistente><Text modifiers={[foregroundStyle(activa ? TEXTO : SECUNDARIO), font({ textStyle: 'body', weight: destacada ? 'semibold' : 'regular' })]}>{rotulo}</Text><Spacer />{busy ? <ProgressView /> : null}</HStack>
+    <HStack spacing={10}><ImagenExistente>{icono}</ImagenExistente><Text modifiers={[foregroundStyle(activa ? TEXTO : SECUNDARIO), font({ textStyle: 'body', weight: destacada ? 'semibold' : 'regular' }), ...(lineas === 2 ? [lineLimit(2), layoutPriority(1)] : [])]}>{rotulo}</Text><Spacer />{busy ? <ProgressView /> : null}</HStack>
   </Button></Fila>
 }
 export function FilaCuenta({ nombre, detalle, onPress, avatar }: ComponentProps<typeof Shared.FilaCuenta>) {

@@ -4,12 +4,17 @@ import { runInNewContext } from 'node:vm'
 import test from 'node:test'
 import ts from 'typescript'
 
-function story({ lyrics = true, text = 'Una dedicatoria', platform = 'ios', artwork = false } = {}) {
+const presentation = {}
+runInNewContext(ts.transpileModule(readFileSync('src/ui/chatPresentation.ts', 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, { exports: presentation })
+
+function story({ lyrics = true, text = 'Una dedicatoria', platform = 'ios', artwork = false, sharedSong = null, editedAt = null } = {}) {
   let cursor = 0
   const states = [], played = [], seeks = [], translations = []
   const song = { title: 'Tema', artist: 'Artista', videoId: 'fixture', startMs: 1000, durationMs: 15000,
     lyrics: lyrics ? [{ atMs: 1000, text: 'Una línea' }] : undefined, style: 'disc' }
-  const message = { id: 'message', text, song, createdAt: null, senderId: 'me' }
+  const message = { id: 'message', text, song: sharedSong ? null : song, sharedSong, editedAt, createdAt: null, senderId: 'me' }
   const jsx = (type, props) => ({ type, props })
   const generic = new Proxy({}, { get: (_, key) => String(key) })
   const exports = {}
@@ -31,6 +36,7 @@ function story({ lyrics = true, text = 'Una dedicatoria', platform = 'ios', artw
       posicionSV: { value: 2000 }, toggle: async id => played.push(id), seek: async (...args) => seeks.push(args) }) }
     if (name.endsWith('/Onda')) return { Onda: 'Onda', usePicos: () => null }
     if (name.endsWith('/invitacionJam')) return { invitacionEnTexto: () => null }
+    if (name.endsWith('/chatPresentation')) return presentation
     if (name.endsWith('/artwork')) return { artworkSource: () => artwork ? 'https://example.test/cover.jpg' : null }
     if (name.endsWith('/music')) return { LYRIC_LANGS: [{ value: 'off', label: 'Original' }, { value: 'es', label: 'Español' }],
       translateLyrics: async (...args) => translations.push(args) }
@@ -42,7 +48,7 @@ function story({ lyrics = true, text = 'Una dedicatoria', platform = 'ios', artw
     if (Array.isArray(node)) return node.flatMap(flatten)
     return [node, ...flatten(node.props?.children)]
   }
-  return { render() { cursor = 0; return flatten(exports.default()) }, played, seeks, translations, text }
+  return { render() { cursor = 0; return flatten(exports.default()) }, played, seeks, translations, text, message }
 }
 
 test('cambiar a letra y traducir no reproduce ni cierra el fragmento', () => {
@@ -113,4 +119,26 @@ test('la frase conserva saltos y palabras largas dentro del scroll, con altura l
  assert.equal(note.props.style.height, undefined)
  assert.equal(note.props.style.maxHeight, undefined)
  assert.ok(nodes.some(n => n.type === 'ScrollView'))
+})
+
+test('una canción completa no repite el rótulo automático y conserva dedicatorias y texto editado', () => {
+  const sharedSong = { kind: 'track', title: 'Tema', artist: 'Artista', videoId: 'fixture', durationMs: 180000 }
+  const autoLabel = '🎵 Tema — Artista'
+  for (const platform of ['ios', 'android', 'web']) {
+    for (const [text, editedAt, visible] of [
+      [autoLabel, null, false],
+      ['Escuchá esta canción ❤️', null, true],
+      [autoLabel, new Date('2026-10-04T16:00:00Z'), true],
+    ]) {
+      const fixture = story({ sharedSong, text, editedAt, platform })
+      const nodes = fixture.render()
+      const cards = nodes.filter(node => node.type === 'CancionCompartida')
+      assert.equal(cards.length, 1)
+      assert.equal(cards[0].props.song, sharedSong)
+      assert.equal(nodes.some(node => node.type === 'Text' && node.props.children === text), visible)
+      assert.ok(!nodes.some(node => node.type === 'SeekBar' || node.props?.label === 'Vista del fragmento'))
+      assert.equal(fixture.message.text, text)
+      assert.deepEqual(fixture.played, [])
+    }
+  }
 })

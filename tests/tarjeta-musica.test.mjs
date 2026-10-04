@@ -83,7 +83,6 @@ function entorno(platform = 'ios', consultaInicial = Promise.resolve(false), fon
     'expo-linear-gradient': { LinearGradient: 'LinearGradient' },
     'react-native-svg': { __esModule: true, default: 'Svg', Circle: 'Circle', Path: 'Path', Defs: 'Defs', RadialGradient: 'RadialGradient', Stop: 'Stop' },
     '../lib/artwork': { artworkUrlAtSize: uri => uri, artworkSource: (_path, uri) => uri },
-    '../lib/colorPortada': { useColorPortada: () => '#44303b' },
     './estadoControl': { estadoControlWeb: () => ({}) },
     './icons': { ...Object.fromEntries(['IconMusic', 'IconPlay', 'IconPause', 'IconWave'].map(name => [name, name])), ICON_COLOR: { muted: '#aaa' } },
     './Glass': { ES_WEB: platform === 'web' },
@@ -135,23 +134,79 @@ test('preview sin acciones conserva la portada y los textos sin controles de rep
   assert.equal(botones(card.initial).length, 0)
   assert.equal(nodes(card.initial).some(node => node.type === 'IconPlay'), false)
   assert.equal(e.eventos.size, 0, 'un preview estático no instala listeners de movimiento')
-  assert.equal(flatStyle(card.initial.props.style).height, 100)
+  assert.equal(flatStyle(card.initial.props.style).minHeight, 112)
+  assert.equal(flatStyle(card.initial.props.style).height, undefined)
   const text = nodes(card.initial).filter(node => node.type === 'Text')
-  assert.equal(text.find(node => node.props.children === datos.titulo).props.numberOfLines, 1)
+  assert.equal(text.find(node => node.props.children === datos.titulo).props.numberOfLines, 2)
   assert.equal(text.find(node => node.props.children === datos.artista).props.numberOfLines, 1)
   card.unmount()
 })
 
-test('texto nativo grande aumenta el alto de la tarjeta sin achicar portada ni cambiar el tamaño web', () => {
+test('texto grande reserva espacio para dos líneas de título, artista y marca sin achicar portada', () => {
   for (const platform of ['ios', 'android', 'web']) {
     const e = entorno(platform, Promise.resolve(false), 2.5)
     const card = e.montar({ datos })
-    assert.equal(flatStyle(card.initial.props.style).height, platform === 'web' ? 100 : 159)
+    const style = flatStyle(card.initial.props.style)
+    assert.equal(style.height, undefined, 'el contenido puede aumentar el alto sin un recorte fijo')
+    assert.ok(style.minHeight >= 3 * 18 * 2.5 + 14 * 2.5 + 24, 'hay espacio para todo el texto con Dynamic Type')
     const cover = nodes(card.initial).find(node => node.props?.style && flatStyle(node.props.style).width === 75)
     assert.equal(flatStyle(cover.props.style).height, 75)
-    assert.equal(nodes(card.initial).find(node => node.type === 'Text' && node.props.children === datos.titulo).props.numberOfLines, 1)
+    assert.equal(nodes(card.initial).find(node => node.type === 'Text' && node.props.children === datos.titulo).props.numberOfLines, 2)
     card.unmount()
   }
+})
+
+test('un título largo conserva un ancho acotado al redimensionar la tarjeta y anuncia su texto completo', () => {
+  const largos = {
+    titulo: 'Labios Rotos (En Vivo Desde México / 2010) — ' + 'UnaCancionDeNombreMuyLargo'.repeat(5),
+    artista: 'Zoé y un artista invitado con nombre largo',
+  }
+  for (const platform of ['ios', 'android', 'web']) {
+    const e = entorno(platform)
+    const card = e.montar({ datos: largos, onReproducir() {}, onAbrir() {} })
+    let ui = card.initial
+    for (const width of [325, 280, 240, 325]) {
+      ui.props.onLayout({ nativeEvent: { layout: { width } } })
+      ui = card.render()
+      const style = flatStyle(ui.props.style)
+      const column = ui.props.children.at(-1)
+      const disponible = width - 2 * style.padding - style.columnGap - 75
+      assert.equal(flatStyle(column.props.style).width, disponible, 'el texto recibe el ancho restante, no su ancho intrínseco')
+      const [play, open] = botones(ui)
+      assert.equal(play.props.accessibilityLabel, `Reproducir ${largos.titulo}, ${largos.artista}`)
+      assert.equal(open.props.accessibilityLabel, `Abrir ${largos.titulo}, ${largos.artista} en dnmusic`)
+      assert.equal(flatStyle(open.props.style({ pressed: false })).width, '100%')
+      assert.ok(flatStyle(open.props.style({ pressed: false })).minHeight >= 44)
+      const title = nodes(ui).find(node => node.type === 'Text' && node.props.children === largos.titulo)
+      const artist = nodes(ui).find(node => node.type === 'Text' && node.props.children === largos.artista)
+      assert.equal(title.props.numberOfLines, 2)
+      assert.equal(artist.props.numberOfLines, 1)
+      for (const text of [title, artist]) {
+        assert.equal(flatStyle(text.props.style).width, '100%')
+        assert.equal(flatStyle(text.props.style).textAlign, 'left')
+        assert.equal(text.props.ellipsizeMode, 'tail')
+      }
+    }
+    card.unmount()
+  }
+})
+
+test('la card es sin borde y el foco web permanece visible en sus dos acciones', () => {
+  const e = entorno('web')
+  const card = e.montar({ datos, onReproducir() {}, onAbrir() {} })
+  assert.equal(flatStyle(card.initial.props.style).borderWidth, 0)
+  const [play, open] = botones(card.initial)
+  play.props.onFocus()
+  const cover = nodes(card.render()).find(node => flatStyle(node.props?.style).borderWidth === 2)
+  assert.ok(cover, 'el control de reproducción tiene foco visible')
+  open.props.onFocus()
+  let action = botones(card.render())[1]
+  assert.equal(flatStyle(action.props.style({ pressed: false })).outlineStyle, 'solid')
+  action.props.onBlur()
+  action = botones(card.render())[1]
+  assert.equal(flatStyle(action.props.style({ pressed: false })).outlineStyle, undefined)
+  assert.equal(flatStyle(card.render().props.style).borderWidth, 0, 'el foco pertenece al botón y no dibuja un marco en la card')
+  card.unmount()
 })
 
 test('portada y título ejecutan acciones distintas; una carga se puede pausar sin deshabilitar el botón', () => {
@@ -264,7 +319,7 @@ test('una portada fallida muestra un respaldo y una portada nueva se vuelve a di
   assert.equal(nodes(card.render()).some(node => node.type === 'Image'), false)
   assert.equal(nodes(card.render()).some(node => node.type === 'IconMusic'), true)
   assert.equal(nodes(card.render({ datos: { ...datos, imagen: 'https://images.test/other.jpg' } })).some(node => node.type === 'Image'), true)
-  assert.equal(botones(card.render())[0].props.accessibilityLabel, 'Abrir Tema en dnmusic')
+  assert.equal(botones(card.render())[0].props.accessibilityLabel, 'Abrir Tema, Artista en dnmusic')
   card.unmount()
 })
 
