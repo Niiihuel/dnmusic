@@ -12,43 +12,21 @@ import { FilaAccion, GrupoAjustes } from '../src/ui/Ajustes'
 import { Vacio } from '../src/ui/Vacio'
 import { ICON_COLOR, IconCopiar, IconImage, IconMessage, IconMusic, IconShare } from '../src/ui/icons'
 import { TarjetaHistoria } from '../src/ui/TarjetaHistoria'
+import { CancionCompartida } from '../src/ui/CancionCompartida'
+import { ScrollArea } from '../src/ui/ScrollArea'
 import { compartirHistoria, datosDeTarjeta } from '../src/ui/CompartirHistoria'
 import { ALTO, ANCHO } from '../src/ui/geometriaTarjetaHistoria'
 import { ES_WEB } from '../src/ui/Glass'
 
-/**
- * El alto de la previa.
- *
- * Se mide contra la ventana y no con un número fijo: la hoja tiene que entrar
- * entera —previa, leyenda y las cuatro acciones— sin que la última quede debajo
- * del borde. Un cuarto de la altura deja lugar para todo eso en un teléfono
- * chico y no desperdicia el de uno grande.
- */
+/* La previa y las acciones comparten un scroll acotado para ventanas bajas y texto grande. */
 const PREVIA_MAXIMA = 240
 const PREVIA_PARTE = 0.26
 
-/**
- * Compartir una canción: qué se manda y a dónde.
- *
- * Antes esto no existía. El menú tenía dos filas —«Compartir», que abría la
- * hoja del sistema con el link, y «Compartir historia», que se quedaba unos
- * segundos pensando y de golpe abría **otra** hoja del sistema con una imagen
- * que nadie había visto. Que la imagen saliera linda o rota se descubría
- * recién en Instagram, con la historia ya a medio publicar.
- *
- * Acá se ve primero. La previa es **el mismo componente** que se fotografía
- * (`TarjetaHistoria`), a escala: lo que se ve es exactamente lo que sale. Y las
- * dos formas de pasar la canción dejan de ser dos filas sueltas de un menú
- * largo para ser lo que son: las opciones de una misma decisión.
- *
- * La canción llega por `state/compartir` y no por la URL, como en «Agregar a
- * una lista»: tiene diez campos y pasarla en la ruta la vuelve ilegible.
- */
 export default function Compartir() {
   const router = useRouter()
   const piso = usePisoHoja(24)
   const { height } = useWindowDimensions()
-  /* Se lee una vez: la hoja vive lo que dura decidir y la canción no cambia. */
+
   const [track] = useState(() => cancionACompartir())
   const [ocupado, setOcupado] = useState(false)
   const tinte = useColorPortada(track?.artworkUrl ?? null)
@@ -76,8 +54,7 @@ export default function Compartir() {
 
   const enlace = linkDe('cancion', track.videoId)
   const datos = datosDeTarjeta(track, tinte)
-  /* La previa se achica proporcionalmente: la tarjeta mide 1080×1920 de verdad
-     y lo que cambia es la lupa, nunca el diseño. */
+  /* La transformación conserva el diseño de 1080×1920 que se exporta. */
   const alto = Math.min(PREVIA_MAXIMA, Math.round(height * PREVIA_PARTE))
   const escala = alto / ALTO
 
@@ -95,14 +72,18 @@ export default function Compartir() {
     <Hoja medida="contenido" titulo="Compartir" onCerrar={cerrar}>
       <EncabezadoHoja
         titulo="Compartir"
+        velo={false}
         sobre={`${track.title} · ${track.artist}`}
         izquierda={<BotonHoja tipo="cerrar" onPress={cerrar} />}
       />
 
-      <View style={{ paddingHorizontal: 16, paddingBottom: piso, gap: 20 }}>
-        {/* La previa, centrada y a escala. La caja mide lo que se ve; la
-            tarjeta adentro conserva su tamaño real y se encoge con transform,
-            que es lo único que no le cambia una medida al diseño. */}
+      <ScrollArea style={{ maxHeight: Math.max(180, height - 160 - piso) }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: piso, gap: 20 }}>
+        <View style={{ alignItems: 'center', gap: 8 }}>
+          <CancionCompartida song={{ ...track, kind: 'track' }} />
+          <Text className="text-muted-foreground text-center text-footnote">En el chat y al abrir el link</Text>
+        </View>
+
         <View style={{ alignItems: 'center' }}>
           <View
             accessible
@@ -176,7 +157,7 @@ export default function Compartir() {
             }
           />
         </GrupoAjustes>
-      </View>
+      </ScrollArea>
     </Hoja>
   )
 }

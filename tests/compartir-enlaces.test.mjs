@@ -19,9 +19,8 @@ const plano = (d) => (d ? { que: d.que, id: d.id } : d)
  *
  * `src/lib/compartir.ts` se carga en una caja con react-native simulado —el
  * módulo lo importa por `Share` y `Platform`, que acá no existen— para poder
- * probar además el orden de `compartirCancion`: publicar la tarjeta **antes**
- * de ofrecer el link no es un detalle de implementación, es lo único que hace
- * que el preview de WhatsApp llegue con tapa.
+ * probar además el orden de `compartirCancion`: copiar durante el gesto y
+ * publicar la tarjeta antes de abrir la hoja de compartir.
  */
 function cargar(path, imports) {
   const { outputText } = ts.transpileModule(readFileSync(path, 'utf8'), {
@@ -122,11 +121,10 @@ test('se dibujan sin sesión las cuatro rutas de link, y ninguna de adentro', ()
   }
 })
 
-test('compartir una canción publica su tarjeta antes de ofrecer el link', async () => {
+test('compartir una canción copia durante el gesto y publica antes de abrir la hoja', async () => {
   const { compartir: c, hechos } = caja()
   await c.compartirCancion({ videoId: 'abc123', title: 'Tema', artist: 'Artista' })
-  assert.equal(hechos[0], 'publicar', 'la tarjeta se publica primero')
-  assert.deepEqual(hechos, ['publicar', 'copiar', 'hoja'])
+  assert.deepEqual(hechos, ['copiar', 'publicar', 'hoja'])
 })
 
 test('si publicar falla, la canción se comparte igual', async () => {
@@ -146,10 +144,32 @@ test('si publicar falla, la canción se comparte igual', async () => {
 })
 
 
-test('copiar el link también publica primero la portada y devuelve el resultado real', async () => {
+test('copiar el link no demora la escritura por la publicación de la portada', async () => {
   const { compartir: c, hechos } = caja()
   assert.equal(await c.copiarEnlaceCancion({ videoId: 'abc123', title: 'Tema', artist: 'Artista' }), true)
-  assert.deepEqual(hechos, ['publicar', 'copiar'])
+  assert.deepEqual(hechos, ['copiar', 'publicar'])
+})
+
+test('una publicación lenta conserva la activación de Safari y la hoja espera su preview', async () => {
+  let publicar, gestando = true
+  const hechos = []
+  const c = cargar('src/lib/compartir.ts', {
+    'react-native': { Platform: { OS: 'ios' }, Share: { share: async () => hechos.push('hoja') } },
+    '../state/aviso': { avisar: () => hechos.push('aviso') },
+    './portapapeles': { copiarAlPortapapeles: async () => {
+      assert.equal(gestando, true, 'la escritura empieza antes del primer await')
+      hechos.push('copiar')
+      return true
+    } },
+    '../services/compartidos': { publicarCancion: () => new Promise(resolve => { publicar = resolve }) },
+  })
+  const pendiente = c.compartirCancion({ videoId: 'abc123', title: 'Tema', artist: 'Artista' })
+  gestando = false
+  await Promise.resolve()
+  assert.deepEqual(hechos, ['copiar'], 'la hoja no se abre antes de tener preview')
+  publicar()
+  await pendiente
+  assert.deepEqual(hechos, ['copiar', 'hoja'])
 })
 
 test('publicar informa los errores del RPC en lugar de simular éxito', async () => {

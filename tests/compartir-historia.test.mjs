@@ -107,6 +107,8 @@ function hoja(track) {
     '../src/ui/Vacio': { Vacio: 'Vacio' },
     '../src/ui/icons': { ICON_COLOR: { muted: '#aaa' }, IconCopiar: 'C', IconImage: 'I', IconMusic: 'M', IconShare: 'S' },
     '../src/ui/TarjetaHistoria': { TarjetaHistoria: 'TarjetaHistoria' },
+    '../src/ui/CancionCompartida': { CancionCompartida: 'CancionCompartida' },
+    '../src/ui/ScrollArea': { ScrollArea: 'ScrollArea' },
     '../src/ui/CompartirHistoria': {
       compartirHistoria: (t) => compartidos.push(['historia', t.videoId]),
       datosDeTarjeta: (t, tinte) => ({ titulo: t.title, artista: t.artist, arte: null, enlace: 'x', tinte }),

@@ -5,7 +5,9 @@ Se aplica en `postinstall` con `--error-on-fail`. Los cambios Swift requieren
 recompilar la app de iOS; una actualización JS no los incorpora. El cambio web
 se incluye en el siguiente bundle web. Metro importa `build/AudioPlayer.web.js`,
 por lo que ese archivo compilado debe quedar en el parche junto con `src/`.
-Vercel aplica solo las cuatro secciones de `build/` desde `patches-vercel/`.
+Los builds web sin dependencias nativas (`VERCEL=1`, también usado por el
+Dockerfile de Railway) aplican sólo las cuatro secciones de `build/` desde
+`patches-vercel/`. Los builds nativos usan el parche completo de `patches/`.
 Al actualizar Expo Audio, revisar el SDK y retirar o adaptar el parche.
 
 ## Ecualizador iOS
@@ -17,7 +19,12 @@ los filtros en cada movimiento. El callback no espera locks y valida PCM
 Float32, canales y tamaño de buffers. Las muestras del visualizador respetan
 los frames realmente entregados, también si llegan intercaladas en estéreo.
 
-Prueba portable del DSP: `nix shell nixpkgs#gcc --command node --test tests/ecualizador-dsp.test.mjs`.
+Prueba portable del DSP:
+`nix shell nixpkgs#gcc --command env REQUIRE_EQ_DSP_TEST=1 node --test tests/ecualizador-dsp.test.mjs`.
+Los tests locales pueden omitir el DSP si no hay compilador C; el gate de CI
+lo exige mediante `REQUIRE_EQ_DSP_TEST=1`. `npm run check` también verifica
+tipos, app, servicio, escritorio y lint; los permisos PostgreSQL se habilitan
+con `RUN_MESSAGE_DB_TESTS=1` y una imagen `postgres:17` ya disponible en Docker.
 Además de esa prueba y de reinstalar el parche, hace falta una nueva build iOS
 para verificar audio real y la pantalla nativa. Una OTA no incorpora este DSP.
 
@@ -34,6 +41,17 @@ La duración nominal admitida es 0,25–30 s. Sin cues,
 empieza `durationSeconds` antes del final de la saliente y desde el segundo cero
 de la entrante. El método busca el cue entrante con tolerancia cero antes de
 resolver; una cancelación o nueva selección durante ese seek invalida el pedido.
+
+En iOS, `durationSeconds: 0` programa el avance normal entre dos pistas: espera
+`AVPlayerItemDidPlayToEndTime` del item saliente y arranca la entrante en el hilo
+nativo antes de avisar a JS con `didJustCrossfade`. Usa el final real de AVPlayer,
+sin adelantarlo por los metadatos de la playlist. No solapa audio, modifica curvas
+ni instala un reloj o tap de transición. `isHandoffPending` en los estados permite
+distinguir el `paused` al terminar de una pausa explícita, que sigue emitiendo
+`didJustPause`. Si la entrante dejó de estar cargada o cambió algún item, conserva
+el evento `didJustFinish` y su recuperación habitual. El mismo seek, reemplazo,
+liberación y cancelación invalidan el avance pendiente; pausar y reanudar conserva
+el plan sin arrancar la entrante antes de tiempo.
 
 El cruce usa ley **lineal** por defecto o `volumeLaw: 'equal_power'`. Cada
 `volumeOut`/`volumeIn` puede reemplazar su propia ley con 2–16 puntos
@@ -84,6 +102,8 @@ programar cuatro segundos de cruce, bloquear el teléfono antes del cue y
 escuchar ambos audios con auriculares. Repetir con streaming, pausa/reanudación,
 seek fuera de la ventana, salto manual, desconexión de red e interrupción
 telefónica. Verificar un único avance y metadatos correctos tras el handoff.
+Para avance normal, repetir con `durationSeconds: 0`, playlist propia y colaborativa,
+verificando que se escucha el final completo de la saliente y no hay solapamiento.
 Las pruebas Linux verifican matemática y que el parche se aplica; **no**
 certifican que `AVPlayer` entregue callbacks/tap a tiempo con iOS bloqueado.
 Tampoco hay cola ni metadatos de la pista entrante en nativo: si JS no procesa
@@ -178,10 +198,13 @@ no se reproduce silencio para mantener vivo el proceso. iOS puede denegar o
 acortar el tiempo solicitado. Es una ayuda para completar una transición, no
 un mecanismo de ejecución permanente.
 
-**Límite:** la cola sigue en JS. La próxima fuente debe estar resuelta/precargada;
-una red lenta, suspensión previa a entregar el evento o una tarea denegada
-pueden impedir el arranque. El puente cubre el fin natural, no implementa una
-cola nativa ni promete reproducción sin separación audible. Migrar la cola a
+**Límite:** la cola sigue en JS. Con el avance de duración cero ya armado, el
+siguiente deck arranca nativamente sin esperar la entrega del evento. JS todavía
+debe actualizar la cola, los metadatos y preparar el siguiente par. Sin una fuente
+resuelta/cargada a tiempo se usa el fin natural habitual: una red lenta,
+suspensión previa a entregar el evento o una tarea denegada pueden impedir ese
+arranque. El puente no implementa una cola nativa completa ni promete reproducción
+sin separación audible. Migrar la cola a
 AVQueuePlayer requiere conservar metadata de lock screen, mandos remotos,
 repetición, shuffle, Jam, velocidad y renovación de URLs.
 

@@ -2,6 +2,8 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "types": ["expo/types", "node"]
   },
   "include": [
@@ -14,11 +16,8 @@
   ],
   "exclude": [
     "node_modules",
-    // El escritorio tiene su propio tsconfig: apunta a Node y a CommonJS, y
-    // sus tipos de Electron no existen desde acá. Chequearlo con la config de
-    // Expo daría errores que no significan nada.
+    // Electron y el servicio usan sus propios tsconfig y dependencias.
     "desktop",
-    // El servicio se valida con server/tsconfig.json y sus propias dependencias.
     "server"
   ]
 }

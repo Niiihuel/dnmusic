@@ -1,25 +1,22 @@
+import { useEffect } from 'react'
 import { Image } from 'react-native'
-import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated'
+import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
+import { useMovimientoVisible } from './useMovimientoVisible'
 
-/** El resorte de la tapa: crece decidida al sonar, se recoge suave al pausar. */
 const RESORTE_TAPA = { damping: 17, stiffness: 190, mass: 0.9 }
 
-/**
- * La carátula grande, que **respira con la reproducción**.
- *
- * Es la terminación de Apple Music: sonando, la tapa está a tamaño pleno y
- * despegada del fondo por una sombra profunda; en pausa se recoge y la sombra
- * se acerca. La pantalla dice el estado sin que haya que mirar el botón — la
- * música «se achica» cuando se calla.
- *
- * La sombra vive en el contenedor animado y el redondeo en los dos: recortar
- * y proyectar en la misma capa se pelean (el mismo motivo documentado en el
- * drawer de `_layout`). Todo por `style`: NativeWind no procesa `className`
- * sobre componentes animados.
- */
+/* La sombra va fuera del recorte y los estilos animados usan style: NativeWind no procesa estas clases. */
 export function PlayerArtwork({ uri, playing }: { uri: string; playing: boolean }) {
+  const movimiento = useMovimientoVisible()
+  const escala = useSharedValue(playing ? 1 : 0.82)
+  useEffect(() => {
+    const destino = playing ? 1 : 0.82
+    cancelAnimation(escala)
+    escala.value = movimiento && escala.value !== destino ? withSpring(destino, RESORTE_TAPA) : destino
+    return () => cancelAnimation(escala)
+  }, [playing, movimiento, escala])
   const respira = useAnimatedStyle(() => ({
-    transform: [{ scale: withSpring(playing ? 1 : 0.82, RESORTE_TAPA) }],
+    transform: [{ scale: escala.value }],
   }))
   return (
     <Animated.View

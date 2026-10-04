@@ -1119,7 +1119,7 @@ function VitrinaCancion({
           etiqueta={cancion.title}
         />
       ) : (
-        <View className="justify-center" style={{ height: 34 }}>
+        <View className="justify-center" style={{ height: 44 }}>
           <View className="h-[3px] w-full rounded-full" style={{ backgroundColor: ONDA_PENDIENTE }} />
         </View>
       )}

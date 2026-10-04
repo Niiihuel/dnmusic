@@ -36,7 +36,6 @@ function montar({ width = 1440, resultados = [resultado(0), resultado(1, 'dudosa
   const servicios = {
     ...parser,
     leerListaSpotify: async (enlace, signal) => { lecturas.push(enlace); return leer ? leer(signal) : { nombre: 'Mi lista', truncada, pistas: resultados.map(r => r.pista) } },
-    leerCancionesSpotify: async ids => { lecturas.push(ids); return resultados.map(r => r.pista) },
     emparejarLista: async pistas => { emparejamientos.push(pistas); return resultados },
     guardarLista: async (...args) => { guardados.push(args); return guardar ? guardar() : { playlistId: 'local-lista', agregadas: args[1].length, repetidas: 0 } },
     terminarEnSegundoPlano: async () => {},

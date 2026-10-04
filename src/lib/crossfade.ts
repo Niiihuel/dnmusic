@@ -40,7 +40,9 @@ export function iniciarCrossfade(
   onUnavailable?: () => void,
   onArmed?: (accepted: boolean) => void,
 ): () => void {
-  const seconds = Math.max(0.25, Math.min(30, plan.durationSeconds))
+  // En iOS, cero agenda el relevo al final real del item, sin fundido ni JS.
+  const handoff = plan.durationSeconds === 0
+  const seconds = handoff ? 0 : Math.max(0.25, Math.min(30, plan.durationSeconds))
   const fromBase = from.volume
   const toBase = to.volume
   let done = false
@@ -130,12 +132,12 @@ export function iniciarCrossfade(
     // Safari en iOS ignora cambios programáticos de HTMLMediaElement.volume.
     // Si Web Audio no pudo crear el grafo, solapar dos <audio> sonaría a volumen
     // completo; el fin normal conserva la música sin esa sorpresa.
-    if (advancedEffects || Platform.OS === 'web') unavailable()
+    if (handoff || advancedEffects || Platform.OS === 'web') unavailable()
     else startFallback()
     onArmed?.(false)
   }
 
-  if (typeof from.scheduleCrossfade === 'function') {
+  if ((!handoff || Platform.OS === 'ios') && typeof from.scheduleCrossfade === 'function') {
     usingNative = true
     listener = from.addListener('playbackStatusUpdate', status => {
       if ((status as typeof status & { didJustCrossfade?: boolean }).didJustCrossfade) finish(true)

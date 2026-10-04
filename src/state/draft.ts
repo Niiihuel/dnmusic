@@ -35,9 +35,4 @@ export function resetDraft() {
   store.set({ ...EMPTY })
 }
 
-export function getDraft() {
-  return store.get()
-}
-
 export const useDraft = () => useStore(store, (s) => s)
-export const useDraftSong = () => useStore(store, (s) => s.song)

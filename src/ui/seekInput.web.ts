@@ -5,6 +5,8 @@ export type SeekInputState = {
   onSeek: (fraction: number) => void
   describe: (fraction: number) => string
   preview: (fraction: number | null) => void
+  /** Paso de teclado normalizado; posición usa cinco segundos, volumen 5 %. */
+  keyStep?: number
 }
 const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
 
@@ -51,10 +53,11 @@ export function observeSeekInput(input: HTMLInputElement, initial: SeekInputStat
   }
   const key = (event: KeyboardEvent) => {
     const current = Number(input.value)
+    const step = (state.keyStep ?? 0.05) * (event.shiftKey ? 10 : 1)
     const value = event.key === 'Home' ? 0 : event.key === 'End' ? 1
-      : ['ArrowRight', 'ArrowUp'].includes(event.key) ? current + 0.05
-      : ['ArrowLeft', 'ArrowDown'].includes(event.key) ? current - 0.05
-      : event.key === 'PageUp' ? current + 0.1 : event.key === 'PageDown' ? current - 0.1 : null
+      : ['ArrowRight', 'ArrowUp'].includes(event.key) ? current + step
+      : ['ArrowLeft', 'ArrowDown'].includes(event.key) ? current - step
+      : event.key === 'PageUp' ? current + step * 2 : event.key === 'PageDown' ? current - step * 2 : null
     if (value === null) return
     event.preventDefault()
     paint(value, true); dirty = true; settle()
@@ -69,9 +72,19 @@ export function observeSeekInput(input: HTMLInputElement, initial: SeekInputStat
   paint(initial.progress)
   return {
     follow(fraction: number) {
-      if (dragging || pending !== null) return
-      input.value = String(clamp(fraction))
-      input.style.setProperty('--dn-seek-progress', `${clamp(fraction) * 100}%`)
+      const actual = clamp(fraction)
+      state = { ...state, progress: actual }
+      if (dragging) return
+      if (pending !== null) {
+        if (Math.abs(actual - pending) > 0.015) return
+        pending = null; clearTimeout(release)
+        state.preview(null)
+      }
+      sent = actual
+      input.value = String(actual)
+      input.style.setProperty('--dn-seek-progress', `${actual * 100}%`)
+      const descripcion = state.describe(actual)
+      if (input.getAttribute('aria-valuetext') !== descripcion) input.setAttribute('aria-valuetext', descripcion)
     },
     sync(next: SeekInputState) {
       state = next

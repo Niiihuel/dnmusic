@@ -43,16 +43,9 @@ export type Borrador = {
 
 type Estado = {
   borrador: Borrador | null
-  /**
-   * El perfil tiene que entrar en modo de edición al volver a mostrarse.
-   *
-   * Lo pide «Editar perfil» —que es otra ruta, apilada sobre el perfil— cuando
-   * se toca «Armar el mosaico»: al volver, el perfil lo lee una vez y lo apaga.
-   */
-  armarAlVolver: boolean
 }
 
-const store = createStore<Estado>({ borrador: null, armarAlVolver: false })
+const store = createStore<Estado>({ borrador: null })
 
 /**
  * Con qué tamaño nace cada tipo.
@@ -106,17 +99,6 @@ export function actualizarBorrador(patch: Partial<Borrador> | ((b: Borrador) => 
 
 export function limpiarBorrador() {
   store.set({ borrador: null })
-}
-
-export function pedirArmado() {
-  store.set({ armarAlVolver: true })
-}
-
-/** Si se pidió entrar a armar. Leerlo lo apaga: es un pedido, no un estado. */
-export function tomarArmado(): boolean {
-  const pedido = store.get().armarAlVolver
-  if (pedido) store.set({ armarAlVolver: false })
-  return pedido
 }
 
 export const useBorrador = () => useStore(store, (s) => s.borrador)

@@ -1,5 +1,10 @@
 # Ecualizador y auditoría de interacción móvil
 
+Informe de la auditoría inicial: conserva diagnósticos, hipótesis y decisiones.
+Los cambios posteriores del motor y los controles se documentan en
+[componentes de audio](AUDIO_COMPONENTS.md) y [parches](../patches/README.md);
+los resultados de esta revisión no validan binarios posteriores.
+
 ## Resumen ejecutivo
 
 dnmusic incorpora un ecualizador gráfico de diez bandas, persistente por dispositivo y conectado al mismo reproductor que ya sostiene el audio en segundo plano. La pantalla está en **Configuración → Reproducción → Ecualizador**, permite activar o desactivar el procesamiento, elegir siete curvas y editar manualmente de 31 Hz a 16 kHz dentro de ±12 dB.

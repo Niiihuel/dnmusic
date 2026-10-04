@@ -79,9 +79,12 @@ Las variantes nativas cubren campos/formularios, chat, búsqueda, botones, repro
 
 - `node --test tests/android-*.test.mjs`: borradores/foco/teclado, límites, seek frente a volumen, menús, confirmaciones y estados ocupados.
 - `npm run typecheck` y exportación `npx expo export --platform android`.
-- El workflow **Android — desarrollo** (manual o al cambiar estos controles en ramas `codex/`) compila Kotlin y un APK debug para ARM64 (teléfono) y x86_64 (emulador). No publica en tiendas ni crea releases. Si GitHub no tiene cupo de artifacts, la descarga no estará disponible; el mismo APK se genera localmente en `android/app/build/outputs/apk/debug/app-debug.apk`.
+- El workflow **Android — compilar** verifica Kotlin y un APK debug para ARM64/x86_64 al cambiar código nativo en ramas `codex/**`. La ejecución manual genera APK/AAB firmado con EAS local y puede guardar un borrador de Release si falla Artifacts; no publica en Google Play. Ver [guía del workflow](BUILD-ANDROID-GITHUB.md).
 - Prueba física pendiente: abrir sesión, reproducir música/fragmento, buscar, arrastrar seek, cambiar pestañas desde un editor, cancelar/guardar edición de mensaje, cambiar categoría/colección, abrir y cerrar menú con Atrás, confirmar/cancelar un borrado y usar TalkBack/texto grande. Verificar que mensajes/adjuntos/borradores se conserven.
 
 Referencias: [Expo UI con Compose](https://docs.expo.dev/versions/v57.0.0/sdk/ui/jetpack-compose/), [Android Studio](https://developer.android.com/studio/install), [aceleración del emulador](https://developer.android.com/studio/run/emulator-acceleration), [clientes de desarrollo Expo](https://docs.expo.dev/develop/development-builds/introduction/).
 
-La [compilación nativa comprobada](https://github.com/Niiihuel/dnmusic/actions/runs/34796250045) terminó correctamente: módulo Kotlin, dependencias C++ y APK debug para ARM64/x86_64. GitHub agotó el cupo de artifacts y no guardó la descarga; `npm run android:run` lo genera e instala localmente. El código nativo compilado coincide con el actual; las correcciones posteriores de controles se cargan desde Metro. TypeScript, ESLint, exportación Android y 741 pruebas de app aprobados (una omitida). Esto no sustituye la comprobación visual en dispositivo indicada arriba.
+La [compilación nativa del 14 de septiembre de 2026](https://github.com/Niiihuel/dnmusic/actions/runs/34796250045)
+verificó Kotlin, C++ y APK debug ARM64/x86_64; Artifacts no guardó esa descarga.
+Conserva evidencia de aquel commit. Los cambios nativos posteriores necesitan
+otra compilación; no se validan sólo cargando JS desde Metro.

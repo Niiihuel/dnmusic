@@ -8,14 +8,14 @@ const compile = path => ts.transpileModule(readFileSync(path, 'utf8'), {
 }).outputText
 const flush = () => new Promise(resolve => setImmediate(resolve))
 
-function fixture(saved = null, platform = 'ios', random = Math.random) {
+function fixture(saved = null, platform = 'ios', random = Math.random, savedVolume = null) {
   const storeModule = {}, api = {}, avisos = [], writes = []
   new Function('exports', 'require', compile('src/state/store.ts'))(
     storeModule,
     id => id === 'react' ? { useSyncExternalStore: (_subscribe, get) => get() } : (() => { throw new Error(id) })(),
   )
   const storage = {
-    getItem: async key => key === 'playback:v1' ? saved : null,
+    getItem: async key => key === 'playback:v1' ? saved : key === 'volume:v1' ? savedVolume : null,
     setItem: async (key, value) => { writes.push([key, JSON.parse(value)]) },
   }
   new Function('exports', 'require', 'Math', compile('src/state/playback.ts'))(api, id => {
@@ -285,6 +285,37 @@ test('volumen web: audio inmediato y una sola escritura al terminar la ráfaga',
   api.setVolume(0.4); api.setVolume(Number.NaN)
   t.mock.timers.tick(200)
   assert.equal(writes.length, 1)
+})
+
+test('silenciar desde el slider restaura el último nivel audible en cualquier reproductor', () => {
+  const { api } = fixture()
+  api.setVolume(0.37)
+  api.setVolume(0)
+  const devolverDesdePantalla = api.toggleMute
+  devolverDesdePantalla()
+  assert.equal(api.getPlaybackState().volume, 0.37)
+
+  api.setVolume(0.63)
+  const silenciarDesdeBarra = api.toggleMute
+  silenciarDesdeBarra()
+  assert.equal(api.getPlaybackState().volume, 0)
+  api.stopPlayback()
+  devolverDesdePantalla()
+  assert.equal(api.getPlaybackState().volume, 0.63, 'comparten memoria aun al cerrar la canción')
+  api.setVolume(Number.NaN)
+  silenciarDesdeBarra(); devolverDesdePantalla()
+  assert.equal(api.getPlaybackState().volume, 0.63, 'un valor inválido no borra el nivel de restauración')
+})
+
+test('el volumen restaurado prepara mute sin volver al máximo al abrir otra pantalla', async () => {
+  const { api, writes } = fixture(null, 'ios', Math.random, '0.28')
+  await api.restaurarVolumen()
+  assert.equal(api.getPlaybackState().volume, 0.28)
+  assert.deepEqual(writes, [], 'leer la preferencia no vuelve a escribirla')
+  api.toggleMute()
+  assert.equal(api.getPlaybackState().volume, 0)
+  api.toggleMute()
+  assert.equal(api.getPlaybackState().volume, 0.28)
 })
 
 

@@ -1,25 +1,22 @@
-import { Album, AlignJustify, Camera, Heading, LayoutGrid, Minus, MoveDiagonal2, Palette, SeparatorHorizontal, Type, AtSign, AudioWaveform, Ban, Check, CircleCheck, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clipboard, Clock, Disc3, Download, HardDrive, Heart, SlidersHorizontal, Eye, Focus, RotateCcw, RotateCw, EyeOff, ExternalLink, Globe, House, Inbox, Languages, ListMusic, LockKeyhole, LogOut, MessageSquareText, MessageCirclePlus, MicVocal, Ellipsis, ImagePlus, MonitorSmartphone, Music, Pause, Pencil, PanelLeftClose, PanelRightClose, PanelRightOpen, Play, Plus, ListPlus, Repeat, Repeat1, Search, Send, Share2, Shuffle, Trash2, UsersRound, Volume2, VolumeX, Wifi, WifiOff, SkipBack, SkipForward, Sparkles, UserRound, X } from 'lucide-react-native'
+import {
+  Album, AlignJustify, ArrowUpCircle, AtSign, AudioWaveform, Ban, Camera, Check,
+  ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleCheck, Clipboard, Clock,
+  Disc3, Download, Ellipsis, ExternalLink, Eye, EyeOff, Focus, Globe, HardDrive,
+  Heading, Heart, House, ImagePlus, Inbox, Languages, LayoutGrid, ListMusic,
+  ListPlus, LockKeyhole, LogOut, MessageCirclePlus, MessageSquareText, MicVocal,
+  Minus, MonitorSmartphone, MousePointer2, MoveDiagonal2, Music, Newspaper, Palette,
+  PanelLeftClose, PanelRightClose, PanelRightOpen, Pause, Pencil, Play, Plus,
+  Repeat, Repeat1, RotateCcw, RotateCw, Search, Send, SeparatorHorizontal, Share2,
+  Shuffle, SkipBack, SkipForward, SlidersHorizontal, Sparkles, Trash2, Type,
+  UserRound, UsersRound, Volume2, VolumeX, Wifi, WifiOff, X,
+} from 'lucide-react-native'
 
-/**
- * Los íconos de la app, en un solo lugar.
- *
- * Se usa **Lucide**: trazo fino y geométrico, que es lo que pide un sistema
- * monocromo donde no hay color para diferenciar. Antes había glifos de texto
- * (▶, ✕, ♪) y un par de formas dibujadas con Views: se veían distintos según la
- * fuente del sistema, no escalaban parejo y no había forma de darles un grosor
- * de trazo consistente.
- *
- * Todo pasa por acá para que el tamaño y el grosor sean los mismos en toda la
- * app, y para que cambiar de familia de íconos algún día sea tocar un archivo.
- */
-
-/** Grosor de trazo del sistema. 1.75 es el punto donde se lee sin engordar. */
+/** Tamaño y trazo comunes a los íconos de la app. */
 const STROKE = 1.75
 
 export type IconProps = {
   size?: number
   color?: string
-  /** Grosor de trazo; solo tocarlo en casos puntuales. */
   strokeWidth?: number
 }
 
@@ -29,14 +26,7 @@ function make(Component: typeof Search) {
   }
 }
 
-/**
- * Como `make`, pero con la figura **rellena**.
- *
- * Es para los controles de transporte: play, pausa y los saltos van sólidos en
- * Apple Music y en Spotify — el contorno fino se lee como estado apagado, y el
- * botón que más se toca de la app no puede parecer apagado. El resto del
- * sistema sigue a trazo, que es lo que pide el monocromo.
- */
+/** Transporte y estados activos usan figuras rellenas. */
 function makeFilled(Component: typeof Search) {
   return function Icon({ size = 18, color = '#FFFFFF', strokeWidth = STROKE }: IconProps) {
     return <Component size={size} color={color} fill={color} strokeWidth={strokeWidth} />
@@ -62,8 +52,6 @@ export const IconCopiar = make(Clipboard)
 export const IconWave = make(AudioWaveform)
 export const IconDisc = make(Disc3)
 export const IconHeart = make(Heart)
-/* El corazón marcado va relleno, como el play: el contorno fino se lee como
-   apagado, y un me gusta puesto no puede parecer apagado. */
 export const IconHeartFilled = makeFilled(Heart)
 export const IconLyrics = make(MicVocal)
 export const IconMessage = make(MessageSquareText)
@@ -87,18 +75,14 @@ export const IconImage = make(ImagePlus)
 export const IconPencil = make(Pencil)
 export const IconShuffle = make(Shuffle)
 export const IconRepeat = make(Repeat)
-/** Repetir **esta** canción. El «1» es lo único que distingue un modo del otro. */
 export const IconRepeatOne = make(Repeat1)
-/** Ajustes: las perillas, no un engranaje — acá no se configura un sistema. */
 export const IconSliders = make(SlidersHorizontal)
 export const IconClock = make(Clock)
 export const IconTrash = make(Trash2)
 export const IconDownload = make(Download)
-/** Bajada del todo. El círculo lleno es lo que distingue «está» de «bajala». */
 export const IconDownloaded = make(CircleCheck)
 export const IconDisk = make(HardDrive)
 export const IconWifi = make(Wifi)
-/** Sin conexión: el vacío que no es culpa de nadie. Ver `Vacio`. */
 export const IconWifiOff = make(WifiOff)
 export const IconQueue = make(ListPlus)
 export const IconCola = make(ListMusic)
@@ -112,9 +96,7 @@ export const IconCursor = make(MousePointer2)
 export const IconUser = make(UserRound)
 export const IconUsers = make(UsersRound)
 export const IconShare = make(Share2)
-/** La manija de reordenar: las tres líneas que se agarran para arrastrar una fila. */
 export const IconManija = make(AlignJustify)
-/* Las piezas del editor del mosaico: qué se agrega y cómo se viste. */
 export const IconMinus = make(Minus)
 export const IconPalette = make(Palette)
 export const IconHeading = make(Heading)
@@ -125,7 +107,6 @@ export const IconAlbum = make(Album)
 
 export const IconGrilla = make(LayoutGrid)
 export const IconRedimensionar = make(MoveDiagonal2)
-/* Encuadrar: el visor con las esquinas, no una tijera — no se recorta nada. */
 export const IconEncuadre = make(Focus)
 export const IconGirarIzq = make(RotateCcw)
 export const IconGirarDer = make(RotateCw)
@@ -134,11 +115,8 @@ export const IconCollapseLeft = make(PanelLeftClose)
 export const IconCollapseRight = make(PanelRightClose)
 export const IconExpandRight = make(PanelRightOpen)
 
-/** Grises del sistema, para pasarle color a los íconos sin repetir literales. */
 export const ICON_COLOR = {
   foreground: '#FFFFFF',
   muted: '#B3B3B3',
-  /** Sobre superficies claras, como el botón primario. */
   onPrimary: '#121212',
 } as const
-import { ArrowUpCircle, MousePointer2, Newspaper } from 'lucide-react-native'

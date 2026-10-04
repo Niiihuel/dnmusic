@@ -18,12 +18,16 @@ Estas convenciones rigen las pantallas nuevas y sus adaptaciones:
   varias tarjetas adicionales.
 - **El link compartido tiene su propia anatomía.** Quien llega desde afuera no
   viene navegando: primero tiene que resolver si esto le interesa, y recién
-  después la puerta. `ui/Aterrizaje` pone la tapa grande y centrada con el
-  degradado de su color, el título de 22 px y el artista de 15 px debajo, y una
-  sola acción principal —entrar— con «Abrir en la app» como secundaria en
-  `muted`. La tapa se despega por sombra, nunca por borde. La versión incrustable
-  (`/embed/…`) repite los mismos tokens escritos a mano: no puede traer el
-  bundle. Ver [los links compartidos](COMPARTIR.md).
+  después la puerta. Para canciones, `ui/TarjetaMusica` comparte composición
+  entre chat, compartir y el enlace: portada de 75 px, fondo desenfocado,
+  vinilo y título/artista alineados a la derecha, siguiendo la referencia
+  [Spell UI](https://spell.sh/docs/spotify-card). El vinilo gira sólo con audio
+  cargado y movimiento permitido; en segundo plano queda quieto. La portada
+  reproduce/pausa y el título abre el contenido. Sin sesión el enlace presenta
+  una sola acción principal —entrar— con «Abrir en la app» como secundaria.
+  La versión incrustable (`/embed/…`) adapta esa composición a HTML sin traer
+  el bundle ni ofrecer audio público. Listas, perfiles y Jams conservan su
+  cabecera de colección. Ver [los links compartidos](COMPARTIR.md).
 - **PC y iOS comparten el flujo, no el ancho.** Los formularios breves se
   presentan centrados en PC; la navegación extensa puede usar barras laterales.
   En iOS se usan hojas y contenido apilado. Los controles táctiles tienen

@@ -59,3 +59,24 @@ test('una portada PNG válida se integra sin peticiones implícitas del renderiz
   assert.equal(png.readUInt32BE(16), 1200)
   assert.equal(llamadas, 1)
 })
+
+test('una portada corrupta vuelve a la composición sin tapa sin volver a descargarla', async () => {
+  let llamadas = 0
+  const { crearImagenTarjeta } = cargar(async () => {
+    llamadas++
+    return new Response('no es una imagen', { headers: { 'content-type': 'image/png' } })
+  })
+  const png = await crearImagenTarjeta({ titulo: 'Tema', subtitulo: 'Artista', tapa: 'https://i.ytimg.com/vi/test/hqdefault.jpg' }, 'cancion')
+  assert.equal(png.readUInt32BE(16), 1200)
+  assert.equal(png.readUInt32BE(20), 630)
+  assert.equal(llamadas, 1)
+})
+
+test('lista, perfil y Jam conservan un preview válido sin requerir audio', async () => {
+  const { crearImagenTarjeta } = cargar()
+  for (const que of ['lista', 'perfil', 'jam']) {
+    const png = await crearImagenTarjeta({ titulo: 'Compartido con vos', subtitulo: 'Una descripción', tapa: null }, que)
+    assert.equal(png.readUInt32BE(16), 1200)
+    assert.equal(png.readUInt32BE(20), 630)
+  }
+})

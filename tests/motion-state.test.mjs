@@ -85,7 +85,7 @@ test('clipboard: fallo moderno + respaldo fallido nunca publica éxito y restaur
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { clipboard: { async writeText() { throw Error('denied') } } } })
   globalThis.HTMLElement = Element
   globalThis.document = { activeElement: previous, body: { appendChild() {} }, execCommand() { return false },
-    createElement() { return { style: {}, setAttribute() {}, focus() {}, select() {}, remove() { events.push('remove') } } } }
+    createElement() { return { style: {}, setAttribute() {}, focus() {}, select() {}, setSelectionRange() {}, remove() { events.push('remove') } } } }
   try {
     const api = load('src/lib/portapapeles.ts', { 'react-native': { Platform: { OS: 'web' } }, '../state/copia': { iniciarCopia: () => ok => results.push(ok) } })
     assert.equal(await api.copiarAlPortapapeles('prueba'), false)

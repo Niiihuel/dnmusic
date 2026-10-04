@@ -61,6 +61,4 @@ export function setSegundosCrossfade(segundos: number) {
   store.set({ segundos: valor })
   guardar()
 }
-
-export const leerTransicionesGlobales = () => store.get()
 export const useTransicionesGlobales = () => useStore(store, s => s)

@@ -517,14 +517,3 @@ export async function removeCollaborator(playlistId: string, userId: string): Pr
   })
   if (error) throw error
 }
-
-/**
- * Irse de una lista donde colaborás.
- *
- * Lo que agregaste se queda: irse no es deshacer. Sacar tus canciones al salir
- * dejaría a la lista de los demás distinta de como la vieron la última vez, y
- * por una decisión que es solo tuya.
- */
-export async function leavePlaylist(playlistId: string, myId: string): Promise<void> {
-  await removeCollaborator(playlistId, myId)
-}

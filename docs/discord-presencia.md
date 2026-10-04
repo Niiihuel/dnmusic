@@ -1,5 +1,9 @@
 # Música en Discord en PC
 
+Complemento de [la guía de presencia](PRESENCIA-DISCORD.md): diagnóstico del
+transporte de escritorio y decisiones sobre posición/reloj. La guía principal
+describe permisos, configuración, alcance móvil y el contrato público.
+
 DMusic usa el IPC de la app de escritorio de Discord. No necesita un token
 personal ni agrega una conexión OAuth como la integración especial de Spotify.
 El usuario habilita compartir por cuenta y dispositivo desde Ajustes → Discord.

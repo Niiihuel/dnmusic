@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Text, View } from 'react-native'
 import { FilaOpciones } from './Ajustes'
-import { SeekBar } from './SeekBar'
+import { AudioParameter } from './AudioParameter'
+import { decibeliosEQ, frecuenciaEQ } from './ecualizadorGeometry'
 import {
   envelopeAt, eqEffectPreset, filterEffectPreset, withEqControlPoint,
   type EqBand, type EqEffectPreset, type FilterEffectPreset,
@@ -61,21 +62,10 @@ function Control({ label, value, min, max, step, format, onChange, disabled }: {
   onChange: (value: number) => void
   disabled: boolean
 }) {
-  return <View style={{ paddingHorizontal: 16, paddingVertical: 9, gap: 7, opacity: disabled ? 0.45 : 1 }}>
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-      <Text style={{ color: '#FFFFFF', fontSize: 14 }}>{label}</Text>
-      <Text style={{ color: '#B3B3B3', fontSize: 13, fontVariant: ['tabular-nums'] }}>{format(value)}</Text>
-    </View>
-    {!disabled ? <SeekBar label={label} progress={(value - min) / (max - min)} elapsedMs={0} totalMs={1} compact
-      onSeek={fraction => onChange(Math.max(min, Math.min(max, Math.round((min + fraction * (max - min)) / step) * step)))} /> : null}
+  return <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+    <AudioParameter label={label} value={value} min={min} max={max} step={step}
+      format={format} onChange={onChange} disabled={disabled} commitOnly resetValue={0} unit="dB" />
   </View>
-}
-
-function cutoffFromPosition(position: number): number {
-  return Math.max(20, Math.min(20_000, Math.round((20 * 1000 ** position) / 10) * 10))
-}
-function cutoffPosition(hz: number): number {
-  return Math.max(0, Math.min(1, Math.log(Math.max(20, hz) / 20) / Math.log(1000)))
 }
 
 function withFilterKind(settings: TransitionFilter | null, deck: 'out' | 'in', kind: 'none' | 'lowpass' | 'highpass'): TransitionFilter {
@@ -115,7 +105,6 @@ function customEq(settings: NonNullable<MixEdgeInput['eqSettings']>): NonNullabl
   ].sort((a, b) => a.t - b.t) } }
 }
 
-/** Acceso inmediato a los efectos debajo de las ondas; los controles detallados siguen en Avanzados. */
 export function MixEffectsQuickControls({ draft, onChange, canEdit }: {
   draft: MixEdgeInput
   onChange: (next: MixEdgeInput) => void
@@ -175,7 +164,7 @@ export function MixEffectsEditor({ draft, onChange, canEdit, supported }: {
       {([0, 0.5, 1] as const).map((position, index) => <Control key={position}
         label={`${['Inicio', 'Mitad', 'Final'][index]} · ${BANDS.find(item => item.value === eqBand)?.label.toLowerCase()}`}
         value={envelopeAt(eqCurve ?? [], position)} min={-24} max={24} step={0.5}
-        format={value => `${value >= 0 ? '+' : ''}${value.toFixed(1)} dB`}
+        format={decibeliosEQ}
         onChange={value => onChange({ ...draft, eqSettings: withEqControlPoint(eq, eqDeck, eqBand, position, value) })}
         disabled={!editable} />)}
     </> : null}
@@ -196,11 +185,12 @@ export function MixEffectsEditor({ draft, onChange, canEdit, supported }: {
         disabled={!editable} />
       {filterPart ? ([0, 1] as const).map(position => {
         const hz = envelopeAt(filterPart.cutoff, position)
-        return <Control key={position} label={`Frecuencia al ${position === 0 ? 'inicio' : 'final'}`}
-          value={cutoffPosition(hz)} min={0} max={1} step={0.001}
-          format={() => hz < 1000 ? `${Math.round(hz)} Hz` : `${(hz / 1000).toFixed(1)} kHz`}
-          onChange={value => onChange({ ...draft, filterSettings: withFilterCutoff(filter, filterDeck, position, cutoffFromPosition(value)) })}
-          disabled={!editable} />
+        return <View key={position} style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+          <AudioParameter label={`Frecuencia al ${position === 0 ? 'inicio' : 'final'}`}
+            value={hz} min={20} max={20_000} step={10} scale="log" unit="Hz" format={frecuenciaEQ}
+            onChange={value => onChange({ ...draft, filterSettings: withFilterCutoff(filter, filterDeck, position, value) })}
+            commitOnly disabled={!editable} />
+        </View>
       }) : null}
     </> : null}
   </View>

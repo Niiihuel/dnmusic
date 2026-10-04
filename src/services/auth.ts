@@ -15,12 +15,6 @@ import { getSupabase } from '../lib/supabase'
 const AUTH_DOMAIN = 'auth.dnmusic.invalid'
 const INTERNAL_AUTH_DOMAINS = ['flora.local', AUTH_DOMAIN] as const
 
-/** Fallback indistinguible para intentos de login inexistentes. */
-export function usernameToEmail(username: string): string {
-  const clean = username.trim().toLowerCase()
-  return clean.includes('@') ? clean : `${clean}@${AUTH_DOMAIN}`
-}
-
 /** Los identificadores técnicos de Auth nunca son información de presentación. */
 export function isInternalAuthEmail(email: string | undefined): boolean {
   if (!email) return false
@@ -71,48 +65,6 @@ export async function logOut(): Promise<void> {
   // Salir de este dispositivo no debe revocar las sesiones de las otras computadoras.
   const { error } = await getSupabase().auth.signOut({ scope: 'local' })
   if (error) throw error
-}
-
-/**
- * Descubre el par al que pertenece el usuario.
- *
- * `maybeSingle` en vez de `single`: no encontrar par es un estado válido
- * (usuario todavía sin vincular), no un error.
- */
-export async function findPairId(uid: string): Promise<string | null> {
-  const { data, error } = await getSupabase()
-    .from('pair_members')
-    .select('pair_id')
-    .eq('user_id', uid)
-    .limit(1)
-    .maybeSingle()
-
-  if (error) throw error
-  return (data?.pair_id as string | undefined) ?? null
-}
-
-export type PairContact = {
-  id: string
-  username: string
-}
-
-/**
- * Devuelve la otra cuenta del par.
- *
- * El email vive en auth.users y el cliente no puede (ni debería) leer esa tabla.
- * La función SQL valida la pertenencia al par y expone únicamente el nombre de
- * usuario del otro integrante.
- */
-export async function findPairContact(pairId: string): Promise<PairContact | null> {
-  const { data, error } = await getSupabase().rpc('get_pair_contact', {
-    p_pair_id: pairId,
-  })
-
-  if (error) throw error
-  const row = Array.isArray(data) ? data[0] : data
-  if (!row || typeof row.user_id !== 'string' || typeof row.username !== 'string') return null
-
-  return { id: row.user_id, username: row.username }
 }
 
 export type { User }

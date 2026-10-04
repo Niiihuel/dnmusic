@@ -39,8 +39,6 @@ type Props = {
    */
   quickAddLabel?: string
   onQuickAdd?: (track: TrackResult) => void
-  /** Reproducir sin guardar en ningún lado. Aparece sobre la carátula. */
-  onPlay?: (track: TrackResult) => void
   /**
    * Tocar la fila **siempre elige**, aunque sea la canción que está sonando.
    *
@@ -88,7 +86,6 @@ export function SearchDropdown({
   embedded = false,
   quickAddLabel,
   onQuickAdd,
-  onPlay,
   pendingId,
   menuFor,
   alwaysSelect = false,

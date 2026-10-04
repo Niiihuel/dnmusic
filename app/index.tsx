@@ -2553,11 +2553,6 @@ export default function Home() {
                     recordarCancion(track)
                     void playSearchResult(track, trackResults)
                   }}
-                  onPlay={(track) => {
-                    Keyboard.dismiss()
-                    recordarCancion(track)
-                    void playSearchResult(track, trackResults)
-                  }}
                   artists={artistResults}
                   onOpenArtist={(a) => {
                     Keyboard.dismiss()
@@ -2644,7 +2639,7 @@ export default function Home() {
                   /* El disco entero como cola, no la primera suelta: es la
                      misma promesa que una playlist. Ver `playAlbum`. */
                   onPlayAll={(tracks, artwork) => playAlbum(tracks, artwork, null)}
-                  onPlay={(track, artwork, tracks, at) => playAlbum(tracks, artwork, at)}
+                  onPlay={(_track, artwork, tracks, at) => playAlbum(tracks, artwork, at)}
                   onAdd={(track, artwork) => {
                     const asResult = albumTrackAsResult(track, artwork)
                     if (openPlaylist) void addToPlaylist(openPlaylist, asResult)

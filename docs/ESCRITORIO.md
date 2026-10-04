@@ -1,6 +1,6 @@
 # dnmusic para escritorio
 
-La misma app que sirve Vercel, adentro de una ventana, con actualizaciones que
+La misma app que sirve Railway, adentro de una ventana, con actualizaciones que
 se aplican solas. No hay una versión de escritorio del código: `desktop/` es una
 cáscara que carga el export de `npm run build:web` sin tocarle una línea.
 
@@ -28,8 +28,9 @@ app— y eso es un trámite aparte, no una casilla más en el YAML.
 
 ```bash
 npm run build:web          # en la raíz: genera dist/
-cd desktop && npm install
-npm run dev
+npm --prefix desktop ci
+npm --prefix desktop run traer-web
+npm --prefix desktop run dev
 ```
 
 En desarrollo el actualizador se apaga solo y lo dice en la consola —
@@ -39,7 +40,7 @@ comparar, porque la versión sale del paquete instalado.
 Para ver el instalador de verdad sin publicar nada:
 
 ```bash
-cd desktop && npm run empaquetar   # queda en desktop/release/
+npm --prefix desktop run empaquetar   # queda en desktop/release/
 ```
 
 ## El resolutor de a bordo
@@ -66,9 +67,9 @@ El circuito completo, con quién confía en quién:
 3. Los bytes **no pasan por el servicio**: `POST /aportar/url` devuelve una URL
    firmada de un solo uso, el archivo sube derecho a Supabase Storage con un
    `PUT`, y después `POST /aportar/confirmar` avisa que está. Va así porque el
-   servicio vive en una función y el cuerpo de un pedido tiene techo —4.5 MB en
-   el plan gratis, menos que una canción de cinco minutos—; de paso es más
-   rápido y no gasta ancho de banda de la función.
+   servicio valida y confirma sin retransmitir el cuerpo de cada canción.
+   El camino nació para evitar el límite de las funciones de Vercel y conserva
+   la misma separación en Railway: reduce el tráfico que atraviesa la API.
 4. **El servidor decide qué se guarda**, igual que antes: lo subido cae en una
    ruta de cuarentena que la app no reproduce nunca, y solo si ffprobe confirma
    que es AAC en mp4 con la duración que el catálogo esperaba (±7s) y ffmpeg lo
@@ -79,8 +80,7 @@ El circuito completo, con quién confía en quién:
    propio. El uid del aportante queda en el log.
 
 El navegador no puede hacer lo mismo (hablar con YouTube desde una página lo
-frena CORS); por eso el puente existe solo acá. El teléfono podría, y es la
-fase que sigue si hace falta.
+frena CORS). El teléfono tiene su propio [resolver nativo](MOTOR-TELEFONO.md).
 
 ### Reiniciar después de actualizar en Linux
 
@@ -157,7 +157,8 @@ Dos trampas de esa lista, las dos vistas al publicar la 1.0.0:
 `.env.local`.** En el `.env.local` viven el Supabase de Docker y una IP de la
 red de casa. Un instalador construido con eso **compila igual** y sale a la
 calle sin buscador, sin portada y sin poder iniciar sesión, sin un solo error
-que lo explique. Los buenos son los del bundle que sirve Vercel.
+que lo explique. El workflow comprueba los orígenes de Auth y API de Railway
+antes de construir el bundle.
 
 **`gh secret set` puede guardar vacío sin avisar.** Sin una terminal
 interactiva no muestra el prompt, lee una entrada vacía y la guarda igual; el
@@ -166,7 +167,7 @@ el bloque `env:` del paso de chequeo: los que tienen valor salen `***`, los
 vacíos salen en blanco. La forma que no falla es desde un archivo:
 
 ```bash
-gh secret set RELEASES_TOKEN --repo Niihuel/dnmusic < /tmp/tok && shred -u /tmp/tok
+gh secret set RELEASES_TOKEN --repo Niiihuel/dnmusic < /ruta/segura/token
 ```
 
 Después, cada versión son **las novedades y un tag**:
@@ -180,7 +181,7 @@ git push origin escritorio-v1.1.0
 
 Las novedades son una sola fuente con dos lectores: la pantalla «Ajustes →
 Novedades» de la app —la misma en la web, la compu y el teléfono— y el cuerpo
-del release de GitHub, que escribe `scripts/notas-release.mjs`. Si el tag no
+del release de GitHub, que escribe `desktop/scripts/notas-release.mjs`. Si el tag no
 tiene entrada en el JSON, **el workflow corta ahí**: publicar una versión sin
 contar qué trae es justo el olvido que ese paso existe para atajar. En esa
 misma pantalla, el escritorio muestra además el actualizador —en qué anda, qué
@@ -238,7 +239,7 @@ un motivo posible de cierres inesperados, pero no confirma por sí solo la causa
 en una computadora específica.
 
 **Un chunk que falta devuelve 404, no index.html.** El fallback de SPA es el
-mismo que hace `vercel.json` en la web, con el mismo corte: una ruta cae en
+mismo que hace `scripts/serve-railway.ts` en la web: una ruta cae en
 index.html, un archivo con extensión que no está devuelve 404. Si le
 contestáramos HTML con 200 a un `.js` faltante, el navegador intentaría
 ejecutarlo y el error sería `Unexpected token '<'`, que no dice nada de lo que

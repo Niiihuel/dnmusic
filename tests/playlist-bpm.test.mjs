@@ -17,6 +17,18 @@ function analysis(bpm = 120, confidence = 0.9) {
 }
 const flush = () => new Promise(resolve => setImmediate(resolve))
 
+test('iOS no solicita análisis ni publica BPM para las filas de ninguna playlist', () => {
+  const code = ts.transpileModule(readFileSync('src/state/playlistBpm.ios.ts', 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText
+  const ios = {}
+  new Function('exports', 'require', code)(ios, id => assert.fail(`iOS no necesita cargar el analizador: ${id}`))
+  const values = ios.usePlaylistBpms([{ audioPath: 'primera.m4a' }, { audioPath: 'segunda.m4a' }])
+  assert.equal(values.size, 0)
+  assert.equal(values.get('primera.m4a'), undefined)
+  assert.equal(ios.usePlaylistBpms([]), values)
+})
+
 test('BPM se muestra sólo con pulso real y confianza suficiente', () => {
   assert.equal(bpmConfiable(analysis(122.6)), 123)
   assert.equal(bpmConfiable(analysis(120, 0.74)), null)

@@ -268,15 +268,6 @@ export async function listPlaylistMixes(playlistId: string): Promise<PlaylistMix
   return (query.data ?? []).map(row => mixFromRow(row, state.publishedId, state.enabled))
 }
 
-export async function getPlaylistMix(mixId: string): Promise<PlaylistMix | null> {
-  const { data, error } = await getSupabase().from('playlist_mixes')
-    .select('*').eq('id', mixId).maybeSingle()
-  if (error) throw error
-  if (!data) return null
-  const state = await playlistMixState(data.playlist_id as string)
-  return mixFromRow(data, state.publishedId, state.enabled)
-}
-
 export async function createPlaylistMix(
   playlistId: string,
   name: string,
@@ -353,11 +344,6 @@ export async function publishPlaylistMix(
     p_playlist: playlistId, p_mix: mixId, p_enabled: enabled,
   })
   if (error) throw error
-}
-
-export async function setPlaylistMixEnabled(playlistId: string, enabled: boolean): Promise<void> {
-  const state = await playlistMixState(playlistId)
-  await publishPlaylistMix(playlistId, state.publishedId, enabled)
 }
 
 export async function listMixEdges(mixId: string): Promise<MixEdge[]> {

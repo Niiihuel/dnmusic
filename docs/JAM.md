@@ -1,7 +1,7 @@
 # Jam: escuchar juntos
 
 Una sesión temporal con cola compartida, como el Jam de Spotify. El que la crea
-es el host; el resto entra con un link (`dnmusic-app.vercel.app/jam/CODIGO`) o
+es el host; el resto entra con un link (`dnmusic-production-c3f4.up.railway.app/jam/CODIGO`) o
 con el código, y elige **dónde escuchar**: en su dispositivo, sincronizado, o
 en el del host usando el suyo de control remoto.
 
@@ -118,26 +118,24 @@ cada uno lo suyo, y lo que suena no lo quita nadie.
 
 ## El link
 
-`https://dnmusic-app.vercel.app/jam/CODIGO` rutea en la web y abre la app en
+`https://dnmusic-production-c3f4.up.railway.app/jam/CODIGO` rutea en la web y abre la app en
 iOS. Las tres piezas están puestas: `associatedDomains` en `app.json`, el
 `apple-app-site-association` en `public/.well-known/` con el Team ID real
-(`2K2U374CJC`, sacado del perfil de aprovisionamiento del build), y el header
-`application/json` en `vercel.json` — Apple no acepta el archivo con otro tipo,
-y sin extensión Vercel lo serviría como `text/plain`.
+(`2K2U374CJC`), y el header `application/json` servido por
+`scripts/serve-railway.ts` para la ruta AASA sin extensión.
 
-Para que funcione hace falta que **el deploy de Vercel tenga el AASA** y que la
+Para que funcione hace falta que **el despliegue de Railway tenga el AASA** y que la
 app instalada sea de un build con el entitlement. iOS descarga el archivo al
 instalar: si cambiás el AASA después, hay que reinstalar la app para que lo
 relea.
 
-Pendiente conocido: abrir un link de Jam deslogueado te deja en el login sin
-volver al Jam después.
+Sin sesión aprobada, la ruta muestra los metadatos de invitación mediante
+`Aterrizaje` y conserva el destino al iniciar sesión. La tarjeta pública no
+concede permiso para controlar ni escuchar la Jam.
 
 ## Lo que no está, a propósito
 
-- **Reordenar la cola** (la posición fraccionaria ya lo espera).
 - **Migración de host**: si el host no vuelve, el Jam expira; no se hereda.
-- **QR**: el link por Share alcanza para WhatsApp, que era el caso pedido.
 - **Modo fiesta en la misma habitación**: dos parlantes en el mismo cuarto se
   oyen como eco con cualquier sincronía (Bluetooth mete 150–250ms que no se
   pueden medir). Para eso está «escuchar donde el host»: un solo emisor.

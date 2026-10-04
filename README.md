@@ -1,221 +1,184 @@
 # dnmusic
 
-A music app with people at its center: listen, build playlists, and see what the same people you talk to are listening to. One TypeScript codebase runs in the browser, on iPhone, and in its own Windows or Linux window.
+A music app for listening together: playlists, chat, song sharing, profiles,
+and synchronized Jams. One Expo/React Native codebase runs on iOS, Android,
+the web, and the Windows/Linux Electron app.
 
-dnmusic combines music and conversations, with open registration, contact requests, and blocking.
+Sign-in uses Google. New accounts need approval; existing accounts can link
+Google from Settings. See [access and authentication](docs/ACCESO-GOOGLE.md).
 
-## What it does
+## Stack and structure
 
-| | |
-|---|---|
-| **Music** | Search, genre-based artwork, albums, artists, recommended radio, and an editable queue |
-| **Playlists** | Personal, **public** or private, **collaborative** by link, and importable from Spotify |
-| **Profile** | Full-bleed Steam-style background and a draggable showcase mosaic — songs, lyrics, playlists, images, artists, and albums in three sizes |
-| **Chat** | Real-time conversations; a message can include a **song snippet** with synchronized lyrics |
-| **Jam** | Listen together in sync with a shared queue — join by link or code |
-| **Listening** | Your account across multiple devices is **one music session**: the others are mirrors, and using the transport controls hands playback over |
-| **Reactions** | Leave an emoji on what a contact is listening to right now; it stays on their profile |
-| **Downloads** | Save songs on your phone so they can play offline |
-| **Push** | Notifications while the app is closed, on both phone and desktop |
+- Expo SDK 57, React Native 0.86, React 19, TypeScript 6 and expo-router.
+- NativeWind 4/Tailwind 3.4, Reanimated 4, platform controls through Expo UI
+  and local Swift/Kotlin modules.
+- expo-audio with maintained patches for DSP and native transitions.
+- Supabase: PostgreSQL, Auth, Realtime, Storage and RLS.
+- Railway serves the web app and music API; Electron packages the web export.
 
-Each major piece has its own document in `docs/`, including the decisions behind it and why they were made.
-
-## Stack
-
-| Layer | Technology |
-|------|------------|
-| App | **Expo SDK 57** (React Native 0.86, React 19) + TypeScript 6 |
-| Routing | expo-router (SPA, `web.output: single`), typed routes |
-| Styling | NativeWind 4 + Tailwind 3.4, custom tokens |
-| Animation | react-native-reanimated 4 |
-| Audio | expo-audio + custom Expo modules in Swift (`modules/`) |
-| Backend | **Supabase on Railway** — Postgres + Realtime + Auth + Storage + RLS |
-| Music service | Node (`server/`), hosted with the web app on Railway |
-| Web / PWA | react-native-web → Railway (`dnmusic-production-c3f4.up.railway.app`) |
-| Desktop | Electron (`desktop/`) — Windows and Linux, with auto-updates |
-| iOS | EAS Build + submit to App Store Connect |
-
-### Three platforms, one bundle
-
-The **PWA** is the shortest path: open the URL, choose “Add to Home Screen,” and get an icon without Safari’s address bar. It cannot provide background audio with the screen locked or native controls — that is what the iOS build is for.
-
-The **desktop app** has no separate application code: `desktop/` is a shell that loads the export from `npm run build:web` without changing a line of it. It also acts as an internet fallback — see below.
-
-## Structure
-
-```
-app/                     Routes (expo-router)
-  index.tsx              The three panels: library, content, and now playing
-  sign-in · sign-up      Username login and open registration
-  playing · cola         Full-screen player and queue
-  lista/ · perfil/       Playlists and other people's profiles
-  profile/               Your profile and everything used to edit it
-  jam/                   Create, join, people, and options
-  ajustes/               Downloads, blocked users, and what's new
-  compose · song         Write a message and choose a snippet
-src/
-  services/              music, playlists, jam, escucha, contacts, profile…
-    motor/               The phone's in-app resolver (WebView + BotGuard)
-  state/                 Stores using useSyncExternalStore (playback, player, jam…)
-  ui/                    Components; MotorAudio is the component that plays audio
-  lib/                   supabase, artwork, what's new, and desktop bridges
-  models/                Message, SongSnippet, username
-server/                  Music service (Node): searches, resolves, and caches
- desktop/                Electron shell + in-app resolver
-modules/                 Expo modules in Swift: remote commands, audio routing,
-                         and backup exclusion
-supabase/
-  migrations/            The source of truth for the schema: tables, RLS, triggers, RPCs
-  tests/                 SQL tests against a real Postgres database
-public/ · scripts/       PWA manifest and icons, plus the injection script
-docs/                    DESIGN, MUSICA, JAM, ESCUCHA, PERFIL, LISTAS,
-                         DESCARGAS, ESCRITORIO, MOTOR-TELEFONO, BUILD-IOS
+```text
+app/                     Expo Router routes
+src/ui/                  Shared and platform-specific components; MotorAudio
+src/services/            Music, playlists, messages, profiles and synchronization
+src/services/motor/      The phone's audio resolver
+src/state/               Shared application stores
+src/lib/                 Common helpers and desktop bridges
+server/                  Node music service: resolution, cache and analysis
+desktop/                Electron shell, resolver, IPC and auto-updates
+modules/                 Local Expo modules in Swift and Kotlin
+supabase/migrations/     Database schema, permissions, triggers and RPCs
+supabase/tests/           Transactional database tests
+tests/                   App and integration tests
+scripts/                 Development, export and CI helpers
+docs/                    Setup, product behavior and technical decisions
 ```
 
-`docs/DESIGN.md` is the design system and **must be followed without exceptions**.
+[The documentation index](docs/README.md) links to each subsystem.
+[The design system](docs/DESIGN.md) governs UI changes.
 
 ## Local development
 
-The entire Supabase stack runs in containers — Postgres, Auth, Realtime, PostgREST, and Studio — as does the music service. No account is required.
+Use Node 22 and npm. Docker is required for local Supabase and the music service.
+Install the Supabase CLI and start a development stack:
 
 ```bash
-npm install
-npx supabase start                 # starts the stack and applies supabase/migrations/
-cp .env.example .env.local         # paste the API_URL and ANON_KEY it prints here
-docker compose up --build music    # music service on :8787
-npm run web                        # http://localhost:8081
+npm ci
+npx supabase start
+cp .env.example .env.local
 ```
 
-The keys printed by the CLI are standard development keys: identical across local installations and with no value outside your machine. The `service_role` key belongs in a separate `.env` file (without `.local`) — it is the only file Docker Compose reads to resolve `${...}` variables in `docker-compose.yml`.
-
-> **On NixOS**, the Supabase CLI installed through `npx` does not start, while the nixpkgs version is outdated: apply migrations with `docker exec … psql` against the container, then register them manually in the migration ledger.
-
-### Commands
+Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` in
+`.env.local` to the local values printed by `supabase status`. The template
+already points the music API to port 8787 and shared links to port 8081.
+For Docker Compose, create a separate untracked `.env` with the local
+`SUPABASE_SERVICE_ROLE_KEY`; see the comments in [.env.example](.env.example).
+That key belongs only to the service, never to an `EXPO_PUBLIC_*` variable.
 
 ```bash
-npm run web          # dev server
-npm run typecheck    # tsc --noEmit
-npm run lint         # eslint
-npm run build:web    # static export + PWA tags → dist/
-npx supabase stop    # stop the stack
+docker compose up --build music
+npm run web
 ```
 
-The same checks run on every PR (`.github/workflows/ci-checks.yml`) for the app, service, and desktop app.
+The web dev server runs on port 8081. Local Google login also requires your own
+OAuth credentials and callback configuration; the local provider is disabled
+by default. See [Google setup](docs/ACCESO-GOOGLE.md).
 
-### Schema tests
+Native clients require a development build because Expo Go does not include
+the local modules. Follow [iOS builds](docs/BUILD-IOS.md),
+[Android development](docs/ANDROID.md), or [desktop setup](docs/ESCRITORIO.md).
 
-RLS policies and RPCs are tested against a real Postgres database, not a mock. Each file runs in **one** transaction that ends with `rollback`, and the identity is simulated by setting the `sub` claim as Supabase does:
+## Validation
+
+Install all three dependency sets when checking the whole repository:
+
+```bash
+npm ci
+npm --prefix server ci
+npm --prefix desktop ci --ignore-scripts
+npm run check
+npm run build:web
+```
+
+`npm run check` runs `typecheck:all`, `test:all`, then lint.
+`npm test` tests the app; `npm run test:all` also tests the service and desktop.
+
+Portable DSP tests need a C compiler. Local runs can skip them when one is
+unavailable; CI sets `REQUIRE_EQ_DSP_TEST=1` so a missing compiler fails the gate.
+
+Server tests build `server/dist` before importing it; they run before the root
+lint, which also resolves service imports. Desktop tests compile the shell and
+do not need to launch Electron; `--ignore-scripts` skips its binary download.
+A web export checks the JavaScript bundle, not Swift/Kotlin compilation or
+playback on a physical device.
+
+Database tests in `supabase/tests/` run against PostgreSQL and roll back their
+changes. For example, against the local Supabase database:
 
 ```bash
 psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
   -v ON_ERROR_STOP=1 -f supabase/tests/jam.sql
 ```
 
-There are currently 104 checks across 6 files: Jam, multi-device listening, collaborative playlists, reactions, and contact search.
-
-## Production
-
-**Railway.** The production project is `dnmusic`. Its `dnmusic` service hosts
-the web app and music API at `https://dnmusic-production-c3f4.up.railway.app`.
-Supabase is self-hosted in the same Railway project; its public gateway is
-`https://envoy-production-2fb6.up.railway.app`. Keep production credentials
-in Railway variables, not in the repository.
-
-The release branch for this service is `production` in `Niiihuel/dnmusic`.
-Railway's `dnmusic` service is connected to that branch and deploys its commits
-after **Wait for CI**. Its build uses `Dockerfile` and the `/live` healthcheck;
-the same values are recorded in `railway.toml`. Verify the deployed Git SHA and
-public endpoints after each release. Protect `production` in GitHub and require
-the `Types & lint` check from `.github/workflows/ci-checks.yml` before merging.
-
-The playlist mix migrations `20261001000000`, `20261002000000` and
-`20261003000000` are already applied to production PostgreSQL. For later
-schema changes, apply and verify compatible migrations **before** releasing
-code that uses them, then merge after CI and smoke-test the deployed site/API.
-The exact source setup, migration order and smoke checks are in
-[repository maintenance](docs/REPOSITORIO.md).
-
-Vercel is no longer the production destination. Both legacy `vercel.json`
-files disable automatic Git deployments. Removing GitHub deployment records
-does not delete the old hosted sites; retiring those requires access to Vercel.
-See [repository maintenance](docs/REPOSITORIO.md) for the Vercel cleanup steps.
-
-**Audio cache.** Datacenter requests may be blocked by the upstream provider.
-Devices can resolve audio on their own connection and contribute it to the
-shared cache (see `docs/ESCRITORIO.md` and `docs/MOTOR-TELEFONO.md`).
-
-**Uploads do not go through the service.** `/aportar` and
-`/propia` hand out a single-use signed URL, the client `PUT`s the file straight
-to Supabase Storage, and only then asks the server to confirm it. Nothing is
-weakened: what gets uploaded lands in a quarantine path the app never plays
-from, and the canonical `<videoId>.m4a` is still written only by the server,
-after ffprobe and ffmpeg have approved it. The path is derived from the caller's
-token rather than sent in the body, so confirming can only ever reach your own
-upload. The old body-carrying `/aportar` still answers, for clients that have
-not updated.
-
-**iOS.** `npm run ios:release` (production EAS build + automatic submission). Details are in `docs/BUILD-IOS.md`.
-
-**Desktop.** A tag triggers the workflow, which builds both systems and publishes the installers where electron-updater expects them:
+The separate message-permissions runner creates and removes an ephemeral
+PostgreSQL 17 container:
 
 ```bash
-git tag escritorio-v1.2.0 && git push origin escritorio-v1.2.0
+docker pull postgres:17
+RUN_MESSAGE_DB_TESTS=1 node --test tests/message-actions-db.test.mjs
 ```
 
-The `service_role` key must **never** be included in environment variables exposed to the client: it bypasses RLS completely.
+To require both DSP and database tests in the complete check, with a C compiler
+and Docker available:
 
-## How audio reaches the app
+```bash
+REQUIRE_EQ_DSP_TEST=1 RUN_MESSAGE_DB_TESTS=1 npm run check
+```
 
-The music service resolves a song and caches it in Storage, so it only has to be downloaded once for everyone. The problem is that YouTube denies audio requests from datacenter IPs — `Sign in to confirm you're not a bot` — while any residential IP can resolve the same song without trouble.
+On NixOS, the equivalent supplies GCC without changing the system:
 
-The solution is community-based: when the server's `/resolve` fails, **a device downloads the song through its home IP and contributes it to the shared bucket**. Once one device resolves it, everyone can play it, and the web app finds it in the cache afterward.
+```bash
+nix shell nixpkgs#gcc --command env REQUIRE_EQ_DSP_TEST=1 RUN_MESSAGE_DB_TESTS=1 npm run check
+```
 
-Two clients can do this:
+[CI Checks](.github/workflows/ci-checks.yml) defines the production gate.
+Use the checks required for the changed subsystem and complete native/device
+QA when changing modules, audio, gestures or accessibility.
 
-- **Desktop**, from Electron's main process (`desktop/src/resolutor.ts`).
-- **Phone**, with a hidden WebView that attests to BotGuard and evaluates the JavaScript Hermes cannot (`src/services/motor/`; the rationale is documented in [docs/MOTOR-TELEFONO.md](docs/MOTOR-TELEFONO.md)). It was added for one specific reason: people who only have an iPhone should not depend on someone else turning on a computer.
+## Deployment and releases
 
-The browser cannot do either — talking to InnerTube from a web page is blocked by CORS, which is precisely what a native app does not have to deal with — so it continues to use the server.
+Production web/API: `https://dnmusic-production-c3f4.up.railway.app`.
+Supabase gateway: `https://envoy-production-2fb6.up.railway.app`.
+Keep private credentials in the service's secret store.
 
-The alternative path — a residential proxy through which all YouTube traffic can exit — is implemented behind an environment variable (`YT_PROXY_URL`, see `server/src/salida.ts`). Details are in `docs/MUSICA.md` and `docs/ESCRITORIO.md`.
+The Railway service uses the root [Dockerfile](Dockerfile) and
+[railway.toml](railway.toml), with `/live` as its healthcheck. Its Git source
+is `Niiihuel/dnmusic`, branch `production`, but the deployment trigger is not
+configured. Start and verify deployments manually until automation has been
+implemented and verified. Protect `production` with the **Types & lint**
+check. [Repository maintenance](docs/REPOSITORIO.md) covers migrations,
+commit verification, health checks and the retired Vercel configuration.
 
-The route out is only part of the story; **how the client identifies itself** matters too. The service presents itself as a real YouTube Music client: it talks to `music.youtube.com` rather than `www`, uses the current client version rather than the one bundled with youtubei.js (a year and a half behind), and keeps one browser session from start to finish across BotGuard attestation, `/player`, and the download. This does not unblock a flagged IP, but it covers everything under our control; each piece is documented in `server/src/salida.ts` and `server/src/youtube.ts`.
+Schema changes are separate from code deployment. Apply compatible migrations
+to the intended database before releasing code that requires them; a code
+rollback does not undo a migration.
 
-## Security model
+- iOS: `npm run ios:build` compiles with EAS Cloud;
+  `npm run ios:release` also submits. The manual
+  [GitHub workflow](docs/BUILD-IOS-GITHUB.md) offers EAS local builds and an
+  optional TestFlight submission.
+- Android: [GitHub builds](docs/BUILD-ANDROID-GITHUB.md) produce a signed APK
+  or AAB. The workflow does not publish to Google Play.
+- Desktop: the [release workflow](docs/ESCRITORIO.md#publicar-una-versión)
+  builds Windows and Linux. Manual runs default to no publication; pushing
+  an `escritorio-v<version>` tag publishes after both builds succeed.
 
-The RLS policies in `supabase/migrations/` are the only access control. They enforce the following:
+## Audio and sharing
 
-- Only conversation members can read messages; an authenticated third party sees **0** messages.
-- You can only insert messages where you are the sender, and only the **recipient** can set `opened_at` / `read_at`.
-- Text, sender, and timestamp are **immutable** after insertion — a trigger enforces this because an UPDATE policy cannot compare against the old row.
-- The server overwrites timestamps with `now()`; the client clock does not count.
-- Nobody can delete messages (there is no DELETE policy).
-- Messaging someone new requires a **request** that the other person accepts; **blocking** cuts visibility in both directions without deleting anything.
-- Contact search goes through an RPC that finds the person you are looking for and does not allow browsing the app's accounts.
-- A playlist has two separate permissions: **visibility** (who can read it) and **collaboration** (who can write to it). They are orthogonal.
+The global audio engine owns playback, queue, repeat, shuffle and device
+handoff. Native iOS transitions can start a prepared next track before JS
+receives the event; this still requires preparing subsequent tracks in JS.
+See [continuous playback](docs/REPRODUCCION-CONTINUA.md) and
+[audio patches](patches/README.md) for behavior and device validation.
 
-## Current status
+Desktop and phone resolvers can contribute validated audio to the shared
+cache when server resolution fails. Uploads go directly to a quarantine path
+in Storage; the service validates and remuxes them before publishing the
+canonical audio. See [desktop](docs/ESCRITORIO.md) and
+[phone resolver](docs/MOTOR-TELEFONO.md).
 
-Working and verified:
+The music card adapts Spell UI's visual for chat, sharing and song links.
+Audio controls adapt AudioCN's layout to the existing engine and native
+controls. They do not create another playback session. Sharing uses native
+clipboard APIs on Electron and iOS/Android, with browser fallbacks on web.
+See [sharing](docs/COMPARTIR.md) and [audio components](docs/AUDIO_COMPONENTS.md).
 
-- [x] Auth with open registration, contacts, requests, and blocking
-- [x] Full music experience: search, artwork, albums, artists, queue, and radio
-- [x] Personal, public, collaborative, and Spotify-imported playlists
-- [x] Profile with background, frames, and draggable showcase mosaic
-- [x] Jam and multi-device listening, tested against a real Postgres database
-- [x] Downloads for offline listening
-- [x] Push notifications while the app is closed, on phone and desktop
-- [x] iOS lock screen with transport controls (custom Swift module in `modules/`)
-- [x] Installable PWA and desktop app with auto-updates
-- [x] Custom icon, clean `tsc --noEmit`, and clean `eslint`
+## Security and license
 
-Pending:
+Approved sessions, RLS, server guards and RPC checks enforce access. Message
+edits and deletions use authorized RPCs; direct updates do not gain those
+permissions. Shared public cards contain metadata, not public audio access.
+See [message permissions](docs/CHAT-MENSAJES.md) and
+[access approval](docs/ACCESO-GOOGLE.md).
 
-- [ ] Publish to the App Store — the EAS build is ready; upload is still pending
-- [ ] macOS desktop support: auto-updates require Apple signing and notarization
-- [ ] True remote control across devices (pause another device without taking over its music); the modal currently only offers handoff
-- [ ] Real device names (“Nihuel's iPhone”); they are currently generic
-
-## License
-
-Private. Personal use only.
+Personal project, personal use only. Third-party notices are preserved in
+[docs/licenses/](docs/licenses/).

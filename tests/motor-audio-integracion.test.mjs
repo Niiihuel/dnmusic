@@ -13,7 +13,8 @@ const microtasks = async () => { for (let i = 0; i < 12; i++) await Promise.reso
 // React's hook slots, effect cleanup order, native players and clock are the
 // boundary mocks. Network/preload/Jam are independent of these integration cases.
 function montar({ local = true, falloFirma = false, rotatingSignature = false, transition = 'normal', mixConfig = null,
-  deferCrossfadeArm = false, incomingLoaded = true, incomingAvailable = true, platform = 'ios' } = {}) {
+  deferCrossfadeArm = false, incomingLoaded = true, incomingAvailable = true, platform = 'ios', deferMix = false,
+  preloadRemote = false } = {}) {
   let now = 0, cursor = 0, dirty = true, timerId = 0, firmadoFalla = falloFirma, descargada = local
   let availableIncoming = incomingAvailable
   let engine = null, siguienteId = 0, enJam = false, mirrored = false, visible = false
@@ -104,7 +105,8 @@ function montar({ local = true, falloFirma = false, rotatingSignature = false, t
     '../state/playback': playback,
     '../state/ecualizador': { useEcualizador: () => ({ cargado: true, activo: false, ganancias: Array(10).fill(0) }), informarSoporteEcualizador() {}, guardarEcualizadorAhora: async () => {} },
     '../state/transiciones': { useTransicionesGlobales: () => ({ cargado: true, modo: transition, segundos: 4 }) },
-    '../state/mixPlayback': { useMixPlaylistRevision: () => 0, loadActivePlaylistMix: async () => mixConfig },
+    '../state/mixPlayback': { useMixPlaylistRevision: () => 0,
+      loadActivePlaylistMix: () => deferMix ? new Promise(() => {}) : Promise.resolve(mixConfig) },
     '../state/playlistSoundPreference': { usePlaylistSoundPreference: () => ({ loaded: true, enabled: true }) },
     '../lib/crossfade': { iniciarCrossfade: (from, to, plan, complete, unavailable, armed) => {
       const fade = { from, to, plan, complete, unavailable, arm: armed, canceled: false }
@@ -113,8 +115,11 @@ function montar({ local = true, falloFirma = false, rotatingSignature = false, t
       return () => { fade.canceled = true }
     } },
     '../state/diagnosticoAudio': { registrarIncidenciaAudio: async evento => { calls.events.push(evento) } },
-    '../lib/proximasCola': { proximasCola: ({ tracks, index }, limit) => tracks.slice(index + 1, index + 1 + limit) },
-    './usePrecargaCola': { usePrecargaCola: noop }, './useEspectroAudio': { useEspectroAudio: noop },
+    './usePrecargaCola': { usePrecargaCola: props => {
+      if (!preloadRemote) return
+      const next = props.proximas[0]
+      react.useEffect(() => { if (next) props.remember(next.id, `https://audio/${next.audioPath}`) }, [next?.id])
+    } }, './useEspectroAudio': { useEspectroAudio: noop },
     '../lib/artwork': { artworkSource: () => null },
     '../services/music': { headroomGain: () => 1, perceptualGain: n => n,
       signedUrl: async path => { calls.signatures++; if (firmadoFalla) throw Error('sin conexión'); return `https://audio/${path}${rotatingSignature ? `?v=${calls.signatures}` : ''}` },
@@ -132,7 +137,8 @@ function montar({ local = true, falloFirma = false, rotatingSignature = false, t
     '../state/aviso': { avisar: noop }, '../lib/mensajeError': { mensajeError: error => error.message },
   }
   const actualHelpers = { '../lib/recuperacionAudio': 'src/lib/recuperacionAudio.ts', '../lib/escuchaEfectiva': 'src/lib/escuchaEfectiva.ts',
-    '../lib/useAudioLease': 'src/lib/useAudioLease.ts', '../lib/seek': 'src/lib/seek.ts', '../lib/mixPlan': 'src/lib/mixPlan.ts' }
+    '../lib/useAudioLease': 'src/lib/useAudioLease.ts', '../lib/seek': 'src/lib/seek.ts', '../lib/mixPlan': 'src/lib/mixPlan.ts',
+    '../lib/proximasCola': 'src/lib/proximasCola.ts' }
   function load(path) {
     if (moduleCache.has(path)) return moduleCache.get(path)
     let source = compiled.get(path)
@@ -256,6 +262,138 @@ test('Sin pausa prepara un enlace breve entre canciones de música', async () =>
   h.unmount()
 })
 
+for (const kind of [undefined, 'public']) {
+  test(`iOS prepara el relevo normal de una playlist ${kind ? 'compartida' : 'propia'} sin Mix`, async () => {
+    const h = montar()
+    h.configure({ origin: { id: 'lista', name: 'Lista', ...(kind ? { kind } : {}) } })
+    h.render(); await h.settle(); await h.status(1)
+    const fade = h.calls.crossfades.at(-1)
+    assert.ok(fade, 'el relevo se agenda mientras la canción aún suena')
+    assert.equal(fade.plan.durationSeconds, 0)
+    assert.equal(fade.plan.fromStartSeconds, 180)
+    assert.equal(fade.plan.toStartSeconds, 0)
+    assert.equal(fade.to.playCalls, 0, 'la siguiente espera el final real, sin solapar')
+    await h.status(180, { playing: false, timeControlStatus: 'paused', isHandoffPending: true })
+    assert.equal(h.state.wantPlay, true, 'la pausa automática al final no apaga la cola')
+    assert.equal(h.calls.advance, 0)
+    const saliente = h.player, entrante = fade.to
+    // The native scheduler has already started the next deck before notifying JS.
+    entrante.playing = true
+    saliente.playing = false
+    fade.complete(); await h.settle()
+    assert.equal(h.state.index, 1)
+    assert.equal(h.state.wantPlay, true)
+    assert.equal(h.calls.advance, 1)
+    assert.ok(h.players.includes(entrante))
+    assert.equal(entrante.playCalls, 0, 'promover el deck no vuelve a iniciarlo')
+    const cantidad = h.players.length
+    saliente.emit({ currentTime: 180, playing: false, timeControlStatus: 'paused', didJustFinish: true })
+    h.foreground(true); await h.settle()
+    assert.equal(h.calls.advance, 1)
+    assert.equal(h.players.length, cantidad, 'volver al frente conserva los decks')
+    h.unmount()
+  })
+}
+
+test('la pausa automática antes de didJustFinish no apaga la siguiente canción en iOS', async () => {
+  const h = montar({ incomingLoaded: false })
+  h.render(); await h.settle(); await h.status(179)
+  await h.status(180, { playing: false, timeControlStatus: 'paused' })
+  assert.equal(h.state.wantPlay, true)
+  await h.status(180, { playing: false, timeControlStatus: 'paused', didJustFinish: true })
+  assert.equal(h.state.index, 1)
+  assert.equal(h.state.wantPlay, true)
+  assert.ok(h.player.playCalls > 0)
+  h.unmount()
+})
+
+test('pausar explícitamente cancela el relevo armado aunque esté al final de la pista', async () => {
+  const h = montar(); h.render(); await h.settle(); await h.status(1)
+  const fade = h.calls.crossfades.at(-1)
+  assert.equal(fade.plan.durationSeconds, 0)
+  await h.status(180, { playing: false, timeControlStatus: 'paused', isHandoffPending: true, didJustPause: true })
+  assert.equal(h.state.wantPlay, false)
+  assert.equal(fade.canceled, true)
+  assert.equal(h.calls.advance, 0)
+  fade.complete(); await h.settle()
+  assert.equal(h.calls.advance, 0)
+  h.unmount()
+})
+
+test('cambiar la cola manual cancela el relevo anterior y prepara la fila exacta', async () => {
+  const h = montar(); h.render(); await h.settle(); await h.status(1)
+  const viejo = h.calls.crossfades.at(-1)
+  const fila = { ...pista('a'), id: 'manual:misma-cancion' }
+  h.configure({ upNext: [fila] }); await h.settle(); await h.status(2)
+  assert.equal(viejo.canceled, true)
+  const nuevo = h.calls.crossfades.at(-1)
+  assert.notEqual(nuevo, viejo)
+  assert.equal(nuevo.to.source.uri, 'file://a.m4a', 'no salta una petición manual del mismo video')
+  viejo.complete(); await h.settle()
+  assert.equal(h.calls.advance, 0)
+  h.unmount()
+})
+
+for (const cancelacion of ['seleccion', 'pausa', 'espejo']) {
+  test(`el relevo encolado respeta ${cancelacion} antes del siguiente render`, async () => {
+    const h = montar(); h.render(); await h.settle(); await h.status(1)
+    const fade = h.calls.crossfades.at(-1)
+    if (cancelacion === 'seleccion') h.reselect()
+    if (cancelacion === 'pausa') h.wantPlay(false)
+    if (cancelacion === 'espejo') h.mirror(true)
+    fade.to.playing = true
+    fade.complete()
+    assert.equal(h.calls.advance, 0)
+    assert.equal(fade.to.playing, false, 'detiene la entrada que ya había arrancado nativamente')
+    await h.settle()
+    assert.equal(h.state.index, 0)
+    h.unmount()
+  })
+}
+
+test('iOS puede armar el relevo aunque el Mix colaborativo siga esperando la red', async () => {
+  const h = montar({ deferMix: true })
+  h.configure({ origin: { id: 'colaborativa', name: 'Lista', kind: 'public' } })
+  h.render(); await h.settle(); await h.advanceClock(1500); await h.status(1)
+  assert.equal(h.calls.crossfades.at(-1).plan.durationSeconds, 0)
+  assert.equal(h.state.wantPlay, true)
+  h.unmount()
+})
+
+test('una descarga justo en el relevo conserva el deck remoto; un fallo posterior sí adopta el archivo', async () => {
+  const h = montar({ local: false, preloadRemote: true })
+  h.render(); await h.settle(); await h.status(1)
+  const fade = h.calls.crossfades.at(-1), entrante = fade.to
+  assert.equal(entrante.source.uri, 'https://audio/b.m4a')
+  h.download(true) // El índice local cambia antes de que React procese el handoff.
+  entrante.playing = true
+  fade.complete(); await h.settle()
+  assert.equal(h.state.index, 1)
+  assert.equal(h.nextPlayer, entrante, 'la fuente local nueva no recrea el deck ya sonando')
+  entrante.emit({ currentTime: 42 })
+  await h.settle()
+  entrante.emit({ currentTime: 0, playing: false, isLoaded: false, error: 'fallo de red', playbackState: 'failed' })
+  await h.settle(); await h.advanceClock(1000)
+  assert.equal(h.nextPlayer.source.uri, 'file://b.m4a', 'la recuperación libera la fuente fijada')
+  assert.notEqual(h.nextPlayer, entrante)
+  h.nextPlayer.emit({ currentTime: 0 })
+  await h.settle()
+  assert.equal(h.nextPlayer.seeks.at(-1), 42)
+  assert.equal(h.state.wantPlay, true)
+  assert.equal(h.calls.advance, 1)
+  h.unmount()
+})
+
+for (const platform of ['web', 'android']) {
+  test(`${platform} mantiene el avance normal sin solicitar el relevo exclusivo de iOS`, async () => {
+    const h = montar({ platform }); h.render(); await h.settle(); await h.status(170)
+    assert.equal(h.calls.crossfades.length, 0)
+    await h.status(180, { playing: false, didJustFinish: true })
+    assert.equal(h.calls.advance, 1)
+    h.unmount()
+  })
+}
+
 test('un cue cero se arma antes de reproducir y espera la confirmación del motor', async () => {
   const mix = { id: 'mix-zero', defaultPreset: 'fade', defaultDurationMs: 4000 }
   const edge = { fromPlaylistTrackId: 'a', toPlaylistTrackId: 'b', preset: 'fade',
@@ -361,7 +499,9 @@ test('un Mix aplica el cue del par real y no se hereda a Up Next externo', async
   h.configure({ upNext: [pista('externa')] }); await h.settle()
   assert.equal(h.calls.crossfades[0].canceled, true)
   await h.status(171)
-  assert.equal(h.calls.crossfades.length, 1, 'el par externo no usa la transición de la playlist')
+  assert.equal(h.calls.crossfades.length, 2)
+  assert.equal(h.calls.crossfades[1].plan.durationSeconds, 0, 'el par externo usa sólo el relevo al final')
+  assert.equal(h.calls.crossfades[1].to.source.uri, 'file://externa.m4a')
   h.unmount()
 })
 

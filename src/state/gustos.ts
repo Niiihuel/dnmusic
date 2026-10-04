@@ -73,25 +73,6 @@ export function alternarMeGusta(track: PlaylistTrack) {
   })
 }
 
-/**
- * Los artistas con corazones, para reforzar las anclas de las recomendaciones.
- *
- * Devuelve cuántos me gusta tiene cada artista **con id** — sin el id del
- * canal no hay catálogo que pedir, igual que en `artistas_mas_escuchados`.
- * Es una lectura del estado ya cargado: las recomendaciones corren cuando la
- * lista se terminó, y para ese entonces esto está en memoria hace rato.
- */
-export function gustosPorArtista(): { artist_id: string; artist: string; cuantos: number }[] {
-  const porArtista = new Map<string, { artist_id: string; artist: string; cuantos: number }>()
-  for (const c of store.get().canciones) {
-    if (!c.artistId) continue
-    const previo = porArtista.get(c.artistId)
-    if (previo) previo.cuantos += 1
-    else porArtista.set(c.artistId, { artist_id: c.artistId, artist: c.artist, cuantos: 1 })
-  }
-  return [...porArtista.values()]
-}
-
 export const useMeGusta = () => useStore(store, (s) => s.canciones)
 export const useMeGustaCargado = () => useStore(store, (s) => s.cargado)
 export const useEsGustada = (videoId: string | undefined) =>

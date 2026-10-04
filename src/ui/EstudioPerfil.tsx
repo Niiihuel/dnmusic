@@ -131,7 +131,7 @@ export function EstudioPerfil({ perfil, perfilOriginal = perfil, estilo, onCambi
           : <SuperficiePerfil perfil={mostrado} minHeight={480}>
             <CabeceraPerfil perfil={mostrado} banda animado={animado} />
             <Resumen ownerId={mostrado.userId} marcoPerfil={mostrado.marcoPerfil} animado={animado} desde={mostrado.createdAt} />
-            <Vitrinas ownerId={mostrado.userId} recarga={0} onCambio={() => undefined} temaGlobal={mostrado.tema}
+            <Vitrinas ownerId={mostrado.userId} recarga={0} temaGlobal={mostrado.tema}
               vacio={<View style={s.mosaico}><Text style={s.texto}>Tu espacio</Text><Text style={s.secundario}>Todavía no hay vitrinas en este perfil.</Text></View>} />
           </SuperficiePerfil>}
       </View>

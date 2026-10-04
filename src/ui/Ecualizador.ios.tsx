@@ -73,7 +73,7 @@ export default function Ecualizador() {
               {soporte === 'error' ? <Button label="Reintentar" onPress={reintentarEcualizador} modifiers={[listRowBackground(FILA), disabled(remoto)]} /> : null}
             </Section>
             <Section title="Sonido" footer={<Text>{estado.activo ? 'Tocá una banda y arrastrá hacia arriba o abajo. El nivel se compensa para reducir la saturación.' : 'Activá el ecualizador para ajustar el sonido. Tu curva queda guardada.'}</Text>}>
-              <HStack modifiers={[listRowBackground(FILA)]}><Text>{nombrePresetEcualizador(estado)}</Text><Spacer /><Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(MUTED)]}>10 bandas</Text></HStack>
+              <HStack modifiers={[listRowBackground(FILA)]}><Text>{nombrePresetEcualizador(estado)}</Text><Spacer /><Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(MUTED)]}>10 bandas · ±12 dB</Text></HStack>
               <VStack modifiers={[listRowInsets({ top: 0, bottom: 0, leading: 0, trailing: 0 }), listRowBackground(FILA), listRowSeparator('hidden'), frame({ height: EQ_GRAPH_HEIGHT })]}>
                 <RNHostView matchContents><CurvaEcualizador ancho={ancho} ganancias={estado.ganancias} seleccionada={banda} onSeleccionar={setBanda} disabled={edicionBloqueada} /></RNHostView>
               </VStack>
@@ -82,14 +82,27 @@ export default function Ecualizador() {
                   <Menu label={<HStack spacing={6}><Text>{frecuenciaEQ(FRECUENCIAS_EQ[banda])}</Text><Image systemName="chevron.up.chevron.down" size={11} /></HStack>}>
                     {FRECUENCIAS_EQ.map((hz, index) => <Button key={hz} label={frecuenciaEQ(hz)} systemImage={index === banda ? 'checkmark' : undefined} onPress={() => setBanda(index)} />)}
                   </Menu>
-                  <Spacer /><Text modifiers={[font({ textStyle: 'body', weight: 'semibold' })]}>{decibeliosEQ(ganancia)}</Text>
+                  <Spacer /><Text modifiers={[font({ textStyle: 'title2', weight: 'semibold' })]}>{decibeliosEQ(ganancia)}</Text>
                 </HStack>
                 <Slider key={banda} min={-12} max={12} step={0.5} value={ganancia}
                   onValueChange={value => { if (!edicionBloqueada) setGananciaEcualizador(banda, value) }}
                   onEditingChanged={editing => { if (!editing) void guardarEcualizadorAhora() }}
-                  minimumValueLabel={<Text modifiers={[font({ textStyle: 'caption' }), foregroundStyle(MUTED)]}>−12</Text>}
-                  maximumValueLabel={<Text modifiers={[font({ textStyle: 'caption' }), foregroundStyle(MUTED)]}>+12</Text>}
+                  minimumValueLabel={<Text modifiers={[font({ textStyle: 'caption' }), foregroundStyle(MUTED)]}>−12 dB</Text>}
+                  maximumValueLabel={<Text modifiers={[font({ textStyle: 'caption' }), foregroundStyle(MUTED)]}>+12 dB</Text>}
                   modifiers={[disabled(edicionBloqueada), accessibilityLabel(`Ganancia de ${frecuenciaEQ(FRECUENCIAS_EQ[banda])}`), accessibilityValue(decibeliosEQ(ganancia)), frame({ minHeight: 44 })]} />
+                <HStack spacing={12}>
+                  <Button label="−0,5 dB" onPress={() => { setGananciaEcualizador(banda, ganancia - 0.5); void guardarEcualizadorAhora() }}
+                    modifiers={[buttonStyle('bordered'), frame({ minHeight: 44 }), disabled(edicionBloqueada || ganancia <= -12),
+                      accessibilityLabel(`Reducir ${frecuenciaEQ(FRECUENCIAS_EQ[banda])} en 0,5 dB`)]} />
+                  <Spacer />
+                  <Button label="0 dB" onPress={() => { setGananciaEcualizador(banda, 0); void guardarEcualizadorAhora() }}
+                    modifiers={[buttonStyle('bordered'), frame({ minHeight: 44 }), disabled(edicionBloqueada || ganancia === 0),
+                      accessibilityLabel(`Restablecer ${frecuenciaEQ(FRECUENCIAS_EQ[banda])} a 0 dB`)]} />
+                  <Spacer />
+                  <Button label="+0,5 dB" onPress={() => { setGananciaEcualizador(banda, ganancia + 0.5); void guardarEcualizadorAhora() }}
+                    modifiers={[buttonStyle('bordered'), frame({ minHeight: 44 }), disabled(edicionBloqueada || ganancia >= 12),
+                      accessibilityLabel(`Aumentar ${frecuenciaEQ(FRECUENCIAS_EQ[banda])} en 0,5 dB`)]} />
+                </HStack>
               </VStack>
             </Section>
             <Section title="Preajustes">

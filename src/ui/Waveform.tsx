@@ -32,29 +32,15 @@ import { BotonVidrio } from './Glass'
 import { mixSpectrumPaths, validMixSpectrum, type MixSpectrumBands,
   type MixSpectrumPaths } from '../lib/mixSpectrum'
 
-/** Ancho ideal de una barra más su separación. La misma geometría que `Onda`. */
 const PITCH = BARRA + HUECO
-/** Tope de barras dibujadas: más que esto no se distinguen a simple vista. */
 const MAX_BARS = 800
-
-/*
- * Los tres tonos de la onda, de más apagado a más brillante: fuera del recorte,
- * dentro pero todavía sin sonar, y ya reproducido. Son los mismos que usa la
- * onda de las tarjetas — separados por luminancia, nunca por color.
- */
 const BAR_OUTSIDE = ONDA_PENDIENTE
 const BAR_AHEAD = ONDA_ADELANTE
 const BAR_PLAYED = ONDA_SONADA
 const MIX_SPECTRUM_DIM = { low: '#8D502F', mid: '#9F7C50', high: '#2C4C8E' }
 const MIX_SPECTRUM_LIT = { low: '#F18E46', mid: '#FFD391', high: '#3B78E7' }
 
-/**
- * Qué tan cerca del borde de la pintura hay que agarrar para mover la
- * reproducción en vez de correr la canción bajo el recorte.
- *
- * Antes ese borde lo marcaba un cursor dibujado; ahora es el límite entre lo
- * blanco y lo gris, que es igual de visible y no tapa las barras.
- */
+/* El límite entre progreso y pendiente permite agarrar la posición sin dibujar un cursor sobre las barras. */
 const GRAB_PX = 24
 
 type Props = {
@@ -71,22 +57,9 @@ type Props = {
   windowMs: number
   startMs: number
   onChangeStart: (startMs: number) => void
-  /**
-   * Posición de reproducción, como shared value.
-   *
-   * Va por shared value y no por prop numérica a propósito: con una prop, cada
-   * cuadro de reproducción provocaba un render de React que rehacía la onda
-   * entera, y el cursor avanzaba a saltos. Así el cursor se mueve en el hilo de
-   * UI y el árbol de React no se toca.
-   */
+  /* El shared value mueve el cursor en UI sin reconstruir la onda por cuadro. */
   positionMs?: SharedValue<number>
-  /**
-   * Mover la reproducción: tocando la onda, o arrastrando el cursor.
-   *
-   * Llega **una sola vez**, al soltar, y no en cada cuadro del arrastre: durante
-   * el arrastre el cursor se mueve solo en el hilo de UI. Pedirle un salto al
-   * audio por cuadro es lo que lo hacía sonar a estática.
-   */
+  /* Confirma una sola búsqueda al soltar; durante el arrastre sólo cambia la vista. */
   onScrub?: (ms: number) => void
   playing?: boolean
   height?: number
@@ -108,14 +81,7 @@ export function Waveform(props: Props) {
   return props.zoomed ? <ZoomedWaveform {...props} /> : <LegacyWaveform {...props} />
 }
 
-/**
- * Onda con ventana de recorte, al modelo de Instagram.
- *
- * La ventana está fija en el centro y lo que se arrastra es la canción por
- * debajo. La escala se deriva de la ventana: se calcula cuántas barras entran a
- * lo ancho y se remuestrea la onda, para que el recorte ocupe siempre el mismo
- * espacio en pantalla sin importar cuán larga sea la canción.
- */
+/* La selección permanece fija; se arrastra la canción debajo y la escala se deriva de la duración del recorte. */
 function LegacyWaveform({
   peaks,
   durationMs,
@@ -129,8 +95,11 @@ function LegacyWaveform({
   playing = false,
   height = 88,
   overlay,
+  editable = true,
+  label = 'canción',
 }: Props) {
   const [width, setWidth] = useState(0)
+  const [foco, setFoco] = useState(false)
 
   const geom = useMemo(() => {
     if (!width || !durationMs || !windowMs || !peaks.length) return null
@@ -169,7 +138,7 @@ function LegacyWaveform({
   const dragFrom = useSharedValue(0)
   const fallback = useSharedValue(0)
   const position = positionMs ?? fallback
-  /** Arrastre del cursor: si está en curso, y adónde va. */
+
   const scrubbing = useSharedValue(false)
   const scrubMs = useSharedValue(0)
 
@@ -179,14 +148,14 @@ function LegacyWaveform({
   }, [startMs, pxPerMs, windowLeft, translate])
 
   const commit = (tx: number) => {
-    if (!pxPerMs) return
+    if (!pxPerMs || !editable) return
     const ms = (windowLeft - tx) / pxPerMs
     const next = Math.round(Math.max(0, Math.min(maxStartMs, ms)))
     if (next !== startMs) onChangeStart(next)
   }
 
   const scrub = (ms: number) => onScrub?.(ms)
-  /** Milisegundo bajo un punto x de la vista, acotado a la ventana. */
+
   const timeAt = (x: number) => {
     'worklet'
     const ms = startMs + (x - windowLeft) / pxPerMs
@@ -194,21 +163,13 @@ function LegacyWaveform({
   }
 
   const minTranslate = windowLeft - maxStartMs * pxPerMs
-  /*
-   * Un solo gesto para las dos cosas, decidido al apoyar el dedo.
-   *
-   * Arrastrar cerca del cursor mueve la reproducción; arrastrar en cualquier
-   * otro lado corre la canción bajo la ventana de recorte. Y si el recorte ya
-   * es la canción entera no hay nada que correr, así que ahí cualquier arrastre
-   * mueve la reproducción — que era justo el caso donde antes no se podía hacer
-   * nada con la onda.
-   */
+  /* Cerca del progreso el gesto busca; en el resto desplaza la canción. Un recorte completo sólo permite buscar. */
   const pan = Gesture.Pan()
-    .enabled(maxStartMs > 0 || !!onScrub)
+    .enabled((editable && maxStartMs > 0) || !!onScrub)
     .onBegin((e) => {
       dragFrom.value = translate.value
       const cursorX = windowLeft + (position.value - startMs) * pxPerMs
-      scrubbing.value = !!onScrub && (maxStartMs === 0 || Math.abs(e.x - cursorX) <= GRAB_PX)
+      scrubbing.value = !!onScrub && (!editable || maxStartMs === 0 || Math.abs(e.x - cursorX) <= GRAB_PX)
       scrubMs.value = position.value
     })
     .onUpdate((e) => {
@@ -227,7 +188,6 @@ function LegacyWaveform({
     })
     .activeOffsetX([-4, 4])
 
-  /** Tocar la onda lleva la reproducción a ese punto. */
   const tap = Gesture.Tap()
     .enabled(!!onScrub)
     .onEnd((e) => {
@@ -238,34 +198,10 @@ function LegacyWaveform({
 
   const stripStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translate.value }] }))
 
-  /*
-   * El progreso se dibuja iluminando lo ya sonado, no oscureciendo lo que
-   * falta — el modelo de Instagram.
-   *
-   * Antes era un velo translúcido encima de la parte pendiente: se leía como
-   * "esto está apagado" en vez de "esto se está llenando", y además ensuciaba
-   * el color de las barras al superponerse. Ahora las barras del recorte están
-   * en blanco (el acento, que docs/DESIGN.md reserva para el estado activo) y
-   * encima se recorta una copia en gris que arranca en la posición actual: lo
-   * queda a la derecha se ve gris, y a medida que avanza la reproducción el
-   * blanco va ganando terreno.
-   *
-   * Son dos desplazamientos opuestos y nada más: el recorte se corre hasta la
-   * posición y la copia gris de adentro se corre en sentido contrario la misma
-   * cantidad, para que sus barras sigan coincidiendo con las de abajo. Todo en
-   * el hilo de UI, sin tocar el layout.
-   */
+  /* Dos desplazamientos opuestos alinean el recorte gris con las barras blancas sin modificar el layout. */
   const aheadClipStyle = useAnimatedStyle(() => {
     const at = scrubbing.value ? scrubMs.value : position.value
-    /*
-     * La pintura queda a la vista mientras haya progreso, no solo mientras
-     * suena. Ya no hay cursor que marque la posición, así que si al pausar se
-     * borrara el relleno no quedaría forma de saber dónde quedó.
-     *
-     * Sin progreso —recorte recién elegido o movido— el recorte se ve entero
-     * blanco: así se lee como "esto es lo que seleccionaste" y no como algo a
-     * medio reproducir.
-     */
+    /* La pausa conserva el progreso; sin progreso, el recorte entero se muestra seleccionado. */
     const started = at > startMs + 1
     return {
       transform: [{ translateX: (at - startMs) * pxPerMs }],
@@ -294,11 +230,38 @@ function LegacyWaveform({
     </Svg>
   )
 
+  const ajustar = (delta: number) => {
+    if (!editable) return
+    const next = stepMixCue(startMs, delta, maxStartMs)
+    if (next !== startMs) onChangeStart(next)
+  }
+
   return (
     <GestureDetector gesture={gesture}>
       <View
+        accessible
+        {...(Platform.OS === 'web' && editable ? {
+          tabIndex: 0, onFocus: () => setFoco(true), onBlur: () => setFoco(false),
+          onKeyDown: (event: { key: string; shiftKey?: boolean; preventDefault: () => void }) => {
+            const paso = CUE_FINE_STEP_MS * (event.shiftKey ? 10 : 1)
+            const delta = event.key === 'Home' ? -startMs : event.key === 'End' ? maxStartMs - startMs
+              : ['ArrowRight', 'ArrowUp'].includes(event.key) ? paso
+                : ['ArrowLeft', 'ArrowDown'].includes(event.key) ? -paso : null
+            if (delta === null) return
+            event.preventDefault(); ajustar(delta)
+          },
+        } as object : {})}
+        accessibilityRole={editable ? 'adjustable' : 'image'}
+        accessibilityLabel={editable ? `Inicio del fragmento de ${label}` : `Onda de ${label}`}
+        accessibilityValue={editable ? { min: 0, max: maxStartMs / 1000, now: startMs / 1000, text: `${(startMs / 1000).toFixed(1)} segundos` } : undefined}
+        accessibilityActions={editable ? [{ name: 'increment', label: 'Avanzar 0,1 segundos' }, { name: 'decrement', label: 'Retroceder 0,1 segundos' }] : undefined}
+        onAccessibilityAction={event => {
+          if (event.nativeEvent.actionName === 'increment') ajustar(CUE_FINE_STEP_MS)
+          if (event.nativeEvent.actionName === 'decrement') ajustar(-CUE_FINE_STEP_MS)
+        }}
         onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-        style={{ height, overflow: 'hidden', justifyContent: 'center' }}
+        style={[{ height, overflow: 'hidden', justifyContent: 'center', borderRadius: 10 },
+          Platform.OS === 'web' && foco ? { outline: '2px solid #FFFFFF', outlineOffset: 2 } as object : null]}
       >
         <Animated.View style={[{ position: 'absolute' }, stripStyle]}>
           {strip(BAR_OUTSIDE)}
@@ -323,8 +286,6 @@ function LegacyWaveform({
             {strip(BAR_PLAYED)}
           </Animated.View>
 
-          {/* Lo que todavía no sonó: las mismas barras en gris, recortadas
-              desde la posición de reproducción hacia la derecha. */}
           <Animated.View
             pointerEvents="none"
             style={[
@@ -585,6 +546,7 @@ function ZoomedWaveform({
   return <View onLayout={event => setWidth(event.nativeEvent.layout.width)} style={{ gap }}>
     <GestureDetector gesture={Gesture.Race(overviewPan, overviewTap)}>
       <View {...keyboard}
+        accessible
         accessibilityRole="adjustable"
         accessibilityLabel={`Punto de mezcla de ${label}`}
         accessibilityHint="Arrastrá la selección o usá las flechas para ajustar el punto de la canción"

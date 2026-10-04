@@ -4,12 +4,9 @@ La app es Expo y puede compilarse con **EAS Cloud** o en **GitHub Actions**
 con EAS local. Para compilar sin cupo de EAS Cloud, seguí la
 [guía de GitHub Actions](BUILD-IOS-GITHUB.md). No necesitás una Mac propia.
 
-Esto reemplaza al pipeline viejo (`fastlane` + `xcodegen` + runner macOS), que
-compilaba el scaffold Swift `DanyApp/` — otra app, borrada junto con las flores.
-
 ## Qué necesitás
 
-- La cuenta de **Apple Developer** paga (la tenés).
+- Una cuenta de **Apple Developer** con permisos de firma y distribución.
 - Una cuenta de Expo, gratis: `expo.dev`.
 - El iPhone a mano la primera vez, para registrarlo.
 
@@ -19,7 +16,7 @@ compilaba el scaffold Swift `DanyApp/` — otra app, borrada junto con las flore
 
 | Perfil | Para qué | Cómo llega al teléfono |
 |---|---|---|
-| `development` | El **development client**: la app con todo el código nativo, pero cargando el JS desde tu Metro. Es la que necesitás para probar el audio en segundo plano y, más adelante, el módulo Swift de los botones ⏮⏭. | Link/QR, instalación directa |
+| `development` | Cliente con los módulos nativos del proyecto y JS servido por Metro. Permite probar controles y audio en segundo plano. | Link/QR, instalación directa |
 | `preview` | Un build de release, sin Metro. Para probar como queda de verdad. | Link/QR, instalación directa |
 | `production` | El que va a TestFlight y a la App Store. | TestFlight |
 
@@ -31,9 +28,12 @@ un QR, sin pasar por TestFlight. Por eso el teléfono tiene que estar registrado
 ```bash
 npm i -g eas-cli          # o usá npx eas-cli en cada comando
 eas login                 # tu cuenta de Expo
-eas init                  # crea el proyecto y escribe extra.eas.projectId en app.json
 eas device:create         # registra el iPhone: te da un QR, ella instala el perfil
 ```
+
+El repositorio ya tiene `extra.eas.projectId` y el slug de compatibilidad
+`flora` en `app.json`. Usá ese proyecto con una cuenta autorizada; no ejecutes
+`eas init` para crear o vincular otro. Ver [identificadores de compatibilidad](REPOSITORIO.md#identificadores-de-compatibilidad).
 
 En `eas device:create` elegís "Website" y se abre un link. Al abrirlo **desde el
 iPhone** se instala un perfil de configuración y el UDID queda registrado en tu
@@ -52,7 +52,9 @@ npm run ios:build         # producción, solo compilación EAS
 npm run ios:release       # producción + subida a TestFlight
 ```
 
-Cuando termina te da un link. Abriéndolo desde el iPhone, se instala.
+Los builds internos se instalan desde el enlace en un iPhone registrado.
+El IPA de `production` se distribuye por TestFlight/App Store, no por instalación
+directa desde Safari. El envío no implica aprobación ni publicación en la tienda.
 
 Con el development client puesto, el día a día es el de siempre:
 

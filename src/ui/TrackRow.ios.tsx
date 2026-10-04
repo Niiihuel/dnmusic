@@ -11,9 +11,9 @@ export { ANCHO_DURACION } from './TrackRow.shared'
 export function TrackRow(props: ComponentProps<typeof Respaldo>) {
   const { fontScale } = useWindowDimensions()
   const cargada = usePlaybackCargada()
-  if (!NativeMediaRow) return <Respaldo {...props} />
-  const { title, artist, downloaded, bpm, artwork, sounding, playing, busy, inset = true, onPlay, trailing, menu } = props
-  const subtitle = `${downloaded ? '↓  ' : ''}${artist}${bpm === undefined ? '' : ` · ${bpm === null ? '—' : `${bpm.approximate ? '≈' : ''}${bpm.bpm}`} BPM`}`
+  if (!NativeMediaRow) return <Respaldo {...props} bpm={undefined} />
+  const { title, artist, downloaded, artwork, sounding, playing, busy, inset = true, onPlay, trailing, menu } = props
+  const subtitle = `${downloaded ? '↓  ' : ''}${artist}`
   const fila = <RowSurface style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: inset ? 12 : 0 }}>
     <NativeMediaRow title={title} subtitle={subtitle} artwork={artwork}
       sounding={sounding} playing={playing} busy={filaCargando(sounding, playing, cargada, busy)}

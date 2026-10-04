@@ -217,7 +217,6 @@ export default function SubspaceScreen() {
                     borrador={propio ? mosaico : undefined}
                     parentId={id}
                     recarga={recarga}
-                    onCambio={() => setRecarga((n) => n + 1)}
                     editando={armando}
                     temaGlobal={temaGlobal}
                     onEditar={propio ? abrirEditor : undefined}
