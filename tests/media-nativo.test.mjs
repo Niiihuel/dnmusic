@@ -79,7 +79,9 @@ test('las filas nativas mantienen las acciones, el contexto y el estado real de 
   })
   const menu = [{ label: 'Compartir', onPress: () => calls.push('share') }]
   const trailing = jsx('Remove', { onPress: () => calls.push('remove') })
-  const tree = TrackRow({ title: 'Tema', artist: 'Artista', downloaded: true, artwork: 'https://cover', sounding: true, playing: true, onPlay: () => calls.push('pause'), trailing, menu })
+  const tree = TrackRow({ title: 'Tema', artist: 'Artista', downloaded: true,
+    bpm: { bpm: 123, approximate: true, minBpm: 120, maxBpm: 125, varying: true },
+    artwork: 'https://cover', sounding: true, playing: true, onPlay: () => calls.push('pause'), trailing, menu })
   assert.equal(tree.type, 'Context')
   assert.equal(tree.props.items, menu)
   const row = find(tree, 'NativeRow')
@@ -99,8 +101,8 @@ test('el binario anterior conserva las filas y la navegación de respaldo', () =
     '../state/playback': { usePlaybackCargada: () => true }, './Menu': {},
     './TrackRow.shared': { TrackRow: 'Fallback', ANCHO_DURACION: 64 },
   })
-  const props = { title: 'Tema', onPlay() {} }
-  assert.deepEqual(TrackRow(props), jsx('Fallback', props))
+  const props = { title: 'Tema', bpm: { bpm: 120, approximate: false, minBpm: 120, maxBpm: 120, varying: false }, onPlay() {} }
+  assert.deepEqual(TrackRow(props), jsx('Fallback', { ...props, bpm: undefined }))
   const { TabPildora } = load('src/ui/TabBar.ios.tsx', {
     'react-native': { Platform: { Version: 26 }, useWindowDimensions: () => ({ fontScale: 1 }) },
     '../../modules/media-controls': { NativeMediaTabs: null },

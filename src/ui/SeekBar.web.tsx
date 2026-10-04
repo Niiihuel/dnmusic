@@ -21,7 +21,7 @@ export function SeekBar({ label, progress, elapsedMs, totalMs, onSeek, compact =
   const controller = useRef<ReturnType<typeof observeSeekInput> | null>(null)
   useLayoutEffect(() => {
     const state = {
-      progress, envivo, onSeek,
+      progress, envivo, onSeek, keyStep: !envivo && totalMs > 0 ? 5000 / totalMs : 0.05,
       describe: (fraction: number) => totalMs > 0 ? `${formatClock(fraction * totalMs)} / ${formatClock(totalMs)}` : `${Math.round(fraction * 100)}%`,
       preview: (fraction: number | null) => {
         if (clock.current) clock.current.textContent = formatClock(fraction === null ? elapsedMs : fraction * totalMs)

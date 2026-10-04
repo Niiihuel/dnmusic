@@ -2,7 +2,7 @@ import { crearVigilanteAudio, abrirFuenteConReintento, esperarAperturaAudio, typ
 import { crearMedidorEscucha } from '../lib/escuchaEfectiva'
 import { useAudioLease } from '../lib/useAudioLease'
 import { registrarIncidenciaAudio } from '../state/diagnosticoAudio'
-import { proximasCola } from '../lib/proximasCola'
+import { proximasCola, siguienteCola } from '../lib/proximasCola'
 import { usePrecargaCola } from './usePrecargaCola'
 import { useEspectroAudio } from './useEspectroAudio'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -61,63 +61,21 @@ import { usePlaylistSoundPreference } from '../state/playlistSoundPreference'
 const END_EPSILON_S = 0.35
 /** Límite para preparar un cue al inicio sin demorar indefinidamente el play. */
 const CUE_ZERO_PREPARE_TIMEOUT_MS = 1500
-/**
- * Cuántas URLs firmadas se guardan **además** de las que están en uso.
- *
- * Las de la canción actual y la siguiente no cuentan acá: esas no se tiran
- * nunca mientras lo sigan siendo. Ver `remember`.
- */
+/** Tope de URLs cacheadas además de las fuentes actual y próximas, que se conservan. */
 const CACHE_URLS = 3
-/**
- * Cada cuánto se le avisa al store la posición.
- *
- * La barra fina se actualiza por cuadro mientras está visible; el store
- * recibe menos avisos. El final lo informa el reproductor.
- */
+/** Cadencia del store; la barra fina usa cuadros visibles y el final llega del player. */
 const AVISO_CADA_MS = 100
-/*
- * La sincronía del Jam, en tres números.
- *
- * Debajo de 80ms no se toca nada: es menos que la latencia de un Bluetooth y
- * corregirlo sería perseguir ruido. Hasta 400ms se corrige **estirando el
- * tiempo** —velocidad 1.04 con corrección de tono, inaudible— porque un salto
- * en medio de la música es un artefacto que se oye y esto no. Más de 400ms es
- * un salto franco: seekTo con tolerancia cero, exacto al cuadro.
- *
- * La deriva se revisa cada 7 segundos con un `setInterval` — **jamás** con
- * `requestAnimationFrame`: un bucle por cuadro leyendo la posición es la forma
- * exacta del que hizo que iOS matara la app por CPU (ver el comentario largo
- * de abajo). Entre revisiones, cada evento del Jam dispara una corrección
- * puntual: los saltos y pausas de otro llegan al oído en el viaje del evento,
- * no en el próximo tick.
+/**
+ * Jam ignora deriva <80ms, corrige hasta 400ms con velocidad y salta por encima.
+ * Revisa cada siete segundos y ante eventos; evita leer por cuadro en segundo plano.
  */
 const JAM_DERIVA_MIN_MS = 80
 const JAM_SALTO_MS = 400
 const JAM_REVISA_CADA_MS = 7000
 
 /**
- * El motor de audio: **el que suena**. No dibuja nada.
- *
- * Vivía adentro de `NowPlayingBar`, y ahí estaba el problema. El reproductor de
- * expo-audio es un objeto que vive **dentro de `useAudioPlayer`**, así que se
- * libera cuando su componente se desmonta. La barra, en cambio, se dibuja en
- * cuatro formas distintas según dónde estés —buscando, en un chat, con
- * pestañas, o suelta— y `app/_layout.tsx` las tenía como cuatro ramas de un
- * ternario: cuatro posiciones distintas del árbol.
- *
- * React no conserva un componente que cambia de lugar. Cada vez que cambiabas
- * de rama —abrir el buscador, entrar a una conversación— desmontaba la barra de
- * una posición y montaba otra nueva en otra, el reproductor se liberaba y se
- * volvía a crear, y la canción **arrancaba de cero**. La propia barra
- * documentaba el peligro y lo evitaba para el caso del teclado, con `oculto` en
- * vez de desmontar; las cuatro ramas se le escaparon.
- *
- * Separarlos lo arregla de raíz: el motor se monta **una sola vez**, en un lugar
- * fijo del layout, y no se entera de que la barra cambia de forma. La barra pasó
- * a ser dibujo puro y puede remontarse todo lo que quiera.
- *
- * Los dos hablan por `state/playback`, que ya era el dueño del estado: el motor
- * escribe posición y duración, la barra las lee. No hay props entre ellos.
+ * Motor sin interfaz, montado una vez en el layout para conservar los players
+ * al navegar. Se comunica con los controles mediante state/playback.
  */
 export function MotorAudio() {
   const indiceLocalListo = useDescargasCargadas()
@@ -138,65 +96,28 @@ export function MotorAudio() {
 
   // Lo encolado a mano manda sobre la lista mientras dure.
   const current = manual ?? (index >= 0 ? (tracks[index] ?? null) : null)
-  /*
-   * La que va a sonar después, para tenerla lista antes de que haga falta.
-   *
-   * Es el mismo orden que usa `advance`: primero lo encolado a mano, después lo
-   * que sigue en la lista. Si acá dijera otra cosa, precargaríamos una canción
-   * que no va a sonar.
-   */
+  /** Precarga en el mismo orden que advance: cola manual, luego playlist. */
   const proximas = useMemo(() => proximasCola({ tracks, index, manual, upNext, shuffle, repetir }, HAY_DESCARGAS ? 5 : 2),
     [tracks, index, manual, upNext, shuffle, repetir])
-  /*
-   * La carátula de la pantalla bloqueada, aparte y grande.
-   *
-   * La de arriba son 96px porque es la miniatura de la barra, y se estaba
-   * mandando **esa misma** al sistema. iOS la usa como fondo a pantalla completa
-   * —lo que hacen Apple Music y Spotify— así que le estábamos dando una imagen
-   * de 96px para llenar un teléfono: se veía como un cuadradito borroso.
-   *
-   * Son dos consumidores con necesidades opuestas, así que son dos URLs. La
-   * grande no cuesta nada de más en la app: la descarga el sistema operativo, no
-   * nosotros.
+  /**
+   * El sistema descarga una portada grande para la pantalla bloqueada,
+   * independiente de la miniatura que dibuja la app.
    */
   const artworkBloqueo = current
     ? artworkSource(current.artworkPath, current.artworkUrl, 1000)
     : null
-  /*
-   * En el teléfono, la música tiene que seguir con la pantalla apagada, y para
-   * que el sistema muestre los controles necesita la sesión en exclusiva. En
-   * web no hace nada: `setAudioModeAsync` está vacío ahí.
-   */
+  /** Sesión exclusiva con reproducción en segundo plano; en web la llamada no actúa. */
   useEffect(() => {
     void setAudioModeAsync({
       shouldPlayInBackground: true,
       playsInSilentMode: true,
       interruptionMode: 'doNotMix',
     }).catch((causa: unknown) => {
-      /*
-       * Que esto falle **se avisa**.
-       *
-       * Antes se tragaba en silencio con un comentario que decía «sin fondo,
-       * pero la app funciona igual». El problema es que si esta llamada falla,
-       * el síntoma que ve el usuario es exactamente «la música se corta cuando
-       * salgo de la app» — sin ninguna pista de por qué, y con la causa
-       * descartada de antemano en un catch vacío.
-       *
-       * No es fatal y por eso no rompe nada más: la app sigue andando y la
-       * música suena mientras esté en pantalla. Pero es una promesa incumplida
-       * y el usuario merece saberlo.
-       */
       avisar(`La música no va a seguir con la pantalla apagada: ${mensajeError(causa)}`, true)
     })
   }, [])
 
-  /*
-   * La URL firmada se guarda **junto al id de su canción**.
-   *
-   * Así "todavía no está lista" es simplemente "la que tengo no es de la
-   * canción actual", y no hace falta limpiarla desde un efecto. De paso una
-   * firma que llega tarde nunca se usa para el tema equivocado.
-   */
+  /** Cada firma conserva su trackId para ignorar respuestas tardías de otra pista. */
   const [fuenteEnUso, setFuenteEnUso] = useState<string | null>(null)
   const [urls, setUrls] = useState<{ trackId: string; url: string; hasta: number }[]>([])
   const urlOf = useCallback(
@@ -212,13 +133,9 @@ export function MotorAudio() {
     [urls, fuenteEnUso],
   )
 
-  /*
-   * Las dos que el reproductor tiene en la mano: la que suena y la que sigue.
-   *
-   * Se anotan acá para que el descarte de abajo sepa cuáles no puede tirar. Va
-   * en una ref y no en estado porque `remember` corre después de un `await` y
-   * no tiene que volver a crearse por esto — si dependiera de ellas, cada
-   * cambio de canción reharía los efectos que la usan.
+  /**
+   * Fuentes protegidas de la poda. La ref permite consultarlas tras await
+   * sin recrear remember al cambiar de canción.
    */
   const vivas = useRef<(string | undefined)[]>([])
   /* Se anota después de dibujar y no durante: `remember` siempre corre detrás
@@ -228,29 +145,13 @@ export function MotorAudio() {
   }, [current?.id, proximas])
 
   /**
-   * Guarda una URL firmada, tirando las viejas.
-   *
-   * **Nunca tira la de lo que está sonando.** Antes esto se quedaba con las
-   * últimas tres y listo, y ahí estaba el problema: buscar una canción,
-   * agregarla o renombrar la lista hace que se firmen y se precarguen otras, y
-   * a la tercera la de la canción en curso se caía del borde. Su URL pasaba a
-   * ser `null`, y `useAudioPlayer` —que se recrea cuando la fuente cambia—
-   * destruía el reproductor y armaba uno nuevo: la música se cortaba y, cuando
-   * se volvía a firmar, arrancaba de cero. Se veía como «la app me reinicia la
-   * canción sola», y no tenía nada que ver con lo que uno estaba haciendo.
-   *
-   * El tope sigue existiendo —una URL firmada vence, y juntarlas todas sería
-   * quedarse con basura por el resto de la sesión— pero se aplica solo a las
-   * que ya no le importan a nadie.
+   * Conserva las fuentes en uso para no recrear sus players.
+   * El tope sólo se aplica a firmas que ya no pertenecen a la cola protegida.
    */
   const remember = useCallback((trackId: string, url: string) => {
     setUrls((prev) => {
       const hasta = /^https?:/.test(url) ? Date.now() + 50 * 60_000 : Infinity
       const todas = [{ trackId, url, hasta }, ...prev.filter((u) => u.trackId !== trackId)]
-      /* Un Set y no `vivas.current.includes(…)` adentro del filtro: aquello
-         recorría la cola entera por cada URL guardada, y las dos crecen juntas
-         —una cola larga es justo cuando hay más URLs—. El Set se arma una vez
-         por llamada y después cada consulta es constante. */
       const enLaCola = new Set(vivas.current)
       let otras = 0
       return todas.filter((u) => {
@@ -264,26 +165,15 @@ export function MotorAudio() {
     setUrls(prev => prev.filter(entry => entry.trackId !== trackId || entry.url !== uri))
   }, [])
 
-  /*
-   * El Jam, visto desde el motor.
-   *
-   * `silencioso` es «control remoto»: quien eligió escuchar en el dispositivo
-   * del host. Su cola y sus controles dibujan el Jam, pero acá **no suena
-   * nada** — la fuente queda en null y ni se firma. `sincronizo` es el caso
-   * contrario: un invitado que reproduce localmente y tiene que mantenerse
-   * pegado al reloj compartido. El host no es ninguno de los dos: él ES la
-   * verdad, y corregirlo contra la derivada sería perseguirse la cola.
+  /**
+   * silencioso controla al host sin audio local; sincronizo persigue su reloj.
+   * El host es la referencia y no corrige contra su propia deriva.
    */
   const enJam = useJamActivo()
   const silencioso = useJamSilencioso()
   const sincronizo = useJamSincronizo()
   const jamRev = useJamRevision()
-  /*
-   * El espejo de la escucha: la misma cuenta está sonando en OTRO aparato y
-   * este solo dibuja. Es el mismo silencio que el control remoto del Jam —la
-   * fuente queda en null y ni se firma—, con otra procedencia: acá el que
-   * emite no es el host de un Jam, es tu propia computadora (o tu teléfono).
-   */
+  /** En espejo suena otro dispositivo de la cuenta: no crear ni firmar fuentes locales. */
   const espejo = useEscuchaEspejo()
   const mudo = silencioso || espejo
   // Si una recuperación encuentra otra fuente, volver a consultar el índice:
@@ -298,13 +188,16 @@ export function MotorAudio() {
     // La revisión distingue volver a elegir la misma pista desde otra cola.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [idActual, pathActual, videoActual, indiceLocalListo, seleccionRevision, reaperturaRevision])
-  /*
-   * Al seleccionar una pista se elige primero la copia local. Esa elección
-   * queda fija hasta la próxima selección: una descarga que termine mientras
-   * suena no recrea useAudioPlayer ni reinicia la canción. Una URL remota
-   * guardada de una selección anterior no puede tapar un archivo descargado.
-   */
-  const url = mudo ? null : fuenteLocal ?? urlOf(current)
+
+  // Conservar la fuente del deck que ya empezó nativamente. Una descarga que
+  // termine justo en el relevo no debe recrearlo al promoverlo a activo.
+  const [fuenteRelevo, setFuenteRelevo] = useState<{ trackId: string; url: string; revision: number } | null>(null)
+  const relevoActual = fuenteRelevo?.trackId === current?.id && fuenteRelevo?.revision === seleccionRevision
+    ? fuenteRelevo.url : null
+  const url = mudo ? null : relevoActual ?? fuenteLocal ?? urlOf(current)
+  if (fuenteRelevo && (fuenteRelevo.trackId !== current?.id || fuenteRelevo.revision !== seleccionRevision)) {
+    setFuenteRelevo(null)
+  }
   const transiciones = useTransicionesGlobales()
   const mixRevision = useMixPlaylistRevision(origin?.id ?? null)
   const [mixPlaylist, setMixPlaylist] = useState<{ playlistId: string; revision: number; data: ActivePlaylistMix | null } | null>(null)
@@ -319,9 +212,11 @@ export function MotorAudio() {
   }, [origin?.id, mixRevision])
   const mixResolved = !origin?.id || (mixPlaylist?.playlistId === origin.id && mixPlaylist?.revision === mixRevision)
   const activeMix = mixResolved && mixPlaylist?.data?.playlistId === origin?.id ? mixPlaylist?.data ?? null : null
-  const candidata = proximas[0] ?? null
+  const candidata = useMemo(() => siguienteCola({ tracks, index, manual, upNext, shuffle, repetir }),
+    [tracks, index, manual, upNext, shuffle, repetir])
   const puedeMezclar = mixResolved && (transiciones.modo !== 'normal' || !!activeMix?.mix)
-  const urlCandidata = !mudo && puedeMezclar && repetir !== 'una' && !enJam && candidata
+  const puedeRelevar = Platform.OS === 'ios'
+  const urlCandidata = !mudo && (puedeMezclar || puedeRelevar) && repetir !== 'una' && !enJam && candidata && candidata.id !== current?.id
     ? rutaLocal(candidata.audioPath, candidata.videoId) ?? urlOf(candidata)
     : null
   useEffect(() => {
@@ -331,15 +226,9 @@ export function MotorAudio() {
   /** El último aviso al store, para no inundarlo. Ver `AVISO_CADA_MS`. */
   const ultimoAviso = useRef(0)
 
-  /*
-   * `keepAudioSessionActive`: que pausar o terminar **no desactive la sesión**.
-   *
-   * Por defecto expo-audio la desactiva cuando el reproductor pausa o termina,
-   * y este reproductor además se recrea por canción — cada liberación del
-   * viejo era una desactivación más. Con la sesión caída, iOS retira la ficha
-   * de la pantalla bloqueada: la música seguía, pero el reproductor del
-   * teléfono bloqueado desaparecía. Apple Music y Spotify mantienen la ficha
-   * incluso en pausa, y esto es lo que lo hace posible.
+  /**
+   * Conservar la sesión al pausar, terminar o liberar un deck mantiene
+   * la ficha del sistema visible durante la pausa.
    */
   /* Los dos hooks conservan el deck entrante al convertirlo en el activo. En
    * un avance normal solo cambia la fuente del deck activo, como antes. */
@@ -401,11 +290,7 @@ export function MotorAudio() {
   const appActiva = useAppActiva()
   useEspectroAudio(player, current?.videoId, playing && appActiva)
 
-  /*
-   * La ficha se publica recién con la URL cargada: es el momento en que el
-   * reproductor de abajo es realmente el que suena, y publicarla antes deja al
-   * sistema mostrando una canción que todavía no arrancó.
-   */
+  /** Publicar la ficha sólo cuando hay fuente para el reproductor activo. */
   useLockScreen(
     player,
     current && url
@@ -419,30 +304,14 @@ export function MotorAudio() {
     appActiva,
   )
 
-  /*
-   * De dónde saca la cola con qué seguir cuando se termina la lista.
-   *
-   * Se registra desde acá y no desde `state/playback` porque el servicio de
-   * recomendaciones importa el de música, que importaría a playback: un ciclo.
-   * Este componente ya conoce a los dos, así que es el lugar natural del puente.
-   *
-   * Le pasa lo que ya está esperando en la cola para que no le ofrezca lo mismo
-   * dos veces.
+  /**
+   * MotorAudio conecta recomendaciones y playback sin un ciclo de imports.
+   * Excluye canciones de la cola y del historial al pedir la próxima tanda.
    */
   useEffect(() => {
-    /* Lo que no puede volver a ofrecer: la lista entera, lo que ya espera y lo
-       que suena ahora — antes solo se vetaba lo encolado, y la tanda podía
-       repetir la lista que acababa de sonar si esos temas no habían llegado al
-       historial. Lo ya recorrido en esta cola (las salteadas incluidas) se
-       suma recién en el momento del pedido, vía `videoIdsRecorridos`. */
+    /** Excluir lista, cola manual y tema actual; las pistas recorridas se leen al pedir. */
     const enCola = [...tracks, ...upNext, ...(manual ? [manual] : [])].map((t) => t.videoId)
-    /*
-     * Los artistas de la cola, pesados por el largo de sus temas.
-     *
-     * Son el ancla de **respaldo** de las recomendaciones: si el historial no
-     * tiene artistas con id —cuenta nueva, o escuchas anotadas sin id—, seguir
-     * con algo parecido a la lista que está sonando es mejor que quedarse mudo.
-     */
+    /** La duración por artista es el respaldo cuando el historial aún no ofrece anclas. */
     const porArtista = new Map<string, ArtistaEscuchado>()
     for (const t of [...tracks, ...upNext]) {
       if (!t.artistId) continue
@@ -456,47 +325,29 @@ export function MotorAudio() {
     return () => registerRelleno(null)
   }, [tracks, upNext, manual])
 
-  /*
-   * La próxima tanda se pide cuando la cola **se acorta**, no cuando se vacía.
-   * Pedirla al final dejaba un silencio de varios segundos hasta la primera
-   * recomendada —y saltear rápido dejaba los saltos muertos hasta que llegara
-   * la tanda—; con la pantalla bloqueada ese silencio es fatal: sin audio
-   * sonando, iOS suspende la app y la música no vuelve. La función revisa sola
-   * que corresponda — modo Descubrimiento activo, sin repetir, quedan pocas de verdad.
+  /**
+   * Pedir descubrimiento antes de vaciar la cola evita silencios que permitan
+   * a iOS suspender JS. rellenarSiFalta comprueba modo, repetición y umbral.
    */
   useEffect(() => {
     if (!current || !playing) return
     rellenarSiFalta()
   }, [current, proximas, upNext.length, playing])
 
-  /*
-   * El relleno del Jam, aparte del común: lo maneja el host contra el
-   * servidor (ver `rellenarJamSiFalta`), y su disparador es cada mutación del
-   * Jam — el arranque de la última canción de la cola llega como un cambio de
-   * `itemActual`, o sea una revisión nueva. La función revisa sola que
-   * corresponda: ser host, modo Descubrimiento activo, última canción, sin tanda ya en
-   * vuelo.
+  /**
+   * Cada revisión dispara el relleno compartido; la función comprueba host,
+   * modo descubrimiento, última canción y solicitudes en vuelo.
    */
   useEffect(() => {
     if (enJam) void rellenarJamSiFalta()
   }, [enJam, jamRev])
 
   /**
-   * El salto que la cola pidió y el reproductor todavía no aplicó.
-   *
-   * `seekTo` tarda unos cuadros en reflejarse en `currentTime`, y en ese hueco
-   * el reloj de abajo seguía reportando la posición **vieja**. Eso pisaba el
-   * `positionMs: 0` que acababa de poner «anterior», así que el segundo toque
-   * volvía a leer «va por el segundo 40» y reiniciaba otra vez: el botón nunca
-   * llegaba a la canción de antes. El mismo hueco hacía parpadear la barra al
-   * arrastrarla hacia atrás y, cerca del final, un reinicio podía leerse como
-   * «terminó» y saltar de tema.
-   *
-   * Con el objetivo anotado, el reloj calla hasta que la posición aterriza
-   * cerca — o hasta un tope de tiempo, para no enmudecer si el salto se pierde.
+   * Objetivo pendiente: evita reportar ticks viejos durante seekTo, que podrían
+   * pisar un reinicio o disparar un fin. Se libera al llegar o vencer el timeout.
    */
   const saltoEnVuelo = useRef<{ objetivoS: number; pedidoEn: number } | null>(null)
-  const crossfadeEnCurso = useRef<{ fromId: string; toId: string; startSeconds: number; cancel: () => void } | null>(null)
+  const crossfadeEnCurso = useRef<{ token: symbol; fromId: string; toId: string; startSeconds: number; cancel: () => void } | null>(null)
   const crossfadeFallido = useRef<{ fromId: string; toId: string } | null>(null)
   const cueZeroStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cueZeroExpired = useRef<string | null>(null)
@@ -522,19 +373,9 @@ export function MotorAudio() {
     return () => registerEngine(null)
   }, [player, lease])
 
-  /*
-   * Atenuación por canción.
-   *
-   * Las de lista no traen pico medido —medirlo exige decodificar el tema
-   * entero, demasiado caro al agregarlo—, así que casi siempre cae en el margen
-   * fijo de `headroomGain`. Alcanza para que no distorsione.
-   */
+  /** headroomGain deja margen cuando no hay pico medido. */
   useEffect(() => {
-    /*
-     * Dos volúmenes multiplicados: el técnico, que evita que el códec
-     * distorsione, y el que eligió quien escucha. Si el segundo pisara al
-     * primero, subir la perilla al máximo traería de vuelta la distorsión.
-     */
+    /** El volumen de usuario se multiplica por el margen técnico y el preamp. */
     // expo-audio expone el volumen como una propiedad mutable del reproductor.
     // La perilla pasa por `perceptualGain`: el slider es lineal en pantalla pero
     // el oído no lo es, así que la posición se curva antes de volverse gain.
@@ -547,18 +388,9 @@ export function MotorAudio() {
     siguientePlayer.volume = Math.min(1, headroomGain(candidata?.truePeak) * (nextUsesProfile && profile ? Math.pow(10, profile.preampDb / 20) : 1)) * perceptualGain(volume)
   }, [siguientePlayer, candidata, volume, nextUsesProfile, profile])
 
-  /*
-   * Resolver una candidata de la radio, con el audio en blanco.
-   *
-   * Las tandas entran a la cola al instante y **sin audio** (ver
-   * `proximasRecomendadas`): traer cada canción a Storage tarda segundos, y
-   * hacerlo antes de encolar era lo que dejaba los saltos muertos esperando
-   * la tanda. Acá se trae recién cuando hace falta: la que va a sonar, y la
-   * que sigue mientras suena la actual — cada salto empuja la resolución de
-   * la próxima, así la cola nunca se queda sin a dónde ir.
-   *
-   * El servicio comparte la resolución: la actual y la siguiente pueden
-   * ser la misma canción por un cuadro al saltear rápido.
+  /**
+   * La radio encola metadata sin esperar audio. Se resuelven la actual y la próxima
+   * sin bloquear toda la tanda; el servicio comparte solicitudes coincidentes.
    */
   const resolver = useCallback(
     (track: PlaylistTrack) => {
@@ -660,7 +492,7 @@ export function MotorAudio() {
    * por aleatorio, cola manual o una selección nueva, la limpieza cancela el
    * plan y el avance normal sigue disponible. */
   useEffect(() => {
-    if (!puedeMezclar || !wantPlay || mudo || enJam || !url || !urlCandidata || !current || !candidata || repetir === 'una') return
+    if ((!puedeMezclar && !puedeRelevar) || !wantPlay || mudo || enJam || !url || !urlCandidata || !current || !candidata || repetir === 'una') return
     const attempt = (status: typeof player.currentStatus) => {
       const pendiente = crossfadeEnCurso.current
       if (pendiente) {
@@ -672,8 +504,11 @@ export function MotorAudio() {
       }
       if (!status.isLoaded || status.isBuffering || !siguientePlayer.isLoaded) return
       const total = playerTotalS(player, current)
-      const plan = transitionPlan(total)
+      const plan = transitionPlan(total) ?? (puedeRelevar ? {
+        durationSeconds: 0, fromStartSeconds: total, toStartSeconds: 0, volumeLaw: 'linear' as const,
+      } : null)
       if (!plan) return
+      const relevo = plan.durationSeconds === 0
       const start = plan.fromStartSeconds ?? total - plan.durationSeconds
       const cueZero = start <= 0.001
       // Un cue al inicio debe quedar armado antes de reproducir el saliente.
@@ -681,10 +516,11 @@ export function MotorAudio() {
         cueZeroExpired.current === `${current.id}:${seleccionRevision}`)) return
       if (!status.playing && (!cueZero || saltoEnVuelo.current !== null)) return
       const restante = total - status.currentTime
-      if (!Number.isFinite(restante) || restante < 0.3 || status.currentTime < start - 20 || status.currentTime > start + plan.durationSeconds / 2) return
+      if (!Number.isFinite(restante) || restante < 0.3 || (!relevo &&
+        (status.currentTime < start - 20 || status.currentTime > start + plan.durationSeconds / 2))) return
       const estado = getPlaybackState()
       const actual = estado.manual ?? estado.tracks[estado.index]
-      const siguiente = proximasCola(estado, 1)[0]
+      const siguiente = siguienteCola(estado)
       if (actual?.id !== current.id || siguiente?.id !== candidata.id) return
       if (crossfadeFallido.current?.fromId === current.id && crossfadeFallido.current.toId === candidata.id) return
       try {
@@ -698,17 +534,28 @@ export function MotorAudio() {
           toStartSeconds: (plan.toStartSeconds ?? 0) + shift,
         } : plan
         let unavailableNow = false
+        const token = Symbol('transicion')
         const cancel = iniciarCrossfade(player as CrossfadePlayer, siguientePlayer as CrossfadePlayer, scheduled, () => {
           const vigente = crossfadeEnCurso.current
+          if (vigente?.token !== token) return
           crossfadeEnCurso.current = null
           const alTerminar = getPlaybackState()
-          const sigueSiendo = proximasCola(alTerminar, 1)[0]
-          if (!vigente || (alTerminar.manual ?? alTerminar.tracks[alTerminar.index])?.id !== vigente.fromId || sigueSiendo?.id !== vigente.toId) return
+          const sigueSiendo = siguienteCola(alTerminar)
+          if (!lease.active || !alTerminar.wantPlay || esEscuchaEspejo() ||
+            alTerminar.seleccionRevision !== seleccionRevision ||
+            (alTerminar.manual ?? alTerminar.tracks[alTerminar.index])?.id !== vigente.fromId || sigueSiendo?.id !== vigente.toId) {
+            // El audio entrante ya arrancó del lado nativo. Si la selección se
+            // canceló antes del render, detenerlo sin avanzar la cola nueva.
+            try { siguientePlayer.pause() } catch { /* El deck ya pudo liberarse. */ }
+            return
+          }
           ended.current = true
+          setFuenteRelevo({ trackId: vigente.toId, url: urlCandidata, revision: alTerminar.seleccionRevision })
           setDeckActivo(deckActivo === 0 ? 1 : 0)
           advance()
         }, () => {
           unavailableNow = true
+          if (crossfadeEnCurso.current && crossfadeEnCurso.current.token !== token) return
           crossfadeFallido.current = { fromId: current.id, toId: candidata.id }
           crossfadeEnCurso.current = null
           if (scheduled.eqSettings?.enabled || scheduled.filterSettings?.enabled) {
@@ -718,7 +565,7 @@ export function MotorAudio() {
         }, () => {
           if (cueZero && !status.playing) arrancar()
         })
-        if (!unavailableNow) crossfadeEnCurso.current = { fromId: current.id, toId: candidata.id, startSeconds: status.currentTime, cancel }
+        if (!unavailableNow) crossfadeEnCurso.current = { token, fromId: current.id, toId: candidata.id, startSeconds: status.currentTime, cancel }
       } catch {
         // El fin natural conserva la reproducción si el segundo deck falla.
       }
@@ -735,33 +582,11 @@ export function MotorAudio() {
         crossfadeEnCurso.current = null
       }
     }
-  }, [player, siguientePlayer, current, candidata, url, urlCandidata, puedeMezclar, transitionPlan, wantPlay, mudo, enJam, repetir, deckActivo, seleccionRevision, mixRevision, finish, arrancar])
+  }, [player, lease, siguientePlayer, current, candidata, url, urlCandidata, puedeMezclar, puedeRelevar, transitionPlan, wantPlay, mudo, enJam, repetir, deckActivo, seleccionRevision, mixRevision, finish, arrancar])
 
-  /*
-   * Cuánto se escuchó de la canción que está puesta.
-   *
-   * Se anota al **cambiar de tema**, no al terminarlo: así cuenta igual la que
-   * saltaste a la mitad, que es escucha real, y no cuenta dos veces la que
-   * dejaste sonar hasta el final —ahí el cambio también pasa por acá—.
-   *
-   * Va en una ref y no en estado porque nadie lo dibuja: es un dato que se
-   * junta mientras suena y se despacha una vez.
-   */
-  /*
-   * Se guarda **la canción entera**, no su id.
-   *
-   * Antes era `{ id, ms }` y al despachar se la buscaba con
-   * `tracks.find(...) ?? manual`. Eso funcionaba solo para las de la lista: una
-   * canción encolada a mano —y **todas las de la radio lo son**, llegan por
-   * `upNext`— no está en `tracks`, así que la búsqueda fallaba y caía al
-   * `?? manual`, que para cuando corre este efecto ya es la canción **nueva**.
-   *
-   * El resultado era que el tiempo de cada tema encolado se le anotaba al
-   * siguiente: artista equivocado y canción equivocada. Con la radio eso se
-   * vuelve grave, porque este historial es justo lo que elige las
-   * recomendaciones — se habría envenenado solo, y cuanto más la usaras, peor.
-   *
-   * Guardando el objeto no hay nada que buscar y no puede confundirse.
+  /**
+   * Acumular escucha en una ref con track y origen completos. Al cambiar de pista
+   * se despacha una vez, incluso si se saltó, sin atribuirla al tema nuevo.
    */
   const medidorEscucha = useMemo(() => crearMedidorEscucha(), [])
   const escuchado = useRef<{ track: PlaylistTrack | null; ms: number; origen: PlaybackOrigin | null }>({
@@ -794,31 +619,14 @@ export function MotorAudio() {
     }
   }, [current, medidorEscucha])
 
-  /*
-   * Retomar donde habías dejado, al abrir la app.
-   *
-   * `restorePlayback` guarda y devuelve el segundo exacto en que cerraste, pero
-   * ese número **se quedaba en el store**: nadie se lo pasaba nunca al
-   * reproductor. Volvías a abrir, le dabas play y arrancaba en cero con el
-   * contador diciendo otra cosa.
-   *
-   * Se salta una sola vez por canción cargada, y por eso la traba: el efecto
-   * también corre cuando cambia la URL de un tema que ya venías escuchando —al
-   * refirmarse, por ejemplo— y sin ella cada refirma te devolvería al segundo
-   * viejo, que es peor que arrancar de cero.
-   *
-   * Solo el arranque: `advance` y `playAt` dejan la posición en cero al cambiar
-   * de tema, así que en el uso normal esto no tiene nada que hacer.
+  /**
+   * Aplica la posición restaurada una vez por pista cargada; refirmar su URL
+   * no debe volver a un segundo anterior. Los avances normales empiezan en cero.
    */
   const retomada = useRef<string | null>(null)
   const retomarMs = useRef<number | null>(null)
   useEffect(() => {
-    /*
-     * Un espejo no retoma nada: la posición que se ve es la del otro aparato,
-     * corriendo por reloj. Se deja la memoria en blanco a propósito — al
-     * traer la escucha acá (el traspaso), este mismo efecto vuelve a correr
-     * con el espejo apagado y agarra el segundo exacto por el que iba.
-     */
+    /** El espejo usa el reloj remoto. Limpiar permite tomar su posición al transferirlo aquí. */
     if (espejo) {
       retomada.current = null
       retomarMs.current = null
@@ -880,37 +688,18 @@ export function MotorAudio() {
   }, [url, wantPlay, player, current, jamRev, origin?.id, mixResolved, puedeMezclar,
     candidata, manual, upNext, tracks, transitionPlan, seleccionRevision, enJam, arrancar])
 
-  /*
-   * Lo que pasa por fuera de la app: el final de la canción y quién la pausó.
-   *
-   * **El final.** Este aviso es el único que sirve con la pantalla bloqueada:
-   * el reloj de más abajo corre sobre `requestAnimationFrame`, que el sistema
-   * congela apenas la app deja de estar a la vista, y la canción terminaba sin
-   * que nadie se enterara. El parche web también emite `didJustFinish` en
-   * `ended`, para continuar en pestañas ocultas sin depender del reloj visual.
-   *
-   * **Quién pausó.** Los botones de la pantalla bloqueada, los auriculares y el
-   * auto le hablan al reproductor por abajo, sin pasar por `state/playback`:
-   * pausabas desde el auto y la app se quedaba diciendo «sonando», con el botón
-   * equivocado y la barra corriendo sola. Se mira el **cambio** de estado y no
-   * el estado, porque recién cargada una canción está en pausa por un instante
-   * y leer eso como «alguien pausó» cortaría la cola en cada cambio de tema.
-   * Solo en nativo: en web lo resuelve `lockScreen` con `mediaSession`.
+  /**
+   * didJustFinish encadena también con JS visual suspendido. En iOS se detectan
+   * transiciones de estado para reflejar controles externos, sin tratar la pausa
+   * inicial del asset como una acción. Web usa mediaSession en lockScreen.
    */
   const soundingBefore = useRef(false)
   const presupuesto = useRef<PresupuestoRecuperacion>({ intentos: 0 })
   useEffect(() => { presupuesto.current = { intentos: 0, posicionMs: getPlaybackState().positionMs } }, [current?.id, wantPlay, mudo])
   useEffect(() => {
-    /*
-     * Reproductor nuevo, memoria en blanco.
-     *
-     * La ref sobrevive a la recreación del reproductor —que pasa en cada cambio
-     * de URL— y ahí había un agujero: saltando rápido entre canciones, la firma
-     * de la nueva tarda y el reproductor recién creado reporta «paused» un rato
-     * largo. Con el `true` heredado del tema anterior, el detector de abajo lo
-     * leía como una pausa **tuya** y apagaba `wantPlay`: todo lo que pusieras
-     * quedaba en pausa. Lo que detecta este bloque son pausas de afuera sobre
-     * ESTE reproductor, así que arranca sin historia.
+    /**
+     * Reiniciar al cambiar de player: una pausa inicial no hereda el estado
+     * sonando del asset anterior ni cancela la intención de reproducción.
      */
     soundingBefore.current = false
     const mismaPista = () => {
@@ -945,6 +734,7 @@ export function MotorAudio() {
           player.replace({ uri: nueva })
           player.play()
         } else {
+          setFuenteRelevo(null)
           remember(trackId, nueva)
           if (fuenteLocal && nueva !== fuenteLocal) setReaperturaRevision(revision => revision + 1)
         }
@@ -979,18 +769,9 @@ export function MotorAudio() {
         return
       }
 
-      /*
-       * El salto para retomar, **cuando el audio está cargado de verdad**.
-       *
-       * Tener la URL firmada no alcanza: en ese momento AVPlayer todavía no
-       * abrió el archivo, y un salto sobre un reproductor sin asset no hace
-       * nada. Peor: `saltar` se traga el rechazo a propósito —tiene que
-       * hacerlo, ver `lib/seek`— así que el intento fallaba en silencio y
-       * volvías a arrancar en cero igual que antes.
-       *
-       * `isLoaded` es el primer momento en que el salto puede prender. Se
-       * limpia al aplicarlo porque este aviso llega muchas veces por segundo, y
-       * repetirlo te clavaría en el segundo guardado sin poder avanzar.
+      /**
+       * Retomar sólo con isLoaded: AVPlayer ignora seeks sin asset.
+       * Consumir el objetivo una vez evita fijar el reloj al segundo guardado.
        */
       if (status.isLoaded && retomarMs.current != null) {
         const ms = retomarMs.current
@@ -1006,17 +787,18 @@ export function MotorAudio() {
        */
       if (Platform.OS !== 'ios') return
 
-      /*
-       * Por los caminos «externos» y no por pause/resume directos: en un Jam,
-       * una interrupción de audio —un reel, una llamada— pausaba por acá y el
-       * intent viajaba al servidor, callando la música DE TODOS. La pausa
-       * externa en Jam es local; al reanudarse, el aparato se reengancha en
-       * el segundo por el que va el Jam. Fuera de un Jam son la pausa y el
-       * play de siempre.
+      /**
+       * Las interrupciones de un Jam son locales: nunca envían pause al grupo.
+       * Al reanudar, el dispositivo vuelve al reloj compartido.
        */
       const nowPlaying = status.timeControlStatus === 'playing'
       const paused = status.timeControlStatus === 'paused'
-      if (soundingBefore.current && paused) pausaExterna()
+      // AVPlayer también pasa por paused al llegar al final, antes de emitir
+      // didJustFinish/handoff. Ese orden no representa una pausa del usuario.
+      const relevoPendiente = (status as typeof status & { isHandoffPending?: boolean }).isHandoffPending === true
+      const finNatural = Number.isFinite(status.duration) && status.duration > 0 &&
+        status.currentTime >= status.duration - END_EPSILON_S
+      if (soundingBefore.current && paused && !relevoPendiente && !finNatural) pausaExterna()
       else if (!soundingBefore.current && nowPlaying) reanudacionExterna()
       soundingBefore.current = nowPlaying
     })
@@ -1027,22 +809,10 @@ export function MotorAudio() {
     if (!wantPlay) player.pause()
   }, [wantPlay, player])
 
-  /*
-   * Mantenerse pegado al reloj del Jam, sin que se oiga.
-   *
-   * Corre para todo el que reproduce audio dentro de un Jam. La escalera está
-   * en las constantes de arriba; acá lo que importa es **quién corrige qué**:
-   *
-   * - Un invitado corrige todo: deriva chica estirando el tiempo, deriva
-   *   grande saltando. Su reproductor persigue a la derivada del servidor.
-   * - El host solo corrige saltos grandes — un seek que pidió otro—. Su
-   *   reproductor ES la referencia: corregirlo contra la derivada, que lo
-   *   sigue a él con la latencia de sus propios eventos, sería perseguirse
-   *   la cola en círculos.
-   *
-   * La corrección puntual del arranque espera el instante programado más un
-   * respiro, para medir contra una canción que ya está sonando y no contra el
-   * silencio previo.
+  /**
+   * El invitado corrige deriva fina y saltos; el host sólo saltos grandes
+   * porque es la referencia. El arranque espera el instante compartido
+   * y un margen para medir audio que ya esté sonando.
    */
   useEffect(() => {
     if (!enJam || silencioso || !current || !url) return

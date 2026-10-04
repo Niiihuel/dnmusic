@@ -28,6 +28,39 @@ function player() {
   }
 }
 
+test('el relevo sin fundido conserva duración cero y no manipula volumen ni reproducción en JS', async () => {
+  const from = player(), to = player()
+  to.playing = false
+  let received, completed = 0
+  from.scheduleCrossfade = async (_to, options) => { received = options; return true }
+  const cancel = iniciarCrossfade(from, to, {
+    durationSeconds: 0, fromStartSeconds: 10, toStartSeconds: 0, volumeLaw: 'linear',
+  }, () => completed++)
+  await Promise.resolve()
+  assert.equal(received.durationSeconds, 0)
+  assert.equal(to.playCalls, 0)
+  assert.equal(from.volume, 0.8)
+  assert.equal(to.volume, 0.8)
+  from.emit({ didJustCrossfade: true })
+  from.emit({ didJustFinish: true })
+  cancel()
+  assert.equal(completed, 1)
+  assert.equal(from.pauseCalls, 0)
+})
+
+test('un binario sin relevo nativo conserva fin natural sin inventar un fundido JS', async () => {
+  const from = player(), to = player()
+  to.playing = false
+  from.scheduleCrossfade = async () => false
+  let unavailable = 0
+  iniciarCrossfade(from, to, { durationSeconds: 0, fromStartSeconds: 10, volumeLaw: 'linear' },
+    () => assert.fail('no debe completar'), () => unavailable++)
+  await Promise.resolve()
+  assert.equal(unavailable, 1)
+  assert.equal(to.playCalls, 0)
+  assert.equal(from.pauseCalls, 0)
+})
+
 test('handoff iOS conserva el volumen actualizado y no emite una segunda pausa', async () => {
   const from = player(), to = player()
   to.playing = false

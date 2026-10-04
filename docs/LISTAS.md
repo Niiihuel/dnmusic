@@ -143,6 +143,17 @@ dejarlo entrar te devolvería un perfil de gustos que no es el tuyo.
 
 ## Probarlo
 
+Las listas propias y colaborativas entregan la cola al mismo motor global.
+La continuidad con iOS bloqueado se documenta en
+[reproducción continua](REPRODUCCION-CONTINUA.md). iOS no muestra el indicador
+visual de BPM, ni en filas nativas ni en su respaldo; el editor Mix también
+oculta sus etiquetas de tempo. El análisis sigue disponible para las operaciones
+que lo necesitan y para las otras plataformas.
+
+`tests/playlist-bpm.test.mjs`, `tests/precarga-cola.test.mjs` y
+`tests/motor-audio-integracion.test.mjs` verifican estos contratos. La prueba
+física debe incluir la propia y la colaborativa con pantalla bloqueada.
+
 ```bash
 docker exec -i supabase_db_dany psql -U postgres -d postgres \
   -v ON_ERROR_STOP=1 < supabase/tests/listas_colaborativas.sql

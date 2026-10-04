@@ -2,12 +2,11 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Alert, AppState, Text, View } from 'react-native'
-import { Slider } from '@expo/ui/jetpack-compose'
-import { fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers'
 import { BotonVolver } from './BotonVolver'
 import { EncabezadoHoja } from './EncabezadoHoja'
 import { FilaAccion, FilaInterruptor, FilaOpciones, FilaTexto, GrupoAjustes, ListaAjustes } from './Ajustes'
-import { AndroidHost, ANDROID_COLORS, androidAccessibility } from './AndroidHost'
+import { ANDROID_COLORS } from './AndroidHost'
+import { AudioParameter } from './AudioParameter'
 import { CurvaEcualizador } from './CurvaEcualizador'
 import { decibeliosEQ, frecuenciaEQ } from './ecualizadorGeometry'
 import { ICON_COLOR, IconSliders } from './icons'
@@ -26,7 +25,6 @@ export default function Ecualizador() {
   const jamSilencioso = useJamSilencioso()
   const [ancho, setAncho] = useState(0)
   const [banda, setBanda] = useState(5)
-  const [arrastre, setArrastre] = useState<number | null>(null)
   const [nombre, setNombre] = useState('')
   const [error, setError] = useState<string | null>(null)
   const presets = Object.keys(PRESETS_EQ) as (keyof typeof PRESETS_EQ)[]
@@ -34,8 +32,8 @@ export default function Ecualizador() {
   const bloqueado = !estado.cargado || remoto || soporte === 'no-disponible' || soporte === 'error'
   const edicionBloqueada = bloqueado || !estado.activo
   const seleccionado = estado.presetsPersonales.find(item => item.id === estado.presetPersonalId)
-  const ganancia = arrastre ?? estado.ganancias[banda] ?? 0
-  const seleccionarBanda = (indice: number) => { setBanda(indice); setArrastre(null) }
+  const ganancia = estado.ganancias[banda] ?? 0
+  const seleccionarBanda = (indice: number) => setBanda(indice)
   const aviso = !estado.cargado ? 'Cargando tus ajustes…'
     : remoto ? `El audio está sonando en ${otroDispositivo ?? 'otro dispositivo'}. Ajustá el ecualizador allí.`
       : soporte === 'no-disponible' ? 'Esta versión de la app necesita una actualización para ecualizar el audio.'
@@ -93,26 +91,11 @@ export default function Ecualizador() {
         <FilaOpciones<number> rotulo="Banda" valor={banda}
           opciones={FRECUENCIAS_EQ.map((hz, index) => ({ value: index, label: frecuenciaEQ(hz) }))}
           onElegir={seleccionarBanda} disabled={edicionBloqueada} />
-        <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, opacity: edicionBloqueada ? 0.45 : 1 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: ANDROID_COLORS.muted, fontSize: 14 }}>Ganancia</Text>
-            <Text style={{ color: ANDROID_COLORS.text, fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{decibeliosEQ(ganancia)}</Text>
-          </View>
-          <AndroidHost style={{ width: '100%', minHeight: 48 }} matchContents={{ vertical: true }}>
-            <Slider min={-12} max={12} steps={47} value={ganancia} enabled={!edicionBloqueada}
-              colors={{ thumbColor: ANDROID_COLORS.text, activeTrackColor: ANDROID_COLORS.text, inactiveTrackColor: ANDROID_COLORS.raised }}
-              modifiers={[fillMaxWidth(), androidAccessibility(`Ganancia de ${frecuenciaEQ(FRECUENCIAS_EQ[banda])}`, decibeliosEQ(ganancia))]}
-              onValueChange={value => {
-                if (edicionBloqueada || !Number.isFinite(value)) return
-                setArrastre(Math.round(value * 2) / 2)
-                setGananciaEcualizador(banda, value)
-              }}
-              onValueChangeFinished={() => { setArrastre(null); void guardarEcualizadorAhora() }} />
-          </AndroidHost>
-          <View pointerEvents="none" style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: ANDROID_COLORS.muted, fontSize: 12 }}>−12 dB</Text>
-            <Text style={{ color: ANDROID_COLORS.muted, fontSize: 12 }}>+12 dB</Text>
-          </View>
+        <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
+          <AudioParameter key={banda} label={`Ganancia de ${frecuenciaEQ(FRECUENCIAS_EQ[banda])}`}
+            value={ganancia} min={-12} max={12} step={0.5} format={decibeliosEQ} unit="dB" resetValue={0}
+            disabled={edicionBloqueada} onChange={value => setGananciaEcualizador(banda, value)}
+            onCommit={() => { void guardarEcualizadorAhora() }} />
         </View>
         <FilaAccion rotulo="Restablecer curva plana" onPress={restablecerEcualizador} disabled={edicionBloqueada || (estado.preset === 'Plano' && !estado.presetPersonalId)} ultima />
       </GrupoAjustes>

@@ -68,16 +68,6 @@ export function filterEffectPreset(preset: FilterEffectPreset): TransitionFilter
   return { version: 1, enabled: true, out, in: incoming }
 }
 
-/** La edición de un punto medio conserva los extremos y el esquema v1. */
-export function withEqMidpoint(
-  settings: TransitionEq | null,
-  deck: 'out' | 'in',
-  band: EqBand,
-  valueDb: number,
-): TransitionEq {
-  return withEqControlPoint(settings, deck, band, 0.5, valueDb)
-}
-
 export function envelopeAt(points: readonly EnvelopePoint[], t: number): number {
   if (!points.length) return 0
   if (t <= points[0].t) return points[0].value

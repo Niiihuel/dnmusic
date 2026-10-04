@@ -23,12 +23,7 @@ import {
 } from './icons'
 import { LYRIC_LANGS, type LyricLang } from '../services/music'
 
-/**
- * Las vistas del editor.
- *
- * `wave` es la herramienta de recorte; `disc` y `lyrics` son presentaciones —
- * cómo se va a ver el mensaje del otro lado.
- */
+/* wave edita el recorte; disc y lyrics muestran las presentaciones del mensaje. */
 export type SnippetView = 'wave' | 'lyrics' | 'disc'
 
 type Props = {
@@ -57,9 +52,7 @@ type Props = {
 }
 
 const TRACK_H = 4
-/** Perilla de la barra; aparece al pasar el cursor, como en Spotify. */
 const THUMB = 12
-/** Cada cuánto se refresca el tiempo transcurrido. */
 const CLOCK_MS = 200
 
 /** Reproducción, opciones nativas y confirmación. La onda ya permite buscar;
@@ -87,24 +80,18 @@ export function PlayerBar({
   const [trackW, setTrackW] = useState(0)
   const [hover, setHover] = useState(false)
 
-  /** Arrastre de la barra: si está en curso, y a qué milisegundo apunta. */
   const dragging = useSharedValue(false)
   const dragMs = useSharedValue(0)
 
   const commit = (ms: number) => onSeek(ms)
-  /** Milisegundo bajo un punto x de la barra. */
+
   const timeAt = (x: number) => {
     'worklet'
     if (!trackW) return startMs
     return startMs + Math.max(0, Math.min(1, x / trackW)) * snippetMs
   }
 
-  /*
-   * Igual que en la onda: mientras se arrastra, la barra se mueve sola en el
-   * hilo de UI y al audio se le pide **un solo** salto, al soltar. Pedirlo por
-   * cuadro encadena saltos que el audio no llega a completar, y eso suena a
-   * estática.
-   */
+  /* El arrastre actualiza la vista en UI y confirma una única búsqueda al soltar. */
   const drag = Gesture.Pan()
     .onBegin((e) => {
       dragging.value = true
@@ -126,38 +113,14 @@ export function PlayerBar({
 
   const gesture = Gesture.Race(drag, tap)
 
-  /*
-   * Cuánto de la barra va lleno, en el hilo de UI.
-   *
-   * Los shared values se leen **dentro de cada `useAnimatedStyle`**, no a
-   * través de una función auxiliar. Reanimated arma la lista de dependencias
-   * mirando el closure del propio worklet del estilo: si las lecturas viven en
-   * el closure de otra función, no las ve, no se suscribe a nada y el estilo
-   * solo se recalcula cuando React vuelve a renderizar.
-   *
-   * Eso es exactamente lo que pasaba: la barra se movía únicamente con el
-   * re-render del reloj (cada 200 ms) o al pasar el cursor por encima. Medido:
-   * 240 cuadros sin tocar el mouse daban un único valor y cero cambios.
-   */
-
-  /*
-   * El relleno se escala, no se le cambia el ancho.
-   *
-   * `width` es layout y el navegador lo pinta en píxeles enteros. Con la
-   * canción completa (3:19) sobre una barra de ~1000 px el relleno crece 0.084
-   * px por cuadro, así que el borde se quedaba quieto ~12 cuadros y después
-   * pegaba un salto de 1 px: se veía avanzar a tirones cada 200 ms.
-   *
-   * `scaleX` lo resuelve el compositor con precisión subpíxel, y de paso deja
-   * de disparar layout en cada cuadro.
-   */
+  /* Reanimated detecta las dependencias leídas dentro del closure de useAnimatedStyle.
+     scaleX mantiene precisión subpíxel sin provocar layout por cuadro. */
   const fillStyle = useAnimatedStyle(() => {
     const at = dragging.value ? dragMs.value : positionMs.value
     const r = snippetMs > 0 ? (at - startMs) / snippetMs : 0
     return { transform: [{ scaleX: Math.max(0, Math.min(1, r)) }] }
   })
 
-  /** Perilla al modo de Spotify: aparece al pasar el cursor o al arrastrar. */
   const thumbStyle = useAnimatedStyle(() => {
     const at = dragging.value ? dragMs.value : positionMs.value
     const r = snippetMs > 0 ? (at - startMs) / snippetMs : 0
@@ -198,9 +161,7 @@ export function PlayerBar({
               style={{ height: TRACK_H, borderRadius: TRACK_H }}
               className="w-full overflow-hidden bg-muted"
             >
-              {/* El color va inline y no por className: NativeWind no procesa
-                  clases sobre componentes animados, y el relleno se dibujaba
-                  sin fondo — la barra parecía no avanzar nunca. */}
+              {/* NativeWind no procesa clases sobre componentes animados. */}
               <Animated.View
                 style={[
                   {
@@ -255,17 +216,7 @@ export function PlayerBar({
   )
 }
 
-/**
- * Tiempo transcurrido.
- *
- * Antes acá iba el inicio del recorte, que es un número fijo: la barra avanzaba
- * y el reloj se quedaba clavado en 0:00.
- *
- * Es su propio componente porque el texto sí necesita pasar por React, y así el
- * que se vuelve a dibujar cinco veces por segundo es este `Text` y nada más — ni
- * la barra, ni el selector de recorte, ni las mil barras de la onda. La posición
- * se lee del shared value; no hay estado que sincronizar.
- */
+/* El reloj se refresca aparte para no redibujar la onda ni los controles con cada cambio de tiempo. */
 function Elapsed({
   positionMs,
   startMs,
@@ -277,8 +228,7 @@ function Elapsed({
 }) {
   const [ms, setMs] = useState(startMs)
 
-  /* Con la app atrás el reloj no se ve; no hay razón para seguir contando.
-     Es la misma regla que los bucles de posición — ver `useAppActiva`. */
+  /* El reloj se detiene en segundo plano, igual que los bucles visuales de posición. */
   const alaVista = useAppActiva()
   useEffect(() => {
     if (!alaVista) return

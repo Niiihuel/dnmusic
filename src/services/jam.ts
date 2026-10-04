@@ -224,10 +224,6 @@ export async function salirJam(jamId: string): Promise<void> {
   await rpc('salir_jam', { p_jam_id: jamId })
 }
 
-export async function terminarJam(jamId: string): Promise<void> {
-  await rpc('terminar_jam', { p_jam_id: jamId })
-}
-
 export async function expulsarDelJam(jamId: string, userId: string): Promise<void> {
   await rpc('jam_expulsar', { p_jam_id: jamId, p_user_id: userId })
 }

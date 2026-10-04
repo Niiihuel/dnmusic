@@ -7,36 +7,16 @@ import { AccionSocial } from './Social'
 import { PlaylistCover } from './PlaylistCover'
 import { formatLength } from './SeekBar'
 
-/** Ancho mínimo de una tarjeta. Debajo de esto el nombre entra en tres renglones. */
 const TARJETA_MIN = 150
 const HUECO = 12
 
-/**
- * Las listas que esta persona publicó, en su perfil.
- *
- * Es la contracara de «Hacer pública» en el menú de una lista: publicar ya es
- * decir «quiero que se vea», así que la sección se arma sola en vez de pedir un
- * segundo paso para fijar cada una. Las vitrinas siguen existiendo para
- * **destacar** algo arriba de todo; esto es el estante.
- *
- * Va en los dos perfiles, el propio y el ajeno, con el mismo componente y sin
- * modo de edición: tu perfil se tiene que ver igual mirándolo vos que
- * mirándolo otro, que es lo único que un perfil promete. Lo único distinto es
- * el cartel de cuando está vacío, que en el tuyo dice cómo llenarlo.
- *
- * Sin listas públicas y en el perfil de otro, la sección **no se dibuja**: un
- * título con un hueco abajo cuenta algo que no pasó.
- */
 export function ListasPerfil({
   ownerId,
-  nombre,
   propio,
   onAbrir,
   recarga = 0,
 }: {
   ownerId: string
-  /** Cómo se llama quien tiene el perfil, para el cartel de vacío. */
-  nombre: string
   propio: boolean
   recarga?: number
   onAbrir: (playlist: Playlist) => void
@@ -46,10 +26,8 @@ export function ListasPerfil({
 
   if (!cargando && !error && !listas?.length && !propio) return null
 
-  /* Cuántas entran, medidas sobre el ancho real: el perfil se dibuja a 520px en
-     el teléfono y a 720 en escritorio, y el mismo número fijo daría tarjetas
-     enormes de un lado o apretadas del otro. */
-  const columnas = Math.max(2, Math.floor((ancho + HUECO) / (TARJETA_MIN + HUECO))) || 2
+  /* Las columnas se calculan sobre el ancho disponible en ambos perfiles. */
+  const columnas = Math.max(2, Math.floor((ancho + HUECO) / (TARJETA_MIN + HUECO)))
   const lado = ancho ? (ancho - HUECO * (columnas - 1)) / columnas : TARJETA_MIN
 
   return (
@@ -80,13 +58,6 @@ export function ListasPerfil({
   )
 }
 
-/**
- * Una lista en el estante.
- *
- * La portada manda y el texto va debajo, como una tarjeta de álbum: es la misma
- * anatomía que ya usan la discografía de un artista y la portada de inicio, así
- * que abrir un perfil no obliga a aprender otra forma de mirar una lista.
- */
 function Tarjeta({
   lista,
   lado,

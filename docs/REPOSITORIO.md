@@ -27,18 +27,23 @@ repositorio fija `Dockerfile` y el healthcheck `/live` en
 `railway.toml`; `/health` comprueba además las dependencias de la API.
 
 En **Railway → dnmusic → Settings → Source**, la fuente es el repositorio
-`Niiihuel/dnmusic` y la rama de despliegue es `production`. Autodeploy y
-**Wait for CI** están activos. Un despliegue desde Git ya compiló y pasó
-el healthcheck `/live`; verificar el SHA y el estado en Railway tras cada push.
-Si se desconecta la fuente Git en el futuro, los pushes dejarán de publicar.
+`Niiihuel/dnmusic` y la rama de despliegue es `production`. Un despliegue
+iniciado manualmente desde esa fuente ya compiló y pasó el healthcheck `/live`.
+La conexión de la fuente por sí sola no creó un trigger de GitHub: los pushes
+a `production` todavía no publican automáticamente ni esperan CI en Railway.
+Verificar el SHA y el estado de cada despliegue antes de darlo por publicado.
 
 En GitHub, proteger `production`: exigir PR y el check **Types & lint** del
 workflow `.github/workflows/ci-checks.yml`, sin saltar el requisito para las
 publicaciones normales. El workflow corre para PR dirigidos a `production` y
-para cada push a esa rama. Railway **Wait for CI** espera los workflows del
-commit antes de iniciar el despliegue; la protección de rama evita integrar
-un PR con CI fallida. El PR #4 sigue en borrador y apunta a otra base: no es
-un mecanismo de publicación a `production`.
+`main`, y para cada push a `production`. Ejecuta `npm run check` (tipos de los
+tres paquetes, tests de app/servicio/escritorio y lint completo), exige el DSP C
+con `REQUIRE_EQ_DSP_TEST=1` y ejecuta la prueba de permisos en PostgreSQL aparte.
+La automatización prevista es un job de GitHub
+Actions que dependa de **Types & lint** y despliegue con un `RAILWAY_TOKEN`
+limitado al proyecto y guardado en GitHub Secrets. Hasta verificar ese job y
+el despliegue resultante, iniciar y supervisar cada publicación manualmente.
+Un PR o una fuente Git conectada no constituyen por sí solos una publicación.
 
 Las migraciones `20261001000000_playlist_mixes.sql`,
 `20261002000000_playlist_rhythm_reorder.sql` y
@@ -52,9 +57,10 @@ Para cambios futuros:
 2. Aplicarla al PostgreSQL correcto en orden de nombre/versión, registrar su
    versión en el ledger y verificar tablas, políticas RLS, permisos y RPC
    afectados. Evitar volver a ejecutar las tres migraciones ya registradas.
-3. Dejar pasar CI, integrar a `production` y desplegar ese commit. Con Git
-   conectado y Wait for CI activo, Railway lo hace al recibir el push;
-   si se desactiva, hay que iniciar y supervisar el despliegue manualmente.
+3. Dejar pasar CI, integrar a `production` e iniciar el despliegue de ese
+   commit en Railway. La fuente Git está conectada, pero actualmente no hay
+   trigger automático. Cuando el job de GitHub Actions esté verificado,
+   confirmar que terminó correctamente y publicó ese mismo commit.
 4. Comparar el SHA desplegado con `production` y comprobar que `/live` responda
    `200` JSON, `/health` responda `200` JSON con dependencias sanas, la web
    abra, y `/analysis` y `/peaks` respondan JSON de autorización a solicitudes
@@ -63,7 +69,8 @@ Para cambios futuros:
 Si una migración rompe la versión anterior, dividir el cambio en fases
 compatibles antes de integrarlo. Un rollback de código no revierte el esquema.
 
-Referencias: [Railway GitHub autodeploys](https://docs.railway.com/deployments/github-autodeploys)
+Referencias: [Railway GitHub autodeploys](https://docs.railway.com/deployments/github-autodeploys),
+[Railway CLI deployments](https://docs.railway.com/cli/deploying)
 y [GitHub protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches).
 
 ## Identificadores de compatibilidad
@@ -73,6 +80,9 @@ visible de la app. No cambiarlo sin coordinar el proyecto remoto, las
 actualizaciones y la firma. Los dominios internos antiguos de autenticación
 y los marcadores de tarjetas tampoco deben reemplazarse sin una migración:
 pueden seguir siendo necesarios para cuentas y artefactos ya creados.
+
+El `project_id = "dany"` de `supabase/config.toml` identifica el stack local y
+sus contenedores/volúmenes. Cambiarlo no migra los datos del stack existente.
 
 ## Secretos
 

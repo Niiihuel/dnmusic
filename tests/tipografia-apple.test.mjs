@@ -1,11 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const require = createRequire(import.meta.url)
 const apple = require('../src/ui/apple.json')
 const tailwind = require('../tailwind.config.js')
-const ejecutar = orden => require('node:child_process').execSync(orden, { encoding: 'utf8' })
 
 /**
  * La escala de Apple, escrita a mano acá.
@@ -96,11 +97,15 @@ test('cada clase de la escala que el código escribe existe de verdad', () => {
    * config contra sí misma. Acá se leen los archivos y se exige que cada clase
    * escrita esté definida.
    */
-  const fuentes = ejecutar('grep -rhoE "\\\\btext-[a-z][a-z0-9-]*" src app --include=*.tsx')
+  const fuentes = ['src', 'app'].flatMap(root => readdirSync(root, { recursive: true })
+    .filter(path => path.endsWith('.tsx')).map(path => readFileSync(join(root, path), 'utf8')))
+    .flatMap(source => [...source.matchAll(/\btext-[a-z][a-z0-9-]*/g)]
+      // Una propiedad CSS (text-align:) no es una clase de Tailwind.
+      .filter(match => !/^\s*:/.test(source.slice(match.index + match[0].length))).map(match => match[0]))
   const definidas = new Set(Object.keys(tailwind.theme.extend.fontSize))
   const colores = new Set(Object.keys(tailwind.theme.extend.colors))
   const huerfanas = new Set()
-  for (const uso of fuentes.split('\n').filter(Boolean)) {
+  for (const uso of fuentes) {
     const nombre = uso.slice('text-'.length)
     /* Las de color y las de alineación de Tailwind no son de esta escala. */
     if (colores.has(nombre) || ['center', 'left', 'right', 'justify'].includes(nombre)) continue

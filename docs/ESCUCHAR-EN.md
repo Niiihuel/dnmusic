@@ -56,5 +56,6 @@ un bundle JavaScript no los incorpora por sí solo.
 Las pruebas locales simulan los bordes de red y del reproductor. El empaquetado
 Expo comprueba los bundles, no compila Swift ni reemplaza las pruebas en iPhone.
 
-Validación local de esta integración: **572 pruebas pasan**, TypeScript y
-ESLint sin errores. Los exports web e iOS terminaron correctamente.
+`npm run check` ejecuta los contratos de controles y transferencia junto con
+los tipos y lint. Los resultados de una compilación anterior no validan cambios
+nativos posteriores.

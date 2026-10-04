@@ -20,6 +20,10 @@ import type { ConfiguracionDiscord, EstadoDiscord, ListeningActivity } from './d
  */
 const puente = {
   version: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  /** Copia nativa: Chromium puede denegar clipboard-write en el origen app://. */
+  portapapeles: {
+    copiar: (texto: string): Promise<boolean> => ipcRenderer.invoke('portapapeles:copiar', texto),
+  },
   ventana: {
     controlesPropios: process.platform === 'linux',
     estado: (): Promise<EstadoVentana> => ipcRenderer.invoke('ventana:estado'),

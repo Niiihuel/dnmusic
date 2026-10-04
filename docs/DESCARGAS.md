@@ -13,7 +13,7 @@ cuando hace falta.
 | `src/lib/artwork.ts` | `registerArteLocal`, el puente para dibujar la tapa bajada |
 | `src/ui/MotorAudio.tsx` | Elige el archivo local en vez de firmar una URL |
 | `src/ui/PlaylistView.tsx` | El botón de la cabecera, el ítem del menú y la marca de la fila |
-| `app/ajustes.tsx` | Espacio ocupado y borrar todo |
+| `app/ajustes/index.tsx` | Espacio ocupado y borrar todo |
 
 ## Las decisiones que importan
 

@@ -33,15 +33,24 @@ const ESTILOS = `
 .dn-eq-bands { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 8px; border: 0; margin: 0; padding: 0; }
 .dn-eq-band { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0; border-radius: 10px; min-width: 0; }
 .dn-eq-band:focus-within { background: #ffffff08; }
+.dn-eq-band[data-selected=true] { background: #ffffff08; }
 .dn-eq-band span { font-size: 12px; color: #b3b3b3; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.dn-eq-band output { font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dn-eq-band output { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; background: #303030; border-radius: 6px; padding: 4px 5px; }
 .dn-eq-band input { writing-mode: vertical-lr; direction: rtl; height: 132px; width: 28px; margin: 0; accent-color: #fff; cursor: ns-resize; }
+.dn-eq-band-track { position: relative; display: flex; align-items: center; justify-content: center; }
+.dn-eq-band-track::before { content: ''; position: absolute; width: 26px; height: 1px; background: #ffffff40; pointer-events: none; }
+.dn-eq-band input { position: relative; }
+.dn-eq-selected { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; background: #242424; border-radius: 12px; }
+.dn-eq-selected output { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.dn-eq-selected button { min-height: 44px; min-width: 44px; border: 0; border-radius: 999px; background: #303030; padding: 6px 12px; }
 .dn-eq-bands:disabled { opacity: .4; }
 .dn-eq-band input:disabled { cursor: default; }
 @media (max-width: 600px) {
   .dn-eq-bands { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; }
   .dn-eq-band { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
   .dn-eq-band input { writing-mode: horizontal-tb; direction: ltr; grid-column: 1 / -1; grid-row: 2; width: 100%; height: 32px; cursor: ew-resize; }
+  .dn-eq-band-track { grid-column: 1 / -1; grid-row: 2; }
+  .dn-eq-band-track::before { width: 1px; height: 14px; }
 }
 `
 
@@ -60,6 +69,12 @@ export default function Ecualizador() {
   const bloqueado = !estado.cargado || remoto || soporte === 'no-disponible' || soporte === 'error'
   const edicionBloqueada = bloqueado || !estado.activo
   const seleccionado = estado.presetsPersonales.find(item => item.id === estado.presetPersonalId)
+  const ganancia = estado.ganancias[banda] ?? 0
+  const ajustarBanda = (value: number) => {
+    if (edicionBloqueada) return
+    setGananciaEcualizador(banda, Math.max(GANANCIA_EQ_MIN, Math.min(GANANCIA_EQ_MAX, value)))
+    void guardarEcualizadorAhora()
+  }
   const aviso = !estado.cargado ? 'Cargando tus ajustes…'
     : remoto ? `El audio está sonando en ${otroDispositivo ?? 'otro dispositivo'}. Ajustá el ecualizador allí.`
       : soporte === 'no-disponible' ? 'El ecualizador no está disponible en este navegador o versión de la app.'
@@ -115,21 +130,43 @@ export default function Ecualizador() {
           </View>
           <div className="dn-eq">
             <fieldset className="dn-eq-bands" disabled={edicionBloqueada} aria-label="Ganancia por frecuencia">
-              {FRECUENCIAS_EQ.map((hz, index) => <label className="dn-eq-band" key={hz}>
+              {FRECUENCIAS_EQ.map((hz, index) => <label className="dn-eq-band" data-selected={banda === index} key={hz}>
                 <span>{frecuenciaEQ(hz)}</span>
+                <div className="dn-eq-band-track">
                 <input type="range" min={GANANCIA_EQ_MIN} max={GANANCIA_EQ_MAX} step={0.5}
                   value={estado.ganancias[index] ?? 0} aria-label={`Ganancia de ${frecuenciaEQ(hz)}`}
                   aria-valuetext={decibeliosEQ(estado.ganancias[index] ?? 0)}
                   onFocus={() => setBanda(index)} onPointerDown={() => setBanda(index)}
                   onChange={event => { if (!edicionBloqueada) setGananciaEcualizador(index, event.currentTarget.valueAsNumber) }}
                   onPointerUp={() => { void guardarEcualizadorAhora() }}
-                  onBlur={() => { void guardarEcualizadorAhora() }} />
+                  onBlur={() => { void guardarEcualizadorAhora() }}
+                  onDoubleClick={() => { if (!edicionBloqueada) { setGananciaEcualizador(index, 0); void guardarEcualizadorAhora() } }}
+                  onKeyDown={event => {
+                    const delta = event.key === 'ArrowUp' || event.key === 'ArrowRight' ? 1
+                      : event.key === 'ArrowDown' || event.key === 'ArrowLeft' ? -1 : 0
+                    if (!event.shiftKey || !delta || edicionBloqueada) return
+                    event.preventDefault()
+                    setGananciaEcualizador(index, Math.max(GANANCIA_EQ_MIN, Math.min(GANANCIA_EQ_MAX,
+                      (estado.ganancias[index] ?? 0) + delta * 3)))
+                    void guardarEcualizadorAhora()
+                  }} />
+                </div>
                 <output aria-hidden="true">{decibeliosEQ(estado.ganancias[index] ?? 0)}</output>
               </label>)}
             </fieldset>
           </div>
+          <div className="dn-eq dn-eq-selected" role="group" aria-label={`Ajuste de ${frecuenciaEQ(FRECUENCIAS_EQ[banda])}`}>
+            <span style={{ flex: 1, minWidth: 120, fontSize: 13, color: '#B3B3B3' }}>Banda · {frecuenciaEQ(FRECUENCIAS_EQ[banda])}</span>
+            <output aria-label="Ganancia seleccionada">{decibeliosEQ(ganancia)}</output>
+            <button type="button" disabled={edicionBloqueada || ganancia <= GANANCIA_EQ_MIN}
+              aria-label={`Reducir ${frecuenciaEQ(FRECUENCIAS_EQ[banda])} en 0,5 dB`} onClick={() => ajustarBanda(ganancia - 0.5)}>−</button>
+            <button type="button" disabled={edicionBloqueada || ganancia === 0}
+              aria-label={`Restablecer ${frecuenciaEQ(FRECUENCIAS_EQ[banda])} a 0 dB`} onClick={() => ajustarBanda(0)}>0 dB</button>
+            <button type="button" disabled={edicionBloqueada || ganancia >= GANANCIA_EQ_MAX}
+              aria-label={`Aumentar ${frecuenciaEQ(FRECUENCIAS_EQ[banda])} en 0,5 dB`} onClick={() => ajustarBanda(ganancia + 0.5)}>+</button>
+          </div>
           <Text style={{ color: '#B3B3B3', fontSize: 13, lineHeight: 18 }}>
-            {estado.activo ? 'Arrastrá la curva o ajustá cada banda. Con teclado, usá las flechas para cambiar de a 0,5 dB.' : 'Activá el ecualizador para ajustar el sonido.'}
+            {estado.activo ? 'Ajustá la curva o los faders. Flechas: 0,5 dB; Shift + flecha: 3 dB. Doble clic para volver a 0 dB.' : 'Activá el ecualizador para ajustar el sonido.'}
           </Text>
         </View>
 

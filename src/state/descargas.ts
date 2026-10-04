@@ -143,8 +143,6 @@ export function marcarAudioUsado(audioPath: string, videoId?: string) {
   if (local && Date.now() - local.descarga.ultimoUso > 30_000) poner(local.key, { ultimoUso: Date.now() })
 }
 export function espacioUsado(items: Record<string, Descarga>) { return Object.values(items).reduce((s, d) => s + d.bytes, 0) }
-export function cuantasListas(items: Record<string, Descarga>) { return Object.values(items).filter(d => d.estado === 'lista').length }
-export function cuantasPendientes(items: Record<string, Descarga>) { return Object.values(items).filter(d => d.estado !== 'lista').length }
 export function resumenLista(tracks: PlaylistTrack[], items: Record<string, Descarga>) {
   let listas = 0, bajando = 0, parcial = 0
   for (const t of tracks) {
@@ -290,7 +288,6 @@ export const getDescargas = () => store.get()
 export const useDescargasCargadas = () => useStore(store, s => s.cargado)
 export const useDescargasError = () => useStore(store, s => s.error)
 export const getLimiteCacheMB = () => store.get().limiteCacheMB
-export const useLimiteCacheMB = () => useStore(store, s => s.limiteCacheMB)
 export function setLimiteCacheMB(mb: number) {
   if (!Number.isFinite(mb) || mb < 0) return
   limiteModificado = true; store.set({ limiteCacheMB: Math.round(mb) })
@@ -324,12 +321,6 @@ export function quitarDescarga(key: string) { luego(() => mantener(async () => {
   const k = buscar(key); if (!k) return
   if (protegida(store.get().items[k])) poner(k, { temporal: true, ultimoUso: Date.now(), quitarAlLiberar: true })
   else await eliminar(k, false)
-})) }
-export function quitarLista(tracks: PlaylistTrack[]) { for (const t of tracks) quitarDescarga(claveDescarga(t)) }
-export function borrarTodo() { luego(() => mantener(async () => {
-  for (const k of Object.keys(store.get().items)) {
-    if (protegida(store.get().items[k])) poner(k, { temporal: true, quitarAlLiberar: true }); else await eliminar(k, false)
-  }
 })) }
 export function limpiarCache() { luego(() => mantener(async () => {
   for (const k of Object.keys(store.get().items)) await eliminar(k, true)
@@ -470,4 +461,3 @@ async function bajar(t: Trabajo) {
   }
 }
 export const useDescargas = () => useStore(store, s => s)
-export const useDescarga = (audioPath: string | undefined) => useStore(store, s => { const k = audioPath ? buscar(audioPath) : undefined; return k ? s.items[k] ?? null : null })

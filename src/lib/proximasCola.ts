@@ -5,6 +5,18 @@ type Cola = {
   upNext: PlaylistTrack[]; shuffle: number[] | null; repetir: 'no' | 'lista' | 'una'
 }
 
+/** La fila que consumirá advance, incluso si repite el video actual. */
+export function siguienteCola(cola: Cola): PlaylistTrack | null {
+  if (cola.repetir === 'una') return null
+  if (cola.upNext[0]) return cola.upNext[0]
+  const orden = cola.shuffle?.filter(i => i >= 0 && i < cola.tracks.length)
+    ?? cola.tracks.map((_, i) => i)
+  const siguiente = orden[orden.indexOf(cola.index) + 1]
+  if (siguiente !== undefined) return cola.tracks[siguiente] ?? null
+  if (cola.repetir === 'lista') return cola.tracks[cola.shuffle?.[0] ?? 0] ?? null
+  return null
+}
+
 /** Simula avances sin mutar la cola ni consumir su orden aleatorio. */
 export function proximasCola(cola: Cola, cantidad = 2): PlaylistTrack[] {
   if (cola.repetir === 'una' || cantidad <= 0) return []

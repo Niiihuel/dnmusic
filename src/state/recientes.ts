@@ -67,7 +67,6 @@ async function recordar(item: RecienteBusqueda) {
   if (revision !== version && store.get().items?.length === 0) return
   guardar([item, ...(store.get().items ?? []).filter(r => r.id !== item.id)].slice(0, TOPE))
 }
-export function recordarBusqueda(termino: string) { if (termino.trim()) void recordar(consulta(termino.trim())) }
 export function recordarCancion(track: TrackResult) { void recordar(cancion(track)) }
 export function recordarArtista(artist: ArtistResult) { void recordar(artista(artist)) }
 export function olvidarBusqueda(id: string) { guardar((store.get().items ?? []).filter(r => r.id !== id)) }

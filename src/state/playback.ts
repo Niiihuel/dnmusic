@@ -6,19 +6,9 @@ import { createStore, useStore } from './store'
 import { avisar } from './aviso'
 
 /**
- * Lo que suena, para toda la app.
- *
- * Vive fuera de las pantallas a propósito. Antes la cola era un hook dentro de
- * `playlists/[id]`, así que salir de la lista desmontaba el reproductor y la
- * música se cortaba en seco — justo lo que uno no espera al ir a leer un
- * mensaje mientras escucha. Acá el estado sobrevive a la navegación y la barra
- * de abajo, montada una sola vez en el layout, es la única que toca el audio.
- *
- * La otra mitad del sonido de la app son los fragmentos del chat
- * (`useSnippetPlayer`), que siguen teniendo su propio reproductor porque hacen
- * algo distinto: una ventana de un tema, sin encadenar. Lo único que comparten
- * es que **no pueden sonar los dos a la vez**, y de eso se ocupan
- * `registerSnippetStopper` y `pauseForSnippet`.
+ * Estado de reproducción independiente de la navegación; MotorAudio maneja el audio.
+ * Los fragmentos usan otro reproductor, coordinado con registerSnippetStopper
+ * y pauseForSnippet para impedir que ambos suenen a la vez.
  */
 
 /** De dónde salió la cola. Sirve para marcar la lista que está sonando. */
@@ -32,13 +22,7 @@ export type ModoReproduccion = 'orden' | 'aleatorio' | 'recomendado'
 
 type PlaybackState = {
   tracks: PlaylistTrack[]
-  /**
-   * Canciones puestas a mano para que suenen antes de seguir con la lista.
-   *
-   * Van aparte de `tracks` y no intercaladas: la cola manual no pertenece a la
-   * lista, y mezclarlas haría que releer la lista —al agregar o quitar una
-   * canción— se llevara puesto lo que alguien encoló.
-   */
+  /** Cola manual independiente de tracks: releer la playlist no debe reemplazarla. */
   upNext: PlaylistTrack[]
   /** Lo que salió de la cola manual y está sonando ahora. Gana sobre `tracks`. */
   manual: PlaylistTrack | null
@@ -55,28 +39,15 @@ type PlaybackState = {
   /** 0..1, elegido por quien escucha. Se multiplica por la atenuación técnica. */
   volume: number
   /**
-   * El orden aleatorio, **barajado una vez**.
-   *
-   * Guarda los índices de `tracks` en el orden en que van a sonar; `null` cuando
-   * el aleatorio está apagado. No es «elegir una al azar en cada salto»: eso
-   * repite temas y saltea otros, y a los diez minutos ya te hizo escuchar dos
-   * veces la misma mientras nunca tocó la mitad de la lista. Es lo que hace
-   * Spotify desde que arreglaron su propio aleatorio por la misma queja.
-   *
-   * Se baraja al prenderlo y se recorre entero. La que está sonando queda
-   * primera para que prender el aleatorio no corte lo que estás escuchando.
+   * Índices barajados una sola vez para recorrer toda la colección sin repeticiones.
+   * Al activarlo, la canción actual queda primera.
    */
   shuffle: number[] | null
   /** El modo visible; `shuffle` conserva la baraja concreta de los dos modos al azar. */
   modoReproduccion: ModoReproduccion
   /**
-   * Qué pasa al llegar al final.
-   *
-   * `no` se detiene —o sigue con recomendaciones, si están prendidas—; `lista`
-   * vuelve a empezar por el principio; `una` repite el tema actual para siempre.
-   *
-   * Las tres son excluyentes y se rotan en ese orden, que es el de todos los
-   * reproductores desde el primer iPod: apagado → la lista → esta sola.
+   * Al final: `no` detiene o continúa con descubrimiento; lista vuelve al inicio;
+   * una repite la pista. Los modos son excluyentes.
    */
   repetir: 'no' | 'lista' | 'una'
   /**
@@ -84,40 +55,16 @@ type PlaybackState = {
    * temporizador puesto. Ver `programarApagado`.
    */
   dormirA: number | null
-  /**
-   * Cuántos minutos se pidieron, para poder marcar cuál está puesto.
-   *
-   * Se guarda además de `dormirA` porque deducirlo del instante restante obliga
-   * a leer el reloj mientras se dibuja —impuro, y encima drift: a los treinta
-   * segundos ya no coincide con ningún preset—.
-   */
+  /** Preset elegido: no se deduce del tiempo restante, que cambia durante el render. */
   dormirMin: number | null
   /** Qué muestra el panel de la derecha mientras suena algo. */
   view: NowPlayingView
   error: string | null
-  /**
-   * Si el audio de la canción actual ya está firmado y cargado.
-   *
-   * Lo escribe el motor y lo lee la barra para saber qué ícono dibujar. Antes la
-   * barra lo sabía sola —tenía la URL a mano— pero el motor y el dibujo dejaron
-   * de ser el mismo componente, y `wantPlay` a secas no alcanza: es la
-   * **intención** de quien escucha, así que si la firma falla el botón se
-   * quedaría mostrando «pausar» para siempre sobre algo que nunca sonó.
-   */
+  /** El motor confirma carga; wantPlay representa intención, incluso si el audio falla. */
   cargada: boolean
 }
 
-/**
- * Las caras del panel de la derecha.
- *
- * `info` es la de siempre —carátula, tema, artista—; `disc` es el vinilo
- * girando, `lyrics` la letra sincronizada, `jam` la escucha compartida y
- * `cola` lo que viene después. En el teléfono el Jam y la cola siguen siendo
- * sus pantallas modales; estas vistas son la forma de escritorio, al lado de
- * la lista, como el panel de Spotify — un drawer es un gesto de teléfono, no
- * de una ventana grande. Vive acá y no en la pantalla porque quien las
- * alterna es la barra de abajo, que está en el layout.
- */
+/** Vista del panel de escritorio. En teléfonos, Jam y cola usan sus pantallas. */
 export type NowPlayingView = 'info' | 'disc' | 'lyrics' | 'jam' | 'cola'
 
 const EMPTY: PlaybackState = {
@@ -146,19 +93,9 @@ const RESTART_MS = 3000
 
 const store = createStore<PlaybackState>({ ...EMPTY })
 
-/* ── Memoria de la cola ────────────────────────────────────────────────────
- *
- * Un reproductor no arranca en blanco: volvés y está lo que estabas
- * escuchando, donde lo dejaste. Sin esto, cualquier cosa que corte el proceso
- * —iOS reclamando memoria, un cierre desde el multitarea— borraba la cola
- * entera y la app se abría como si nunca la hubieras usado.
- *
- * Se guarda la cola, dónde estaba y en qué segundo. **No** se guarda que
- * estaba sonando: volver a abrir la app no puede empezar a hacer ruido solo.
- */
+/** Persiste cola y posición, nunca reproducción activa: restaurar no debe emitir audio. */
 const CLAVE = 'playback:v1'
-/** La posición cambia sesenta veces por segundo; escribir tan seguido sería
- *  castigar el disco para nada. Cada cinco segundos alcanza de sobra. */
+/** Limita las escrituras de posición a una cada cinco segundos. */
 const GUARDAR_CADA_MS = 5000
 let ultimoGuardado = 0
 
@@ -172,19 +109,14 @@ type Guardado = {
 }
 
 function guardar(force = false) {
-  // La cola de un Jam no es tuya: persistirla dejaría la de otro apareciendo
-  // en tu próxima sesión. Lo guardado antes de entrar queda intacto. El
-  // espejo tampoco persiste: su verdad vive en el servidor y se repide al
-  // abrir — guardar una foto vieja de eso es justo el bug que vinimos a matar.
+  // Jam y espejo viven en el servidor; conservar la última cola local en disco.
   if (enJam() || enEspejo()) return
   const now = Date.now()
   if (!force && now - ultimoGuardado < GUARDAR_CADA_MS) return
   ultimoGuardado = now
   const { tracks, index, origin, positionMs, modoReproduccion, shuffle } = store.get()
   const payload: Guardado = { tracks, index, origin, positionMs, modoReproduccion, shuffle }
-  void AsyncStorage.setItem(CLAVE, JSON.stringify(payload)).catch(() => {
-    // Sin memoria de la cola, pero la app funciona igual.
-  })
+  void AsyncStorage.setItem(CLAVE, JSON.stringify(payload)).catch(() => {})
 }
 
 /**
@@ -235,10 +167,9 @@ export async function restorePlayback() {
   }
 }
 
-/*
- * El audio lo maneja la barra, que es quien tiene el reproductor. Un salto no
- * se puede expresar como estado —pedir dos veces el mismo segundo tiene que
- * saltar dos veces— así que se registra una manija imperativa mínima.
+/**
+ * MotorAudio registra un seek imperativo: pedir dos veces el mismo segundo
+ * debe producir dos saltos, algo que un cambio de estado no representa.
  */
 type Engine = { seekTo: (ms: number) => void }
 let engine: Engine | null = null
@@ -556,9 +487,10 @@ export function completarCancion(
         }
       : t
   const manual = state.manual ? completar(state.manual) : null
-  const actual = manual ?? state.tracks.map(completar)[state.index]
+  const tracks = state.tracks.map(completar)
+  const actual = manual ?? tracks[state.index]
   store.set({
-    tracks: state.tracks.map(completar),
+    tracks,
     upNext: state.upNext.map(completar),
     manual,
     /* Si la completada es la que suena, el largo de la barra ya puede ser el
@@ -567,18 +499,6 @@ export function completarCancion(
       ? { durationMs: datos.durationMs }
       : {}),
   })
-}
-
-/**
- * Una candidata cuyo audio no se pudo traer se va de la cola.
- *
- * Solo las que siguen sin audio: dejarla sería un hueco en el que «siguiente»
- * tropieza cada vez que le toca. Lo llama el motor cuando la precarga falla.
- */
-export function descartarSinAudio(videoId: string) {
-  const { upNext } = store.get()
-  const limpio = upNext.filter((t) => !(t.videoId === videoId && !t.audioPath))
-  if (limpio.length !== upNext.length) store.set({ upNext: limpio })
 }
 
 /*
@@ -1429,16 +1349,10 @@ export function stopPlayback() {
   store.set({ ...EMPTY, volume, view, modoReproduccion })
 }
 
-/**
- * El volumen se guarda **aparte** de la cola.
- *
- * Es una preferencia de quien escucha, no estado de la sesión: sobrevive a
- * cerrar la app, y a diferencia de la cola se guarda también durante un Jam o un
- * espejo (ahí `guardar` no escribe, con razón, pero la perilla es tuya igual).
- * Antes no se persistía en ningún lado, así que cada arranque volvía al máximo
- * —fuerte y molesto— y había que bajarlo de nuevo. Clave propia, un solo número.
- */
+/** Preferencia independiente de la cola: persiste también durante Jam y espejo. */
 const VOL_CLAVE = 'volume:v1'
+// Compartido por la barra y la pantalla completa, también cuando el slider llega a cero.
+let ultimoVolumenAudible = 1
 let guardarVolumenTimer: ReturnType<typeof setTimeout> | undefined
 function guardarVolumen() {
   clearTimeout(guardarVolumenTimer)
@@ -1454,6 +1368,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 export function setVolume(volume: number) {
   if (!Number.isFinite(volume)) return
   const v = Math.max(0, Math.min(1, volume))
+  if (v > 0) ultimoVolumenAudible = v
   if (store.get().volume === v) return
   store.set({ volume: v })
   // El audio responde ahora; guardar en disco espera a que termine el arrastre.
@@ -1463,13 +1378,22 @@ export function setVolume(volume: number) {
   } else guardarVolumen()
 }
 
+/** Silenciar conserva el último nivel audible aunque se cambie de reproductor. */
+export function toggleMute() {
+  setVolume(store.get().volume > 0 ? 0 : ultimoVolumenAudible)
+}
+
 /** Devuelve el volumen de la sesión anterior. Lo llama el layout al arrancar. */
 export async function restaurarVolumen() {
   try {
     const crudo = await AsyncStorage.getItem(VOL_CLAVE)
     if (crudo === null) return
     const v = Number(crudo)
-    if (Number.isFinite(v)) store.set({ volume: Math.max(0, Math.min(1, v)) })
+    if (Number.isFinite(v)) {
+      const volumen = Math.max(0, Math.min(1, v))
+      if (volumen > 0) ultimoVolumenAudible = volumen
+      store.set({ volume: volumen })
+    }
   } catch {
     // Lo guardado no se entiende: se ignora y queda el default.
   }
@@ -1724,21 +1648,12 @@ export const usePlaybackState = () => useStore(store, (state) => state)
  */
 export const usePlaybackTrack = () => useStore(store, currentOf)
 export const useVolume = () => useStore(store, (state) => state.volume)
-/* El aleatorio y la repetición los dibujan los controles del reproductor, que
-   están al lado de la barra de posición: suscribirse al estado entero los haría
-   redibujarse cinco veces por segundo para mostrar un ícono que no cambió. */
-export const useShuffle = () => useStore(store, (state) => state.modoReproduccion !== 'orden')
 export const useModoReproduccion = () => useStore(store, (state) => state.modoReproduccion)
 export const useRepetir = () => useStore(store, (state) => state.repetir)
 export const useDormirMin = () => useStore(store, (state) => state.dormirMin)
 export const useNowPlayingView = () => useStore(store, (state) => state.view)
 export const useManualPlaying = () => useStore(store, (state) => state.manual !== null)
-export const useUpNextCount = () => useStore(store, (state) => state.upNext.length)
 export const usePlaybackIndex = () => useStore(store, (state) => state.index)
-/* Lo justo para que un indicador siga el sonido sin suscribirse al estado
-   entero: la posición, la duración y si el motor ya tiene el audio. */
-export const usePlaybackPositionMs = () => useStore(store, (state) => state.positionMs)
-export const usePlaybackDurationMs = () => useStore(store, (state) => state.durationMs)
 export const usePlaybackCargada = () => useStore(store, (state) => state.cargada)
 export const usePlaybackOriginId = () => useStore(store, (state) => state.origin?.id ?? null)
 /** El origen de lo que suena, leído una vez: lo anota el historial al cambiar de tema. */

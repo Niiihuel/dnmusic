@@ -140,6 +140,7 @@ test('álbum conserva el audio real resuelto y reutiliza el me gusta existente a
 test('minirreproductor iOS nativo muestra el destino real y conserva los mandos sin tocar audio al navegar', () => {
   const calls = []
   let preparando = true
+  let error = null
   const destino = { resumen: 'En pausa en Computadora', remoto: true, estado: 'pausado' }
   const h = harness('src/ui/NowPlayingBar.tsx', {
     'react-native': { ...rn, Platform: { OS: 'ios' }, useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1.6 }) },
@@ -149,7 +150,7 @@ test('minirreproductor iOS nativo muestra el destino real y conserva los mandos 
     './Dispositivos.shared': { useDestinoEscucha: () => destino },
     '../lib/artwork': { artworkSource: () => 'https://cover' }, '../state/shell': { useTabsVisible: () => true },
     '../state/playback': {
-      usePlaybackState: () => ({ tracks: [track], index: 0, manual: null, wantPlay: true, positionMs: 0, durationMs: 180000, volume: .5, cargada: !preparando, view: null, error: null }),
+      usePlaybackState: () => ({ tracks: [track], index: 0, manual: null, wantPlay: true, positionMs: 0, durationMs: 180000, volume: .5, cargada: !preparando, view: null, error }),
       useHaySiguiente: () => false, usePlaybackOriginName: () => '', useModoReproduccion: () => 'orden', canOpenPlaylist: () => false,
       togglePlayback: () => calls.push('toggle'), playNext: () => calls.push('next'), playPrevious: () => calls.push('previous'),
     },
@@ -160,10 +161,21 @@ test('minirreproductor iOS nativo muestra el destino real y conserva los mandos 
   let mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
   assert.equal(mini.props.subtitle, 'En pausa en Computadora'); assert.equal(mini.props.remote, true)
   assert.equal(mini.props.deviceLabel, destino.resumen); assert.equal(mini.props.canNext, false)
-  assert.ok(mini.props.style.height >= 76); assert.equal(mini.props.busy, true)
+  assert.ok(mini.props.style.height >= 76); assert.equal(mini.props.busy, false, 'la escucha remota no carga audio local')
   mini.props.onOpen(); mini.props.onDevices(); assert.deepEqual(calls, [['route', '/playing'], 'devices'])
   mini.props.onPlayPause(); assert.equal(calls.at(-1), 'toggle')
   preparando = false; destino.resumen = 'Sonando en Computadora'; destino.estado = 'sonando'
   mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
   assert.equal(mini.props.subtitle, 'Sonando en Computadora'); assert.equal(mini.props.busy, false)
+  assert.equal(mini.props.playing, false, 'sonando en otro aparato no declara reproducción local')
+  destino.remoto = false; preparando = true
+  mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
+  assert.equal(mini.props.busy, true, 'la carga local permite pausarla')
+  error = 'No se pudo cargar la canción'
+  mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
+  assert.equal(mini.props.busy, false, 'un error de carga no deja un spinner permanente')
+  assert.equal(mini.props.subtitle, error)
+  preparando = false; error = null
+  mini = nodes(h.render('NowPlayingBar', {}), n => n.type === 'NativeMiniPlayer')[0]
+  assert.equal(mini.props.playing, true)
 })

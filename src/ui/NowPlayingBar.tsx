@@ -19,6 +19,7 @@ import {
   seekToMs,
   toggleShuffle,
   setVolume,
+  toggleMute,
   stopPlayback,
   togglePlayback,
   toggleView,
@@ -34,7 +35,9 @@ import { useClicDerecho } from './useClicDerecho'
 import { dejarCancionACompartir } from '../state/compartir'
 import { Menu, type MenuItem } from './Menu'
 import { SeekBar, formatClock } from './SeekBar'
-import { BotonAleatorio, BotonRepetir, NOMBRE_MODO_REPRODUCCION } from './Transport'
+import { NOMBRE_MODO_REPRODUCCION } from './Transport'
+import { BotonVistaAudio, ControlesTransporte } from './ControlesTransporte'
+import { VolumenAudio } from './VolumenAudio'
 import { BotonMeGusta } from './BotonMeGusta'
 import { EnlaceArtista } from './EnlaceArtista'
 import { PlayerMarquee } from './PlayerMarquee'
@@ -55,71 +58,21 @@ import {
   IconShuffle,
   IconSparkles,
   IconCola,
-  IconDisc,
-  IconLyrics,
   IconUsers,
-  IconVolume,
-  IconVolumeOff,
 } from './icons'
 
-/** Debajo de este ancho la barra se queda con lo esencial. */
 const WIDE_PX = 720
-/**
- * Desde este ancho existe el panel derecho (el `DETAIL_PX` de `app/index.tsx`;
- * si cambia allá tiene que cambiar acá). Con panel, el Jam se abre ahí como
- * una cara más —al modo del panel de Spotify—; sin panel sigue siendo la
- * pantalla modal de siempre.
- *
- * Se exporta porque la puerta del link (`app/jam/[code].tsx`) tiene que tomar
- * exactamente la misma decisión al terminar de entrar: con panel, el Jam se
- * abre ahí; sin panel, en su pantalla.
- */
+/* Debe coincidir con DETAIL_PX de app/index.tsx; la ruta del Jam usa el mismo umbral. */
 export const PANEL_PX = 1120
 
-/**
- * Poner una cara de la música: el Jam, la cola, la letra, el disco.
- *
- * No alterna la vista de una: se lo pide a la pantalla principal, que primero
- * trae la música al medio. Estando en conversaciones el panel de la derecha es
- * el detalle del mensaje y la cara no tenía dónde dibujarse — tocar «Jam»
- * desde un chat no hacía nada. Ver `abrirCara` en `state/shell.ts`.
- *
- * Sin nadie escuchando —una ruta apilada, el teléfono— alterna como siempre.
- */
+/* La pantalla principal debe llevar primero la música al centro antes de abrir su panel. */
 function ponerCara(cara: 'disc' | 'lyrics' | 'jam' | 'cola') {
   if (hayQuienAbraCaras()) abrirCara(cara)
   else toggleView(cara)
 }
 
-/**
- * La barra de abajo: qué suena, y los controles.
- *
- * Es **solo la cara**. Quien toca el audio es `MotorAudio`, que se monta aparte
- * y una sola vez en `app/_layout.tsx`; acá no queda un solo hook del
- * reproductor.
- *
- * Esa separación no es orden por el orden: esta barra se dibuja en cuatro
- * formas según dónde estés, y el layout las tiene como cuatro ramas de un
- * ternario. Cambiar de rama la remonta —React no conserva un componente que
- * cambia de lugar en el árbol—, y mientras el reproductor viajaba adentro, cada
- * remonte lo liberaba y la canción arrancaba de cero. Ahora remontarse no
- * cuesta nada: lo único que se pierde es lo que se estaba dibujando.
- *
- * El estado vive en `state/playback`, que es de donde lee todo lo que muestra.
- */
-/**
- * La línea de estado de la barra: quién canta, un error, o —lo nuevo— en qué
- * aparato está sonando.
- *
- * Cuando la escucha vive en otro dispositivo de la cuenta, en vez de un
- * subtítulo gris fácil de pasar por alto va un aviso con el ícono de un
- * dispositivo y el texto en blanco: se lee como lo que es —esto suena en otro
- * lado— sin robar protagonismo, al modo de la barrita de Spotify Connect. Para
- * traerla acá alcanza con tocar el play, que ya dispara el traspaso.
- *
- * Es una función y no un componente para poder devolver un `Text` o una fila
- * con ícono según el caso, y caer justo donde antes iba el subtítulo.
- */
+/* El motor se monta aparte para que cambiar de layout no reinicie el audio. */
+
 function lineaEstado({
   estadoRemoto,
   error,
@@ -156,7 +109,7 @@ export function NowPlayingBar({
   compacta = false,
 }: {
   oculto?: boolean
-  /** Dentro de la fila plegada: sin márgenes propios, ocupando lo que le den. */
+  /* La fila contenedora aporta sus márgenes en el modo plegado. */
   compacta?: boolean
 }) {
   const {
@@ -176,58 +129,31 @@ export function NowPlayingBar({
   const router = useRouter()
   const { width, fontScale } = useWindowDimensions()
   const wide = width >= WIDE_PX
-  /* El nombre de la lista de la que salió la cola, para el subtítulo de «Ver
-     la lista». Vacío con algo encolado a mano o sin origen. */
+
   const listName = usePlaybackOriginName()
   const modoReproduccion = useModoReproduccion()
   const enJam = useJamActivo()
   const cuantosJam = useCuantosJam()
-  /*
-   * El espejo de la escucha: lo que se ve está sonando en otro aparato de la
-   * cuenta. El rótulo va donde iba el artista —el mismo lugar que ya usa el
-   * error— porque es la línea que dice el **estado** de lo que suena, y
-   * «Sonando en tu computadora» es exactamente eso.
-   */
+
   const destinoEscucha = useDestinoEscucha()
   const estadoRemoto = destinoEscucha.remoto ? destinoEscucha.resumen : null
   const [opcionesNativas, setOpcionesNativas] = useState<{ x: number; y: number } | null>(null)
   const miniNativo = useRef<View>(null)
-  /** El tamaño cambia únicamente al elegirlo, nunca al recorrer o ajustar volumen. */
+  /* Sólo una acción explícita cambia el tamaño; scroll y volumen no alteran el layout. */
   const [compacto, setCompacto] = useState(false)
-  /* Click derecho sobre el reproductor: las mismas opciones que los tres
-     puntos, que acá son el conjunto más rico de la app (Jam, la cola, en qué
-     aparato suena). Es lo que hacen los reproductores de escritorio. */
+
   const clicBarra = useClicDerecho()
 
   // Lo encolado a mano manda sobre la lista mientras dure.
   const current = manual ?? (index >= 0 ? (tracks[index] ?? null) : null)
-  /* «Siguiente» se apaga solo si de verdad no hay a dónde ir: la cola manual,
-     el repetir y el relleno de recomendaciones cuentan — antes se miraba solo
-     la lista, y el botón moría en la última canción con la tanda esperando. */
+
   const last = !useHaySiguiente()
   const artwork = current ? artworkSource(current.artworkPath, current.artworkUrl, 96) : null
-  /*
-   * Suena de verdad: hay intención **y** hay audio cargado.
-   *
-   * Antes esto se sabía acá mismo, porque la barra tenía la URL firmada a mano.
-   * Ahora la firma es cosa de `MotorAudio`, que avisa por `cargada`. Con
-   * `wantPlay` solo, una firma que falla dejaría el botón mostrando «pausar»
-   * sobre algo que nunca arrancó.
-   */
-  const playing = wantPlay && cargada
-  /*
-   * Quiere sonar pero el audio todavía no está: se está resolviendo.
-   *
-   * La primera vez que se toca una canción tarda unos segundos —el servidor la
-   * baja de YouTube y la deja cacheada— y sin señal el botón se queda en «play»
-   * como si el toque no hubiera hecho nada. El spinner ocupa el mismo lugar que
-   * el ícono, así que el transporte no salta de tamaño al empezar a sonar.
-   */
-  const cargando = wantPlay && !cargada
 
-  /* Sin nada cargado no se dibuja, y oculto tampoco. Salir acá ya no tiene
-     ninguna consecuencia sobre el audio: eso vive en `MotorAudio`, que sigue
-     sonando mire lo que mire esta barra. */
+  const playing = wantPlay && cargada && !destinoEscucha.remoto
+
+  const cargando = wantPlay && !cargada && !error && !destinoEscucha.remoto
+
   if (!current || oculto) return null
 
   const progress = durationMs > 0 ? Math.max(0, Math.min(1, positionMs / durationMs)) : 0
@@ -239,31 +165,14 @@ export function NowPlayingBar({
       : <PlayerMarquee text={current.artist} kind="subtitle"
         onPress={current.artistId ? () => { abrirArtista(current.artistId!, current.artist); router.dismissTo('/') } : undefined} />
 
-  /*
-   * Reemplaza a la cruz que había acá.
-   *
-   * Una cruz solo puede cerrar, y sobre lo que suena hay varias cosas
-   * razonables que querer: ver de dónde salió, saltearla, empezarla de nuevo.
-   * Cerrar sigue estando, al final y separado del resto.
-   */
   const menu: MenuItem[] = [
-    /*
-     * Arriba, las tres acciones rápidas del menú de Apple Music: el Jam —la
-     * única que cambia **quiénes** escuchan—, la cola y compartir. Después a
-     * dónde ir, después qué hacer con la reproducción, y al final lo que la
-     * cierra.
-     */
+
     {
-      /*
-       * La fila dice lo que va a pasar: sin Jam **lo crea** —«Ver el Jam»
-       * ofrecía mirar algo que no existía— y con uno abierto lo muestra, con
-       * cuántos son. Es el mismo par de estados de la píldora del reproductor
-       * del teléfono.
-       */
+
       label: enJam ? `Jam · ${cuantosJam}` : 'Jam',
       rapida: true,
       selected: enJam || undefined,
-      /* Con panel, el Jam se abre ahí al lado; sin panel, en su pantalla. */
+
       onPress: () => {
         const abrir = () => {
           if (width >= PANEL_PX) ponerCara('jam')
@@ -283,8 +192,7 @@ export function NowPlayingBar({
     {
       label: 'Cola',
       rapida: true,
-      /* Como el Jam: con panel al lado, la cola se abre ahí — un drawer es un
-         gesto de teléfono, no de una ventana grande. Sin panel, su pantalla. */
+
       onPress: () => {
         if (width >= PANEL_PX) ponerCara('cola')
         else router.push('/cola')
@@ -292,8 +200,7 @@ export function NowPlayingBar({
       icon: <IconCola size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'list.bullet',
     },
-    /* Abre la hoja: la tarjeta 1080×1920 a la vista y las dos formas de pasar
-       la canción, la imagen y el link. Ver `app/compartir.tsx`. */
+
     {
       label: 'Compartir',
       rapida: true,
@@ -321,16 +228,7 @@ export function NowPlayingBar({
       icon: <IconDispositivo size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'laptopcomputer.and.iphone',
     },
-    /*
-     * El aleatorio, **solo en el teléfono**.
-     *
-     * En escritorio es un botón de verdad al lado del play —ver más abajo—, así
-     * que acá sería el mismo control dos veces en la misma barra. En el teléfono
-     * no hay dónde ponerlo: la tarjeta tiene lugar para la tapa, el título y
-     * pausa/siguiente y nada más, y un cuarto ícono la vuelve una fila de
-     * controles del ancho de la pantalla. Ahí el botón vive en la pantalla
-     * completa de «Sonando», y esto queda como atajo para no tener que abrirla.
-     */
+
     ...(wide
       ? []
       : [
@@ -366,8 +264,7 @@ export function NowPlayingBar({
       icon: <IconNext size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'forward.end',
     },
-    /* En un Jam, «cerrar» es irse de él: cerrar solo el reproductor dejaría
-       la membresía viva y la cola volvería sola con el próximo evento. */
+    /* Salir del Jam elimina la membresía; detener sólo el audio permitiría que el próximo evento lo reinicie. */
     enJam
       ? {
           label: 'Salir del Jam',
@@ -385,22 +282,6 @@ export function NowPlayingBar({
         },
   ]
 
-  /*
-   * En el teléfono, el reproductor es una **tarjeta** y no una barra.
-   *
-   * Se decide por el ancho y no por si hay pestañas: en el composer o en el
-   * editor de fragmento no hay barra de pestañas, y con la otra condición el
-   * teléfono recibía ahí la barra de escritorio, apretada y con controles que
-   * no entran.
-   *
-   * Flota justo encima de las pestañas, con lo mínimo: la tapa, qué suena y
-   * pausa/siguiente. Es la forma de Apple Music y de Spotify, y la razón es de
-   * espacio: en 390px una barra de borde a borde con posición, volumen y vistas
-   * no entra sin encoger todo hasta lo intocable.
-   *
-   * Lo que no cabe acá —la barra de posición, la letra, el disco, la cola— es
-   * lo que va en la pantalla completa de «Sonando», que se abre desde acá.
-   */
   if (!wide && NativeMiniPlayer) {
     return <View ref={miniNativo} collapsable={false} style={{ paddingHorizontal: compacta ? 0 : 12, paddingBottom: conTabs ? 8 : compacta ? 0 : 8 + insets.bottom }}>
       <NativeMiniPlayer title={current.title} subtitle={error || (destinoEscucha.remoto ? destinoEscucha.resumen : current.artist)} artwork={artwork}
@@ -414,16 +295,10 @@ export function NowPlayingBar({
   }
   if (!wide) {
     const androidRecto = Platform.OS === 'android'
-    /*
-     * Plegada, los márgenes los pone la fila que la contiene: acá adentro
-     * sumaría los suyos y la tarjeta quedaría más angosta que los redondeles de
-     * los costados, desalineada con ellos.
-     */
+
     return (
       <View
-        /* 22px y no 12: pegada al borde, la tarjeta se leía cortada contra la
-           curva de la pantalla del teléfono. Es el mismo aire que le da la
-           cáscara cuando la envuelve ella (ver RESPIRO_GRANDE en Cascara). */
+
         className={androidRecto || compacta ? '' : `px-[22px] ${conTabs ? 'pb-2' : ''}`}
         style={androidRecto ? { width: '100%', backgroundColor: '#1C1B1F' } : compacta || conTabs ? undefined : { paddingBottom: 8 + insets.bottom }}
       >
@@ -431,16 +306,7 @@ export function NowPlayingBar({
           radius={androidRecto ? 0 : compacta ? 26 : 18}
           style={androidRecto ? { backgroundColor: '#1C1B1F' } : { boxShadow: '0 6px 20px rgba(0,0,0,0.45)' }}
         >
-        {/*
-         * La fila es un View y **el área que abre «Sonando» es solo la mitad
-         * de la izquierda** —la tapa y los títulos—, no la tarjeta entera.
-         *
-         * Antes el Pressable envolvía también a pausa y siguiente, y en web
-         * eso es un `<button>` con botones adentro: HTML inválido, que React
-         * marca en dev y que confunde a un lector de pantalla — un botón
-         * adentro de otro no se puede anunciar. Como hermanos, cada toque
-         * tiene un solo dueño.
-         */}
+        {/* Los controles y la acción de abrir son hermanos para evitar botones anidados en HTML. */}
         <View className="flex-row items-center gap-3 px-2.5 py-2">
           <BotonSuperficie
             accessibilityRole="button"
@@ -464,21 +330,14 @@ export function NowPlayingBar({
             </View>
           </BotonSuperficie>
 
-          {/* Los controles van **pegados entre sí**, como en el mini
-              reproductor de Apple Music: cada botón ya lleva su área táctil
-              de 40px adentro, y sumarle huecos entre uno y otro desparramaba
-              tres íconos por media tarjeta — el espacio que sobra es del
-              título, no de los botones. */}
           <View className="flex-row items-center">
-            {/* «Anterior» solo cuando hay una cola de verdad detrás: puesta
-                una canción suelta de la búsqueda no hay a dónde volver, y un
-                botón que nunca hace nada es peor que no tenerlo. */}
+
             {tracks.length > 1 ? (
               <IconButton label="Anterior" symbol="backward.end.fill" onPress={playPrevious} lado={40} size={19} icon={<IconPrevious size={19} color={ICON_COLOR.foreground} />} />
             ) : null}
-            <IconButton label={destinoEscucha.remoto ? 'Traer música a este dispositivo' : cargando ? 'Pausar carga' : playing ? 'Pausar' : 'Reproducir'} symbol={playing && !destinoEscucha.remoto ? 'pause.fill' : 'play.fill'} onPress={togglePlayback} lado={40} size={19} busy={cargando} icon={cargando ? (
+            <IconButton label={destinoEscucha.remoto ? 'Traer música a este dispositivo' : cargando ? 'Pausar carga' : playing ? 'Pausar' : 'Reproducir'} symbol={playing ? 'pause.fill' : 'play.fill'} onPress={togglePlayback} lado={40} size={19} busy={cargando} icon={cargando ? (
                 <ActivityIndicator size="small" color={ICON_COLOR.foreground} />
-              ) : playing && !destinoEscucha.remoto ? (
+              ) : playing ? (
                 <IconPause size={19} color={ICON_COLOR.foreground} />
               ) : (
                 <IconPlay size={19} color={ICON_COLOR.foreground} />
@@ -486,14 +345,7 @@ export function NowPlayingBar({
             <IconButton label="Siguiente" symbol="forward.end.fill" onPress={playNext} disabled={last} lado={40} size={19} icon={<IconNext size={19} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />} />
           </View>
 
-          {/*
-           * La posición, como una línea fina al pie de la tarjeta.
-           *
-           * No se puede arrastrar a propósito: en una tarjeta de 56px de alto,
-           * una barra agarrable competiría con el toque que abre la pantalla
-           * completa, y ahí adentro está la barra de verdad. Acá es información,
-           * no un control — por eso no lleva perilla.
-           */}
+          {/* El mini reproductor informa progreso; la búsqueda táctil vive en la pantalla completa. */}
           <View
             pointerEvents="none"
             className={`absolute bottom-0 h-[2px] overflow-hidden bg-muted ${androidRecto ? 'left-0 right-0' : 'left-3 right-3 rounded-full'}`}
@@ -509,16 +361,12 @@ export function NowPlayingBar({
     )
   }
 
-  /*
-   * La barra ancha **sin vidrio**: la franja opaca de siempre, apilada al pie.
-   * Con vidrio no se usa — ver la píldora más abajo.
-   */
   const barra = (
     <View
       className="flex-row items-center gap-3 bg-canvas px-3 pt-2"
       style={{ paddingBottom: 8 + insets.bottom }}
     >
-      {/* Lo que suena. En angosto se queda con esto y el botón de play. */}
+
       <View className="min-w-0 flex-1 flex-row items-center gap-3">
         {artwork ? (
           <Image source={{ uri: artwork }} className="h-12 w-12 rounded bg-card" />
@@ -532,86 +380,47 @@ export function NowPlayingBar({
             : <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>{current.title}</Text>}
           {ES_WEB ? desktopStatus : lineaEstado({ estadoRemoto, error, artist: current.artist, artistId: current.artistId })}
         </View>
-        {/* El corazón, pegado a lo que suena: es un juicio sobre la canción,
-            no un control de transporte — por eso va acá y no con el play. */}
-        {wide ? <BotonMeGusta track={current} size={16} lado={36} /> : null}
+
+        <BotonMeGusta track={current} size={16} lado={36} />
       </View>
 
-      {/* Controles y posición, centrados como en cualquier reproductor. */}
-      <View className={wide ? 'w-[38%] max-w-[560px] gap-1' : ''}>
-        <View className="flex-row items-center justify-center gap-4">
-          {/* Aleatorio y repetir rodean al play, como en cualquier reproductor.
-              Ver `ui/Transport`, que es donde viven los dos. */}
-          {wide ? <BotonAleatorio size={16} lado={36} /> : null}
-          {wide ? (
-            <IconButton label="Anterior" symbol="backward.end.fill" onPress={playPrevious} lado={36} size={17} icon={<IconPrevious size={17} color={ICON_COLOR.muted} />} />
-          ) : null}
-          <IconButton label={destinoEscucha.remoto ? 'Traer música a este dispositivo' : cargando ? 'Pausar carga' : playing ? 'Pausar' : 'Reproducir'} symbol={playing && !destinoEscucha.remoto ? 'pause.fill' : 'play.fill'} onPress={togglePlayback} lado={40} size={16} variant="primary" busy={cargando} icon={cargando ? (
-              <ActivityIndicator size="small" color={ICON_COLOR.onPrimary} />
-            ) : playing && !destinoEscucha.remoto ? (
-              <IconPause size={16} color={ICON_COLOR.onPrimary} />
-            ) : (
-              <IconPlay size={16} color={ICON_COLOR.onPrimary} />
-            )} />
-          {wide ? (
-            <IconButton label="Siguiente" symbol="forward.end.fill" onPress={playNext} lado={36} size={17} icon={<IconNext size={17} color={ICON_COLOR.muted} />} />
-          ) : null}
-          {wide ? <BotonRepetir size={16} lado={36} /> : null}
-        </View>
-        {wide ? (
-          <SeekBar
-            label={current.title}
-            progress={progress}
-            elapsedMs={positionMs}
-            totalMs={durationMs}
-            onSeek={seekFraction}
-            posicionMs={posicionSV}
-          />
-        ) : null}
+      <View className="w-[38%] max-w-[560px] gap-1">
+        <ControlesTransporte reproduciendo={playing} cargando={cargando} remoto={destinoEscucha.remoto}
+          onAnterior={playPrevious} onAlternar={togglePlayback} onSiguiente={playNext} sinSiguiente={last} />
+        <SeekBar
+          label={current.title}
+          progress={progress}
+          elapsedMs={positionMs}
+          totalMs={durationMs}
+          onSeek={seekFraction}
+          posicionMs={posicionSV}
+        />
       </View>
 
-      {/* Contrapeso del bloque de la izquierda, para que los controles queden
-          centrados en la pantalla y no corridos por el largo del título. */}
       <View className="min-w-0 flex-1 flex-row items-center justify-end gap-1">
         <EstadoDispositivo compacto />
-        {wide ? (
-          <>
-            <Toggle
-              label="Ver el disco girando"
-              active={view === 'disc'}
-              onPress={() => ponerCara('disc')}
-              icon={IconDisc}
-            />
-            <Toggle
-              label="Ver solo la letra"
-              active={view === 'lyrics'}
-              onPress={() => ponerCara('lyrics')}
-              icon={IconLyrics}
-            />
-            {/*
-             * El Jam, a la vista y no solo adentro del menú: en escritorio hay
-             * lugar, y una función que junta gente no puede vivir escondida
-             * detrás de tres puntos. Encendido en blanco mientras hay uno
-             * andando — el mismo lenguaje que las dos vistas de al lado.
-             */}
-            <Toggle
-              label="Jam"
-              active={enJam || view === 'jam'}
-              /* Abre la cara del Jam en el panel de al lado (o su pantalla,
-                 si el ancho no da para panel). Crear es un botón de adentro. */
-              onPress={() => {
-                if (width >= PANEL_PX) ponerCara('jam')
-                else router.push('/jam')
-              }}
-              icon={IconUsers}
-            />
-            <Volume value={volume} onChange={setVolume} />
-          </>
-        ) : (
-          <Text className="text-muted-foreground text-caption2 tabular-nums">
-            {formatClock(positionMs)}
-          </Text>
-        )}
+        <BotonVistaAudio
+          label="Ver el disco girando"
+          active={view === 'disc'}
+          onPress={() => ponerCara('disc')}
+          vista="disc"
+        />
+        <BotonVistaAudio
+          label="Ver solo la letra"
+          active={view === 'lyrics'}
+          onPress={() => ponerCara('lyrics')}
+          vista="lyrics"
+        />
+        <BotonVistaAudio
+          label="Jam"
+          active={enJam || view === 'jam'}
+          onPress={() => {
+            if (width >= PANEL_PX) ponerCara('jam')
+            else router.push('/jam')
+          }}
+          vista="jam"
+        />
+        <Volume value={volume} onChange={setVolume} />
         <Menu items={menu} label={`Opciones de ${current.title}`} size={17} />
       </View>
     </View>
@@ -619,21 +428,7 @@ export function NowPlayingBar({
 
   if (!HAY_VIDRIO) return barra
 
-  /*
-   * Con vidrio, la barra es una **píldora flotante y centrada**, al modo del
-   * reproductor de Apple Music en la web: una sola fila, compacta, con el
-   * contenido de los paneles corriendo difuminado por detrás. No ocupa todo el
-   * ancho a propósito — el material necesita ver fondo a los costados para
-   * leerse como una pieza apoyada y no como una franja del sistema.
-   *
-   * En una fila no entra todo en cualquier ancho, así que la píldora suelta
-   * lastre por etapas: primero las vistas (que siguen en el panel y en el
-   * menú), después la barra de posición, que deja en su lugar el reloj. El
-   * volumen no es lastre y nunca se suelta: en escritorio es la única perilla
-   * que hay. El play sigue siendo lo más brillante — el acento de siempre.
-   */
-  /* El modo compacto conserva transporte y volumen; sólo el botón explícito
-     cambia de modo. El scroll y el hover no alteran su ancho ni sus controles. */
+  /* El modo compacto conserva transporte y volumen y cambia sólo por acción explícita. */
   const conSeek = width >= 980 && !compacto
   const conVistas = width >= 1200 && !compacto
 
@@ -644,13 +439,12 @@ export function NowPlayingBar({
         radius={32}
         style={{
           width: '100%',
-          /* La sombra que la despega del fondo más el filo del referente: el
-             anillo y el resplandor interno que la leen como una pieza. */
+
           boxShadow: `0 10px 28px rgba(0,0,0,0.5), ${BORDE_REFERENTE}`,
         }}
       >
         <View className="flex-row items-center gap-3 py-2 pl-3 pr-2" {...clicBarra.gestos}>
-          {/* Qué suena. Es también el toque que abre la lista de origen. */}
+
           <View className="min-w-0 flex-1 flex-row items-center gap-3">
             {artwork ? (
               <Image source={{ uri: artwork }} className="h-10 w-10 rounded-lg bg-muted" />
@@ -664,27 +458,12 @@ export function NowPlayingBar({
                 : <Text className="text-foreground text-footnote font-semibold" numberOfLines={1}>{current.title}</Text>}
               {ES_WEB ? desktopStatus : lineaEstado({ estadoRemoto, error, artist: current.artist, artistId: current.artistId })}
             </View>
-            {/* El corazón, junto a lo que suena — misma regla que en la
-                franja sin vidrio. Compacta no entra: lo que queda es saber qué
-                suena y poder frenarlo. */}
+
             {compacto ? null : <BotonMeGusta track={current} size={16} lado={36} />}
           </View>
 
-          {/* El transporte, con aleatorio y repetir rodeando al play como en
-              cualquier reproductor. Ver `ui/Transport`. */}
-          <View className="flex-row items-center gap-1">
-            {compacto ? null : <BotonAleatorio size={16} lado={36} />}
-            <IconButton label="Anterior" symbol="backward.end.fill" onPress={playPrevious} lado={36} size={17} icon={<IconPrevious size={17} color={ICON_COLOR.muted} />} />
-            <IconButton label={destinoEscucha.remoto ? 'Traer música a este dispositivo' : cargando ? 'Pausar carga' : playing ? 'Pausar' : 'Reproducir'} symbol={playing && !destinoEscucha.remoto ? 'pause.fill' : 'play.fill'} onPress={togglePlayback} lado={40} size={16} variant="primary" busy={cargando} icon={cargando ? (
-                <ActivityIndicator size="small" color={ICON_COLOR.onPrimary} />
-              ) : playing && !destinoEscucha.remoto ? (
-                <IconPause size={16} color={ICON_COLOR.onPrimary} />
-              ) : (
-                <IconPlay size={16} color={ICON_COLOR.onPrimary} />
-              )} />
-            <IconButton label="Siguiente" symbol="forward.end.fill" onPress={playNext} disabled={last} lado={36} size={17} icon={<IconNext size={17} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />} />
-            {compacto ? null : <BotonRepetir size={16} lado={36} />}
-          </View>
+          <ControlesTransporte reproduciendo={playing} cargando={cargando} remoto={destinoEscucha.remoto} conModos={!compacto}
+            onAnterior={playPrevious} onAlternar={togglePlayback} onSiguiente={playNext} sinSiguiente={last} />
 
           {conSeek ? (
             <View className="min-w-0 flex-[1.4] px-2" style={{ maxWidth: 440 }}>
@@ -705,8 +484,7 @@ export function NowPlayingBar({
 
           <View className="flex-row items-center justify-end gap-1">
             <EstadoDispositivo compacto />
-            {/* Sin botón propio: es la otra puerta al menú de al lado. Se monta
-                recién al abrirse, para no dejar una pieza colgada sin usar. */}
+
             {clicBarra.punto ? (
               <Menu
                 items={menu}
@@ -717,35 +495,31 @@ export function NowPlayingBar({
             ) : null}
             {conVistas ? (
               <>
-                <Toggle
+                <BotonVistaAudio
                   label="Ver el disco girando"
                   active={view === 'disc'}
                   onPress={() => ponerCara('disc')}
-                  icon={IconDisc}
+                  vista="disc"
                 />
-                <Toggle
+                <BotonVistaAudio
                   label="Ver solo la letra"
                   active={view === 'lyrics'}
                   onPress={() => ponerCara('lyrics')}
-                  icon={IconLyrics}
+                  vista="lyrics"
                 />
-                <Toggle
+                <BotonVistaAudio
                   label="Jam"
                   active={enJam || view === 'jam'}
-                  /* La misma regla que en la franja sin vidrio: el panel de
-                     al lado si existe, la pantalla si no. */
+
                   onPress={() => {
                     if (width >= PANEL_PX) ponerCara('jam')
                     else router.push('/jam')
                   }}
-                  icon={IconUsers}
+                  vista="jam"
                 />
               </>
             ) : null}
-            {/* El volumen **no se va nunca**: en escritorio no hay botones de
-                hardware que lo suban, así que soltarlo como lastre dejaba a la
-                ventana angosta —y a la píldora colapsada— sin ninguna forma de
-                bajar la música. Encogido, pero siempre a la vista. */}
+            {/* El volumen permanece visible: en escritorio no hay botones físicos para ajustarlo. */}
             <Volume value={volume} onChange={setVolume} angosto={compacto || !conVistas} />
             {ES_WEB ? <BotonLateral label={compacto ? 'Expandir reproductor' : 'Contraer reproductor'} onPress={() => setCompacto(v => !v)}
               icono={compacto ? <IconChevronUp size={17} color={ICON_COLOR.muted} /> : <IconChevronDown size={17} color={ICON_COLOR.muted} />} /> : null}
@@ -758,35 +532,10 @@ export function NowPlayingBar({
   )
 }
 
-/** Ancho explícito: el volumen y el transporte no se mueven al recibir hover o foco. */
 function AnchoPildora({ compacto, children }: { compacto: boolean; children: React.ReactNode }) {
   return <View {...(ES_WEB ? { dataSet: { dnPlayerFrame: '' } } : {})} style={{ width: '100%', maxWidth: compacto ? 640 : 1080, alignSelf: 'center' }}>{children}</View>
 }
 
-/** Botón que enciende y apaga una vista del panel derecho. */
-function Toggle({
-  label,
-  active,
-  onPress,
-  icon: Icon,
-}: {
-  label: string
-  active: boolean
-  onPress: () => void
-  icon: (props: { size?: number; color?: string }) => React.ReactElement
-}) {
-  return <IconButton label={label} symbol={Icon === IconLyrics ? 'quote.bubble' : Icon === IconDisc ? 'opticaldisc' : Icon === IconUsers ? 'person.2' : 'list.bullet'}
-    selected={active} onPress={onPress} muted={!active} icon={<Icon size={20} color={active ? ICON_COLOR.foreground : ICON_COLOR.muted} />} />
-}
-
-/**
- * La perilla de volumen.
- *
- * Reusa la misma barra que la posición: es el mismo gesto —arrastrar sobre una
- * línea— y tenerlas distintas sería inventar dos formas de hacer lo mismo. El
- * ícono corta el sonido y lo devuelve donde estaba, como en cualquier
- * reproductor.
- */
 function Volume({
   value,
   onChange,
@@ -796,51 +545,5 @@ function Volume({
   onChange: (v: number) => void
   angosto?: boolean
 }) {
-  /* El volumen de antes de silenciar va en un ref: no se muestra, solo se
-     consulta al devolver el sonido. Como estado, cada clic en el parlante
-     redibujaba la barra de reproducción de más. */
-  const before = useRef(1)
-  const muted = value === 0
-
-  return (
-    <View className={angosto ? 'flex-row items-center gap-1' : 'flex-row items-center gap-1.5'}>
-      <BotonSuperficie
-        accessibilityRole="button"
-        accessibilityLabel={muted ? 'Devolver el sonido' : 'Silenciar'}
-        onPress={() => {
-          if (muted) onChange(before.current || 1)
-          else {
-            before.current = value
-            onChange(0)
-          }
-        }}
-        className={
-          angosto
-            ? 'h-8 w-8 items-center justify-center rounded-full active:bg-muted'
-            : 'h-9 w-9 items-center justify-center rounded-full active:bg-muted'
-        }
-      >
-        {muted ? (
-          <IconVolumeOff size={16} color={ICON_COLOR.muted} />
-        ) : (
-          <IconVolume size={16} color={ICON_COLOR.muted} />
-        )}
-      </BotonSuperficie>
-      {/* Angosta la línea es más corta, pero sigue siendo la misma barra
-          arrastrable: lo que se pierde es recorrido, no el control. */}
-      <View style={{ width: angosto ? 60 : 88 }}>
-        <SeekBar
-          label="volumen"
-          progress={value}
-          elapsedMs={0}
-          totalMs={0}
-          onSeek={onChange}
-          compact
-          /* Suena mientras se arrastra, no recién al soltar: es una perilla,
-             y una perilla que no se oye girar no es una perilla. */
-          envivo
-        />
-      </View>
-    </View>
-  )
+  return <VolumenAudio value={value} onChange={onChange} onToggleMute={toggleMute} compact angosto={angosto} />
 }

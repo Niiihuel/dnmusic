@@ -17,7 +17,8 @@ import { FilaAccion, FilaInterruptor, FilaOpciones, GrupoAjustes } from '../../s
 import { Waveform } from '../../src/ui/Waveform'
 import { MixAutomationCurve, MixAutomationEditor, type MixCurveView } from '../../src/ui/MixAutomationCurve'
 import { MixCurveTabs, MixDeckTabs } from '../../src/ui/MixCurveTabs'
-import { SeekBar } from '../../src/ui/SeekBar'
+import { AudioParameter } from '../../src/ui/AudioParameter'
+import { decibeliosEQ, frecuenciaEQ } from '../../src/ui/ecualizadorGeometry'
 import { MixPairPreview } from '../../src/ui/MixPairPreview'
 import { MixEffectsEditor, MixEffectsQuickControls } from '../../src/ui/MixEffectsEditor'
 import { ResizableRegion } from '../../src/ui/ResizableRegion'
@@ -54,7 +55,7 @@ import {
 import { avisarMixPlaylistCambiado } from '../../src/state/mixPlayback'
 import { avisarContenidoPlaylistCambiado } from '../../src/state/playlistContent'
 import { setPlaylistSoundPreference, usePlaylistSoundPreference } from '../../src/state/playlistSoundPreference'
-import { PRESETS_EQ, useEcualizador } from '../../src/state/ecualizador'
+import { FRECUENCIAS_EQ, PRESETS_EQ, useEcualizador } from '../../src/state/ecualizador'
 import { fetchAudioWaveform, fetchWaveform } from '../../src/services/music'
 import { useUser } from '../../src/state/session'
 import { suggestAutoMix, suggestBarMix } from '../../src/lib/autoMix'
@@ -72,9 +73,10 @@ const PRESETS: { value: MixPreset; label: string; detail: string }[] = [
 ]
 
 const labelPreset = (preset: MixPreset) => PRESETS.find(item => item.value === preset)?.label ?? preset
-const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
+const seconds = (ms: number) => `${(ms / 1000).toLocaleString('es-AR', { maximumFractionDigits: 2 })} s`
 const FLAT_BANDS = Array(10).fill(0) as number[]
 const copyName = (name: string) => `${name.slice(0, 52).trimEnd()} (copia)`
+const SHOW_TEMPO = Platform.OS !== 'ios'
 type ApproximateTempo = { kind: 'approximate'; bpm: number; minBpm: number; maxBpm: number;
   confidence: number; varying: boolean; alternateBpm: number | null }
 type MeasuredTempo = { kind: 'beatgrid'; bpm: number; confidence: number } | ApproximateTempo | null
@@ -203,11 +205,11 @@ function AnalysisSummary({ title, analysis, error }: { title: string; analysis: 
   return <View style={{ gap: 3 }}>
     <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>{title}</Text>
     {analysis ? <>
-      <Text style={{ color: '#B3B3B3', fontSize: 13 }}>
+      {SHOW_TEMPO ? <Text style={{ color: '#B3B3B3', fontSize: 13 }}>
         {tempo?.kind === 'beatgrid' ? `${tempo.bpm.toFixed(1)} BPM · confianza ${Math.round(tempo.confidence * 100)} %${analysis.rhythm?.meter === 4 ? ' · compás 4/4 detectado' : ''}`
           : tempo?.kind === 'approximate' ? `${tempoLabel(tempo)} · sin marcas de pulso fiables${tempo.alternateBpm ? ` · posible mitad/doble tiempo: ≈ ${Math.round(tempo.alternateBpm)} BPM` : ''}${tempo.varying ? ' · variación o incertidumbre entre tramos' : ''}`
             : 'BPM o compás no fiables'}
-      </Text>
+      </Text> : null}
       <Text style={{ color: '#B3B3B3', fontSize: 13 }}>
         Silencio inicial {seconds(analysis.silence.introEndMs)} · cola {seconds(Math.max(0, analysis.durationMs - analysis.silence.outroStartMs))}
       </Text>
@@ -238,21 +240,19 @@ function initialEdge(mix: PlaylistMix, from: PlaylistTrack, to: PlaylistTrack, e
   }
 }
 
-function NumberControl({ label, value, max, onChange, format = seconds, disabled = false, step = 100 }: {
-  label: string; value: number; max: number; onChange: (ms: number) => void
+function NumberControl({ label, value, min = 0, max, onChange, format = seconds, disabled = false, step = 100,
+  resetValue, inputScale = 1000, unit = 's' }: {
+  label: string; value: number; min?: number; max: number; onChange: (value: number) => void
   format?: (value: number) => string; disabled?: boolean; step?: number
+  resetValue?: number; inputScale?: number; unit?: string
 }) {
-  return <View style={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}>
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-      <Text style={{ color: '#FFFFFF', fontSize: 15 }}>{label}</Text>
-      <Text style={{ color: '#B3B3B3', fontVariant: ['tabular-nums'] }}>{format(value)}</Text>
-    </View>
-    {!disabled ? <SeekBar label={label} progress={max > 0 ? value / max : 0} elapsedMs={0} totalMs={1} compact
-      onSeek={fraction => onChange(Math.min(max, Math.max(0, Math.round(fraction * max / step) * step)))} /> : null}
+  return <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+    <AudioParameter label={label} value={value} min={Math.min(min, max)} max={max} step={step}
+      format={format} onChange={onChange} disabled={disabled} commitOnly
+      resetValue={resetValue} inputScale={inputScale} unit={unit} />
   </View>
 }
 
-/** Variantes de Mix y editor de la transición entre dos filas reales. */
 export default function PlaylistMixScreen() {
   const { id, nombre, fromTrackId } = useLocalSearchParams<{ id?: string; nombre?: string; fromTrackId?: string }>()
   const router = useRouter()
@@ -567,7 +567,7 @@ export default function PlaylistMixScreen() {
   useEffect(() => {
     // El par visible tiene prioridad. Sólo después se mide el BPM del resto;
     // dos workers como máximo evitan saturar el servicio de análisis.
-    if (!editingMixId || !analyzedPairKey || !tracks) return
+    if (!SHOW_TEMPO || !editingMixId || !analyzedPairKey || !tracks) return
     const attempted = attemptedTempoPaths.current
     const paths = [...new Set(tracks.map(track => track.audioPath).filter((path): path is string => !!path))]
       .filter(path => !analysisCache.current.has(path) && !attempted.has(path))
@@ -818,7 +818,7 @@ export default function PlaylistMixScreen() {
       key.startsWith(`${editing.id}:${track.id}:${next.id}:`) && !sameDraft(history.current, history.baseline))
     return <Pressable key={`${track.id}:${next.id}`} accessibilityRole="button"
       accessibilityState={{ selected: pairIndex === index }}
-      accessibilityLabel={`Transición ${index + 1}: ${track.title}, ${tempoLabel(trackTempo, trackTempoLoading)}, a ${next.title}, ${tempoLabel(nextTempo, nextTempoLoading)}${pending ? ', cambios sin guardar' : ''}`}
+      accessibilityLabel={`Transición ${index + 1}: ${track.title}${SHOW_TEMPO ? `, ${tempoLabel(trackTempo, trackTempoLoading)}` : ''}, a ${next.title}${SHOW_TEMPO ? `, ${tempoLabel(nextTempo, nextTempoLoading)}` : ''}${pending ? ', cambios sin guardar' : ''}`}
       onPress={() => { setPairIndex(index); setMobilePickerOpen(false); editorScroll.current?.scrollTo({ y: 0, animated: true }) }}
       style={{ minWidth: desktop ? 0 : 170, maxWidth: desktop ? undefined : 210,
         borderRadius: 12, borderWidth: 1, borderColor: pairIndex === index ? '#FFFFFF' : '#444444',
@@ -827,9 +827,9 @@ export default function PlaylistMixScreen() {
         <TrackCover track={track} size={desktop ? 40 : 36} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ color: '#FFFFFF', fontSize: 14 }} numberOfLines={1}>{track.title}</Text>
-          <Text style={{ color: '#B3B3B3', fontSize: 11, fontVariant: ['tabular-nums'] }} numberOfLines={1}>{tempoCompact(trackTempo, trackTempoLoading)}</Text>
+          {SHOW_TEMPO ? <Text style={{ color: '#B3B3B3', fontSize: 11, fontVariant: ['tabular-nums'] }} numberOfLines={1}>{tempoCompact(trackTempo, trackTempoLoading)}</Text> : null}
           <Text style={{ color: '#FFFFFF', fontSize: 13, marginTop: 3 }} numberOfLines={1}>→ {next.title}</Text>
-          <Text style={{ color: '#B3B3B3', fontSize: 11, fontVariant: ['tabular-nums'] }} numberOfLines={1}>{tempoCompact(nextTempo, nextTempoLoading)}</Text>
+          {SHOW_TEMPO ? <Text style={{ color: '#B3B3B3', fontSize: 11, fontVariant: ['tabular-nums'] }} numberOfLines={1}>{tempoCompact(nextTempo, nextTempoLoading)}</Text> : null}
         </View>
         {desktop ? <TrackCover track={next} size={40} /> : null}
       </View>
@@ -845,7 +845,7 @@ export default function PlaylistMixScreen() {
     </View>
     {desktop ? <View style={{ gap: 8 }}>{pairCards}</View>
       : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>{pairCards}</ScrollView>}
-    {failedTempoPaths.length ? <GhostButton label={`Reintentar BPM de ${failedTempoPaths.length} ${failedTempoPaths.length === 1 ? 'canción' : 'canciones'}`}
+    {SHOW_TEMPO && failedTempoPaths.length ? <GhostButton label={`Reintentar BPM de ${failedTempoPaths.length} ${failedTempoPaths.length === 1 ? 'canción' : 'canciones'}`}
       onPress={() => {
         for (const path of failedTempoPaths) attemptedTempoPaths.current.delete(path)
         setFailedTempoPaths([])
@@ -915,10 +915,10 @@ export default function PlaylistMixScreen() {
               <View style={{ flex: 1, minWidth: 0, marginLeft: 4 }}>
                 <Text style={{ color: '#B3B3B3', fontSize: 12 }}>TRANSICIÓN SELECCIONADA</Text>
                 <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }} numberOfLines={1}>{from.title} → {to.title}</Text>
-                <Text style={{ color: '#B3B3B3', fontSize: 12, fontVariant: ['tabular-nums'] }} numberOfLines={2}>
+                {SHOW_TEMPO ? <Text style={{ color: '#B3B3B3', fontSize: 12, fontVariant: ['tabular-nums'] }} numberOfLines={2}>
                   {tempoLabel(fromTempo, !!from.audioPath && !(from.audioPath in tempoByPath))} → {tempoLabel(toTempo, !!to.audioPath && !(to.audioPath in tempoByPath))}
-                </Text>
-                {tempoDifference !== null ? <Text style={{ color: '#B3B3B3', fontSize: 12, fontVariant: ['tabular-nums'] }}>
+                </Text> : null}
+                {SHOW_TEMPO && tempoDifference !== null ? <Text style={{ color: '#B3B3B3', fontSize: 12, fontVariant: ['tabular-nums'] }}>
                   Δ {approximateComparison ? '≈ ' : ''}{tempoDifference} BPM{approximateComparison
                     ? possibleHalfTime ? ' · estimado; mitad/doble tiempo posible' : ' · orientativo; no indica sincronía de pulsos'
                     : tempoDifference >= 12 ? ' · escuchá el cruce' : ''}
@@ -1027,8 +1027,8 @@ export default function PlaylistMixScreen() {
                 </ScrollView>
                 <Text style={{ color: '#B3B3B3', fontSize: 13 }}>{PRESETS.find(item => item.value === draft.preset)?.detail}</Text>
               </View>
-              {draft.preset !== 'none' ? <NumberControl label="Duración del cruce" value={draft.durationMs}
-                max={Math.min(30_000, from.durationMs, to.durationMs)} disabled={!canEditMix}
+              {draft.preset !== 'none' ? <NumberControl label="Duración del cruce" value={draft.durationMs} min={250} step={50}
+                max={Math.min(30_000, from.durationMs, to.durationMs)} disabled={!canEditMix || busy}
                 onChange={value => setDraft(previous => {
                   if (!previous) return previous
                   const durationMs = Math.min(Math.max(250, value), from.durationMs, to.durationMs)
@@ -1108,9 +1108,9 @@ export default function PlaylistMixScreen() {
                 </>}
               </View>
               <NumberControl label="Salida desde" value={draft.fromCueMs ?? Math.max(0, from.durationMs - draft.durationMs)}
-                max={Math.max(0, from.durationMs - draft.durationMs)} disabled={!canEditMix}
+                max={Math.max(0, from.durationMs - draft.durationMs)} disabled={!canEditMix || busy}
                 onChange={value => setDraft(previous => previous ? { ...previous, fromCueMs: value } : previous)} />
-              <NumberControl label="Entrada desde" value={draft.toCueMs ?? 0} max={Math.max(0, to.durationMs - draft.durationMs)} disabled={!canEditMix}
+              <NumberControl label="Entrada desde" value={draft.toCueMs ?? 0} max={Math.max(0, to.durationMs - draft.durationMs)} disabled={!canEditMix || busy}
                 onChange={value => setDraft(previous => previous ? { ...previous, toCueMs: value } : previous)} />
               <FilaOpciones<'linear' | 'equal_power'> rotulo="Curva de volumen" valor={draft.volumeLaw}
                 opciones={[{ value: 'linear', label: 'Lineal' }, { value: 'equal_power', label: 'Potencia constante' }]}
@@ -1129,10 +1129,11 @@ export default function PlaylistMixScreen() {
                   const fallback = outgoing ? Math.cos(position * Math.PI / 2) : Math.sin(position * Math.PI / 2)
                   return <NumberControl key={`${volumeDeck}:${position}`}
                     label={`${Math.round(position * 100)} % del cruce`}
-                    value={Math.round(volumeAt(draft[key], position, fallback) * 1000)}
-                    max={1000} step={10} format={value => `${Math.round(value / 10)} %`} disabled={!canEditMix}
+                    value={Math.round(volumeAt(draft[key], position, fallback) * 100)}
+                    max={100} step={1} inputScale={1} unit="%" resetValue={Math.round(fallback * 100)}
+                    format={value => `${Math.round(value)} %`} disabled={!canEditMix || busy}
                     onChange={value => setDraft(previous => previous ? {
-                      ...previous, [key]: withVolumePoint(previous[key], outgoing, position, value / 1000),
+                      ...previous, [key]: withVolumePoint(previous[key], outgoing, position, value / 100),
                     } : previous)} />
                 })}
               </View> : null}
@@ -1152,7 +1153,7 @@ export default function PlaylistMixScreen() {
               opciones={[{ value: 'private', label: 'Solo yo' }, { value: 'shared', label: 'Colaboradores' }]}
               onElegir={visibility => void run(() => updatePlaylistMix(editing, { visibility }))}
               disabled={!canEditMix || busy} /> : null}
-            {canEditMix ? <NumberControl label="Duración general" value={generalDuration} max={30_000}
+            {canEditMix ? <NumberControl label="Duración general" value={generalDuration} min={500} max={30_000} disabled={busy}
               onChange={value => setGeneralDurationDraft({ key: generalDurationKey!, value: Math.max(500, value) })} /> : null}
             {canEditMix ? <FilaAccion rotulo="Guardar duración general"
               onPress={() => void run(() => updatePlaylistMix(editing, { defaultDurationMs: generalDuration }))}
@@ -1198,7 +1199,7 @@ export default function PlaylistMixScreen() {
         </GrupoAjustes>
 
         {canEditPlaylist && (tracks?.length ?? 0) >= 3 ? <GrupoAjustes titulo="SUGERIR ORDEN POR RITMO"
-          pie="Compara BPM y energía medidos. Conserva el primer tema y la posición de los que no tienen análisis fiable. La tonalidad todavía no se calcula.">
+          pie={`Compara ${SHOW_TEMPO ? 'BPM' : 'el ritmo'} y energía medidos. Conserva el primer tema y la posición de los que no tienen análisis fiable. La tonalidad todavía no se calcula.`}>
           <FilaAccion rotulo={orderProgress ? `Analizando ${orderProgress.done} de ${orderProgress.total}…` : 'Analizar y sugerir orden'}
             onPress={() => void suggestOrder()} disabled={busy || !!orderProgress} />
           {orderProgress ? <FilaAccion rotulo="Cancelar análisis" onPress={() => orderAbort.current?.abort()} /> : null}
@@ -1245,14 +1246,21 @@ export default function PlaylistMixScreen() {
             }} disabled={busy} /> : null}
           {canPublish && personalEq.cargado ? <FilaAccion rotulo="Copiar mi EQ personal"
             onPress={() => setSoundBands(() => [...personalEq.ganancias])} disabled={busy} /> : null}
-          {soundBands.map((gain, index) => <NumberControl key={index} label={`${[31,62,125,250,500,1000,2000,4000,8000,16000][index]} Hz`}
-            value={Math.round((gain + 12) * 1000)} max={24_000} disabled={!canPublish}
-            format={value => `${value / 1000 - 12 >= 0 ? '+' : ''}${(value / 1000 - 12).toFixed(1)} dB`}
-            onChange={value => setSoundBands(previous => previous.map((item, i) => i === index ? Math.round((value / 1000 - 12) * 10) / 10 : item))} />)}
-          <NumberControl label="Preamp"
-            value={Math.round((soundPreamp + 24) * 1000)} max={30_000} disabled={!canPublish}
-            format={value => `${value / 1000 - 24 >= 0 ? '+' : ''}${(value / 1000 - 24).toFixed(1)} dB`}
-            onChange={value => setSoundPreamp(Math.round((value / 1000 - 24) * 10) / 10)} />
+          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8, gap: 4 }}>
+            <Text accessibilityRole="header" style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '600' }}>Ecualizador de la playlist</Text>
+            <Text style={{ color: '#B3B3B3', fontSize: 13 }}>10 bandas · ±12 dB · restablecé cada banda a 0 dB</Text>
+          </View>
+          <View style={{ flexDirection: desktop ? 'row' : 'column', flexWrap: 'wrap' }}>
+            {soundBands.map((gain, index) => <View key={index} style={{ width: desktop ? '50%' : '100%' }}>
+              <NumberControl label={`Ganancia de ${frecuenciaEQ(FRECUENCIAS_EQ[index])}`}
+                value={gain} min={-12} max={12} step={0.1} inputScale={1} unit="dB" resetValue={0}
+                disabled={!canPublish || busy} format={decibeliosEQ}
+                onChange={value => setSoundBands(previous => previous.map((item, i) => i === index ? value : item))} />
+            </View>)}
+          </View>
+          <NumberControl label="Ganancia de salida"
+            value={soundPreamp} min={-24} max={6} step={0.1} inputScale={1} unit="dB" resetValue={0}
+            disabled={!canPublish || busy} format={decibeliosEQ} onChange={setSoundPreamp} />
           {canPublish ? <FilaAccion rotulo="Guardar curva tonal" onPress={saveSound} disabled={busy} /> : null}
           {canPublish && profile ? <FilaInterruptor rotulo="Publicar curva tonal" activo={profile.published}
             onCambiar={value => void run(() => publishPlaylistSoundProfile(id!, value))} disabled={busy} ultima /> : null}

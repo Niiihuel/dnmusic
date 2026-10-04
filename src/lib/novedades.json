@@ -1,5 +1,34 @@
 [
   {
+    "version": "1.18.0",
+    "fecha": "4 de octubre de 2026",
+    "titulo": "Compartí música. Afiná cada detalle.",
+    "pasos": [
+      {
+        "titulo": "Compartí una canción para escucharla",
+        "detalle": "Las canciones estrenan una tarjeta con su portada, título y artista en Chats, al compartir y al abrir un enlace. Reproducí o pausá desde el chat, abrí la canción y encontrá las opciones para compartirla en PC y móvil."
+      },
+      {
+        "titulo": "Ajustá el sonido con precisión",
+        "detalle": "El ecualizador y Mixear muestran valores y unidades claros, con controles cómodos para ajustar y restablecer cada parámetro. En PC también podés escribir un valor y recorrer las ondas con el teclado; en el móvil, mover los controles con el dedo."
+      },
+      {
+        "titulo": "Seguí escuchando y compartiendo",
+        "detalle": "Corregimos el paso a la siguiente canción con el iPhone bloqueado, también en playlists colaborativas, y la copia de enlaces en Windows, Linux y móvil. Si una canción todavía está cargando, podés pausar sin que empiece a sonar después."
+      }
+    ],
+    "cambios": [
+      "Nueva tarjeta de canción en Chats, al compartir y en la página del enlace, con portada, título, artista y controles de reproducción dentro de la app.",
+      "La ventana para compartir se adapta a pantallas pequeñas y permite recorrer todas sus opciones.",
+      "Controles de ecualización y Mixear con valores visibles, unidades, ajuste preciso y restablecimiento; las ondas también se pueden recorrer con el teclado en PC.",
+      "Corregimos el cambio de canción en segundo plano en iPhone, incluidas las playlists colaborativas, y la pausa mientras se prepara el audio.",
+      "Corregimos la copia de enlaces para compartir en Windows, Linux, iPhone y la web, con un aviso cuando no se pueden copiar.",
+      "Los indicadores visuales de BPM dejan de aparecer en iPhone, tanto en las listas como en Mixear.",
+      "Al salir de silencio se recupera un volumen audible. Las animaciones del reproductor respetan la opción de reducir movimiento y se detienen cuando quedan fuera de vista.",
+      "Mixear permite guardar variantes, escuchar las transiciones y ajustar volumen, ecualización y filtro; cada playlist puede tener su propio perfil tonal y cada persona sus preajustes."
+    ]
+  },
+  {
     "version": "1.17.0",
     "fecha": "24 de septiembre de 2026",
     "titulo": "Tus playlists, a tu ritmo.",

@@ -40,6 +40,7 @@ import {
   seekFraction,
   seekToMs,
   setVolume,
+  toggleMute,
   stopPlayback,
   toggleView,
   togglePlayback,
@@ -55,7 +56,8 @@ import { dejarCancionPendiente } from '../src/state/listas'
 import { LyricsView } from '../src/ui/LyricsView'
 import { Vacio } from '../src/ui/Vacio'
 import { dejarCancionACompartir } from '../src/state/compartir'
-import { BotonAleatorio, BotonRepetir } from '../src/ui/Transport'
+import { BotonVistaAudio, ControlesTransporte } from '../src/ui/ControlesTransporte'
+import { VolumenAudio } from '../src/ui/VolumenAudio'
 import { BotonMeGusta } from '../src/ui/BotonMeGusta'
 import { Menu, type MenuItem } from '../src/ui/Menu'
 import { ES_WEB } from '../src/ui/Glass'
@@ -66,58 +68,29 @@ import { SongDisc } from '../src/ui/SongDisc'
 import {
   ICON_COLOR,
   IconChevronDown,
-  IconCola,
-  IconDisc,
   IconDispositivo,
-  IconLyrics,
   IconMore,
   IconMusic,
-  IconNext,
-  IconPause,
-  IconPlay,
   IconPlus,
-  IconPrevious,
   IconRepeat,
   IconShare,
   IconUser,
   IconUsers,
-  IconVolume,
-  IconVolumeOff,
   IconClose,
 } from '../src/ui/icons'
 
-/**
- * Ancho máximo de la columna del reproductor en ventana grande.
- *
- * Es más ancho que el tope de las listas (672) porque acá la pieza principal es
- * una imagen cuadrada: con 672 la tapa se comía el alto entero y no quedaba
- * lugar para el título ni los controles.
- */
 const COLUMNA = 520
 const ES_IOS = Platform.OS === 'ios'
 
-/** Lo que tarda en crecer y en volver a guardarse. */
 const SUBE_MS = 380
 const BAJA_MS = 300
-/** Cuánto hay que arrastrar —o con cuánta fuerza soltar— para que se cierre. */
+
 const ARRASTRE_CIERRA = 120
 const VELOCIDAD_CIERRA = 800
-/**
- * Cuánto quedan los controles a la vista sobre la letra antes de irse solos.
- *
- * Es la letra la que se está mirando; los controles se piden con un toque y se
- * van cuando dejaron de hacer falta. Es lo que hace Apple Music, y el motivo es
- * que una barra de posición y tres botones sobre un texto que se está leyendo
- * son ruido a los cuatro segundos.
- */
+
 const CONTROLES_MS = 4500
 const CONTROLES_FADE_MS = 240
 
-/**
- * Reproducción en pantalla completa. iOS usa la presentación de UIKit con
- * regiones fijas para letras y controles. Web y Android conservan la expansión
- * desde el mini reproductor y sus gestos hasta completar el port de Android.
- */
 export default function Playing() {
   return <SafeAreaProvider><PlayingContent /></SafeAreaProvider>
 }
@@ -125,43 +98,23 @@ export default function Playing() {
 function PlayingContent() {
   const destinoEscucha = useDestinoEscucha()
   const router = useRouter()
-  const { tracks, index, manual, wantPlay, positionMs, durationMs } = usePlaybackState()
+  const { tracks, index, manual, wantPlay, cargada, error, positionMs, durationMs } = usePlaybackState()
+  const sonando = wantPlay && cargada && !destinoEscucha.remoto
+  const cargando = wantPlay && !cargada && !error && !destinoEscucha.remoto
   const view = useNowPlayingView()
   const listName = usePlaybackOriginName()
   const enJam = useJamActivo()
   const cuantosJam = useCuantosJam()
-  /* «Siguiente» cuenta la cola manual, el repetir y el relleno de
-     recomendaciones — mirar solo la lista apagaba el botón en la última
-     canción, con la tanda recomendada ya esperando. */
+
   const last = !useHaySiguiente()
 
-  /*
-   * **Desde dónde crece**: el borde de arriba de la tarjeta del reproductor.
-   *
-   * No hace falta medir nada nuevo. `usePiso()` ya devuelve lo que ocupa la
-   * cáscara flotante, medida de su propio layout, así que el techo de la
-   * tarjeta es el alto de la ventana menos eso — exactamente la altura donde
-   * apoyaste el dedo para abrir esto.
-   *
-   * Al cerrar se vuelve al mismo número, así que la pantalla se guarda dentro
-   * de la tarjeta de la que salió en vez de irse por el piso.
-   */
   const { height: alturaVentana, width: anchoVentana } = useWindowDimensions()
-  /*
-   * **Hasta dónde sube**: por debajo del safe area, no hasta el borde físico.
-   *
-   * Abierta del todo llegaba a y=0, y en un iPhone eso metía el grabber y el
-   * encabezado debajo de la barra de estado — la hora y la batería del sistema
-   * pisándose con los controles. Un sheet se detiene debajo del notch, con la
-   * app de atrás asomando oscurecida; es lo que hacen los formSheet del Jam y
-   * de la cola, que acá hay que imitar a mano porque la subida es nuestra. En
-   * escritorio el inset es cero y la pantalla sigue llenando la ventana.
-   */
+  /* Web y Android respetan el safe area superior; UIKit presenta la pantalla de iOS. */
   const insets = useSafeAreaInsets()
   const tope = !ES_IOS && insets.top > 0 ? insets.top + 6 : 0
   const desde = Math.max(0, alturaVentana - usePiso() - tope)
 
-  /** 0 es abierta del todo; `desde` es guardada en la tarjeta. */
+  /* 0 es abierta; `desde` coincide con el mini reproductor. */
   const y = useSharedValue(ES_IOS ? 0 : desde)
 
   const cerrar = () => {
@@ -169,24 +122,13 @@ function PlayingContent() {
       volver(router, '/')
       return
     }
-    /* Se navega **cuando terminó de bajar**, no antes: quitar la pantalla del
-       árbol a mitad de camino corta el movimiento en seco. `runOnJS` porque el
-       final de la animación llega en el hilo de la interfaz. */
+    /* Navegar al terminar evita desmontar a mitad de la animación; el callback llega desde UI. */
     y.value = withTiming(desde, { duration: BAJA_MS, easing: Easing.in(Easing.cubic) }, (fin) => {
       if (fin) runOnJS(volver)(router, '/')
     })
   }
 
-  /*
-   * Arrastrar hacia abajo para cerrar: es lo que daba el modal nativo y lo que
-   * cualquiera intenta sobre una pantalla que subió.
-   *
-   * Solo hacia abajo —tirar hacia arriba de algo que ya está arriba no hace
-   * nada— y **cede el gesto horizontal**: adentro están la barra de posición y
-   * los controles, que se manejan de costado. Sin `failOffsetX`, mover el dedo
-   * en diagonal sobre la barra de posición cerraba la pantalla en vez de buscar
-   * en la canción.
-   */
+  /* `failOffsetX` cede el gesto horizontal a la barra de posición. */
   const arrastre = Gesture.Pan()
     .enabled(!ES_IOS)
     .activeOffsetY(15)
@@ -195,63 +137,31 @@ function PlayingContent() {
       y.value = Math.max(0, e.translationY)
     })
     .onEnd((e) => {
-      /* Soltado lejos o con impulso, se cierra por el mismo camino que el botón
-         de bajar: `cerrar` sigue desde donde quedó el dedo. Va por `runOnJS`
-         porque esto corre en el hilo de la interfaz y `cerrar` es una función
-         común — que además es la razón de no duplicar la animación acá. */
+
       if (e.translationY > ARRASTRE_CIERRA || e.velocityY > VELOCIDAD_CIERRA) {
         runOnJS(cerrar)()
         return
       }
-      /* No alcanzó: vuelve arriba con resorte, como el sheet del sistema. */
+
       y.value = withSpring(0, { damping: 22, stiffness: 260 })
     })
 
-  /*
-   * Sube y aparece a la vez.
-   *
-   * El desvanecido va sobre el **último tramo** del recorrido: cerca de la
-   * tarjeta la pantalla todavía es casi transparente, así que lo que se ve es
-   * la tarjeta creciendo y no una lámina tapándola. Todo por `style`:
-   * NativeWind no procesa clases en componentes animados.
-   */
   const crece = useAnimatedStyle(() => {
-    /* Normalizado, y no interpolando sobre `desde` directo: con `desde` en cero
-       —una ventana sin medir todavía— el rango de entrada sería [0,0,0] y la
-       pantalla saldría transparente en vez de abierta. */
+    /* Una ventana aún sin medir no debe producir un rango de interpolación [0,0,0]. */
     const p = desde > 0 ? y.value / desde : 0
     return {
       transform: [{ translateY: y.value }],
-      /* El rango de entrada va CRECIENTE: `interpolate` lo exige, y con el
-         rango al revés devolvía cualquier cosa — la pantalla quedaba
-         translúcida incluso abierta del todo. p=0 es abierta (opaca), p=1 es
-         guardada en la tarjeta (invisible). */
+
       opacity: interpolate(p, [0, 0.55, 1], [1, 0.85, 0], 'clamp'),
     }
   })
 
-  /*
-   * El velo sobre lo que asoma arriba de la hoja.
-   *
-   * Con el tope puesto, la franja descubierta muestra la app de atrás: un
-   * sheet del sistema la oscurece, así que este también. Acompaña la apertura
-   * —mismo `p` que `crece`— para no aparecer de golpe.
-   */
   const velo = useAnimatedStyle(() => {
     const p = desde > 0 ? y.value / desde : 0
     return { opacity: (1 - p) * 0.45 }
   })
 
-  /*
-   * La entrada, una sola vez al montarse.
-   *
-   * Va **al final del cuerpo**, después de `cerrar` y del gesto, porque la
-   * regla no admite que se escriba un valor compartido en código que aparezca
-   * debajo del efecto que lo usa. Y se la silencia acá por lo mismo que en
-   * `MotorAudio` con el volumen: un `SharedValue` de Reanimated se maneja
-   * escribiéndole `.value` —es su API— y esta animación tiene que ser
-   * imperativa porque el mismo valor lo mueve el arrastre.
-   */
+  /* El gesto y la entrada comparten `.value`, la API imperativa de Reanimated. */
   useEffect(() => {
     if (ES_IOS) return
     // eslint-disable-next-line react-hooks/immutability
@@ -261,21 +171,11 @@ function PlayingContent() {
   const track = manual ?? (index >= 0 ? (tracks[index] ?? null) : null)
   const artwork = track ? artworkSource(track.artworkPath, track.artworkUrl, 640) : null
   const progress = durationMs > 0 ? Math.max(0, Math.min(1, positionMs / durationMs)) : 0
-  const first = !manual && index <= 0
   const conLetra = view === 'lyrics'
 
-  /*
-   * Los controles sobre la letra: se piden con un toque y se van solos.
-   *
-   * `visibles` es estado de React —decide qué recibe toques— y el fundido lo
-   * lleva un estilo animado que lo sigue. El temporizador se rearma con cada
-   * toque sobre los controles (`tocado`), así que mientras arrastrás la barra
-   * de posición no desaparecen debajo del dedo. En pausa se quedan: no hay
-   * nada que leer al ritmo de nada.
-   */
+  /* Cada interacción rearma el temporizador para no ocultar controles durante un arrastre. */
   const [escondidos, setEscondidos] = useState(false)
-  /* Fuera de la letra los controles están siempre: el estado solo cuenta con
-     la letra puesta, y se **deriva** en vez de sincronizarse con un efecto. */
+
   const visibles = ES_IOS || !conLetra || !escondidos
   const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null)
   const apagarTimer = () => {
@@ -302,7 +202,7 @@ function PlayingContent() {
       setEscondidos(true)
     } else tocado()
   }
-  /** Entrar a la letra siempre arranca con los controles a la vista. */
+
   const verLetra = () => {
     setEscondidos(false)
     toggleView('lyrics')
@@ -312,12 +212,6 @@ function PlayingContent() {
     transform: [{ translateY: withTiming(visibles ? 0 : 12, { duration: CONTROLES_FADE_MS }) }],
   }))
 
-  /*
-   * Sin nada cargado no hay pantalla que mostrar.
-   *
-   * Pasa si la canción termina con esto abierto: en vez de dejar un hueco con
-   * controles que no controlan nada, se cierra sola y volvés a donde estabas.
-   */
   if (!track) {
     return (
       <SafeAreaView className="flex-1 justify-center bg-canvas">
@@ -331,13 +225,6 @@ function PlayingContent() {
     )
   }
 
-  /*
-   * Los tres puntos de la canción que suena, con la anatomía del menú de Apple
-   * Music: arriba la fila de tres acciones rápidas —sumar a una lista, el Jam,
-   * compartir—, después a dónde ir, después qué hacer con el reproductor, y al
-   * final lo que lo cierra. El corazón no está: ya es su propio botón al lado
-   * del título.
-   */
   const jamLabel = enJam
     ? `Jam · ${cuantosJam}`
     : 'Jam'
@@ -353,8 +240,7 @@ function PlayingContent() {
       sfSymbol: 'plus',
     },
     {
-      /* La fila dice lo que va a pasar: sin Jam **lo crea**, con uno abierto lo
-         muestra, con cuántos son. */
+
       label: jamLabel,
       rapida: true,
       selected: enJam || undefined,
@@ -370,11 +256,7 @@ function PlayingContent() {
       icon: <IconUsers size={15} color={enJam ? ICON_COLOR.foreground : ICON_COLOR.muted} />,
       sfSymbol: enJam ? 'person.2.fill' : 'person.2',
     },
-    /*
-     * Una sola fila, como en la pantalla principal: abre la hoja y ahí se
-     * elige entre la historia y el link, con la tarjeta a la vista antes de
-     * mandarla. Ver `app/compartir.tsx`.
-     */
+
     {
       label: 'Compartir',
       rapida: true,
@@ -432,8 +314,7 @@ function PlayingContent() {
       icon: <IconRepeat size={15} color={ICON_COLOR.muted} />,
       sfSymbol: 'arrow.counterclockwise',
     },
-    /* En un Jam, «cerrar» es irse de él: cerrar solo el reproductor dejaría
-       la membresía viva y la cola volvería sola con el próximo evento. */
+    /* Salir del Jam elimina la membresía; detener sólo el audio permitiría que el próximo evento lo reinicie. */
     enJam
       ? {
           label: 'Salir del Jam',
@@ -466,18 +347,10 @@ function PlayingContent() {
     />
   )
 
-  /*
-   * La barra de posición, el transporte y la fila de vistas.
-   *
-   * Es el mismo bloque en las dos formas de la pantalla: al pie con la tapa, y
-   * flotando sobre la letra. Se arma una vez para que las dos no se separen.
-   */
   const controles = (
     <View
       style={{ gap: ES_IOS ? 10 : 20, paddingHorizontal: 24, paddingBottom: 8, paddingTop: 8, flexShrink: 0 }}
-      /* Cualquier toque acá rearma el temporizador de los controles sobre la
-         letra. Los dos manejadores porque el de puntero es el que llega en la
-         web y el de toque el que llega en el teléfono. */
+      /* Puntero en web y toque nativo rearman el mismo temporizador. */
       onTouchStart={tocado}
       {...({ onPointerDown: tocado } as object)}
     >
@@ -490,57 +363,28 @@ function PlayingContent() {
         posicionMs={posicionSV}
       />
 
-      {/*
-       * La fila de siempre: aleatorio, anterior, play, siguiente, repetir.
-       *
-       * Es el orden de cualquier reproductor —Spotify, Apple Music, el
-       * Winamp— y no es capricho: los dos modos van a los extremos porque
-       * cambian **cómo** suena la cola, y los tres del medio son lo que hacés
-       * con la canción de ahora. Mezclarlos obligaría a leer los cinco íconos
-       * cada vez para encontrar el play.
-       */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: ES_IOS ? 'space-between' : 'center', gap: ES_IOS ? 0 : 20 }}>
-        <BotonAleatorio size={22} lado={44} />
-        <IconButton label="Anterior" symbol="backward.end.fill" onPress={playPrevious} lado={48} size={26} icon={<IconPrevious size={26} color={first ? ICON_COLOR.muted : ICON_COLOR.foreground} />} />
-        <IconButton label={destinoEscucha.remoto ? 'Traer música a este dispositivo' : wantPlay ? 'Pausar' : 'Reproducir'} symbol={wantPlay && !destinoEscucha.remoto ? 'pause.fill' : 'play.fill'} onPress={togglePlayback} lado={64} size={24} variant="primary" icon={wantPlay && !destinoEscucha.remoto ? (
-            <IconPause size={24} color={ICON_COLOR.onPrimary} />
-          ) : (
-            <IconPlay size={24} color={ICON_COLOR.onPrimary} />
-          )} />
-        <IconButton label="Siguiente" symbol="forward.end.fill" onPress={playNext} disabled={last} lado={48} size={26} icon={<IconNext size={26} color={last ? ICON_COLOR.muted : ICON_COLOR.foreground} />} />
-        <BotonRepetir size={22} lado={44} />
-      </View>
+      <ControlesTransporte grande reproduciendo={sonando} cargando={cargando} remoto={destinoEscucha.remoto}
+        onAnterior={playPrevious} onAlternar={togglePlayback} onSiguiente={playNext} sinSiguiente={last} />
+      {error ? <Text accessibilityRole="alert" numberOfLines={2} style={{ color: '#B3B3B3', fontSize: 12, textAlign: 'center' }}>{error}</Text> : null}
 
-      {/* Web controla el reproductor; iOS presenta MPVolumeView, que ajusta el
-          mismo volumen del sistema que los botones físicos y AirPlay. */}
-      {ES_WEB ? <Volumen /> : null}
+      {/* iOS usa MPVolumeView para compartir el volumen de los botones físicos y AirPlay. */}
+      {!ES_IOS ? <Volumen /> : null}
       {ES_IOS && hayVolumenDelSistema ? <VolumenDelSistema style={{ width: '100%', height: 44 }} /> : null}
 
-      {/*
-       * La fila del pie: qué se mira y a dónde va el sonido, como los tres
-       * íconos de Apple Music. Encendido es el ícono blanco sobre un disco
-       * apenas más claro — un escalón de luminancia, no un color —; apagado,
-       * el gris de los controles inactivos (`docs/DESIGN.md`).
-       */}
       <View className="flex-row items-center justify-evenly pt-1">
-        <Alternador
+        <BotonVistaAudio
           label="Ver la letra"
           active={conLetra}
           onPress={verLetra}
-          icon={IconLyrics}
+          vista="lyrics"
         />
-        {!ES_IOS ? <Alternador
+        {!ES_IOS ? <BotonVistaAudio
           label="Ver el disco girando"
           active={view === 'disc'}
           onPress={() => toggleView('disc')}
-          icon={IconDisc}
+          vista="disc"
         /> : null}
-        {/*
-         * A dónde sale el sonido. Adentro no va un ícono nuestro sino la vista
-         * de Apple, que se dibuja y se anima sola; ocupa el redondel entero
-         * para que el toque sea todo el botón y no el glifo. Sin el módulo en
-         * el binario no se dibuja nada — ni el redondel, que quedaría vacío.
-         */}
+        {/* El módulo nativo aporta el control AirPlay y su área táctil; sin módulo no se muestra. */}
         {haySelectorDeSalida ? (
           <View className="h-11 w-11 items-center justify-center overflow-hidden rounded-full">
             <SelectorDeSalida
@@ -550,11 +394,11 @@ function PlayingContent() {
             />
           </View>
         ) : null}
-        <Alternador
+        <BotonVistaAudio
           label="Ver la cola"
           active={false}
           onPress={() => router.push('/cola')}
-          icon={IconCola}
+          vista="cola"
         />
       </View>
     </View>
@@ -588,8 +432,8 @@ function PlayingContent() {
           ) : (
             <>
               <View style={{ flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
-                {view === 'disc' ? <SongDisc artworkUrl={track.artworkUrl} artworkPath={track.artworkPath} title={track.title} playing={wantPlay && !destinoEscucha.remoto} size={artworkSize} />
-                  : artwork ? <View style={{ width: artworkSize }}><PlayerArtwork uri={artwork} playing={wantPlay && !destinoEscucha.remoto} /></View>
+                {view === 'disc' ? <SongDisc artworkUrl={track.artworkUrl} artworkPath={track.artworkPath} title={track.title} playing={sonando} size={artworkSize} />
+                  : artwork ? <View style={{ width: artworkSize }}><PlayerArtwork uri={artwork} playing={sonando} /></View>
                     : <IconMusic size={64} color={ICON_COLOR.muted} />}
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 12 }}>
@@ -609,14 +453,7 @@ function PlayingContent() {
   }
 
   return (
-    /* El gesto envuelve todo y la animación también: lo que crece desde la
-       tarjeta es la pantalla entera, fondo desenfocado incluido.
-
-       La base negra va ACÁ y no en la escena: la escena es transparente a
-       propósito —mientras la pantalla crece se ve la app detrás— así que el
-       cuerpo opaco tiene que ser parte de lo que crece. Sin él, la pantalla
-       entera quedaba translúcida abierta: su «fondo» es una carátula al 55%
-       con un velo, que son ambiente, no piso. #000 es el token canvas. */
+    /* El fondo opaco debe animarse con la hoja: la escena permanece transparente durante la expansión. */
     <GestureDetector gesture={arrastre}>
       <View style={{ flex: 1 }}>
       {tope > 0 ? (
@@ -625,8 +462,7 @@ function PlayingContent() {
             pointerEvents="none"
             style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }, velo]}
           />
-          {/* La franja descubierta cierra al tocarla, como en todo sheet. La
-              hoja se dibuja después, así que sus toques no llegan acá. */}
+
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Bajar"
@@ -648,19 +484,7 @@ function PlayingContent() {
           crece,
         ]}
       >
-      {/*
-       * El fondo lo pone la tapa.
-       *
-       * Es el mismo recurso del visor de mensajes: la carátula estirada y
-       * desenfocada detrás, con un velo encima. La app es acromática a
-       * propósito, y este es el único lugar donde el color entra —el que trae
-       * la canción, no uno nuestro—. Sobre negro plano el vinilo quedaba
-       * flotando en la nada; así el disco se apoya en algo.
-       *
-       * El velo no es decoración: sin él, una tapa clara se come el título y
-       * los controles. Con la letra puesta el velo es más pesado: el texto es
-       * lo único que hay y tiene que leerse sobre cualquier tapa.
-       */}
+      {/* El velo mantiene el contraste sobre tapas claras, con mayor opacidad detrás de la letra. */}
       {artwork ? (
         <Image
           source={{ uri: artwork }}
@@ -684,29 +508,14 @@ function PlayingContent() {
       />
 
       <View style={{ alignItems: 'center', paddingTop: 6 }}><EstadoDispositivo /></View>
-      {/*
-       * En ventana ancha, el reproductor es una **columna centrada**.
-       *
-       * La tapa es `w-full` con proporción cuadrada, así que sin tope crecía con
-       * la ventana: en un monitor quedaba un cuadrado de mil y pico de píxeles
-       * desbordando el alto, con el título y los controles empujados fuera de
-       * la pantalla. El fondo desenfocado sigue ocupando todo —es el ambiente,
-       * y ahí sí queremos que llene— y lo que se acota es lo que se lee. Es la
-       * forma que toma Apple Music en el iPad y en la Mac.
-       */}
+
       <SafeAreaView
         className="flex-1 self-center"
         style={{ width: '100%', maxWidth: COLUMNA }}
-        /* Solo abajo: el margen de arriba ya lo puso el `tope` de la hoja —
-           dentro de un transparentModal el inset de arriba además llegaba en
-           cero, que es como el encabezado terminó abajo de la hora del
-           sistema. Ver el comentario de `tope`. */
+        /* El safe area superior ya está incluido en `tope`; sumarlo aquí duplicaría el margen. */
         edges={['bottom']}
       >
-        {/* La manijita, dibujada por nosotros. Apple Music dibuja la suya
-            exactamente así: la cápsula dice «esto se arrastra» sin gastar un
-            botón. **También en web**, que desde que el gesto es nuestro
-            —`arrastre`, arriba— responde igual al arrastre del mouse. */}
+
         <View
           pointerEvents="none"
           className="mt-2 h-[5px] w-9 self-center rounded-full bg-white/25"
@@ -714,17 +523,10 @@ function PlayingContent() {
 
         {conLetra ? (
           <>
-            {/*
-             * El encabezado de la letra: la tapa en miniatura, el nombre y los
-             * dos botones de la canción. Es la primera fila de la pantalla de
-             * letra de Apple Music, y hace que la letra sea la pantalla sin
-             * que se pierda de vista qué está sonando.
-             */}
+
             <View className="flex-row items-center gap-3 px-5 pb-3 pt-4">
               {ES_WEB ? (
-                /* En la compu no hay dedo que arrastre: la flecha es la única
-                   forma clara de bajar la hoja. En el teléfono la manija y el
-                   gesto alcanzan, como en Apple Music. */
+
                 <IconButton label="Bajar" symbol="chevron.down" onPress={cerrar} size={22} icon={<IconChevronDown size={22} color={ICON_COLOR.foreground} />} />
               ) : null}
               {artwork ? (
@@ -753,9 +555,6 @@ function PlayingContent() {
               {botonMenu}
             </View>
 
-            {/* La letra ocupa todo lo que queda, hasta el pie: los controles
-                se dibujan **encima**, y las líneas que vienen pasan detrás de
-                ellos, ya desenfocadas. */}
             <View className="min-h-0 flex-1">
               <LyricsView track={track} translatable size="xl" onTap={alternarControles} />
               <Animated.View
@@ -765,9 +564,7 @@ function PlayingContent() {
                   fundido,
                 ]}
               >
-                {/* El fundido de abajo: la letra se apaga contra el pie para
-                    que la barra y los botones se lean sobre cualquier verso.
-                    Es el degradado de siempre, del fondo hacia nada. */}
+
                 <LinearGradient
                   pointerEvents="none"
                   colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.75)', 'rgba(0,0,0,0.92)']}
@@ -790,18 +587,17 @@ function PlayingContent() {
               <View className="w-10" />
             </View>
 
-            {/* La pieza grande: la tapa o el disco girando. */}
             <View className="min-h-0 flex-1 items-center justify-center px-6">
               {view === 'disc' ? (
                 <SongDisc
                   artworkUrl={track.artworkUrl}
                   artworkPath={track.artworkPath}
                   title={track.title}
-                  playing={wantPlay}
+                  playing={sonando}
                   size={300}
                 />
               ) : artwork ? (
-                <PlayerArtwork uri={artwork} playing={wantPlay} />
+                <PlayerArtwork uri={artwork} playing={sonando} />
               ) : (
                 <View
                   className="w-full items-center justify-center rounded-2xl bg-card"
@@ -812,11 +608,6 @@ function PlayingContent() {
               )}
             </View>
 
-            {/* El título con el corazón y los tres puntos, como en Apple
-                Music: el corazón es un juicio sobre ESTA canción y los tres
-                puntos son todo lo demás que se puede hacer con ella. Van
-                juntos al lado del nombre y no entre los controles de
-                transporte, donde se leerían como botones de reproducción. */}
             <View className="flex-row items-center gap-2 px-6 pt-5">
               <View className="min-w-0 flex-1 gap-0.5">
                 <Text className="text-foreground text-title3 font-bold" numberOfLines={1}>
@@ -840,50 +631,7 @@ function PlayingContent() {
   )
 }
 
-/**
- * Un botón de la fila del pie: prende y apaga una vista.
- *
- * Redondel de 44 sin fondo; encendido, el ícono es blanco y el redondel se
- * aclara un paso (`white/15`). Es el estado activo de la fila de Apple Music
- * traducido al sistema: luminancia, no color.
- */
-function Alternador({
-  label,
-  active,
-  onPress,
-  icon: Icon,
-}: {
-  label: string
-  active: boolean
-  onPress: () => void
-  icon: (props: { size?: number; color?: string }) => React.ReactElement
-}) {
-  return <IconButton label={label} symbol={Icon === IconLyrics ? 'quote.bubble' : Icon === IconDisc ? 'opticaldisc' : Icon === IconUsers ? 'person.2' : 'list.bullet'}
-    selected={active} onPress={onPress} muted={!active} icon={<Icon size={20} color={active ? ICON_COLOR.foreground : ICON_COLOR.muted} />} />
-}
-
-/**
- * El volumen, como en Apple Music: un parlante chico a cada lado y la barra en
- * el medio. Es la misma `SeekBar` de la posición, en vivo — mover la perilla
- * **es** subir y bajar, y hay que oírlo mientras se mueve.
- */
 function Volumen() {
   const volumen = useVolume()
-  return (
-    <View className="flex-row items-center gap-3 px-1">
-      <IconButton label="Silenciar" symbol="speaker.slash.fill" onPress={() => setVolume(0)} lado={32} size={14} icon={<IconVolumeOff size={14} color={ICON_COLOR.muted} />} />
-      <View className="flex-1">
-        <SeekBar
-          label="Volumen"
-          progress={volumen}
-          elapsedMs={0}
-          totalMs={0}
-          compact
-          envivo
-          onSeek={setVolume}
-        />
-      </View>
-      <IconButton label="Volumen al máximo" symbol="speaker.wave.2.fill" onPress={() => setVolume(1)} lado={32} size={14} icon={<IconVolume size={14} color={ICON_COLOR.muted} />} />
-    </View>
-  )
+  return <VolumenAudio value={volumen} onChange={setVolume} onToggleMute={toggleMute} />
 }

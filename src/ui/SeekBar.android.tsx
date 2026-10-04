@@ -20,7 +20,8 @@ export function SeekBar({ label, progress, elapsedMs, totalMs, onSeek, compact =
     <AndroidHost matchContents={{ vertical: true }} style={{ width: '100%', minHeight: 48 }}>
       <Slider min={0} max={1} value={valor}
         colors={{ thumbColor: ANDROID_COLORS.text, activeTrackColor: ANDROID_COLORS.text, inactiveTrackColor: ANDROID_COLORS.raised }}
-        modifiers={[fillMaxWidth(), androidAccessibility(envivo ? label : `Posición de ${label}`, `${Math.round(valor * 100)} %`)]}
+        modifiers={[fillMaxWidth(), androidAccessibility(envivo ? label : `Posición de ${label}`,
+          envivo ? `${Math.round(valor * 100)} %` : `${formatClock(valor * totalMs)} / ${formatClock(totalMs)}`)]}
         onValueChange={next => {
           if (!Number.isFinite(next)) return
           const v = Math.max(0, Math.min(1, next))

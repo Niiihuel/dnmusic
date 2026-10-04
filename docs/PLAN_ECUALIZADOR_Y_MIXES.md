@@ -1,5 +1,10 @@
 # Plan de producto y ejecución: ecualizador musical y mixes de playlists
 
+Este documento conserva el plan de producto, sus referencias y el alcance
+por fases. Las secciones de análisis inicial describen el punto de partida,
+no una lista de funciones que falten hoy. Para los controles vigentes, consultar
+[componentes de audio](AUDIO_COMPONENTS.md) y [el parche](../patches/README.md).
+
 Fecha de investigación: 24 de septiembre de 2026. Estado: backend desplegado en Railway; falta validar la reproducción en dispositivos reales.
 
 ## Estado de ejecución

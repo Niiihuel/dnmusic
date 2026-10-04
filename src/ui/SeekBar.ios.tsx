@@ -26,7 +26,8 @@ export function SeekBar({ label, progress, elapsedMs, totalMs, onSeek, compact =
   return <View style={{ width: '100%' }}>
     <Host ignoreSafeArea="all" style={{ height: 44, width: '100%' }} colorScheme="dark" seedColor="#FFFFFF">
     <Slider min={0} max={1} value={valor}
-      modifiers={[frame({ height: 44 }), tint('#FFFFFF'), accessibilityLabel(`Posición de ${label}`), accessibilityValue(`${Math.round(valor * 100)} %`)]}
+      modifiers={[frame({ height: 44 }), tint('#FFFFFF'), accessibilityLabel(envivo ? label : `Posición de ${label}`),
+        accessibilityValue(envivo ? `${Math.round(valor * 100)} %` : `${formatClock(valor * totalMs)} / ${formatClock(totalMs)}`)]}
       onEditingChanged={(activo) => {
         editando.current = activo
         if (activo) ultimo.current = null

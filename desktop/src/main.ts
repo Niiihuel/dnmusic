@@ -1,5 +1,5 @@
 import { registrarVentana } from './ventana-ipc'
-import { app, BrowserWindow, ipcMain, Menu, safeStorage, session, shell } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, safeStorage, session, shell } from 'electron'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
@@ -25,6 +25,7 @@ import { AlmacenAuth } from './auth-storage'
 import { registrarAlmacenAuth } from './auth-storage-ipc'
 import { DiscordPresence } from './discord-presence'
 import { registrarDiscord } from './discord-ipc'
+import { registrarPortapapeles } from './portapapeles-ipc'
 
 /**
  * dnmusic para escritorio.
@@ -385,6 +386,7 @@ if (!app.requestSingleInstanceLock()) {
       (motivo, error) => registrar(`sesión: ${motivo} —`, error),
     )
     registrarAlmacenAuth(ipcMain, auth, () => ventanaPrincipal?.webContents ?? null)
+    registrarPortapapeles(ipcMain, clipboard, () => ventanaPrincipal?.webContents ?? null)
     app.on('will-quit', () => google.cancelar())
     registrarAudioOffline(ipcMain, disco, () => ventanaPrincipal?.webContents ?? null)
     const discord = new DiscordPresence(state => {

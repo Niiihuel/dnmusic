@@ -31,4 +31,7 @@ El payload incluye únicamente texto acotado, duración/posición y fechas. `tra
 
 Las lecturas del perfil pasan un `AbortSignal`, invalidan respuestas de focos/sesiones anteriores y retiran el valor tras 10 segundos sin respuesta. Un lector que ignore cancelación no genera solicitudes concurrentes: espera que termine la anterior antes de reintentar. La integración debe dejar de consultar al perder foco/sesión o al desactivar su permiso.
 
-Estos cambios son locales hasta desplegar la aplicación que contiene `api/v1/listening.ts`. No se ha desplegado el endpoint ni modificado la base remota.
+La ruta se sirve desde `scripts/serve-railway.ts` al desplegar la aplicación que
+contiene `api/v1/listening.ts`. Verificar el contrato HTTP y la autorización en
+ese despliegue; los tests locales no confirman la disponibilidad de un entorno
+remoto. No requiere una migración nueva.

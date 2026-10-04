@@ -1,6 +1,6 @@
 import { IconButton } from '../../src/ui/IconButton'
 import { AccionSocial } from '../../src/ui/Social'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   ScrollView,
@@ -19,14 +19,11 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated'
-import { mensajeError } from '../../src/lib/mensajeError'
 import { volver } from '../../src/lib/volver'
 import { avatarUrl, type Encuadre } from '../../src/services/profile'
-import { ilustracionUrl, uploadIlustracionConProgreso } from '../../src/services/showcases'
+import { ilustracionUrl } from '../../src/services/showcases'
 import { avisar } from '../../src/state/aviso'
-import { fondoPendiente, soltarFondoPendiente } from '../../src/state/fondoPendiente'
 import { usePiso } from '../../src/state/shell'
-import { useUser } from '../../src/state/session'
 import { actualizarBorrador, useBorrador } from '../../src/state/vitrinaBorrador'
 import { BotonHoja, EncabezadoHoja } from '../../src/ui/EncabezadoHoja'
 import { actualizarPerfilEdicion, useIniciarPerfilEdicion } from '../../src/state/perfilEdicion'
@@ -34,7 +31,6 @@ import { useSalidaConCambios } from '../../src/ui/useSalidaConCambios'
 import { cajaOriginal, escalaOriginal, escalaQueCubre, limitarOriginal, zoomEnFoco } from '../../src/ui/Encuadre'
 import { MedioEncuadre } from '../../src/ui/MedioEncuadre'
 import { ANCHO_HOJA, Hoja, useHojaModal } from '../../src/ui/Hoja'
-import { BarraDeProgreso, porciento } from '../../src/ui/Progreso'
 import { ICON_COLOR, IconGirarDer, IconGirarIzq } from '../../src/ui/icons'
 
 /** Hasta dónde se puede acercar. Más allá, cualquier foto se ve rota. */
@@ -47,46 +43,15 @@ const PX_POR_GRADO = 4
 /** Por debajo de esto, al soltar el dial vuelve a cero: nadie quiere 1° de inclinación sin querer. */
 const IMAN = 1.5
 
-/**
- * Qué se está encuadrando. Las dos primeras viven en el perfil; `fondo-nuevo`
- * es un fondo recién elegido que todavía no subió (ver `state/fondoPendiente`);
- * las otras dos, en el borrador de la pieza (`state/vitrinaBorrador`), que
- * todavía no llegó a la base.
- */
-type Que = 'foto' | 'fondo' | 'fondo-nuevo' | 'vitrina' | 'vitrina-imagen'
+type Que = 'foto' | 'fondo' | 'vitrina' | 'vitrina-imagen'
 
 /**
- * Elegir cómo se ve la foto, el fondo o la imagen de una pieza: arrastrar
- * para mover, pellizcar para acercar, girar con el dial.
- *
- * **No recorta la imagen, la encuadra.** No se genera ningún archivo nuevo: lo
- * que se guarda son unos números que dicen cómo mirarla (ver la migración
- * `encuadre_perfil`). Esa es la diferencia que hace que un GIF de perfil siga
- * animado — el recortador del sistema en iOS devuelve un JPG de un cuadro, y
- * por eso una foto animada se subía bien y llegaba quieta.
- *
- * Y es lo que le da encuadre al **fondo**, que nunca tuvo ninguno, y a la
- * imagen de una pieza del mosaico: la misma pantalla, cambiando la forma del
- * recuadro y a dónde se escribe el resultado. Para la pieza no se guarda en
- * la base sino en el borrador, como el resto del editor: nada llega hasta
- * «Agregar al mosaico».
- *
- * **Un fondo recién elegido se encuadra antes de subir** (`fondo-nuevo`): la
- * pantalla trabaja sobre el archivo local, y el tilde sube el archivo —con
- * una barra de cuánto va— y recién entonces guarda la ruta con el encuadre.
- * Antes el fondo subía al toque y encuadrarlo era otra fila aparte, que casi
- * nadie encontraba.
- *
- * La rotación es la que abre Airbuds después de elegir la foto —pasos de 90°
- * y un dial fino—, pero sigue la regla de acá: es un número más del encuadre,
- * no un archivo nuevo.
- *
- * La cruz protege la salida; la barra compartida restablece o guarda.
- * Centrar modifica sólo la vista previa hasta confirmar.
+ * Guarda la geometría en el borrador sin generar otro archivo: así los GIF
+ * conservan su animación. El editor de perfil o vitrina confirma los cambios
+ * en la base; esta hoja sólo encuadra y protege la salida sin guardar.
  */
 export default function Encuadrar() {
   const router = useRouter()
-  const user = useUser()
   const borrador = useBorrador()
   const { width, height } = useWindowDimensions()
   const modal = useHojaModal()
@@ -94,28 +59,23 @@ export default function Encuadrar() {
   const { que: queCrudo } = useLocalSearchParams<{ que?: string }>()
   const que: Que =
     queCrudo === 'fondo' ||
-    queCrudo === 'fondo-nuevo' ||
     queCrudo === 'vitrina' ||
     queCrudo === 'vitrina-imagen'
       ? queCrudo
       : 'foto'
   const esVitrina = que === 'vitrina' || que === 'vitrina-imagen'
   const perfil = useIniciarPerfilEdicion(!esVitrina)
-  const esFondo = que === 'fondo' || que === 'fondo-nuevo'
+  const esFondo = que === 'fondo'
   const redondo = que === 'foto'
   /* A dónde se vuelve: la pieza a su editor, lo del perfil a «Editar perfil». */
   const destino = esVitrina ? '/profile/vitrina' : '/profile/editar'
 
-  const [guardando, setGuardando] = useState(false)
-  const enVuelo = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [modificado, setModificado] = useState(false)
   const [salir, setSalir] = useState(false)
   const [manipulando, setManipulando] = useState(false)
   const [aspecto, setAspecto] = useState<number | undefined>(undefined)
   const [cargado, setCargado] = useState(false)
-  /** Cuánto subió el fondo nuevo, de 0 a 1; `null` mientras no se sube. */
-  const [progreso, setProgreso] = useState<number | null>(null)
 
   /* De dónde sale la imagen y con qué encuadre arranca, según qué se encuadra. */
   const imagenDeVitrina =
@@ -124,23 +84,18 @@ export default function Encuadrar() {
       : que === 'vitrina-imagen' && borrador?.contenido?.kind === 'imagen'
         ? borrador.contenido.imagen
         : null
-  const pendiente = que === 'fondo-nuevo' ? fondoPendiente() : null
   const uri = esVitrina
     ? imagenDeVitrina
       ? ilustracionUrl(imagenDeVitrina.path)
       : null
-    : que === 'fondo-nuevo'
-      ? (pendiente?.uri ?? null)
-      : que === 'fondo'
-        ? perfil?.bannerPath
-          ? ilustracionUrl(perfil.bannerPath)
-          : null
-        : avatarUrl(perfil?.avatarPath)
+    : que === 'fondo'
+      ? perfil?.bannerPath
+        ? ilustracionUrl(perfil.bannerPath)
+        : null
+      : avatarUrl(perfil?.avatarPath)
   const [inicial] = useState<Encuadre | null>(() => esVitrina
     ? (imagenDeVitrina?.encuadre ?? null)
-    : que === 'fondo-nuevo'
-      ? null
-      : ((que === 'fondo' ? perfil?.bannerEncuadre : perfil?.avatarEncuadre) ?? null))
+    : ((que === 'fondo' ? perfil?.bannerEncuadre : perfil?.avatarEncuadre) ?? null))
 
   /*
    * El recuadro de trabajo: cuadrado para la foto —así se ve en todos lados—,
@@ -172,9 +127,7 @@ export default function Encuadrar() {
     setError('No se pudo abrir el archivo. Volvé a elegirlo en Fotos.')
   }, [])
 
-  const cambiado = modificado || (que === 'fondo-nuevo' && !!pendiente)
-  const dialogoSalida = useSalidaConCambios(cambiado && !salir, guardando && !salir,
-    () => { if (que === 'fondo-nuevo') soltarFondoPendiente() })
+  const dialogoSalida = useSalidaConCambios(modificado && !salir)
   useEffect(() => { if (salir) { if (esVitrina) volver(router, destino); else router.dismissTo('/profile/editar') } }, [salir, router, destino, esVitrina])
 
   /*
@@ -236,7 +189,7 @@ export default function Encuadrar() {
   )
 
   const arrastrar = Gesture.Pan()
-    .enabled(!guardando && cargado)
+    .enabled(!salir && cargado)
     .maxPointers(1)
     .onStart(() => {
       xIni.set(x.value)
@@ -264,7 +217,7 @@ export default function Encuadrar() {
     })
 
   const pellizcar = Gesture.Pinch()
-    .enabled(!guardando && cargado)
+    .enabled(!salir && cargado)
     .onBegin(() => { gestosActivos.set(gestosActivos.value + 1) })
     .onFinalize(() => { gestosActivos.set(Math.max(0, gestosActivos.value - 1)) })
     .onStart((e) => {
@@ -305,7 +258,7 @@ export default function Encuadrar() {
    * imanta: una inclinación de un grado nunca es a propósito.
    */
   const girarFino = Gesture.Pan()
-    .enabled(!guardando && cargado)
+    .enabled(!salir && cargado)
     .activeOffsetX([-4, 4])
     .onBegin(() => {
       gestosActivos.set(gestosActivos.value + 1)
@@ -359,7 +312,7 @@ export default function Encuadrar() {
    * pasa una vez y no compite con nada.
    */
   function acercar(paso: number) {
-    if (enVuelo.current) return
+    if (salir) return
     setError(null)
     escalaPedida.set(Math.min(ESCALA_MAX, Math.max(1, escalaPedida.value + paso)))
     acomodar(giro.value + fino.value)
@@ -371,7 +324,7 @@ export default function Encuadrar() {
    * una esquina un instante, pero donde cae está bien.
    */
   function girar(paso: number) {
-    if (enVuelo.current) return
+    if (salir) return
     setError(null)
     const destinoGiro = normalizarGiro(giro.value + paso)
     giro.set(withTiming(destinoGiro, { duration: 220 }))
@@ -449,58 +402,27 @@ export default function Encuadrar() {
     }
   }
 
-  /** La cruz: nada se guarda, y el fondo que esperaba deja de esperar. */
   function cancelar() {
-    if (guardando) return
+    if (salir) return
     volver(router, destino)
   }
 
-  async function guardar() {
-    if (enVuelo.current || !uri || !cargado) return
-    if (!cambiado) { setSalir(true); return }
+  function guardar() {
+    if (salir || !uri || !cargado) return
+    if (!modificado) { setSalir(true); return }
+    const encuadre = armarEncuadre()
     if (esVitrina) {
-      escribirEnBorrador(armarEncuadre())
+      escribirEnBorrador(encuadre)
       avisar('Imagen encuadrada')
-      setSalir(true)
-      return
+    } else {
+      actualizarPerfilEdicion(que === 'fondo' ? { bannerEncuadre: encuadre } : { avatarEncuadre: encuadre })
     }
-    enVuelo.current = true
-    setError(null)
-    setGuardando(true)
-    try {
-      const encuadre = armarEncuadre()
-      if (que === 'fondo-nuevo') {
-        /* Primero el archivo, con la barra; después la ruta junto al encuadre,
-           así el perfil nunca apunta a un fondo que todavía no existe. */
-        if (!pendiente || !user) throw new Error('No hay ningún fondo por subir.')
-        setProgreso(0)
-        const ruta = await uploadIlustracionConProgreso(
-          user.id,
-          pendiente.blob,
-          pendiente.fileName,
-          pendiente.mime,
-          setProgreso,
-        )
-        actualizarPerfilEdicion({ bannerPath: ruta, bannerEncuadre: encuadre })
-        soltarFondoPendiente()
-        avisar('Fondo agregado al borrador')
-      } else {
-        actualizarPerfilEdicion(que === 'fondo' ? { bannerEncuadre: encuadre } : { avatarEncuadre: encuadre })
-
-      }
-      setSalir(true)
-    } catch (e) {
-      setError(mensajeError(e))
-      setProgreso(null)
-    } finally {
-      enVuelo.current = false
-      setGuardando(false)
-    }
+    setSalir(true)
   }
 
   /** Centrar y restablecer sólo cambian el borrador; nunca escriben en la base. */
   function ponerEncuadre(encuadre: Encuadre | null) {
-    if (enVuelo.current) return
+    if (salir) return
     const rotacion = partirRotacion(encuadre?.rotacion ?? 0)
     x.set(encuadre?.x ?? 0)
     y.set(encuadre?.y ?? 0)
@@ -524,8 +446,8 @@ export default function Encuadrar() {
     <EncabezadoHoja
       titulo={titulo}
       sobre="Encuadrar"
-      izquierda={<BotonHoja tipo="cerrar" disabled={guardando} onPress={cancelar} />}
-      derecha={<IconButton label="Usar encuadre" symbol="checkmark" disabled={guardando || !uri || !cargado} busy={guardando} onPress={() => void guardar()} icon={<Text className="text-foreground">Listo</Text>} />}
+      izquierda={<BotonHoja tipo="cerrar" disabled={salir} onPress={cancelar} />}
+      derecha={<IconButton label="Usar encuadre" symbol="checkmark" disabled={salir || !uri || !cargado} onPress={guardar} icon={<Text className="text-foreground">Listo</Text>} />}
     />
   )
 
@@ -539,11 +461,9 @@ export default function Encuadrar() {
             <Text className="text-muted-foreground text-center text-footnote">
               {esVitrina
                 ? 'Todavía no pusiste una imagen.'
-                : que === 'fondo-nuevo'
-                  ? 'No hay ningún fondo por subir. Volvé y elegí uno.'
-                  : esFondo
-                    ? 'Todavía no pusiste un fondo.'
-                    : 'Todavía no pusiste una foto.'}
+                : esFondo
+                  ? 'Todavía no pusiste un fondo.'
+                  : 'Todavía no pusiste una foto.'}
             </Text>
           </View>
         </View>
@@ -596,23 +516,13 @@ export default function Encuadrar() {
             </View>
           </GestureDetector>
 
-          {/* Mientras sube, cuánto va: la barra ocupa el ancho del recuadro. */}
-          {progreso !== null ? (
-            <View style={{ width: lado }}>
-              <BarraDeProgreso
-                valor={progreso}
-                rotulo={progreso >= 1 ? 'Guardando…' : `Subiendo el fondo… ${porciento(progreso)}`}
-              />
-            </View>
-          ) : null}
-
           {/* Acercar y alejar, para quien no tiene con qué pellizcar. */}
           <View className="flex-row items-center gap-4">
-            <IconButton label="Alejar" symbol="minus" disabled={guardando} onPress={() => acercar(-0.25)} variant="glass" icon={<Text className="text-foreground text-title3 font-bold">−</Text>} />
+            <IconButton label="Alejar" symbol="minus" disabled={salir} onPress={() => acercar(-0.25)} variant="glass" icon={<Text className="text-foreground text-title3 font-bold">−</Text>} />
             <Text className="text-muted-foreground text-footnote uppercase">
               Acercar
             </Text>
-            <IconButton label="Acercar" symbol="plus" disabled={guardando} onPress={() => acercar(0.25)} variant="glass" icon={<Text className="text-foreground text-title3 font-bold">+</Text>} />
+            <IconButton label="Acercar" symbol="plus" disabled={salir} onPress={() => acercar(0.25)} variant="glass" icon={<Text className="text-foreground text-title3 font-bold">+</Text>} />
           </View>
 
           {/*
@@ -622,7 +532,7 @@ export default function Encuadrar() {
            * explicarlo.
            */}
           <View className="flex-row items-center gap-3" style={{ width: lado }}>
-            <IconButton label="Girar un cuarto a la izquierda" symbol="rotate.left" disabled={guardando} onPress={() => girar(-90)} variant="glass" icon={<IconGirarIzq size={18} color={ICON_COLOR.foreground} />} />
+            <IconButton label="Girar un cuarto a la izquierda" symbol="rotate.left" disabled={salir} onPress={() => girar(-90)} variant="glass" icon={<IconGirarIzq size={18} color={ICON_COLOR.foreground} />} />
             <View className="min-w-0 flex-1 items-center gap-1.5">
               <Text className="text-muted-foreground text-caption2 tabular-nums tracking-[1.2px]">
                 {grados}°
@@ -634,7 +544,7 @@ export default function Encuadrar() {
                   accessibilityValue={{ text: `${grados} grados` }}
                   accessibilityActions={[{ name: 'increment', label: 'Girar un grado a la derecha' }, { name: 'decrement', label: 'Girar un grado a la izquierda' }]}
                   onAccessibilityAction={e => {
-                    if (guardando) return
+                    if (salir) return
                     fino.set(Math.min(FINO_MAX, Math.max(-FINO_MAX, fino.value + (e.nativeEvent.actionName === 'increment' ? 1 : -1))))
                     acomodar(giro.value + fino.value)
                   }}
@@ -658,11 +568,11 @@ export default function Encuadrar() {
                 </View>
               </GestureDetector>
             </View>
-            <IconButton label="Girar un cuarto a la derecha" symbol="rotate.right" disabled={guardando} onPress={() => girar(90)} variant="glass" icon={<IconGirarDer size={18} color={ICON_COLOR.foreground} />} />
+            <IconButton label="Girar un cuarto a la derecha" symbol="rotate.right" disabled={salir} onPress={() => girar(90)} variant="glass" icon={<IconGirarDer size={18} color={ICON_COLOR.foreground} />} />
           </View>
 
           {/* Centrar se prueba en pantalla; sólo Guardar cambios lo confirma. */}
-          <AccionSocial label="Restablecer" secundaria disabled={guardando} onPress={() => void centrar()} />
+          <AccionSocial label="Restablecer" secundaria disabled={salir} onPress={centrar} />
         </View>
       </ScrollView>
       {error ? <Text accessibilityRole="alert" className="text-destructive px-5 py-3">{error}</Text> : null}

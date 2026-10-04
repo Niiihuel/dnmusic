@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { proximasCola } from '../src/lib/proximasCola.ts'
+import { proximasCola, siguienteCola } from '../src/lib/proximasCola.ts'
 import { trabajosCompartidos } from '../src/lib/trabajosCompartidos.ts'
 const track = id => ({ id, videoId: id, audioPath: `${id}.m4a` })
 const tracks = ['a','b','c','d'].map(track)
@@ -23,6 +23,15 @@ test('repetir una no baja extras; evita duplicados y actual',()=>{
 test('baraja con índices antiguos y cola vacía no generan candidatos inválidos',()=>{
   assert.deepEqual(ids(cola({shuffle:[0,90,3,-1,1]})),['d','b'])
   assert.deepEqual(ids(cola({tracks:[],index:-1})),[])
+})
+test('el relevo respeta la próxima fila aunque comparta audio con la actual o la cola manual', () => {
+  const repetida = { ...track('a'), id: 'otra-fila' }
+  assert.equal(siguienteCola(cola({ upNext: [repetida] })), repetida)
+  assert.equal(siguienteCola(cola({ tracks: [track('a'), repetida, track('c')] })), repetida)
+  assert.equal(siguienteCola(cola({ shuffle: [0, 90, 3, -1, 1] })).id, 'd')
+  assert.equal(siguienteCola(cola({ index: 3, repetir: 'lista' })).id, 'a')
+  assert.equal(siguienteCola(cola({ repetir: 'una', upNext: [track('x')] })), null)
+  assert.equal(siguienteCola(cola({ tracks: [], index: -1 })), null)
 })
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return{promise,resolve,reject}}
 test('descarga y reproducción comparten una extracción, cancelar precarga no cancela al oyente',async()=>{

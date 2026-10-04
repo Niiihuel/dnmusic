@@ -589,7 +589,6 @@ export function Vitrinas({
   ownerId,
   parentId = null,
   recarga,
-  onCambio,
   vacio,
   editando = false,
   temaGlobal = null,
@@ -610,7 +609,6 @@ export function Vitrinas({
    */
   parentId?: string | null
   recarga: number
-  onCambio: () => void
   /** Qué mostrar cuando no hay ninguna. */
   vacio?: ReactNode
   /** Con los controles puestos. Solo en el perfil propio. */
@@ -789,7 +787,7 @@ export function Vitrinas({
   )
 
   const empezar = useCallback(
-    (i: number) => {
+    () => {
       ordenInicial.current = vitrinasRef.current
       onArrastre?.(true)
     },
@@ -1161,7 +1159,7 @@ type Agarre = {
   anchoMosaico: SharedValue<number>
   refs: MutableRefObject<Map<number, MedibleRef>>
   onLayoutCelda: (i: number, r: Rect) => void
-  empezar: (i: number) => void
+  empezar: () => void
   moverA: (desde: number, hacia: number) => void
   soltar: () => void
   cancelar: () => void
@@ -1293,7 +1291,7 @@ function CeldaDeMosaico({
       dx.value = 0
       dy.value = 0
       pendiente.value = false
-      runOnJS(empezar)(indice)
+      runOnJS(empezar)()
     })
     .onUpdate((e) => {
       dx.value = e.translationX

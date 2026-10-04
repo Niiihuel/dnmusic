@@ -1,6 +1,6 @@
 {
   "name": "dnmusic",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "main": "expo-router/entry",
   "private": true,
   "scripts": {
@@ -14,10 +14,14 @@
     "start:railway": "node --import tsx scripts/serve-railway.ts",
     "motor": "node scripts/armar-motor.mjs",
     "typecheck": "tsc --noEmit",
+    "typecheck:all": "npm run typecheck && npm --prefix server run typecheck && npm --prefix desktop run typecheck",
+    "test": "node --test tests/*.test.mjs",
+    "test:all": "npm --prefix server test && npm --prefix desktop test && npm test",
+    "check": "npm run typecheck:all && npm run test:all && npm run lint",
     "ios:dev": "eas build --profile development --platform ios",
     "ios:preview": "eas build --profile preview --platform ios",
     "ios:release": "eas build --profile production --platform ios --auto-submit",
-    "lint": "expo lint",
+    "lint": "eslint .",
     "ios:build": "eas build --profile production --platform ios",
     "android:doctor": "node scripts/android-dev.mjs doctor",
     "android:run": "node scripts/android-dev.mjs run",
