@@ -101,9 +101,31 @@ App Store automáticamente.
 
 Si usás una clave propia en GitHub, se decodifica en una carpeta temporal con permisos privados; nunca se
 incluye en los artifacts y se borra al finalizar el job. Si falla únicamente el
-envío, el IPA queda descargable (artifact o borrador de Release) y podés usar **Re-run failed jobs** para reintentar
-sin volver a compilar. Si la validación inicial falla por secretos faltantes,
-corregilos y ejecutá nuevamente.
+envío, podés usar **Re-run failed jobs** sin volver a compilar mientras el IPA
+siga disponible: el artifact vence a los 7 días; el borrador de Release no vence
+automáticamente. Para enviar un IPA de ese borrador desde una ejecución nueva,
+usá [el campo `ipa_release`](#reenviar-un-ipa-guardado-sin-compilar-otra-vez).
+Si la validación inicial falla por secretos faltantes, corregilos y ejecutá nuevamente.
+
+### Acuerdo de Apple pendiente o vencido (403)
+
+Si la compilación del IPA terminó correctamente y EAS Submit informa:
+
+```text
+Apple 403 detected - Access forbidden.
+A required agreement is missing or has expired.
+```
+
+el envío está bloqueado por los acuerdos de la cuenta Apple. El **Account Holder**
+(titular) debe revisar los avisos en Apple Developer y en App Store Connect →
+**Business → Agreements**, y aceptar los acuerdos pendientes que correspondan.
+Apple explica que un acuerdo actualizado sin aceptar puede suspender el acceso
+a App Store Connect API y TestFlight en su
+[guía para resolver problemas de acceso](https://developer.apple.com/help/account/access/resolving-access-issues).
+
+Después de resolverlo, reintentá sólo el envío mediante las opciones anteriores.
+Conservá el IPA ya compilado, con su versión y número de build: este error no
+requiere cambiar el código, la firma ni recompilar.
 
 ## Referencias
 
