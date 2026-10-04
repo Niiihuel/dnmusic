@@ -5,6 +5,13 @@ const day = new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'long', ye
 const valid = (date?: Date | null): date is Date => !!date && Number.isFinite(date.getTime())
 const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 
+export function messageDisplayText(message: Message): string {
+  if (!message.sharedSong || message.deletedAt || message.editedAt || message.editedRevision) return message.text
+  // El envío guarda un rótulo automático; las ediciones siempre se muestran.
+  const label = `🎵 ${message.sharedSong.title} — ${message.sharedSong.artist}`.slice(0, 2000).trim()
+  return message.text.trim() === label ? '' : message.text
+}
+
 export function sameChatGroup(a?: Message, b?: Message): boolean {
   if (!a || !b || a.deletedAt || b.deletedAt || a.senderUid !== b.senderUid || !valid(a.createdAt) || !valid(b.createdAt)) return false
   const gap = b.createdAt.getTime() - a.createdAt.getTime()
