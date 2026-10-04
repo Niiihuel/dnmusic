@@ -10,6 +10,7 @@ import { SeccionSocial } from './Social'
 import { CabeceraLateral, BotonLateral } from './CabeceraLateral'
 import { InvitacionJam } from './InvitacionJam'
 import { formatMessageDate } from './MessageCard'
+import { messageDisplayText } from './chatPresentation'
 import { Lyrics } from './Lyrics'
 import { SeekBar } from './SeekBar'
 import { ScrollArea } from './ScrollArea'
@@ -37,6 +38,7 @@ export function MessageDetailBody({ message, mine, contactName, playing, sonando
   const art = song ? artworkSource(song.artworkPath, song.artworkUrl, 640) : null
   const elapsed = song && sonando ? Math.max(0, Math.min(song.durationMs, positionMs - song.startMs)) : 0
   const invitacion = message ? invitacionEnTexto(message.text) : null
+  const text = message ? messageDisplayText(message) : ''
 
   return <View className="min-h-0 flex-1">
     <CabeceraLateral titulo="Detalle">
@@ -51,8 +53,8 @@ export function MessageDetailBody({ message, mine, contactName, playing, sonando
         {message.createdAt ? <Text className="text-muted-foreground text-footnote">{formatMessageDate(message.createdAt, true)}</Text> : null}
       </View>
 
-      {invitacion ? <InvitacionJam texto={message.text} /> : message.text ?
-        <SeccionSocial><Text selectable className="text-foreground p-4 text-callout leading-6">{message.text}</Text></SeccionSocial> : null}
+      {invitacion ? <InvitacionJam texto={message.text} /> : text ?
+        <SeccionSocial><Text selectable className="text-foreground p-4 text-callout leading-6">{text}</Text></SeccionSocial> : null}
 
       {message.sharedSong ? <CancionCompartida song={message.sharedSong} /> : null}
 

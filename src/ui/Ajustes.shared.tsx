@@ -349,6 +349,7 @@ export function FilaTexto({
  */
 export function FilaAccion({
   rotulo,
+  lineas = 1,
   copyText,
   onPress,
   destacada = false,
@@ -360,6 +361,7 @@ export function FilaAccion({
 }: {
   copyText?: string
   rotulo: string
+  lineas?: 1 | 2
   onPress: () => void
   destacada?: boolean
   disabled?: boolean
@@ -386,11 +388,11 @@ export function FilaAccion({
           ultima ? '' : 'border-b border-muted'
         }`}
       >
-        {copyText !== undefined ? <CopyFeedback text={copyText} label={rotulo} rowDensity={compacto ? 'compact' : 'regular'} icon={icono ? compacto || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : undefined} /> : <Text
+        {copyText !== undefined ? <CopyFeedback text={copyText} label={rotulo} lineas={lineas} rowDensity={compacto ? 'compact' : 'regular'} icon={icono ? compacto || iconoPlano ? icono : <IconoAjuste>{icono}</IconoAjuste> : undefined} /> : <Text
           className={`min-w-0 flex-1 ${compacto ? 'text-subheadline' : 'text-body'} ${
             activa ? 'text-foreground' : 'text-muted-foreground/60'
           } ${destacada ? 'font-semibold' : ''}`}
-          numberOfLines={1}
+          numberOfLines={lineas}
         >
           {rotulo}
         </Text>}

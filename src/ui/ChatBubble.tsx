@@ -13,7 +13,7 @@ import type { SharedValue } from 'react-native-reanimated'
 import type { Message } from '../models/message'
 import { artworkSource } from '../lib/artwork'
 import { TECLADO_FISICO } from '../lib/teclado'
-import { chatDayLabel, chatTime, sameChatGroup } from './chatPresentation'
+import { chatDayLabel, chatTime, messageDisplayText, sameChatGroup } from './chatPresentation'
 import { SeekBar } from './SeekBar'
 import { ICON_COLOR, IconMusic, IconPause, IconPlay, IconCopiar, IconPencil, IconTrash, IconEye, IconChevronDown } from './icons'
 import { estadoControlWeb } from './estadoControl'
@@ -67,7 +67,9 @@ export function ChatBubble({
   ]
   const desktopMenu = TECLADO_FISICO && options.length > 0
   const bubbleColor = selected ? '#414145' : mine ? '#303033' : '#202022'
-  const invitation = invitacionEnTexto(message.text)
+  const text = messageDisplayText(message)
+  const invitation = invitacionEnTexto(text)
+  const sharedMusic = !!message.sharedSong && !message.deletedAt
   const song = message.song
   const delivery = message.readAt ? '✓✓' : message.openedAt ? '✓✓' : '✓'
   const progress = song && sonando
@@ -91,28 +93,29 @@ export function ChatBubble({
     <View className="w-full">
       {day ? <View className="items-center py-4"><Text className="rounded-full bg-white/5 px-3 py-1 text-caption1 text-muted-foreground">{day}</Text></View> : null}
       <View className={mine ? 'items-end' : 'items-start'} style={{ paddingTop: joinedAbove ? 3 : 10 }}>
-        <View {...({ dataSet: { chatBubble: 'true' } } as object)} style={{ maxWidth: TECLADO_FISICO ? '76%' : '88%', ...(song || message.sharedSong ? { width: 360 } : {}) }}>
-          <MantenerApretado items={options} previewCornerRadius={20}>
+        <View {...({ dataSet: { chatBubble: 'true' } } as object)} style={{ minWidth: 0, maxWidth: TECLADO_FISICO ? '76%' : '88%', ...(sharedMusic ? { width: 325 } : song ? { width: 360 } : {}) }}>
+          <MantenerApretado items={options} previewCornerRadius={sharedMusic ? 16 : 20}>
             <View {...(options.length ? clic.gestos : {})}
               {...(TECLADO_FISICO && options.length ? { tabIndex: 0 } : {})}
-              style={{
+              style={sharedMusic ? { minWidth: 0, gap: 6 } : {
                 maxWidth: 560, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 9, gap: 6,
                 backgroundColor: bubbleColor,
-                paddingTop: desktopMenu && (!message.text || invitation) ? 34 : 9,
+                paddingTop: desktopMenu && (!text || invitation) ? 34 : 9,
                 borderTopLeftRadius: !mine && joinedAbove ? 6 : 20,
                 borderBottomLeftRadius: !mine && joinedBelow ? 6 : 20,
                 borderTopRightRadius: mine && joinedAbove ? 6 : 20,
                 borderBottomRightRadius: mine && joinedBelow ? 6 : 20,
               }}>
               {message.deletedAt ? <Text className="text-muted-foreground text-subheadline italic">Mensaje eliminado</Text> : invitation ? (
-                <InvitacionJam texto={message.text} />
-              ) : message.text ? (
+                <InvitacionJam texto={text} />
+              ) : text ? (
                 <Pressable {...estadoControlWeb('none')} {...accessibility}
                   accessibilityRole="button" accessibilityState={{ selected }}
-                  accessibilityLabel={message.text}
+                  accessibilityLabel={text}
                   accessibilityHint="Mantené pulsado para ver las opciones del mensaje"
+                  style={sharedMusic ? { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 16, backgroundColor: bubbleColor } : undefined}
                   onPress={onPress} onLongPress={Platform.OS === 'ios' ? () => {} : undefined}>
-                  <Text selectable={TECLADO_FISICO} style={{ fontSize: 17, lineHeight: 23, color: '#F5F5F5', paddingRight: desktopMenu ? 44 : 0 }}>{message.text}</Text>
+                  <Text selectable={TECLADO_FISICO} style={{ fontSize: 17, lineHeight: 23, color: '#F5F5F5', paddingRight: desktopMenu && !sharedMusic ? 44 : 0 }}>{text}</Text>
                 </Pressable>
               ) : null}
               {message.sharedSong ? <CancionCompartida song={message.sharedSong} /> : null}
@@ -136,17 +139,27 @@ export function ChatBubble({
                 </View>
                 <SeekBar label={song.title} progress={progress} elapsedMs={progress * song.durationMs} totalMs={song.durationMs} onSeek={onSeek} />
               </View> : null}
-              <View accessible {...accessibility}
-                accessibilityLabel={`${message.createdAt ? chatTime(message.createdAt) : ''}${mine && !message.deletedAt ? message.readAt ? ', leído' : message.openedAt ? ', abierto' : ', enviado' : ''}${message.editedAt && !message.deletedAt ? ', editado' : ''}`}
-                className="flex-row items-center justify-end gap-1" style={{ marginTop: -2 }}>
-                {message.editedAt && !message.deletedAt ? <Text className="text-muted-foreground text-caption2">Editado</Text> : null}
-                {message.createdAt ? <Text className="text-muted-foreground text-caption2 tabular-nums">{chatTime(message.createdAt)}</Text> : null}
-                {mine && !message.deletedAt ? <Text accessibilityLabel={message.readAt ? 'Leído' : message.openedAt ? 'Abierto' : 'Enviado'}
-                  style={{ fontSize: 11, color: message.readAt ? '#F5F5F5' : '#99999F' }}>{delivery}</Text> : null}
+              <View className="flex-row items-center justify-end gap-1" style={sharedMusic ? {
+                paddingHorizontal: 4, paddingVertical: 2, borderRadius: 6,
+                ...(selected ? { backgroundColor: '#414145' } : {}),
+              } : { marginTop: -2 }}>
+                <View accessible {...accessibility} accessibilityState={{ selected }}
+                  accessibilityLabel={`${message.createdAt ? chatTime(message.createdAt) : ''}${mine && !message.deletedAt ? message.readAt ? ', leído' : message.openedAt ? ', abierto' : ', enviado' : ''}${message.editedAt && !message.deletedAt ? ', editado' : ''}`}
+                  className="flex-row items-center justify-end gap-1">
+                  {message.editedAt && !message.deletedAt ? <Text className="text-muted-foreground text-caption2">Editado</Text> : null}
+                  {message.createdAt ? <Text className="text-muted-foreground text-caption2 tabular-nums">{chatTime(message.createdAt)}</Text> : null}
+                  {mine && !message.deletedAt ? <Text accessibilityLabel={message.readAt ? 'Leído' : message.openedAt ? 'Abierto' : 'Enviado'}
+                    style={{ fontSize: 11, color: message.readAt ? '#F5F5F5' : '#99999F' }}>{delivery}</Text> : null}
+                </View>
+                {desktopMenu && sharedMusic ? <View {...({ dataSet: { chatActions: 'true' } } as object)}>
+                  <Menu items={options} label="Opciones del mensaje" tooltip="Opciones del mensaje"
+                    trigger={<View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}><IconChevronDown size={18} color={ICON_COLOR.muted} /></View>}
+                    abiertoEn={clic.punto} onCerrarPunto={clic.cerrar} />
+                </View> : null}
               </View>
             </View>
           </MantenerApretado>
-          {desktopMenu ? <View {...({ dataSet: { chatActions: 'true' } } as object)}
+          {desktopMenu && !sharedMusic ? <View {...({ dataSet: { chatActions: 'true' } } as object)}
             style={{ position: 'absolute', top: 0, right: 0, width: 56, height: 40,
               alignItems: 'flex-end', paddingTop: 4, paddingRight: 4,
               overflow: 'hidden', borderTopRightRadius: mine && joinedAbove ? 6 : 20 }}>

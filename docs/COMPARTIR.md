@@ -146,15 +146,18 @@ link llega en `process.argv`, antes de que exista la ventana, así que
 
 La fila «Compartir» abre `app/compartir.tsx`: una hoja que
 mide su contenido (`fitToContents` en iOS, modal centrado en la compu) con la
-card musical a la vista, la previa de historia y las cuatro salidas debajo.
+card musical a la vista y las cuatro acciones debajo. El título y el artista
+aparecen una sola vez, dentro de la tarjeta. La previa es pasiva: abrir el menú
+no cambia la reproducción. «Crear historia» abre una segunda vista con la
+imagen, un botón para compartir o descargar y una salida para volver.
 El contenido se desplaza cuando la ventana es baja o el texto grande:
 
 | Fila | Qué hace |
 | --- | --- |
 | Enviar por chat | La canción completa a un contacto, con reproducción global |
-| Compartir la historia | La imagen de 1080×1920 a la hoja del sistema. En la web la descarga |
 | Compartir el link | `compartirCancion`: publica la tarjeta y ofrece el link |
 | Copiar el link | Al portapapeles, sin pasar por ninguna hoja |
+| Crear historia | Abre la previa de 1080×1920. Su botón la envía a la hoja del sistema o la descarga en web |
 
 La previa **es el mismo componente** que se fotografía (`ui/TarjetaHistoria`),
 encogido con `transform`: lo que se ve es exactamente lo que sale. La canción
@@ -165,10 +168,12 @@ tiene diez campos y pasarla en la ruta la vuelve ilegible.
 
 `ui/TarjetaMusica` adapta la [card de Spell UI](https://spell.sh/docs/spotify-card)
 a React Native y web (atribución MIT en `docs/licenses/spell-ui.txt`). La card
-tiene un ancho máximo de 325 y un alto base de 100, ampliable con texto grande
-nativo: portada, fondo desenfocado, vinilo al pasar el cursor,
-foco o reproducir y título/artista a la derecha. Los textos largos se recortan;
-una portada que falla tiene respaldo. Respeta Reducir movimiento y detiene
+tiene un ancho máximo de 325 y un alto mínimo de 112, ampliable con texto grande
+nativo. No tiene borde exterior: portada, fondo oscuro desenfocado y vinilo al
+pasar el cursor, enfocar o reproducir. La columna de texto tiene ancho explícito,
+alineación izquierda, hasta dos líneas de título y una de artista; los textos
+que exceden ese espacio usan puntos suspensivos y mantienen su etiqueta accesible.
+Una portada que falla tiene respaldo. Respeta Reducir movimiento y detiene
 sus animaciones cuando la app pasa a segundo plano.
 
 `ui/CancionCompartida` conecta la portada al motor global de DMusic. Pulsarla
@@ -178,9 +183,22 @@ La página aprobada usa la misma card y deja que `MotorAudio` resuelva el audio,
 para que la carga tenga los mismos controles que el resto de la app. Sin cuenta
 aprobada, la card muestra los metadatos públicos y la puerta de acceso.
 
+El chat muestra la tarjeta sin una segunda burbuja ni el rótulo automático
+repetido. Las dedicatorias y los textos editados se conservan; hora y recibos
+quedan debajo. `messageDisplayText` sólo cambia la presentación: el texto
+guardado sigue disponible para notificaciones, copia y clientes anteriores.
+
 La previa social de 1200 × 630 y el iframe de 152 px adaptan esa composición.
 El iframe sólo abre DMusic; no crea otra sesión de reproducción. La imagen de
 historia de 1080 × 1920 mantiene su diseño y su propia previa.
+
+Al pegar un enlace en WhatsApp o Discord, la página entrega título, artista
+e imagen mediante [Open Graph](https://ogp.me/). Cada plataforma decide cómo
+presentar esos datos: la imagen representa nuestra tarjeta; sus controles y
+animaciones funcionan dentro de dnmusic. La URL conserva el dominio actual de
+Railway. Usar un dominio propio requiere conectarlo al hosting y actualizar
+los orígenes de enlaces y las asociaciones nativas; cambiar los metadatos
+por sí solo no cambia la dirección.
 
 ## Portapapeles
 

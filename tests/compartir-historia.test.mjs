@@ -66,13 +66,7 @@ test('el código escaneable sale del link de la canción y es una matriz cuadrad
   assert.equal(matrizQR(''), null)
 })
 
-/**
- * La hoja de compartir.
- *
- * Lo que hay que sostener es que la previa **sea la misma tarjeta** que se
- * manda: si algún día se dibujara aparte, la previa empezaría a mentir.
- */
-function hoja(track) {
+function hoja(track, { web = false, historiaDisponible = true } = {}) {
   const componentes = Object.fromEntries(
     ['View', 'Text', 'Hoja', 'EncabezadoHoja', 'BotonHoja', 'GrupoAjustes', 'FilaAccion', 'Vacio', 'TarjetaHistoria'].map(
       (k) => [k, k],
@@ -80,7 +74,9 @@ function hoja(track) {
   )
   const estados = []
   let cursor = 0
+  let cierres = 0
   const compartidos = []
+  const avisos = []
   const exports = moduleAt('app/compartir.tsx', {
     react: {
       useState(inicial) {
@@ -91,34 +87,36 @@ function hoja(track) {
     },
     'react-native': { Text: 'Text', View: 'View', useWindowDimensions: () => ({ height: 900 }) },
     'expo-router': { useRouter: () => ({ push: () => {} }) },
-    '../src/lib/volver': { volver: () => {} },
+    '../src/lib/volver': { volver: () => { cierres++ } },
     '../src/lib/compartir': {
       linkDe: (que, id) => `https://dnmusic-app.vercel.app/${que}/${id}`,
       compartirCancion: async (t) => compartidos.push(['link', t.videoId]),
       copiarEnlaceCancion: async () => true,
     },
-    '../src/lib/portapapeles': { copiarAlPortapapeles: async () => true },
+    '../src/lib/artwork': { artworkSource: () => 'https://cover.test/240.jpg' },
     '../src/lib/colorPortada': { useColorPortada: () => '#334455' },
     '../src/state/compartir': { cancionACompartir: () => track, soltarCancionACompartir: () => {} },
-    '../src/state/aviso': { avisar: () => {} },
+    '../src/state/aviso': { avisar: (aviso) => avisos.push(aviso) },
     '../src/ui/Hoja': { Hoja: 'Hoja', usePisoHoja: () => 24 },
     '../src/ui/EncabezadoHoja': { BotonHoja: 'BotonHoja', EncabezadoHoja: 'EncabezadoHoja' },
     '../src/ui/Ajustes': { FilaAccion: 'FilaAccion', GrupoAjustes: 'GrupoAjustes' },
     '../src/ui/Vacio': { Vacio: 'Vacio' },
-    '../src/ui/icons': { ICON_COLOR: { muted: '#aaa' }, IconCopiar: 'C', IconImage: 'I', IconMusic: 'M', IconShare: 'S' },
+    '../src/ui/icons': { ICON_COLOR: { muted: '#aaa' }, IconCopiar: 'C', IconImage: 'I', IconMessage: 'Chat', IconMusic: 'M', IconShare: 'S' },
     '../src/ui/TarjetaHistoria': { TarjetaHistoria: 'TarjetaHistoria' },
-    '../src/ui/CancionCompartida': { CancionCompartida: 'CancionCompartida' },
+    '../src/ui/TarjetaMusica': { TarjetaMusica: 'TarjetaMusica' },
     '../src/ui/ScrollArea': { ScrollArea: 'ScrollArea' },
     '../src/ui/CompartirHistoria': {
-      compartirHistoria: (t) => compartidos.push(['historia', t.videoId]),
+      compartirHistoria: (t) => { compartidos.push(['historia', t.videoId]); return historiaDisponible },
       datosDeTarjeta: (t, tinte) => ({ titulo: t.title, artista: t.artist, arte: null, enlace: 'x', tinte }),
     },
     '../src/ui/geometriaTarjetaHistoria': geometria,
-    '../src/ui/Glass': { ES_WEB: false },
+    '../src/ui/Glass': { ES_WEB: web },
     ...componentes,
   })
   return {
     compartidos,
+    avisos,
+    get cierres() { return cierres },
     render() {
       cursor = 0
       return nodos(exports.default({}))
@@ -128,29 +126,65 @@ function hoja(track) {
 
 const cancion = { id: 'a', videoId: 'v1', title: 'No One Noticed', artist: 'The Marías', artworkUrl: 'u', artworkPath: null, durationMs: 237000 }
 
-test('la hoja muestra la misma tarjeta que se manda y ofrece el chat y las tres salidas externas', () => {
+test('compartir muestra una tarjeta pasiva y cuatro acciones, sin títulos ni previas duplicadas', () => {
   const h = hoja(cancion)
   const ui = h.render()
-  assert.equal(ui.filter((n) => n.type === 'TarjetaHistoria').length, 1, 'la previa es la tarjeta de verdad')
+  const tarjetas = ui.filter((n) => n.type === 'TarjetaMusica')
+  assert.equal(tarjetas.length, 1)
+  assert.equal(tarjetas[0].props.datos.titulo, cancion.title)
+  assert.equal(tarjetas[0].props.onReproducir, undefined)
+  assert.equal(tarjetas[0].props.onAbrir, undefined)
+  assert.equal(ui.filter((n) => n.type === 'TarjetaHistoria').length, 0)
+  assert.equal(ui.find((n) => n.type === 'EncabezadoHoja').props.sobre, undefined)
   const filas = ui.filter((n) => n.type === 'FilaAccion').map((n) => n.props.rotulo)
-  assert.deepEqual(filas, ['Enviar por chat', 'Compartir la historia', 'Compartir el link', 'Copiar el link'])
+  assert.deepEqual(filas, ['Enviar por chat', 'Compartir el link', 'Copiar el link', 'Crear historia'])
+  assert.ok(ui.filter((n) => n.type === 'FilaAccion').every((n) => n.props.lineas === 2))
 })
 
-test('la previa se achica con transform: la tarjeta conserva su tamaño real', () => {
+test('crear historia abre su propia previa sin exportar y permite volver a las opciones', () => {
   const h = hoja(cancion)
-  const caja = h.render().find((n) => n.props?.style?.transform)
+  h.render().find((n) => n.type === 'FilaAccion' && n.props.rotulo === 'Crear historia').props.onPress()
+  const ui = h.render()
+  assert.deepEqual(h.compartidos, [])
+  assert.equal(ui.filter((n) => n.type === 'TarjetaMusica').length, 0)
+  assert.equal(ui.filter((n) => n.type === 'TarjetaHistoria').length, 1)
+  assert.deepEqual(ui.filter((n) => n.type === 'FilaAccion').map((n) => n.props.rotulo), ['Compartir historia'])
+  assert.equal(ui.find((n) => n.type === 'FilaAccion').props.lineas, 2)
+  const caja = ui.find((n) => n.props?.style?.transform)
   assert.equal(caja.props.style.width, geometria.ANCHO)
   assert.equal(caja.props.style.height, geometria.ALTO)
   const escala = caja.props.style.transform[0].scale
   assert.ok(escala > 0 && escala < 1)
+  const volver = ui.find((n) => n.type === 'EncabezadoHoja').props.izquierda
+  assert.equal(volver.props.tipo, 'volver')
+  volver.props.onPress()
+  assert.equal(h.render().filter((n) => n.type === 'TarjetaMusica').length, 1)
+  assert.equal(h.cierres, 0)
 })
 
-test('cada salida hace lo suyo y cierra; sin canción, la hoja lo dice', () => {
+test('confirmar historia exporta y cierra sólo cuando se pudo preparar', () => {
   const h = hoja(cancion)
   const fila = (rotulo) => h.render().find((n) => n.type === 'FilaAccion' && n.props.rotulo === rotulo)
-  fila('Compartir la historia').props.onPress()
+  fila('Crear historia').props.onPress()
+  fila('Compartir historia').props.onPress()
   assert.deepEqual(h.compartidos, [['historia', 'v1']])
+  assert.equal(h.cierres, 1)
 
+  const fallida = hoja(cancion, { historiaDisponible: false })
+  fallida.render().find((n) => n.props?.rotulo === 'Crear historia').props.onPress()
+  fallida.render().find((n) => n.props?.rotulo === 'Compartir historia').props.onPress()
+  assert.equal(fallida.cierres, 0)
+  assert.equal(fallida.avisos.length, 1)
+})
+
+test('la web ofrece descarga en historia y mantiene copiar el link dentro del gesto', () => {
+  const h = hoja(cancion, { web: true })
+  assert.equal(h.render().find((n) => n.props?.rotulo === 'Copiar el link').props.copyText, 'https://dnmusic-app.vercel.app/cancion/v1')
+  h.render().find((n) => n.props?.rotulo === 'Crear historia').props.onPress()
+  assert.equal(h.render().find((n) => n.type === 'FilaAccion').props.rotulo, 'Descargar historia')
+})
+
+test('sin canción la hoja mantiene una salida y no ofrece acciones vacías', () => {
   const vacia = hoja(null)
   const ui = vacia.render()
   assert.equal(ui.filter((n) => n.type === 'FilaAccion').length, 0)

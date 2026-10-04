@@ -84,6 +84,20 @@ test('acciones de Ajustes nativas no ejecutan ocupado; borrar exige elección en
   assert.deepEqual(calls, ['borrar'])
 })
 
+test('las acciones iOS permiten dos líneas sólo con opt-in y preservan el bloqueo mientras trabajan', () => {
+  const h = harness('src/ui/Ajustes.ios.tsx')
+  const props = { rotulo: 'Compartir historia con texto grande', onPress() {} }
+  for (const lineas of [undefined, 1, 2]) {
+    const ui = h.render('FilaAccion', { ...props, ...(lineas ? { lineas } : {}), busy: true })
+    const label = ui.find(node => node.type === 'Text')
+    assert.equal(label.props.children, props.rotulo)
+    assert.deepEqual(mod(label, 'lineLimit'), lineas === 2 ? [2] : undefined)
+    assert.deepEqual(mod(label, 'layoutPriority'), lineas === 2 ? [1] : undefined)
+    assert.equal(ui.find(node => node.type === 'Button').props.onPress, undefined)
+    assert.equal(ui.filter(node => node.type === 'ProgressView').length, 1)
+  }
+})
+
 test('Google conserva su logo en las filas conectada y de vinculación con tamaño nativo explícito', () => {
   const h = harness('src/ui/Ajustes.ios.tsx'), icono = { type: 'GoogleIcon', props: { size: 17 } }
   const dato = h.render('FilaDato', { rotulo: 'Google conectado', valor: 'correo@example.test', icono }).find(n => n.type === 'LabeledContent')
