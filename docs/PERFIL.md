@@ -393,40 +393,21 @@ propias o de otra fuente libre (LottieFiles exporta a GIF bajo su Lottie
 Simple License; Kenney publica sprites CC0), alcanza con dejar el archivo en
 `archivos/`, agregar la entrada al catálogo y correr el importador.
 
-## Colecciones temáticas
+## Catálogo de personalización
 
-La vidriera se recorre **por colecciones**, como la tienda de Discord: cada
-una (`src/ui/colecciones.ts`) tiene nombre, lema y sus piezas —marcos y
-efectos— que comparten paleta y manera de moverse. Arcade (menta y lila,
-todo a saltos: Píxeles, Invasor, Corazones de 8 bits, y la Lluvia de
-píxeles), Gótico (plata sobre humo: Murciélagos, Telaraña, Velas, y la
-Bandada), Después de medianoche, Neón y tormenta, Cosmos, Fiesta, Bosque de
-noche, Sala de máquinas, La corte y Clásicos. Las piezas nuevas de Arcade y
-Gótico están en `src/ui/MarcosTematicos.tsx`.
+`app/profile/marco.tsx` abre `EstudioPerfil`, que permite buscar y filtrar
+marcos, efectos, placas y paquetes del catálogo de Discord. Las colecciones
+se obtienen de `services/discordCatalogo`; el filtro considera también las
+membresías secundarias de cada pieza (`coleccionIds`). Los resultados se
+cargan por páginas y la vista previa permite comparar con el perfil original.
 
-Los **efectos del perfil** (`src/ui/EfectosDibujados.tsx`) son partículas que
-cruzan la banda de arriba del fondo —nevada, lluvia de confeti, luciérnagas,
-estrellas fugaces, lluvia, lluvia de píxeles, bandada— con a lo sumo veinte
-nodos animados, repartidas por la razón áurea para que no formen columnas.
-El id va en `profiles.efecto` y lo dibuja `FondoPerfil` sobre el velo.
+Elegir una pieza actualiza el borrador compartido de `state/perfilEdicion`.
+Los cambios se guardan desde el editor del perfil. Los catálogos locales
+`MARCOS`, `EFECTOS` y `PLACAS` conservan las decoraciones de DMusic ya guardadas.
 
-**La tienda** (`app/profile/marco.tsx`) tiene la anatomía de la tienda de
-Discord. La portada: un **hero** de la colección destacada —el efecto de la
-colección corriendo sobre el tinte de su paleta, el logo en la tipografía de
-la colección (`fuente` en `colecciones.ts`, de las del perfil), el lema y la
-flecha para pasar a la siguiente— con el estante de sus piezas montado sobre
-el borde de abajo; debajo, un **banner por colección** (logo, lema y una
-composición de muestra: la foto con el marco, la banda con el efecto, la
-placa con tu nombre) que abre la colección; y al pie «Encontrá tu estilo» con
-«Explorar todo». Una colección es su hero y sus estantes por clase. Una
-**pieza** es tu tarjeta de perfil con la pieza puesta, de qué colección es,
-y «Aplicar», que guarda al toque (y «Quitar» si es la que tenés) — como en
-Discord, se prueba y se aplica desde la pieza, no desde un tilde general.
-«Explorar todo» es Marcos / Efectos / Placas, el buscador, «Lo tuyo» (la que
-tenés puesta y «Subir la tuya») y la grilla. Las tarjetas de pieza son las de
-Discord: la placa oscura con la muestra arriba, el nombre y una línea chica;
-la que tenés puesta lleva el tilde. Las filas del editor abren la tienda en
-«Explorar todo» con la pestaña que corresponde (`?tipo=`).
+Los efectos dibujados (`src/ui/EfectosDibujados.tsx`) usan partículas con un
+máximo de veinte nodos animados. Su posición se distribuye por la razón áurea
+para evitar columnas; su paleta se define con los tonos de `marcoBase`.
 
 **Subir la tuya.** Además del catálogo, cada persona puede subir su propio
 archivo (PNG, WebP, GIF o APNG) como marco o como efecto: va a su carpeta
@@ -444,8 +425,8 @@ La tercera pieza de la tienda, como las «nameplates» de Discord: una franja
 redondeada **detrás del nombre** (`src/ui/Placas.tsx`), con el tinte diluido
 de su colección, un patrón quieto que dice de cuál es —píxeles, estrellas,
 puntos, rayas, barras, luces, niebla— y un brillo que la recorre de a ratos,
-el único nodo animado. Nueve placas, una por colección (`placas` en
-`colecciones.ts`). El id va en `profiles.placa` (migración
+el único nodo animado. Las nueve placas locales y sus tonos se definen en
+`PLACAS`, dentro de `src/ui/Placas.tsx`. El id va en `profiles.placa` (migración
 `placa_de_nombre`) y la dibuja `Identidad` envolviendo nombre y usuario, en
 las dos formas del perfil; la tarjeta de la tienda la muestra igual. Se
 elige en la pestaña «Placas» de Decoraciones, también desde «Editar perfil →

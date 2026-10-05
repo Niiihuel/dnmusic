@@ -12,8 +12,8 @@ import { DiscordPlaca } from './DiscordCosmeticos'
  * «nameplates» de Discord. Es la tercera pieza de la tienda, con el marco
  * (alrededor de la foto) y el efecto (sobre el fondo).
  *
- * Una placa es una franja redondeada con el tinte de su colección —los dos
- * tonos de `colecciones.ts`, muy diluidos sobre la placa oscura—, un patrón
+ * Una placa es una franja redondeada con los dos tonos definidos en `PLACAS`,
+ * muy diluidos sobre la placa oscura, un patrón
  * quieto que dice de qué colección es (píxeles, estrellas, puntos, rayas,
  * barras, luces) y un brillo que la recorre de a ratos, como la luz sobre
  * un metal. El texto va encima, tal cual: la placa no cambia la tipografía.
@@ -40,8 +40,6 @@ export const PLACAS = [
 }[]
 
 type Patron = 'pixeles' | 'niebla' | 'estrellas' | 'rayas' | 'puntos' | 'luces' | 'barras'
-
-export type PlacaId = (typeof PLACAS)[number]['id']
 
 function placaDe(id: string | null | undefined) {
   return PLACAS.find((p) => p.id === id) ?? null

@@ -6,22 +6,8 @@ import { Pressable, Text, View } from 'react-native'
 import { BORDE_REFERENTE, Glass } from './Glass'
 
 /**
- * Un diálogo de «¿seguro?», para lo que no se deshace.
- *
- * Es el alert de dos botones de iOS, dibujado por nosotros para Android y web. En iOS se usa el alert del sistema
- * (`Confirmar.ios.tsx`): el del sistema en web no
- * existe (`window.confirm` es una caja del navegador que ignora el tema) y en
- * Android viene con el color de marca de Material.
- *
- * Convive con `BotonSostener`, que es la otra forma de confirmar de esta app:
- * sostener sirve cuando la acción es **un botón propio** —«Terminar el Jam»—
- * y el gesto puede vivir adentro de él. Acá la acción es el «−» de la esquina
- * de una tarjeta, un disco de 26px que no tiene dónde mostrar una marea que se
- * llena; la pregunta va aparte.
- *
- * Confirmar **no** se destaca: los dos botones son grises y el que borra dice
- * qué borra. Es la regla de `docs/DESIGN.md` para lo destructivo — se apoya en
- * la redacción, no en un color.
+ * Confirmación para web con acciones explícitas y sin acento destructivo.
+ * iOS y Android resuelven sus controles en los archivos de plataforma.
  */
 export function Confirmar({
   visible,

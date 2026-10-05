@@ -1037,11 +1037,6 @@ export function seekToMs(positionMs: number) {
 }
 
 /**
- * Se terminó la canción: pasa a la siguiente, o para si era la última.
- *
- * Lo llama la barra, que es la única que puede saber cuándo llegó al final.
- */
-/**
  * Baraja de Fisher-Yates: cada orden posible con la misma probabilidad.
  *
  * Va escrito y no `sort(() => Math.random() - 0.5)`, que es el atajo que circula
@@ -1058,13 +1053,6 @@ function barajar(n: number): number[] {
   return orden
 }
 
-/**
- * Prende o apaga el aleatorio.
- *
- * Al prenderlo, **la que está sonando queda primera**: prender el aleatorio no
- * puede cortarte el tema que estás escuchando, solo cambia lo que viene después.
- * Al apagarlo se vuelve al orden de la lista desde donde estás, sin saltos.
- */
 /*
  * El temporizador de apagado.
  *
@@ -1186,6 +1174,7 @@ function anteriorIndice(state: PlaybackState): number | null {
   return prev === undefined ? null : prev
 }
 
+/** Fin informado por MotorAudio: recorre la cola local o solicita el avance del Jam. */
 export function advance() {
   /*
    * En un Jam, el final de una canción no lo decide cada dispositivo.

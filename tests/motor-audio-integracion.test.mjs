@@ -14,7 +14,7 @@ const microtasks = async () => { for (let i = 0; i < 12; i++) await Promise.reso
 // boundary mocks. Network/preload/Jam are independent of these integration cases.
 function montar({ local = true, falloFirma = false, rotatingSignature = false, transition = 'normal', mixConfig = null,
   deferCrossfadeArm = false, incomingLoaded = true, incomingAvailable = true, platform = 'ios', deferMix = false,
-  preloadRemote = false } = {}) {
+  preloadRemote = false, realCrossfade = false } = {}) {
   let now = 0, cursor = 0, dirty = true, timerId = 0, firmadoFalla = falloFirma, descargada = local
   let availableIncoming = incomingAvailable
   let engine = null, siguienteId = 0, enJam = false, mirrored = false, visible = false
@@ -66,6 +66,16 @@ function montar({ local = true, falloFirma = false, rotatingSignature = false, t
       replace(next) { this.replacements.push(next); this.source = next },
       setEqualizer(enabled, gains) { this.equalizers.push({ enabled, gains: [...gains] }) },
       setPlaybackRate: noop,
+      scheduleCrossfade(to, plan) {
+        const from = this
+        calls.crossfades.push({ from, to, plan, complete() {
+          to.playing = true
+          from.emit({ currentTime: plan.fromStartSeconds + plan.durationSeconds,
+            playing: false, timeControlStatus: 'paused', didJustCrossfade: true })
+        } })
+        return Promise.resolve(true)
+      },
+      cancelCrossfade: noop,
       get currentStatus() { return { currentTime: this.currentTime, duration: this.duration,
         playing: this.playing, isLoaded: this.isLoaded, isBuffering: false, didJustFinish: false } },
       addListener(name, fn) { assert.equal(name, 'playbackStatusUpdate'); listeners.add(fn); return { remove: () => listeners.delete(fn) } },
@@ -139,6 +149,10 @@ function montar({ local = true, falloFirma = false, rotatingSignature = false, t
   const actualHelpers = { '../lib/recuperacionAudio': 'src/lib/recuperacionAudio.ts', '../lib/escuchaEfectiva': 'src/lib/escuchaEfectiva.ts',
     '../lib/useAudioLease': 'src/lib/useAudioLease.ts', '../lib/seek': 'src/lib/seek.ts', '../lib/mixPlan': 'src/lib/mixPlan.ts',
     '../lib/proximasCola': 'src/lib/proximasCola.ts' }
+  if (realCrossfade) {
+    delete deps['../lib/crossfade']
+    actualHelpers['../lib/crossfade'] = 'src/lib/crossfade.ts'
+  }
   function load(path) {
     if (moduleCache.has(path)) return moduleCache.get(path)
     let source = compiled.get(path)
@@ -259,6 +273,33 @@ test('Sin pausa prepara un enlace breve entre canciones de música', async () =>
   assert.equal(h.calls.crossfades.length, 1)
   assert.equal(h.calls.crossfades[0].plan.durationSeconds, 0.25)
   assert.equal(h.calls.crossfades[0].plan.fromStartSeconds, 179.75)
+  h.unmount()
+})
+
+test('un Mix compartido con corte anticipado avanza bloqueado sin convertir el relevo en pausa', async () => {
+  const mix = { id: 'mix', defaultPreset: 'fade', defaultDurationMs: 4000 }
+  const edge = { fromPlaylistTrackId: 'a', toPlaylistTrackId: 'b', preset: 'fade',
+    durationMs: 4000, fromCueMs: 150000, toCueMs: 0, volumeLaw: 'linear', volumeOut: null, volumeIn: null }
+  const h = montar({ realCrossfade: true,
+    mixConfig: { playlistId: 'compartida', mix, edges: [edge], soundProfile: null } })
+  h.configure({ origin: { id: 'compartida', name: 'Lista compartida', kind: 'public' } })
+  h.render(); await h.settle(); await h.status(140)
+  const fade = h.calls.crossfades.at(-1)
+  assert.equal(fade.plan.fromStartSeconds, 150)
+  fade.complete(); await h.settle()
+  assert.equal(h.state.wantPlay, true, 'el paused del deck saliente es parte del cambio de canción')
+  assert.equal(h.state.index, 1)
+  assert.equal(h.calls.advance, 1)
+  assert.equal(h.nextPlayer, fade.to)
+  assert.equal(fade.to.playing, true)
+  assert.equal(h.calls.raf, 0)
+  fade.from.emit({ currentTime: 180, playing: false, didJustFinish: true })
+  await h.settle()
+  assert.equal(h.calls.advance, 1)
+  fade.to.emit({ currentTime: 1, playing: false, timeControlStatus: 'paused', didJustPause: true })
+  await h.settle()
+  assert.equal(h.state.wantPlay, false, 'una pausa explícita del nuevo tema sigue funcionando')
+  assert.equal(h.calls.advance, 1)
   h.unmount()
 })
 

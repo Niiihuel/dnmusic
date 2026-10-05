@@ -20,7 +20,6 @@ en el del host usando el suyo de control remoto.
 | `app/jam/personas.tsx` | Invitar (link, código, QR) y quiénes están; se apila encima |
 | `app/jam/opciones.tsx` | Permisos del host / salida del invitado; tercera hoja |
 | `src/ui/ColaJam.tsx` | La fila compartida: lo que suena y lo que viene, arrastrable |
-| `src/ui/BotonSostener.tsx` | Terminar sosteniendo: el botón que se llena |
 | `src/lib/invitarJam.ts` | El link de invitación y el gesto de compartirlo, una sola vez |
 | `src/ui/JamPanel.tsx` | Lo mismo en escritorio, como cara del panel derecho |
 | `app/jam/[code].tsx` | La puerta del link: elegir dónde escuchar y entrar |
@@ -69,8 +68,8 @@ final de un tema, la cola queda esperándolo.)
 lista es una fila de `playlist_tracks` — es del dueño y RLS no la muestra a
 nadie más. Lo que un invitado necesita es el `audio_path`, que firma contra
 Storage con su propia sesión. El `id` del ítem es del ítem: la misma canción
-puede estar dos veces. La `posicion` es `numeric` para que reordenar — cuando
-exista — sea `(a+b)/2` en una fila y no renumerar la cola.
+puede estar dos veces. La `posicion` es `numeric` para reordenar con `(a+b)/2`
+en una fila sin renumerar la cola.
 
 **La cola del Jam entra al store de reproducción de siempre.** `state/jam`
 la vuelca con `jamAplicar` y toda la interfaz —la barra, «Sonando», la letra—

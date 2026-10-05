@@ -648,19 +648,8 @@ function Chrome() {
           style={{ position: 'absolute', left: 0, right: 0, top: 0, height: arriba.top }}
         />
       ) : null}
-      {/*
-       * La cáscara **no se desmonta nunca**, ni con el teclado abierto.
-       *
-       * Acá adentro vive `NowPlayingBar`, y con él el reproductor de audio: el
-       * `AudioPlayer` de expo-audio se libera al desmontarse su hook. Sacar
-       * este nodo del árbol —que es lo que se hacía con el teclado arriba—
-       * mataba el reproductor y lo volvía a crear al cerrarlo, así que la
-       * música se cortaba y volvía a empezar de cero. Se veía como «buscar una
-       * canción me reinicia la que estoy escuchando», y también pasaba al
-       * renombrar una lista: las dos cosas abren el teclado.
-       *
-       * Lo que se va es **lo que se dibuja**, nunca el nodo.
-       */}
+      {/* Conservar la cáscara montada mantiene sus medidas y transiciones al
+          abrir el teclado. El audio vive por separado en MotorAudio. */}
       <Animated.View
         pointerEvents={tapaTodo ? 'none' : 'box-none'}
         onLayout={(e) => {
