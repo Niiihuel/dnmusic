@@ -9,8 +9,8 @@ import { alfa, Movimiento, TONO, useCiclo } from './marcoBase'
  * banda de arriba, como los «profile effects» de Discord.
  *
  * Son partículas —copos, papelitos, luciérnagas, gotas— que nacen, cruzan la
- * banda y se apagan, en bucle. Cada efecto pertenece a una colección y usa
- * su paleta (ver `ui/colecciones`): la nevada es blanca y plata, el confeti
+ * banda y se apagan, en bucle. Cada efecto define su paleta con los tonos de
+ * `marcoBase`: la nevada es blanca y plata, el confeti
  * rosa, menta y oro, los píxeles menta y lila. Se mueven con las mismas
  * tres formas que los marcos (`marcoBase`), en el hilo de UI, y tienen a lo
  * sumo veinte nodos animados: es una banda entera, no una foto.

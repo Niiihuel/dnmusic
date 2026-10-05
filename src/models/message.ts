@@ -103,10 +103,6 @@ export function isSentBy(message: Message, uid: string): boolean {
   return message.senderUid === uid
 }
 
-export function isOpened(message: Message): boolean {
-  return message.openedAt !== null
-}
-
 function toDate(value: unknown): Date | null {
   if (typeof value !== 'string') return null
   const date = new Date(value)

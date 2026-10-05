@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.18.2",
+    "fecha": "5 de octubre de 2026",
+    "titulo": "Tus playlists siguen sonando.",
+    "cambios": [
+      "Corregimos una pausa involuntaria al cambiar de canción en playlists con Mix en iPhone, también con la pantalla bloqueada.",
+      "Las playlists colaborativas muestran las fotos de sus participantes en iPhone, igual que en PC.",
+      "Mejoras de estabilidad y mantenimiento del reproductor."
+    ]
+  },
+  {
     "version": "1.18.1",
     "fecha": "4 de octubre de 2026",
     "titulo": "Compartir música, más claro.",

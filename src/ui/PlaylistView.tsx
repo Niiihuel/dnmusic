@@ -680,7 +680,11 @@ export function PlaylistView({
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 }}>
           <IconButton label="Volver a playlists" symbol="chevron.left" variant="glass" onPress={onClose} />
           <Glass radius={24}><View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 }}>
-            {(playlist.colaborativa ? onVerGente : onColaborar) ? <IconButton label="Colaborar en la playlist" symbol="person.badge.plus" onPress={() => (playlist.colaborativa ? onVerGente : onColaborar)?.()} /> : null}
+            {playlist.colaborativa && onVerGente ? (
+              <ColaboradoresDeLista playlistId={playlist.id} total={playlist.colaboradores + 1} onPress={onVerGente} />
+            ) : !playlist.colaborativa && onColaborar ? (
+              <IconButton label="Colaborar en la playlist" symbol="person.badge.plus" onPress={onColaborar} />
+            ) : null}
             <IconButton label={publica ? "Compartir playlist" : "Compartir: la playlist es privada"} symbol="square.and.arrow.up" disabled={!publica} onPress={() => { if (publica) void compartirLista(playlist.id, playlist.name) }} />
             <Menu items={menu} label={`Opciones de ${playlist.name}`} />
           </View></Glass>
@@ -1069,7 +1073,7 @@ function Header({
             /> : null}
             <BotonDescarga total={total} bajado={bajado} onPress={onDescarga} opciones={opcionesDescarga} />
             {!toolbarIOS ? <Menu items={menu} label={`Opciones de ${playlist.name}`} size={17} /> : null}
-            {Platform.OS !== 'ios' && playlist.colaborativa && onVerGente ? (
+            {!toolbarIOS && playlist.colaborativa && onVerGente ? (
               <ColaboradoresDeLista
                 playlistId={playlist.id}
                 total={playlist.colaboradores + 1}

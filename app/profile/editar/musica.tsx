@@ -45,26 +45,8 @@ export default function BuscarParaPerfil() {
   const router = useRouter()
   const piso = usePiso(ALTO_BUSCADOR)
   const teclado = useKeyboardH()
-  /*
-   * Quién dibuja el campo depende del ancho, y **tiene que depender**.
-   *
-   * En el teléfono lo dibuja la cáscara: tener acá un `BuscadorFlotante` propio
-   * mientras el layout seguía sacando el reproductor y las pestañas dejaba tres
-   * barras apiladas, con el campo apoyado sobre la altura del reproductor en vez
-   * de sobre el teclado.
-   *
-   * Pero la cáscara solo lo dibuja **si está flotante** —`app/_layout.tsx` mete
-   * `SearchRow` detrás de `buscando && flotante`—, y en escritorio `flotante` es
-   * falso. O sea que acá, en PC, no lo dibujaba nadie: la pantalla abría con el
-   * cartel de «buscá algo para fijar» y ningún lugar donde escribir. Se entraba
-   * a agregar música y no se podía agregar música.
-   *
-   * Con el mismo umbral que usa el layout, en escritorio el campo lo pone esta
-   * pantalla, exactamente como ya lo hacía el editor de fragmento —que por eso
-   * nunca tuvo el problema—. El término sigue viviendo en `state/busqueda` en
-   * los dos casos, así que el resto de la pantalla no se entera de cuál de los
-   * dos lo dibujó.
-   */
+  // En teléfono SearchRow vive en la cáscara; en escritorio esta pantalla
+  // dibuja el campo. Ambos comparten el término de state/busqueda.
   const suelto = useWindowDimensions().width < SHELL_PX
   const termino = useTermino()
   /*

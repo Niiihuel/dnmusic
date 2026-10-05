@@ -38,7 +38,6 @@ function fixture(route, configured = true) {
       signIn: async (...args) => { calls.push(['signIn', ...args]); if (failure) throw failure },
       signUp: async (...args) => { calls.push(['signUp', ...args]); if (failure) throw failure },
     }
-    if (id.endsWith('/semillas')) return { marcarOnboardingPendiente: async () => calls.push(['onboarding']) }
     if (id.endsWith('/icons')) return { ...stub, ICON_COLOR: {} }
     return stub
   }, fn => timers.push(fn), () => {})

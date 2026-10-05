@@ -74,20 +74,8 @@ export async function guardarSemillas(semillas: Semilla[]): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-/*
- * La bandera de onboarding vive **en el aparato**, no en la base.
- *
- * Es una decisión de flujo —«a esta cuenta recién creada llevala a elegir»— y
- * no un dato del gusto: no hay razón para que ocupe una fila ni para que otro
- * dispositivo repita el paseo. Si alguien cierra la app a mitad del onboarding,
- * la bandera sigue puesta y el próximo login retoma donde quedó; terminar (o
- * saltar) la levanta. Cuentas viejas, sin bandera, entran directo como siempre.
- */
+/** Compatibilidad con onboarding pendiente guardado por versiones anteriores. */
 const CLAVE_ONBOARDING = 'onboarding_pendiente'
-
-export async function marcarOnboardingPendiente(): Promise<void> {
-  await AsyncStorage.setItem(CLAVE_ONBOARDING, '1')
-}
 
 export async function esOnboardingPendiente(): Promise<boolean> {
   try {

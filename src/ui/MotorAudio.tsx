@@ -689,9 +689,9 @@ export function MotorAudio() {
     candidata, manual, upNext, tracks, transitionPlan, seleccionRevision, enJam, arrancar])
 
   /**
-   * didJustFinish encadena también con JS visual suspendido. En iOS se detectan
-   * transiciones de estado para reflejar controles externos, sin tratar la pausa
-   * inicial del asset como una acción. Web usa mediaSession en lockScreen.
+   * Los eventos nativos mantienen progreso y fin sin depender del reloj visual.
+   * iOS distingue pausas externas de carga, buffering y relevo entre canciones.
+   * Web recibe los controles externos mediante mediaSession en lockScreen.
    */
   const soundingBefore = useRef(false)
   const presupuesto = useRef<PresupuestoRecuperacion>({ intentos: 0 })
@@ -756,6 +756,15 @@ export function MotorAudio() {
       if (salto && (Math.abs(status.currentTime - salto.objetivoS) <= 0.75 || performance.now() - salto.pedidoEn >= 1200)) saltoEnVuelo.current = null
       const buscando = saltoEnVuelo.current !== null || retomarMs.current !== null
       escuchado.current.ms += medidorEscucha.medir(status.currentTime * 1000, performance.now(), status.playing && !status.isBuffering, buscando)
+      // El deck saliente se pausa al completar un Mix, incluso antes del final
+      // del archivo. Su evento puede llegar a este listener antes que al del
+      // adaptador que promueve el entrante: no cancelar la intención de play
+      // ni recuperar una fuente que ya terminó su parte de la transición.
+      if ((status as typeof status & { didJustCrossfade?: boolean }).didJustCrossfade) {
+        vigilancia.cancelar()
+        soundingBefore.current = false
+        return
+      }
       // En background el progreso proviene sólo de eventos nativos de baja frecuencia.
       if (AppState.currentState !== 'active' && !status.error && !buscando && Number.isFinite(status.currentTime) && status.isLoaded) {
         reportProgress(status.currentTime * 1000, status.duration * 1000)
@@ -891,54 +900,20 @@ export function MotorAudio() {
     }
   }, [enJam, silencioso, sincronizo, current, url, wantPlay, player, jamRev])
 
-  /*
-   * Si la app está a la vista. **El reloj de abajo depende de esto.**
-   *
-   * Esta app pidió el modo de audio en segundo plano, así que cuando bloqueás la
-   * pantalla iOS **no la suspende**: la deja corriendo para que siga sonando. Y
-   * ahí estaba el problema — el bucle de posición asumía lo contrario. El
-   * comentario de más arriba decía que «el sistema congela `requestAnimationFrame`
-   * apenas la app deja de estar a la vista», y con audio de fondo eso no pasa:
-   * seguía girando a sesenta cuadros por segundo, leyendo `currentTime` y
-   * escribiendo en el store, con la pantalla apagada y nadie mirando.
-   *
-   * El resultado lo dictaminó el propio iOS, en `dnmusic.cpu_resource_fatal`:
-   *
-   *     Event:        cpu usage
-   *     Action taken: Process killed
-   *     CPU:          48 seconds cpu time over 50 seconds (97% cpu average),
-   *                   exceeding limit of 80% cpu over 60 seconds
-   *
-   * Eso es lo que se veía como «dejo la música sonando y al rato la app se
-   * cerró sola». No era un crash: el sistema la mataba por consumo.
-   *
-   * Con la pantalla apagada no hay ninguna barra que mover, y la posición que se
-   * ve en la pantalla bloqueada no sale de acá — la publica el sistema desde
-   * `MPNowPlayingInfoCenter`, que expo-audio mantiene del lado nativo. O sea que
-   * el bucle no estaba sosteniendo nada, solo gastando batería hasta que lo
-   * mataran.
-   */
-  const alaVista = useAppActiva()
-
-  /*
-   * Al volver, la posición se relee del reproductor de una sola vez.
-   *
-   * Mientras estuvo atrás el reloj no corrió, así que el store quedó con el
-   * segundo en que bloqueaste la pantalla mientras la canción siguió sonando.
-   * Sin esto, la barra aparecería atrasada hasta el siguiente cuadro.
-   */
+  // Al volver al frente, refrescar desde el player sin esperar el próximo
+  // evento nativo de progreso; durante el bloqueo esos eventos son menos frecuentes.
   useEffect(() => {
-    if (!lease.active || mudo || esEscuchaEspejo() || !alaVista || !current || !url || retomarMs.current !== null || saltoEnVuelo.current !== null) return
+    if (!lease.active || mudo || esEscuchaEspejo() || !appActiva || !current || !url || retomarMs.current !== null || saltoEnVuelo.current !== null) return
     const t = player.currentTime
     if (Number.isFinite(t)) reportProgress(t * 1000, playerTotalS(player, current) * 1000)
     /* Si mientras estuvo atrás una interrupción pausó este aparato dentro de
        un Jam, volver al frente es el momento de reengancharse: el Jam siguió
        sin nosotros y hay que sumarse donde va, no donde quedamos. */
     reanudarTrasInterrupcion()
-  }, [alaVista, current, player, lease, mudo, url])
+  }, [appActiva, current, player, lease, mudo, url])
 
   useEffect(() => {
-    if (mudo || !playing || !current || !alaVista) {
+    if (mudo || !playing || !current || !appActiva) {
       if (raf.current) cancelAnimationFrame(raf.current)
       raf.current = null
       return
@@ -950,9 +925,7 @@ export function MotorAudio() {
       const t = player.currentTime
       const total = playerTotalS(player, current)
 
-      /* Con un salto en vuelo, `currentTime` todavía es la posición vieja: ni
-         se reporta ni se mira el corte de final hasta que aterrice. Ver la
-         declaración de `saltoEnVuelo`. */
+      // No publicar la posición anterior mientras el seek todavía está en vuelo.
       const salto = saltoEnVuelo.current
       if (salto) {
         const aterrizo = Number.isFinite(t) && Math.abs(t - salto.objetivoS) <= 0.75
@@ -964,26 +937,8 @@ export function MotorAudio() {
       }
 
       if (Number.isFinite(t)) {
-        /*
-         * Al store se avisa **diez veces por segundo, no sesenta**.
-         *
-         * Cada `reportProgress` es un `store.set`, y de ahí salen los dibujados
-         * de la barra de abajo, de la letra sincronizada y de este mismo motor.
-         * A sesenta cuadros eran sesenta rondas de render por segundo para mover
-         * una barra de trescientos píxeles y un reloj que muestra **segundos**:
-         * cincuenta de esas sesenta no cambiaban un solo píxel.
-         *
-         * Diez por segundo es más fino de lo que el ojo distingue en una barra
-         * de progreso y de sobra para la letra, cuya sincronía se tolera en
-         * decenas de milisegundos. Es el mismo criterio que ya usaba
-         * `PlayerBar`, que lee su reloj cada 200ms de un shared value en vez de
-         * suscribirse a esto.
-         *
-         * El bucle sólo anima la interfaz visible. El fin de la canción y
-         * el historial usan eventos del reproductor también en segundo plano.
-         */
-        /* Al hilo de UI, en cambio, se le avisa **en cada cuadro**: de ahí sale
-           el relleno de la barra, que no pasa por React. Ver `posicionSV`. */
+        // La posición fina anima la barra en cada cuadro; React recibe como
+        // máximo diez actualizaciones por segundo. Este bucle sólo corre visible.
         reportarPosicionFina(t * 1000)
 
         const ahoraMs = performance.now()
@@ -1000,7 +955,7 @@ export function MotorAudio() {
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current)
     }
-  }, [playing, current, player, lease, alaVista, mudo])
+  }, [playing, current, player, lease, appActiva, mudo])
   /* La barra dibuja el botón según esto: sin la URL firmada todavía no suena
      nada, por más que la intención de quien escucha sea reproducir. El control
      remoto de un Jam cuenta como cargado con solo tener canción: acá no se

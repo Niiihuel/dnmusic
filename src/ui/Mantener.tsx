@@ -9,21 +9,8 @@ import Animated, {
 } from 'react-native-reanimated'
 
 /**
- * Sostener para confirmar, en forma de **fila de Ajustes**.
- *
- * Es el mismo gesto que `BotonSostener` —la píldora que termina un Jam— con el
- * cuerpo de `FilaAjuste`: ícono, rótulo y detalle, para que una acción
- * peligrosa no parezca de otra familia, solo más deliberada. Comparten la
- * mecánica y la razón: el doble toque que había antes confirmaba con
- * *repetición*, y repetir es justo lo que hace alguien impaciente — la
- * confirmación se regalaba sola. Sostener confirma con *intención*, se ve
- * mientras pasa, y soltar antes es arrepentirse gratis, sin diálogo que
- * cerrar. (Un `Alert.alert` tampoco serviría: `react-native-web` no lo
- * implementa y la acción moriría en silencio en el navegador.)
- *
- * La diferencia con la píldora es dónde aparece la pista ante un toque corto:
- * acá la fila ya tiene una línea de detalle, así que la explicación toma ese
- * lugar por unos segundos en vez de salir volando en un aviso.
+ * Fila de Ajustes que confirma al sostener y cancela al soltar antes de tiempo.
+ * Un toque corto muestra la instrucción en la línea de detalle durante PISTA_MS.
  */
 
 /** Cuánto hay que sostener para que cuente como decisión. */
@@ -65,8 +52,7 @@ export function FilaSostener({
     setPista(false)
     progreso.value = withTiming(1, { duration: LLENADO_MS, easing: Easing.linear })
     /* El disparo lo decide un timer y no el final de la animación: el callback
-       de reanimated corre en el hilo de UI y en web puede no llegar. Mismo
-       criterio que `BotonSostener`. */
+       de reanimated corre en el hilo de UI y en web puede no llegar. */
     timer.current = setTimeout(() => {
       timer.current = null
       progreso.value = withTiming(0, { duration: 350 })

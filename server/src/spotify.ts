@@ -96,25 +96,6 @@ export function idDeLista(entrada: string): { tipo: 'playlist' | 'album'; id: st
 }
 
 /**
- * Los ids de canción sueltos que haya en un texto.
- *
- * Es la salida al tope de 100 y, de paso, a las listas privadas —que no tienen
- * página de embed—. En Spotify se puede seleccionar todo (Ctrl+A) y copiar
- * (Ctrl+C): lo que va al portapapeles es un link por canción. Cada uno de esos
- * links **sí** tiene su embed, así que una lista de cualquier tamaño se puede
- * reconstruir de a una.
- *
- * Se aceptan las dos formas que devuelve Spotify según de dónde se copie: la
- * URL con su `?si=…` y el URI `spotify:track:…`.
- */
-export function idsDeCanciones(texto: string): string[] {
-  const ids = new Set<string>()
-  const patron = /(?:open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/|spotify:track:)([A-Za-z0-9]{22})/g
-  for (const coincidencia of texto.matchAll(patron)) ids.add(coincidencia[1])
-  return [...ids]
-}
-
-/**
  * Los datos de una canción, de su propia página de embed.
  *
  * Devuelve null en vez de tirar: en una lista de trescientas, que una no se
